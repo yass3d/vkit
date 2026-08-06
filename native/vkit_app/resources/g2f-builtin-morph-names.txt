@@ -1,0 +1,570 @@
+Brow Arch
+Brow Height
+Brow Inner Height
+Brow Inner Width
+Brow Outer Depth
+Brow Outer Height
+Brow Outer Shift
+Brow Outer Width
+Brow Shape Inner
+Brow Shape Outer
+BrowAreaSmooth
+BrowAreaSmooth2
+Brows Arch (B)
+Brows Thickness. 2
+CTRLBrowDefine
+CTRLBrowDepth
+CTRLBrowWidth
+CTRLCheekBonesSize
+CTRLCheeksDepth
+CTRLCheeksDimpleCrease
+CTRLCheeksSink
+CTRLChinWidth
+CTRLEarsAngle
+CTRLEarsHeight
+CTRLEarsSize
+CTRLEyelidsUpperHeight
+CTRLEyesAlmondInner
+CTRLEyesAlmondOuter
+CTRLEyesAngle
+CTRLEyesDepth
+CTRLEyesHeight
+CTRLEyesSize
+CTRLEyesWidth
+CTRLFaceFlat
+CTRLFaceHeart
+CTRLFaceRound
+CTRLFaceSquare
+CTRLForeheadWrinkle
+CTRLJawCornerWidth
+CTRLJawHeight
+CTRLJawSize
+CTRLMouthSmileSimple
+CTRLNoseFleshSize
+CTRLNostrilsHeight
+CTRLNostrilsWidth
+CTRLTemplesDefine
+CTRLTongueIn-Out
+CTRLTongueNarrow-Wide
+Cheek Bone Define 
+Cheek Bones Arch 
+Cheek Bones Height
+Cheek Bones Low
+Cheek Bones Round
+Cheek Bones Shape 1
+Cheek Bones Upper Depth
+Cheek Bones Width Middle 
+Cheek Bones Width Upper
+Cheek Jowl
+Cheek Lower Depth
+Cheek Lower Width
+Cheek Squish Left
+Cheek Squish Right
+CheekBones  Width Outer
+CheekBones1
+CheekBonesDefine
+CheekBonesHigh
+CheekBonesLarge
+CheekBonesMore
+CheekHollows
+CheekInnerPuff
+CheekShape3
+CheekShapeRounder
+CheekShapeRounder2
+Cheeks Depth Middle
+Cheeks Depth Upper
+Cheeks Flat
+Cheeks Height
+Cheeks Inner Height
+Cheeks Inner Puffy
+Cheeks Puffy Lower 
+Cheeks Sink Lower
+Cheeks Upper Crease
+CheeksOut
+CheeksPuffLower
+CheeksShape1
+CheeksSmooth
+Chin Crease B
+Chin Height
+Chin Round
+Chin Square
+Chin Width 2
+ChinCleft
+ChinOut
+ChinOutRound
+ChinShape
+ChinWider
+Cornea Depth
+Cranium Height
+Cranium Size
+Cranium Width
+Ears  Angle Upper
+Eye Fold
+Eye Shape Bottom M
+Eye Upper Shape M
+EyeAreaSmooth
+EyeAreaThin
+EyeCornerUpDown
+EyeShape5
+EyeShape6
+EyeShapeLarger
+Eyeballs Depth
+Eyelid Lower Crease
+Eyelid Lower Shape
+Eyelid Upper Inner Shape
+Eyelid Upper Shape  Outer
+Eyelids Height Inner 
+Eyelids Lower Puffy
+Eyelids Shape 1
+Eyelids Shape 2
+Eyelids Upper Height  A
+Eyelids Upper Height (Outer)
+Eyelids Upper Square
+Eyes Bags
+Eyes Closed (REN)
+Eyes Height Bottom
+Eyes Height Upper
+Eyes Inner Corner Height
+Eyes Inner Corner Width
+Eyes Inner Shape
+Eyes Inner Square
+Eyes Lower Shape
+Eyes Open
+Eyes Outer Shape
+Eyes Puffy Outer
+Eyes Puffy Shift
+Eyes Puffy Upper Center 
+Eyes Round
+Eyes Round Lower
+Eyes Round Upper
+Eyes Shift Lower
+Eyes Shift Upper
+Eyes Slant Outer 
+Eyes Upper Shape
+EyesShape1
+EyesShape2
+EyesShape3
+EyesShape4
+Face Depth
+Face Depth Lower 
+Face Height
+Face Height 2
+Face Height Lower
+Face Height Upper 
+Face Lower Thin
+Face Middle Thin
+Face Size
+Face Upper Width
+FaceAllWider
+FaceExotic
+FaceFae1
+FaceFae2
+FaceFemale4
+FaceMidProportion
+FaceMidProportion2
+FaceMidProportion3
+FaceModel
+FaceModel2
+FaceRoundFlat1
+FaceRoundFlat2
+FaceShape1
+FaceShape2
+FaceShape3
+FaceShapeAfrican
+FaceShapeAnime
+FaceShapeFemale
+FaceShapeFlat1
+FaceShapeFlat2
+FaceShapeHeart
+FaceShapeHeart2
+FaceShapeOval
+FaceShapeRound
+FaceShapeRound2
+FaceShapeSquare
+FaceShapeThin
+FaceSmoothAll
+FaceSmoothLower
+FairyEars1
+FairyEars2
+FairyEars3
+FemaleProportion1
+FemaleProportion2
+FemaleProportion3
+FemaleProportion4
+FemaleProportion5
+ForeHead Top Width
+Forehead Height
+Forehead Slope
+Forehead Width
+Head Length
+Head Scale
+Head Width
+Iris Height
+Iris Placement
+Iris Placement L
+Jaw Chin Shape
+Jaw Corner Height
+Jaw Corner Shape
+Jaw Round
+Jaw Square
+JawCornerForward
+JawEarForward
+JawHeart
+JawlineRecede
+JawlineReduce
+LIps Top Width
+LacrimalStretch
+LacrimalYoung
+Laugh Lines
+Lip Upper Size (ren)
+Lip Upper Thick
+LipLoPuffy
+LipUpPuffy
+Lips Bottom Full
+Lips Bottom Shape 
+Lips Bottom Small
+Lips Bow Height
+Lips Bow Shape
+Lips Center Angle
+Lips Corners Pinch
+Lips Depth
+Lips Pucker (REN)
+Lips Top Full
+Lips Upper Bow
+Lips Upper Center Depth
+Lips Upper Curvea Corner
+Lips Upper Curves  Round
+LipsPuffOut
+Lower Mouth Puffy
+LowerFaceSmoothRound
+Mouth Corner Depth
+Mouth Corner Height
+Mouth Corner Width
+Mouth Curves  Arch
+Mouth Curves Arch Corner
+Mouth Curves Center Width
+Mouth Curves Corner
+Mouth Marionette lines
+Mouth Mousey
+Mouth Side Crease B
+MouthArea_InOut
+MouthCenterXScale
+MouthCornerShape
+MouthCurves1
+MouthCurves2
+MouthCurves3
+MouthLarger1
+MouthLarger2
+MouthLarger3
+MouthLowLipDefine
+MouthLowLipLg
+MouthLowLipLg2
+MouthLowLipShape
+MouthOuterXScale
+MouthPouty
+MouthProportion
+MouthRotateUp
+MouthShape1
+MouthShape10
+MouthShape11
+MouthShape12
+MouthShape2
+MouthShape3
+MouthShape4
+MouthShape5
+MouthShape6
+MouthShape7
+MouthShape8
+MouthShape9
+MouthSmaller1
+Mouth_UpLipDefine
+NTSB
+NarrowNostrils
+Nose A
+Nose Bridge Curve
+Nose Bridge Height 2
+Nose Bridge Lower Depth
+Nose Bridge Lower Width 
+Nose Bridge Middle Width
+Nose Bridge Middlle Depth
+Nose Bridge Root Width
+Nose Septum Shape
+Nose Tilt
+Nose Tip Bottom Shape
+Nose Tip Square
+Nose Tip Upper Shape 
+Nose Tip Width Lower
+Nose Tip Width Upper
+Nose V
+NoseAreaSmooth
+NoseFlat
+NoseFlat2
+NoseFlat3
+NoseMouthRatio
+NoseRidgeBroad
+NoseRidgeReduce
+NoseShape1
+NoseShape10
+NoseShape11
+NoseShape12
+NoseShape2
+NoseShape3
+NoseShape4
+NoseShape5
+NoseShape6
+NoseShape7
+NoseShape8
+NoseShape9
+NoseTipRound
+NoseTipRound2
+NoseTipShort
+NoseTurnedUp
+Nostrils Bottom Rotate
+Nostrils Bottom Shape 2
+Nostrils Define Upper
+Nostrils Flare
+Nostrils Inner Height
+Nostrils Inner Width
+Nostrils Rotation
+Nostrils Shape Bottom
+Nostrils Shape Height
+Nostrils Shape Middle 
+Nostrils Shape Top
+Nostrils Shape Top Angle
+Nostrils Thin
+Nostrils Width Lower
+Outer Mouth Shape V
+PHMAfraid
+PHMAngry
+PHMBrowDefineL
+PHMBrowDefineR
+PHMBrowDepthL
+PHMBrowDepthR
+PHMBrowWidthL
+PHMBrowWidthR
+PHMCheekBonesSizeL
+PHMCheekBonesSizeR
+PHMCheekBonesWidth
+PHMCheeksDefine
+PHMCheeksDepthL
+PHMCheeksDepthR
+PHMCheeksDimpleCreaseL
+PHMCheeksDimpleCreaseR
+PHMCheeksSinkL
+PHMCheeksSinkR
+PHMChinCleft
+PHMChinCrease
+PHMChinCreaseSmooth
+PHMChinDepth
+PHMChinWidthL
+PHMChinWidthR
+PHMConcentrate
+PHMConfused
+PHMContempt
+PHMCraniumSlope
+PHMCrowsFeet
+PHMDesire
+PHMDisgust
+PHMEarlobesAttached
+PHMEarlobesLength
+PHMEarlobesSize
+PHMEarsAngleL
+PHMEarsAngleR
+PHMEarsDepth
+PHMEarsElf
+PHMEarsElfLong
+PHMEarsHeightL
+PHMEarsHeightR
+PHMEarsSizeL
+PHMEarsSizeR
+PHMExcitement
+PHMEyeLidsBottomDownL
+PHMEyeLidsBottomDownR
+PHMEyeLidsBottomUpL
+PHMEyeLidsBottomUpR
+PHMEyeLidsTopUpL
+PHMEyeLidsTopUpR
+PHMEyelashesCurl
+PHMEyelashesHideLayer1
+PHMEyelashesHideLayer2
+PHMEyelashesLength
+PHMEyelashesTopPoint
+PHMEyelidsBottomDefine
+PHMEyelidsBottomInHeight
+PHMEyelidsBottomOutHeight
+PHMEyelidsFoldDown
+PHMEyelidsHeavy
+PHMEyelidsLowerHeight
+PHMEyelidsSmooth
+PHMEyelidsTopDownL
+PHMEyelidsTopDownR
+PHMEyelidsTopInHeight
+PHMEyelidsTopOutHeight
+PHMEyelidsUpperHeightL
+PHMEyelidsUpperHeightR
+PHMEyesAlmondInnerL
+PHMEyesAlmondInnerR
+PHMEyesAlmondOuterL
+PHMEyesAlmondOuterR
+PHMEyesAngleL
+PHMEyesAngleR
+PHMEyesCorneaBulge
+PHMEyesDepthL
+PHMEyesDepthR
+PHMEyesHeightInner
+PHMEyesHeightL
+PHMEyesHeightOuter
+PHMEyesHeightR
+PHMEyesInnerDepth
+PHMEyesIrisCorrection
+PHMEyesIrisSize
+PHMEyesPuffyLower
+PHMEyesPuffyUpper
+PHMEyesSizeL
+PHMEyesSizeR
+PHMEyesWidthL
+PHMEyesWidthR
+PHMEyesWrinkle
+PHMFaceCenterDepth
+PHMFaceFlatL
+PHMFaceFlatR
+PHMFaceHeartL
+PHMFaceHeartR
+PHMFaceRoundL
+PHMFaceRoundR
+PHMFaceSquareL
+PHMFaceSquareR
+PHMFaceYoung
+PHMFaerie
+PHMFear
+PHMFlirting
+PHMFlirtingFeminineL
+PHMFlirtingFeminineR
+PHMFlirtingMasculineL
+PHMFlirtingMasculineR
+PHMForeheadDefine
+PHMForeheadFlat
+PHMForeheadRound
+PHMForeheadWrinkleL
+PHMForeheadWrinkleR
+PHMFrown
+PHMGlare
+PHMHappy
+PHMJawAngle
+PHMJawCornerWidthL
+PHMJawCornerWidthR
+PHMJawCurve
+PHMJawDefine
+PHMJawHeightL
+PHMJawHeightR
+PHMJawLineDepth
+PHMJawSizeL
+PHMJawSizeR
+PHMLacrimalsPinch
+PHMLacrimalsSize
+PHMLipLowerDepth
+PHMLipLowerSize
+PHMLipLowerWidth
+PHMLipTopPeak
+PHMLipUpperCurves
+PHMLipUpperDepth
+PHMLipUpperSize
+PHMLipsEdgeDefine
+PHMLipsHeart
+PHMLipsSquare
+PHMLipsThin
+PHMLowerJawSizeDepth
+PHMMouthCurves
+PHMMouthDepth
+PHMMouthHeight
+PHMMouthSize
+PHMMouthSmile
+PHMMouthSmileOpen
+PHMMouthSmileSimpleL
+PHMMouthSmileSimpleR
+PHMMouthWidth
+PHMNoseBridgeDepth
+PHMNoseBridgeHeight
+PHMNoseBridgeSkew
+PHMNoseBridgeSlope
+PHMNoseBridgeWidth
+PHMNoseBump
+PHMNoseDepth
+PHMNoseFleshSizeL
+PHMNoseFleshSizeR
+PHMNoseHeight
+PHMNosePinch
+PHMNoseRidge
+PHMNoseRidgeWidth
+PHMNoseSeptumDepth
+PHMNoseSeptumHeight
+PHMNoseSeptumWidth
+PHMNoseSide-Side
+PHMNoseSize
+PHMNoseSkew
+PHMNoseTipDepth
+PHMNoseTipHeight
+PHMNoseTipRound
+PHMNoseTipWidth
+PHMNoseTwist
+PHMNoseWidth
+PHMNostrilsDepth
+PHMNostrilsFleshSize
+PHMNostrilsHeightL
+PHMNostrilsHeightR
+PHMNostrilsWidthL
+PHMNostrilsWidthR
+PHMPain
+PHMPhiltrumAngle
+PHMPhiltrumDepth
+PHMPhiltrumWidth
+PHMPupilsDialate
+PHMPupilsSlit
+PHMSad
+PHMScream
+PHMShock
+PHMSmileFullFace
+PHMSmileOpenFullFace
+PHMSnarlLeft
+PHMSnarlRight
+PHMSurprise
+PHMTeethBottomSize
+PHMTeethGap
+PHMTeethIrregular
+PHMTeethLowerJawMoveForward-Back
+PHMTeethLowerJawMoveSide-Side
+PHMTeethLowerJawMoveUp-Down
+PHMTeethLowerJawSize
+PHMTeethLowerJawSizeHeight
+PHMTeethLowerJawSizeWidth
+PHMTeethTopSize
+PHMTeethUpperJawMoveForward-Back
+PHMTeethUpperJawMoveSide-Side
+PHMTeethUpperJawMoveUp-Down
+PHMTeethUpperJawSize
+PHMTeethUpperJawSizeDepth
+PHMTeethUpperJawSizeHeight
+PHMTeethUpperJawSizeWidth
+PHMTemplesDefineL
+PHMTemplesDefineR
+Septum Width Upper
+SmileMuscles
+Teeth Bucked
+Tongue Center Dip
+Tongue Forked
+Tongue Length
+Tongue Ridge Bottom
+Tongue Roll 1
+Tongue Roll 2
+Tongue Thickness
+Tongue Tip Thickness
+UpLipAreaShape
+Upper Lip Curve 2
+Upper Lip Puffy
+Uvula Size
+VampireFangs
+Young1
+Young2
+Young3
+Young4
+Young5

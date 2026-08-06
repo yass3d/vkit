@@ -1,0 +1,122 @@
+[workspace]
+members = [
+    "vkit_geometry_core",
+    "vkit_core",
+    "vkit_semantic",
+    "vkit_app",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yass3d/vkit"
+
+[workspace.dependencies]
+bytemuck = { version = "1.25.1", features = ["derive"] }
+egui = { version = "0.35.0", default-features = false }
+egui-wgpu = { version = "0.35.0", default-features = false }
+egui-winit = { version = "0.35.0", default-features = false, features = [
+    "clipboard",
+] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+glam = { version = "0.33.2", features = ["bytemuck"] }
+nalgebra = { version = "0.35.0", default-features = false, features = ["std"] }
+pollster = "1.0.1"
+rayon = "1.12"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+sha2 = "0.10"
+thiserror = "2.0"
+wgpu = { version = "29.0.0", default-features = false, features = ["std", "dx12", "wgsl"] }
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06"] }
+
+[patch.crates-io]
+tract-tflite = { path = "vendor/tract-tflite" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.release-small]
+inherits = "release"
+opt-level = "z"
+
+[profile.release-small.package.vkit-core]
+opt-level = 3
+
+[profile.release-small.package.vkit-geometry-core]
+opt-level = 3
+
+[profile.release-small.package.vkit-semantic]
+opt-level = 3
+
+[profile.release-small.package.tract-core]
+opt-level = 3
+
+[profile.release-small.package.tract-data]
+opt-level = 3
+
+[profile.release-small.package.tract-linalg]
+opt-level = 3
+
+[profile.release-small.package.tract-tflite]
+opt-level = 3
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.vkit-app]
+opt-level = 1
+[profile.dev.package.vkit-core]
+opt-level = 3
+
+[profile.dev.package.vkit-geometry-core]
+opt-level = 3
+
+[profile.dev.package.vkit-semantic]
+opt-level = 3
+
+[profile.dev.package.tract-core]
+opt-level = 3
+
+[profile.dev.package.tract-data]
+opt-level = 3
+
+[profile.dev.package.tract-linalg]
+opt-level = 3
+
+[profile.dev.package.tract-tflite]
+opt-level = 3
+
+[profile.dev.package.wide]
+opt-level = 3
+
+[profile.dev.package.matrixmultiply]
+opt-level = 3
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.zune-core]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3

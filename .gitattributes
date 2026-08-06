@@ -1,0 +1,14 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.rc  text eol=crlf
+
+*.png binary
+*.ico binary
+*.gz  binary
+*.fmeye binary
+*.fmmorph binary
+
+native/vendor/** linguist-vendored
+native/Cargo.lock linguist-generated
+native/vendor/tract-tflite/src/tflite_generated.rs linguist-generated

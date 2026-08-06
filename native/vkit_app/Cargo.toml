@@ -1,0 +1,60 @@
+[package]
+name = "vkit-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "Vkit"
+path = "src/main.rs"
+
+[dependencies]
+vkit-core = { path = "../vkit_core", features = ["rig"] }
+base64 = "0.22.1"
+bytemuck.workspace = true
+crc32fast = "1.5"
+egui.workspace = true
+usvg = { version = "0.45", default-features = false }
+egui-wgpu = { workspace = true, features = ["winit"] }
+egui-winit.workspace = true
+fbx-dom = "=0.1.1"
+fbxcel = { version = "0.9.0", features = ["tree"] }
+fbxscii = "=0.1.1"
+glam.workspace = true
+gltf = { version = "1.4.1", default-features = false, features = ["names", "utils"] }
+image = { version = "0.25.9", default-features = false, features = ["jpeg", "png"] }
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode", "std"] }
+pollster.workspace = true
+rfd = { version = "0.15.4", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tempfile = "3.27.0"
+wgpu.workspace = true
+winit.workspace = true
+
+rayon.workspace = true
+resvg = { version = "0.48.0", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+embed-resource = "3.0.9"
+sha2.workspace = true
+
+[dev-dependencies]
+naga = { version = "29.0.4", features = ["wgsl-in"] }

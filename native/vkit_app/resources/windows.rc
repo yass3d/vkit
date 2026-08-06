@@ -1,0 +1,40 @@
+#include <windows.h>
+
+#define IDI_VKIT 1
+#define IDR_THIRD_PARTY_NOTICE 101
+
+IDI_VKIT ICON "resources/vkit.ico"
+1 RT_MANIFEST "resources/vkit.manifest"
+IDR_THIRD_PARTY_NOTICE RCDATA "../../build/windows/THIRD-PARTY-NOTICE.txt"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,0,1,0
+ PRODUCTVERSION 0,0,1,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Vkit\0"
+      VALUE "FileDescription", "Vkit - a side tool for Virt-A-Mate\0"
+      VALUE "FileVersion", "0.0.1\0"
+      VALUE "InternalName", "Vkit\0"
+      VALUE "OriginalFilename", "Vkit.exe\0"
+      VALUE "ProductName", "Vkit\0"
+      VALUE "ProductVersion", "0.0.1\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

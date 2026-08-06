@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: fmt, clippy, test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+  archive:
+    name: the published source archive compiles
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Export what a release download would contain
+        run: |
+          git archive --format=tar --prefix=exported/ HEAD -o "$env:RUNNER_TEMP\export.tar"
+          tar -xf "$env:RUNNER_TEMP\export.tar" -C "${{ github.workspace }}"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: exported/native
+          prefix-key: archive
+
+      - name: Compile it
+        working-directory: exported/native
+        run: cargo check --workspace --all-targets

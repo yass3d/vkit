@@ -1,0 +1,27 @@
+[package]
+name = "vkit-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = []
+rig = []
+
+[dependencies]
+vkit-geometry-core = { path = "../vkit_geometry_core" }
+vkit-semantic = { path = "../vkit_semantic" }
+flate2.workspace = true
+glam.workspace = true
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode", "std"] }
+nalgebra.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+approx = "0.5"
+tempfile = "3"

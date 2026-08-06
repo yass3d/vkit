@@ -1,0 +1,82 @@
+; Synthetic Vkit fixture: no third-party asset content.
+FBXHeaderExtension:  {
+    FBXHeaderVersion: 1003
+    FBXVersion: 7400
+    CreationTimeStamp:  {
+        Version: 1000
+        Year: 2026
+        Month: 7
+        Day: 19
+        Hour: 0
+        Minute: 0
+        Second: 0
+        Millisecond: 0
+    }
+    Creator: "Vkit importer fixture"
+}
+GlobalSettings:  {
+    Properties70:  {
+        P: "UpAxis", "int", "Integer", "",1
+        P: "UpAxisSign", "int", "Integer", "",1
+        P: "FrontAxis", "int", "Integer", "",2
+        P: "FrontAxisSign", "int", "Integer", "",-1
+        P: "CoordAxis", "int", "Integer", "",0
+        P: "CoordAxisSign", "int", "Integer", "",1
+        P: "UnitScaleFactor", "double", "Number", "",1
+    }
+}
+Definitions:  {
+    ObjectType: "Model" {
+        PropertyTemplate: "FbxNode" {
+            Properties70:  {
+                P: "Lcl Translation", "Lcl Translation", "", "A",0,0,0
+                P: "Lcl Rotation", "Lcl Rotation", "", "A",0,0,0
+                P: "Lcl Scaling", "Lcl Scaling", "", "A",1,1,1
+            }
+        }
+    }
+    ObjectType: "Geometry" {
+        PropertyTemplate: "FbxMesh" {
+            Properties70:  {
+                P: "Color", "ColorRGB", "Color", "",1,1,1
+            }
+        }
+    }
+    ObjectType: "Material" {
+        PropertyTemplate: "FbxSurfacePhong" {
+            Properties70:  {
+                P: "DiffuseColor", "ColorRGB", "Color", "",1,1,1
+                P: "DiffuseFactor", "double", "Number", "",1
+                P: "Opacity", "double", "Number", "",1
+            }
+        }
+    }
+}
+Objects:  {
+    Model: 100, "Model::Genesis2Male", "Mesh" {
+        Properties70:  {
+            P: "Lcl Translation", "Lcl Translation", "", "A",0,2,0
+        }
+    }
+    Geometry: 200, "Geometry::lEye", "Mesh" {
+        Vertices: *12 {
+            a: 0,0,0,1,0,0,1,1,0,0,1,0
+        }
+        PolygonVertexIndex: *4 {
+            a: 0,1,2,-4
+        }
+        LayerElementMaterial: 0 {
+            MappingInformationType: "AllSame"
+            ReferenceInformationType: "Direct"
+            Materials: *1 {
+                a: 0
+            }
+        }
+    }
+    Material: 300, "Material::Face", "" {
+    }
+}
+Connections:  {
+    C: "OO",200,100
+    C: "OO",300,100
+}
