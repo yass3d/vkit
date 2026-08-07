@@ -14,6 +14,13 @@
   <img alt="Status" src="https://img.shields.io/badge/status-pre--1.0-yellow">
 </p>
 
+<p align="center">
+  <img alt="A scan and Genesis 2 side by side in the Create tab, with numbered pin pairs on both"
+       src=".github/assets/create-fit.png">
+  <br>
+  <sub>A scan on the left, Genesis 2 on the right, and the pin pairs that tie the two together.</sub>
+</p>
+
 ---
 
 Vkit is a companion tool for [Virt-A-Mate](https://www.virtamate.com/) that
@@ -52,6 +59,34 @@ capture and the body collision were measured out of VaM, not approximated.
 Nothing Vkit writes goes anywhere near your VaM installation's own files. It
 reads them; what it produces lands in `Custom/` or `AddonPackages/`, the same
 places VaM picks up anybody else's content from.
+
+## The other three stages
+
+**Sculpt.** Your install's own morph library — searchable, categorised, names
+translated — beside brushes that move the mesh directly. Parts can be soloed or
+hidden while you work, and a hair style from your install is tried on live.
+
+<p align="center">
+  <img alt="The Sculpt tab: morph library on the right, a face with simulated hair in the viewport"
+       src=".github/assets/sculpt-morphs.png">
+</p>
+
+**Texture.** Layers on the face UV, painted on the model or on the flat map,
+whichever is easier to aim. Mirroring, per-layer colour adjustment, and a bake
+that ends as a finished texture set at 2K or 4K.
+
+<p align="center">
+  <img alt="The Texture tab: stamped layers on the face, the same layers on the UV canvas beside it"
+       src=".github/assets/texture-layers.png">
+</p>
+
+**Save.** The morph pair, the texture set, or a `.var` — and a compare slider to
+put the result back against the scan you started from before you commit to it.
+
+<p align="center">
+  <img alt="The Save tab: morph naming panel on the right, compare slider under the finished head"
+       src=".github/assets/save-morph.png">
+</p>
 
 ## Getting started
 
