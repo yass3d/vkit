@@ -200,7 +200,7 @@ pub fn draw_detail_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect, titl
     if state.is_texturing() {
         let previous_ratio = state.texture_project.workspace_split_ratio;
         let mut ratio = previous_ratio;
-        let (_, handle) = crate::ui_components::show_horizontal_split(
+        let (split_x, handle) = crate::ui_components::show_horizontal_split(
             ui,
             Id::new("vkit.texture.workspace-split"),
             rect,
@@ -210,8 +210,12 @@ pub fn draw_detail_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect, titl
             |ui, model_rect, source_rect| {
                 draw_result(ui, state, model_rect, title);
                 crate::texture_ui::draw_source_workspace(ui, state, source_rect);
+                (model_rect.right() + source_rect.left()) * 0.5
             },
         );
+        // Drawn out here rather than inside the model half, so it can sit on
+        // the divider the way the create tab's prompt does.
+        crate::viewport::draw_texture_prompt_island(ui, state, rect, split_x);
         if (ratio - previous_ratio).abs() > f32::EPSILON {
             state.dispatch(Action::SetTextureWorkspaceSplit(ratio));
             ui.ctx().request_repaint();

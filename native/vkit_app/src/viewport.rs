@@ -1421,12 +1421,9 @@ fn draw_pin_prompt_island(ui: &Ui, state: &AppState, workspace: Rect, split_x: f
         ui,
         text(state.locale, TextKey::PinPrompt),
         workspace,
-        pos2(split_x, workspace.center().y),
+        prompt_island_centre(workspace, split_x),
     );
 }
-
-/// How far below the top of the 3D view the texture prompts float.
-const TEXTURE_PROMPT_DROP: f32 = 56.0;
 
 /// What the texture tab is waiting for, said where the work is happening.
 ///
@@ -1434,15 +1431,20 @@ const TEXTURE_PROMPT_DROP: f32 = 56.0;
 /// the panel that supplies one is off to the side where someone looking at the
 /// head will not think to look. The pin tool then wants a second thing — pins
 /// in pairs — so it keeps prompting once the image arrives.
-fn draw_texture_prompt_island(ui: &Ui, state: &AppState, rect: Rect) {
+///
+/// Placed exactly where the create tab places its own prompt: on the divider
+/// between the two views, halfway down. It has to be given the whole workspace
+/// to do that — handed only the model half it would sit in the corner of the
+/// window, which is what it did until someone looked at it.
+pub(crate) fn draw_texture_prompt_island(ui: &Ui, state: &AppState, workspace: Rect, split_x: f32) {
     let Some(message) = texture_prompt(state) else {
         return;
     };
     draw_prompt_island(
         ui,
         text(state.locale, message),
-        rect,
-        pos2(rect.center().x, rect.top() + TEXTURE_PROMPT_DROP),
+        workspace,
+        prompt_island_centre(workspace, split_x),
     );
 }
 
@@ -1470,6 +1472,16 @@ fn texture_prompt(state: &AppState) -> Option<TextKey> {
 /// Written for the create tab's "place a pin on each" and generalised rather
 /// than copied: the texture tab needs exactly this, and a second hand-rolled
 /// version would drift in padding, swing and colour within a release.
+/// Where a prompt sits over a split workspace: on the divider, halfway down.
+///
+/// One definition because there are two of these — the create tab's pins and
+/// the texture tab's — and a reader moving between the tabs should find the
+/// same thing in the same place. Working it out separately is how the texture
+/// one ended up in a corner.
+pub(crate) fn prompt_island_centre(workspace: Rect, split_x: f32) -> Pos2 {
+    pos2(split_x, workspace.center().y)
+}
+
 pub(crate) fn draw_prompt_island(ui: &Ui, message: &str, workspace: Rect, centre: Pos2) {
     let galley = ui.painter().layout_no_wrap(
         message.to_owned(),
@@ -1843,7 +1855,6 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
         paint_sculpt_brush_hud(ui, state, &response);
     }
 
-    draw_texture_prompt_island(ui, state, rect);
     if projection_stencil_mode(state) {
         if let Some(stencil) = crate::texture_ui::projection_stencil_rect(state, rect) {
             crate::texture_ui::paint_projection_stencil(ui, state, stencil);

@@ -1865,3 +1865,24 @@ fn sculpt_visibility_mask_is_independent_from_result_attachment_toggles() {
     assert!(!sculpt_visible_targets(&state).contains(SculptTarget::Eyelashes));
     assert!(!sculpt_hit_targets(&state).contains(SculptTarget::Eyelashes));
 }
+
+#[test]
+fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
+    // The texture prompt was handed only the model half of the workspace, so
+    // it centred itself inside that and read as pinned to the top-left corner
+    // of the window while the create tab's sat on the divider. One rule now
+    // decides both; this holds them to it.
+    let workspace = Rect::from_min_size(pos2(100.0, 40.0), vec2(900.0, 600.0));
+    let split_x = 610.0;
+    let centre = crate::viewport::prompt_island_centre(workspace, split_x);
+    assert!(
+        (centre.x - split_x).abs() < f32::EPSILON,
+        "a prompt must sit on the divider, not in the middle of one view"
+    );
+    assert!((centre.y - workspace.center().y).abs() < f32::EPSILON);
+
+    // Moving the divider carries it along; the height does not follow.
+    let dragged = crate::viewport::prompt_island_centre(workspace, 300.0);
+    assert!((dragged.x - 300.0).abs() < f32::EPSILON);
+    assert!((dragged.y - centre.y).abs() < f32::EPSILON);
+}
