@@ -173,7 +173,18 @@ fn collect(group: &usvg::Group, span: f32, outlines: &mut Vec<Outline>) {
 
 fn flatten(path: &usvg::Path, span: f32, outlines: &mut Vec<Outline>) {
     let filled = path.fill().is_some();
-    let width = path.stroke().map(|stroke| stroke.width().get() / span);
+    // Everything above this path — the group holding it, and the one the
+    // renderer builds to fit a viewBox into the declared width and height.
+    // Reading the raw coordinates and ignoring that works only while the two
+    // agree; an icon authored at 800px on a 512 viewBox came out at 64% and
+    // shifted off centre, which is how this was noticed.
+    let placement = path.abs_transform();
+    let scale = ((placement.sx * placement.sy - placement.kx * placement.ky).abs())
+        .sqrt()
+        .max(f32::EPSILON);
+    let width = path
+        .stroke()
+        .map(|stroke| stroke.width().get() * scale / span);
     if !filled && width.is_none() {
         return;
     }
@@ -199,7 +210,11 @@ fn flatten(path: &usvg::Path, span: f32, outlines: &mut Vec<Outline>) {
         }
         *closed = false;
     };
-    let at = |x: f32, y: f32| Pos2::new(x / span, y / span);
+    let at = |x: f32, y: f32| {
+        let mut point = usvg::tiny_skia_path::Point { x, y };
+        placement.map_points(std::slice::from_mut(&mut point));
+        Pos2::new(point.x / span, point.y / span)
+    };
     for segment in path.data().segments() {
         match segment {
             usvg::tiny_skia_path::PathSegment::MoveTo(point) => {
@@ -297,6 +312,60 @@ mod tests {
     /// An L, drawn anticlockwise in a y-down space, with the notch top-right.
     const BRACKET: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
         <polygon fill="black" points="2,2 8,2 8,18 22,18 22,22 2,22"/></svg>"#;
+
+    /// Every icon the interface draws, so a new one cannot skip the checks.
+    fn every_icon() -> Vec<(String, SvgIcon)> {
+        crate::ui_components::Icon::ALL
+            .iter()
+            .filter_map(|&icon| {
+                let source = crate::ui_components::icon_svg(icon)?;
+                Some((
+                    format!("{icon:?}"),
+                    SvgIcon::parse(source).expect("an icon in the table must parse"),
+                ))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn no_icon_sits_off_centre_in_its_own_box() {
+        // An icon whose declared width and its viewBox disagree lands scaled
+        // down and pushed into a corner. That is what put a face icon in the
+        // texture toolbox at 64% and shifted, and nothing in the build said
+        // so — only someone looking at the row of buttons.
+        for (name, icon) in every_icon() {
+            let (mut low, mut high) = ([f32::MAX; 2], [f32::MIN; 2]);
+            for point in icon.outlines.iter().flat_map(|outline| &outline.points) {
+                low = [low[0].min(point.x), low[1].min(point.y)];
+                high = [high[0].max(point.x), high[1].max(point.y)];
+            }
+            // Extent is not checked: a tick and a cross are legitimately small
+            // marks. Where an icon sits is the tell, because art authored on a
+            // different grid lands in a corner rather than the middle.
+            for (axis, (start, end)) in [(low[0], high[0]), (low[1], high[1])].iter().enumerate() {
+                let centre = (start + end) * 0.5;
+                assert!(
+                    (centre - 0.5).abs() < 0.12,
+                    "{name} sits at {centre:.2} on axis {axis}; it will look nudged"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn icons_are_drawn_in_line_weights_that_match_each_other() {
+        for (name, icon) in every_icon() {
+            for outline in &icon.outlines {
+                let Some(width) = outline.width else {
+                    continue;
+                };
+                assert!(
+                    (width - 2.0 / 24.0).abs() < 1.0e-3,
+                    "{name} strokes at {width:.4}, not the pack's 2 units in 24"
+                );
+            }
+        }
+    }
 
     #[test]
     fn a_filled_corner_bracket_keeps_its_notch() {

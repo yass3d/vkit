@@ -1293,6 +1293,19 @@ const WINDOW_CLOSE_OPS: &[IconOp] = &[
     IconOp::Stroke(&[[16.6, 7.4], [7.4, 16.6]]),
 ];
 
+/// The artwork behind an icon, when it is a file rather than drawn in code.
+///
+/// Narrow on purpose: the only caller outside this module measures every icon
+/// to check it was authored on the same grid as the rest, and does not need
+/// the drawn-in-code variant or the shapes inside it.
+#[cfg(test)]
+pub(crate) const fn icon_svg(glyph: Icon) -> Option<&'static str> {
+    match icon_art(glyph) {
+        IconArt::Svg(source) => Some(source),
+        IconArt::Drawn(_) => None,
+    }
+}
+
 const fn icon_art(glyph: Icon) -> IconArt {
     let source = match glyph {
         Icon::Settings => include_str!("../resources/icons/settings.svg"),
