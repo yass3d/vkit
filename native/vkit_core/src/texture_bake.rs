@@ -567,6 +567,130 @@ struct WarpBoundaryEdge {
     triangle: [usize; 3],
 }
 
+/// The single uniform-scale, rotation and translation that best carries the
+/// target pins onto the source pins.
+///
+/// Three pins fix a full affine exactly, and an affine is free to shear, to
+/// scale one axis and not the other, and to turn itself inside out. Fixed
+/// exactly by three points and then extended across a whole face, that is what
+/// made a first placement look mangled. A similarity has four numbers rather
+/// than six and cannot do any of those things: it can only move the picture,
+/// turn it, and make it bigger or smaller as a whole.
+#[derive(Clone, Copy, Debug)]
+struct WarpSimilarity {
+    /// Centre of the target pins, which the map pivots about.
+    target_centre: [f32; 2],
+    /// Centre of the source pins, where that pivot lands.
+    source_centre: [f32; 2],
+    /// The rotation-and-scale as `[c·cos, c·sin]`.
+    turn: [f32; 2],
+    /// How far the pins reach from their centre — the distance over which the
+    /// warp gives way to this.
+    spread: f32,
+}
+
+impl WarpSimilarity {
+    fn fit(pins: &[TextureWarpPin], target_points: &[[f32; 2]]) -> Option<Self> {
+        let count = target_points.len();
+        if count < 2 || pins.len() != count {
+            return None;
+        }
+        let mean = |points: &dyn Fn(usize) -> [f32; 2]| {
+            let sum = (0..count).fold([0.0, 0.0], |sum: [f32; 2], index| {
+                let point = points(index);
+                [sum[0] + point[0], sum[1] + point[1]]
+            });
+            #[expect(clippy::cast_precision_loss, reason = "a handful of pins")]
+            let divisor = count as f32;
+            [sum[0] / divisor, sum[1] / divisor]
+        };
+        let target_centre = mean(&|index| target_points[index]);
+        let source_centre = mean(&|index| pins[index].source);
+
+        // Least squares over c·cos and c·sin at once: the two normal equations
+        // share the denominator, so one pass over the pins answers both.
+        let (mut along, mut across, mut extent) = (0.0f32, 0.0f32, 0.0f32);
+        for index in 0..count {
+            let target = [
+                target_points[index][0] - target_centre[0],
+                target_points[index][1] - target_centre[1],
+            ];
+            let source = [
+                pins[index].source[0] - source_centre[0],
+                pins[index].source[1] - source_centre[1],
+            ];
+            along += target[0].mul_add(source[0], target[1] * source[1]);
+            across += target[0].mul_add(source[1], -(target[1] * source[0]));
+            extent += target[0].mul_add(target[0], target[1] * target[1]);
+        }
+        if !extent.is_finite() || extent <= 1.0e-12 {
+            // Every pin in one spot: nothing to take a bearing from.
+            return None;
+        }
+        #[expect(clippy::cast_precision_loss, reason = "a handful of pins")]
+        let spread = (extent / count as f32).sqrt();
+        Some(Self {
+            target_centre,
+            source_centre,
+            turn: [along / extent, across / extent],
+            spread,
+        })
+    }
+
+    /// The same map read the other way, for going source-to-target.
+    fn inverted(self) -> Option<Self> {
+        let scale_squared = self.turn[0].mul_add(self.turn[0], self.turn[1] * self.turn[1]);
+        if !scale_squared.is_finite() || scale_squared <= 1.0e-16 {
+            return None;
+        }
+        Some(Self {
+            target_centre: self.source_centre,
+            source_centre: self.target_centre,
+            turn: [self.turn[0] / scale_squared, -self.turn[1] / scale_squared],
+            // Distances are measured among the source pins now, and the map
+            // between the two spaces stretches them by its own scale.
+            spread: self.spread * scale_squared.sqrt(),
+        })
+    }
+
+    /// Eases from what the nearest triangle says to what this says.
+    ///
+    /// One method rather than three copies: the picture, the click that asks
+    /// where on the photo a spot on the face came from, and the click that asks
+    /// the reverse all have to agree, or the image is drawn one way and the
+    /// pointer answers about another.
+    fn hand_over(&self, carried_on: [f32; 2], point: [f32; 2], distance: f32) -> [f32; 2] {
+        let settled = self.apply(point);
+        let handover = warp_handover(distance, self.spread);
+        [0, 1].map(|axis| (settled[axis] - carried_on[axis]).mul_add(handover, carried_on[axis]))
+    }
+
+    fn apply(&self, point: [f32; 2]) -> [f32; 2] {
+        let offset = [
+            point[0] - self.target_centre[0],
+            point[1] - self.target_centre[1],
+        ];
+        [
+            self.turn[0].mul_add(offset[0], -(self.turn[1] * offset[1])) + self.source_centre[0],
+            self.turn[1].mul_add(offset[0], self.turn[0] * offset[1]) + self.source_centre[1],
+        ]
+    }
+}
+
+/// How far past the pins the triangles still have the last word, as a multiple
+/// of the pin spread. Beyond that the similarity has it entirely.
+const WARP_HANDOVER_SPREADS: f32 = 0.75;
+
+/// Smooth 0-to-1 over the handover band, so nothing changes abruptly.
+fn warp_handover(distance: f32, spread: f32) -> f32 {
+    let reach = spread * WARP_HANDOVER_SPREADS;
+    if !reach.is_finite() || reach <= 1.0e-9 {
+        return 1.0;
+    }
+    let t = (distance / reach).clamp(0.0, 1.0);
+    t * t * 2.0f32.mul_add(-t, 3.0)
+}
+
 fn extrapolate_warp_to_region(
     output: &mut TextureBakeImage,
     source: RgbaView<'_>,
@@ -580,6 +704,7 @@ fn extrapolate_warp_to_region(
     if boundary_edges.is_empty() {
         return;
     }
+    let similarity = WarpSimilarity::fit(pins, target_points);
     let scale = [
         output.width.saturating_sub(1) as f32,
         output.height.saturating_sub(1) as f32,
@@ -613,6 +738,13 @@ fn extrapolate_warp_to_region(
         }) else {
             continue;
         };
+        let reach = squared_distance_to_segment(
+            point,
+            target_points[boundary.start],
+            target_points[boundary.end],
+        )
+        .max(0.0)
+        .sqrt();
         let target = boundary.triangle.map(|vertex| target_points[vertex]);
         let area = edge(target[0], target[1], target[2]);
         if area.abs() <= f32::EPSILON {
@@ -624,11 +756,18 @@ fn extrapolate_warp_to_region(
             edge(target[0], target[1], point) / area,
         ];
         let source_uvs = boundary.triangle.map(|vertex| pins[vertex].source);
-        let source_point = [0, 1].map(|axis| {
+        let carried_on = [0, 1].map(|axis| {
             barycentric[0].mul_add(
                 source_uvs[0][axis],
                 barycentric[1].mul_add(source_uvs[1][axis], barycentric[2] * source_uvs[2][axis]),
             )
+        });
+        // At the edge of the pins the triangle still decides, so nothing jumps
+        // where the two meet. Further out its opinion is worth less and less —
+        // an affine held that far from the points that fixed it is where the
+        // stretching turns into mangling — until only the similarity is left.
+        let source_point = similarity.map_or(carried_on, |similarity| {
+            similarity.hand_over(carried_on, point, reach)
         });
         let sampled = bilinear_sample(source, source_point);
         output.rgba8[index * 4..index * 4 + 4].copy_from_slice(&sampled);
@@ -770,8 +909,20 @@ pub fn map_source_point_to_g2(
     }) else {
         return Ok(None);
     };
-    Ok(map_triangle(boundary.triangle)
-        .map(|(_, target)| [target[0].clamp(0.0, 1.0), (1.0 - target[1]).clamp(0.0, 1.0)]))
+    let distance = squared_distance_to_segment(
+        source_point,
+        pins[boundary.start].source,
+        pins[boundary.end].source,
+    )
+    .max(0.0)
+    .sqrt();
+    let similarity = WarpSimilarity::fit(pins, &target_points).and_then(WarpSimilarity::inverted);
+    Ok(map_triangle(boundary.triangle).map(|(_, target)| {
+        let eased = similarity.map_or(target, |similarity| {
+            similarity.hand_over(target, source_point, distance)
+        });
+        [eased[0].clamp(0.0, 1.0), (1.0 - eased[1]).clamp(0.0, 1.0)]
+    }))
 }
 
 pub fn map_g2_point_to_source(
@@ -858,10 +1009,20 @@ pub fn map_g2_point_to_source(
     }) else {
         return Ok(None);
     };
-    Ok(
-        map_triangle(boundary.triangle)
-            .map(|(_, source)| source.map(|value| value.clamp(0.0, 1.0))),
+    let distance = squared_distance_to_segment(
+        point,
+        target_points[boundary.start],
+        target_points[boundary.end],
     )
+    .max(0.0)
+    .sqrt();
+    let similarity = WarpSimilarity::fit(pins, &target_points);
+    Ok(map_triangle(boundary.triangle).map(|(_, source)| {
+        let eased = similarity.map_or(source, |similarity| {
+            similarity.hand_over(source, point, distance)
+        });
+        eased.map(|value| value.clamp(0.0, 1.0))
+    }))
 }
 
 pub fn resize_direct_uv(
@@ -1700,6 +1861,118 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(extrapolated, [1.0, 1.0]);
+    }
+
+    /// Three pins the way they actually get placed, and the way that hurts:
+    /// nearly in a line across the photo — two eyes and a nose tip often are —
+    /// against a target triangle with real height. The affine that fixes those
+    /// exactly has to squash one direction almost flat, and it then applies
+    /// that squashing to the whole face. Both triangles clear the readiness
+    /// gate, so this reaches the warp in the ordinary way.
+    fn skewed_pins() -> [TextureWarpPin; 3] {
+        [
+            TextureWarpPin {
+                source: [0.30, 0.500],
+                target_uv: [0.35, 0.60],
+            },
+            TextureWarpPin {
+                source: [0.60, 0.505],
+                target_uv: [0.65, 0.60],
+            },
+            TextureWarpPin {
+                source: [0.45, 0.510],
+                target_uv: [0.50, 0.35],
+            },
+        ]
+    }
+
+    #[test]
+    fn far_from_the_pins_the_picture_settles_into_an_even_scale() {
+        // The complaint this answers: with three or four pins the image arrived
+        // mangled. An affine fixed by three points and then carried across a
+        // whole face shears without limit; a similarity cannot shear at all.
+        // Measured as the spread of the step taken for the same step on the
+        // face, in two directions — even scaling keeps them equal.
+        let pins = skewed_pins();
+        let sample = |uv: [f32; 2]| {
+            map_g2_point_to_source(&pins, uv)
+                .expect("three valid pins")
+                .expect("a point in the plane maps somewhere")
+        };
+        let far = [0.15, 0.15];
+        let step = 0.02;
+        let along = sample([far[0] + step, far[1]]);
+        let across = sample([far[0], far[1] + step]);
+        let here = sample(far);
+        let length =
+            |a: [f32; 2], b: [f32; 2]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+        let (dx, dy) = (length(along, here), length(across, here));
+        assert!(dx > 0.0 && dy > 0.0, "the map collapsed: {dx} by {dy}");
+        let anisotropy = dx.max(dy) / dx.min(dy);
+        assert!(
+            anisotropy < 1.1,
+            "one direction is stretched {anisotropy:.2}x more than the other. Without the              handover this fixture measures 33x, which is the mangling it exists to stop"
+        );
+    }
+
+    #[test]
+    fn the_pins_themselves_still_land_exactly_where_they_were_put() {
+        // Easing outward must not move what the reader placed by hand.
+        let pins = skewed_pins();
+        for pin in pins {
+            let round_trip = map_g2_point_to_source(&pins, pin.target_uv)
+                .expect("three valid pins")
+                .expect("a pin maps to its own source");
+            for axis in 0..2 {
+                assert!(
+                    (round_trip[axis] - pin.source[axis]).abs() < 1.0e-3,
+                    "pin moved: {round_trip:?} is not {:?}",
+                    pin.source
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_two_point_mappers_agree_out_where_the_similarity_has_taken_over() {
+        // The picture, and the two directions of asking about a point, all read
+        // the same map. Far outside the pins is where they used to differ.
+        let pins = skewed_pins();
+        let outside = [0.18, 0.20];
+        let source = map_g2_point_to_source(&pins, outside)
+            .expect("three valid pins")
+            .expect("maps somewhere");
+        let back = map_source_point_to_g2(&pins, source)
+            .expect("three valid pins")
+            .expect("maps back");
+        for axis in 0..2 {
+            assert!(
+                (back[axis] - outside[axis]).abs() < 0.05,
+                "a round trip through both mappers drifted: {back:?} from {outside:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_handover_starts_at_the_pins_and_finishes_beyond_them() {
+        assert!(
+            (warp_handover(0.0, 0.2) - 0.0).abs() < 1.0e-6,
+            "no jump at the edge"
+        );
+        assert!(
+            (warp_handover(10.0, 0.2) - 1.0).abs() < 1.0e-6,
+            "settled far out"
+        );
+        let midway = warp_handover(0.2 * WARP_HANDOVER_SPREADS * 0.5, 0.2);
+        assert!(
+            (0.4..0.6).contains(&midway),
+            "the crossover is not centred: {midway}"
+        );
+        assert_eq!(
+            warp_handover(1.0, 0.0),
+            1.0,
+            "no spread means nothing to ease from"
+        );
     }
 
     #[test]
