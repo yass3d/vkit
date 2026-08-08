@@ -122,6 +122,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Timpa"),
         TextKey::ScanTextureLayer => Some("Tekstur pindaian"),
         TextKey::PinPrompt => Some("Tempatkan pin pada masing-masing, atau lanjut tanpa pin"),
+        TextKey::TextureNeedsImage => Some("Tambahkan gambar dari panel samping"),
+        TextKey::TexturePinPairPrompt => Some("Tempatkan pin berpasangan di kiri dan kanan"),
         TextKey::SymmetrySuggestion => Some("Pencerminan disarankan agar hasilnya lebih rapi"),
         TextKey::SymmetryChangeTitle => Some("Pin akan diatur ulang"),
         TextKey::SymmetryChangeConfirm => Some("Konfirmasi"),
@@ -480,6 +482,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("akses awal patron, tanpa redistribusi"),
         TextKey::AddTextureLayer => Some("Tambah gambar"),
         TextKey::AddG2UvTextureLayer => Some("Tambah peta UV"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Menempatkan foto wajah pada kepala dan menyuntingnya sebagai tekstur")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Menambahkan tekstur face G2 pada tata letak UV-nya sendiri dan menyuntingnya")
+        }
         TextKey::AddTextureLayerHint => {
             Some("Tambahkan gambar wajah atau tekstur G2 dengan tombol +.")
         }

@@ -1417,8 +1417,62 @@ fn draw_pin_prompt_island(ui: &Ui, state: &AppState, workspace: Rect, split_x: f
     if crate::guidance::next_step(state) != Some(crate::guidance::NextStep::PlacePins) {
         return;
     }
+    draw_prompt_island(
+        ui,
+        text(state.locale, TextKey::PinPrompt),
+        workspace,
+        pos2(split_x, workspace.center().y),
+    );
+}
+
+/// How far below the top of the 3D view the texture prompts float.
+const TEXTURE_PROMPT_DROP: f32 = 56.0;
+
+/// What the texture tab is waiting for, said where the work is happening.
+///
+/// Both of these tools do nothing at all until an image is on the layer, and
+/// the panel that supplies one is off to the side where someone looking at the
+/// head will not think to look. The pin tool then wants a second thing — pins
+/// in pairs — so it keeps prompting once the image arrives.
+fn draw_texture_prompt_island(ui: &Ui, state: &AppState, rect: Rect) {
+    let Some(message) = texture_prompt(state) else {
+        return;
+    };
+    draw_prompt_island(
+        ui,
+        text(state.locale, message),
+        rect,
+        pos2(rect.center().x, rect.top() + TEXTURE_PROMPT_DROP),
+    );
+}
+
+/// The one thing the texture tab most wants from you right now, if any.
+fn texture_prompt(state: &AppState) -> Option<TextKey> {
+    if !state.is_texturing() || state.busy() {
+        return None;
+    }
+    let tool = state.texture_project.active_tool;
+    if !matches!(tool, TextureTool::Projection | TextureTool::PinPair) {
+        return None;
+    }
+    let layer = state.texture_project.selected_layer()?;
+    if layer.edited_image.is_none() && layer.image.is_none() {
+        return Some(TextKey::TextureNeedsImage);
+    }
+    // With an image in hand the projection tool is ready to use; only the pin
+    // tool still needs something from the reader.
+    (tool == TextureTool::PinPair && layer.pins.is_empty()).then_some(TextKey::TexturePinPairPrompt)
+}
+
+/// The floating line that tells you what to do next, with a chevron leaning in
+/// from each side.
+///
+/// Written for the create tab's "place a pin on each" and generalised rather
+/// than copied: the texture tab needs exactly this, and a second hand-rolled
+/// version would drift in padding, swing and colour within a release.
+pub(crate) fn draw_prompt_island(ui: &Ui, message: &str, workspace: Rect, centre: Pos2) {
     let galley = ui.painter().layout_no_wrap(
-        text(state.locale, TextKey::PinPrompt).to_owned(),
+        message.to_owned(),
         FontId::proportional(FONT_BODY),
         COLOR_TEXT,
     );
@@ -1426,10 +1480,7 @@ fn draw_pin_prompt_island(ui: &Ui, state: &AppState, workspace: Rect, split_x: f
     if width > workspace.width() - 32.0 {
         return;
     }
-    let island = Rect::from_center_size(
-        pos2(split_x, workspace.center().y),
-        vec2(width, PIN_PROMPT_HEIGHT),
-    );
+    let island = Rect::from_center_size(centre, vec2(width, PIN_PROMPT_HEIGHT));
 
     ui.painter().rect_filled(
         island,
@@ -1792,6 +1843,7 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
         paint_sculpt_brush_hud(ui, state, &response);
     }
 
+    draw_texture_prompt_island(ui, state, rect);
     if projection_stencil_mode(state) {
         if let Some(stencil) = crate::texture_ui::projection_stencil_rect(state, rect) {
             crate::texture_ui::paint_projection_stencil(ui, state, stencil);

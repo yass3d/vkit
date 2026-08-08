@@ -42,6 +42,7 @@ resvg = { version = "0.48.0", default-features = false }
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_System_Console",
     "Win32_Networking_WinHttp",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",

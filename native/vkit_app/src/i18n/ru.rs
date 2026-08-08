@@ -122,6 +122,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Перезаписать"),
         TextKey::ScanTextureLayer => Some("Текстура скана"),
         TextKey::PinPrompt => Some("Поставьте по метке на каждом или обойдитесь без них"),
+        TextKey::TextureNeedsImage => Some("Добавьте изображение на боковой панели"),
+        TextKey::TexturePinPairPrompt => Some("Расставьте парные точки слева и справа"),
         TextKey::SymmetrySuggestion => {
             Some("Для более чистого совпадения рекомендуется зеркалирование")
         }
@@ -494,6 +496,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("ранний доступ для спонсоров, без распространения"),
         TextKey::AddTextureLayer => Some("Добавить изображение"),
         TextKey::AddG2UvTextureLayer => Some("Добавить UV-карту"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Размещает фотографию лица на голове и правит её как текстуру")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Добавляет текстуру face для G2 в её собственной UV-развёртке и правит её")
+        }
         TextKey::AddTextureLayerHint => {
             Some("Добавьте изображение лица или текстуру G2 кнопкой +.")
         }

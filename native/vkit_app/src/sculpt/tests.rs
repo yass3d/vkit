@@ -959,6 +959,7 @@ fn two_sided_inactive_visible_surface_still_blocks_selection_through() {
     };
     let mut session = SculptSession::default();
     session.begin(&source).unwrap();
+    session.set_target_enabled(SculptTarget::Tear, false);
     session.set_backface_masking(false);
 
     assert!(
@@ -1112,6 +1113,7 @@ fn hidden_optional_shell_does_not_occlude_visible_head_skin() {
     };
     let mut session = SculptSession::default();
     session.begin(&source).unwrap();
+    session.set_target_enabled(SculptTarget::Tear, false);
 
     assert!(
         session
@@ -1462,6 +1464,7 @@ fn locked_target_stays_protected_from_nearby_grab() {
     session.set_x_symmetry(false);
     session.begin(&source).unwrap();
     session.set_target_enabled(SculptTarget::HeadSkin, false);
+    session.set_target_enabled(SculptTarget::Eyelashes, false);
     session.set_target_enabled(SculptTarget::Tear, true);
     session.begin_stroke().unwrap();
     session

@@ -16,6 +16,7 @@ mod boot_window;
 mod cache_paths;
 mod camera;
 mod camera_control;
+mod cli;
 mod diagnostics;
 mod dialogs;
 mod edit_clock;
@@ -68,6 +69,9 @@ mod workflow;
 fn main() {
     let _ = diagnostics::initialize_global(env!("CARGO_PKG_VERSION"));
     let _ = diagnostics::install_panic_hook();
+    if let Some(code) = cli::run_if_asked() {
+        std::process::exit(code);
+    }
     if let Err(error) = runtime::run() {
         boot_window::report_startup_failure(error.as_ref());
     }

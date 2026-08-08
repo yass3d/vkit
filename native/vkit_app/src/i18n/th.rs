@@ -114,6 +114,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("เขียนทับ"),
         TextKey::ScanTextureLayer => Some("เท็กซ์เจอร์สแกน"),
         TextKey::PinPrompt => Some("วางหมุดบนแต่ละด้าน หรือดำเนินการโดยไม่ใช้หมุด"),
+        TextKey::TextureNeedsImage => Some("เพิ่มรูปภาพจากแผงด้านข้าง"),
+        TextKey::TexturePinPairPrompt => Some("วางหมุดที่จับคู่กันทั้งด้านซ้ายและขวา"),
         TextKey::SymmetrySuggestion => Some("แนะนำให้ใช้มิเรอร์เพื่อให้จับคู่ได้แม่นยำขึ้น"),
         TextKey::SymmetryChangeTitle => Some("พินจะถูกรีเซ็ต"),
         TextKey::SymmetryChangeConfirm => Some("ยืนยัน"),
@@ -425,6 +427,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("สิทธิ์เข้าถึงก่อนสำหรับผู้สนับสนุน ห้ามเผยแพร่ต่อ"),
         TextKey::AddTextureLayer => Some("เพิ่มรูปภาพ"),
         TextKey::AddG2UvTextureLayer => Some("เพิ่มแผนที่ UV"),
+        TextKey::AddTextureLayerTooltip => Some("วางภาพถ่ายใบหน้าบนศีรษะและแก้ไขเป็นเท็กซ์เจอร์"),
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("เพิ่มเท็กซ์เจอร์ face ของ G2 ตามผัง UV ของมันแล้วแก้ไข")
+        }
         TextKey::AddTextureLayerHint => Some("เพิ่มภาพใบหน้าหรือเท็กซ์เจอร์ G2 ด้วยปุ่ม +"),
         TextKey::BakingTextures => Some("กำลังเบกเท็กซ์เจอร์…"),
         TextKey::BakeTexturesForSave => Some("เบกเท็กซ์เจอร์เพื่อบันทึก"),

@@ -292,6 +292,8 @@ text_keys! {
     Overwrite,
     ScanTextureLayer,
     PinPrompt,
+    TextureNeedsImage,
+    TexturePinPairPrompt,
     SymmetrySuggestion,
     SymmetryChangeTitle,
     SymmetryChangeConfirm,
@@ -636,6 +638,9 @@ text_keys! {
     LicensePcEaTooltip,
     AddTextureLayer,
     AddG2UvTextureLayer,
+
+    AddTextureLayerTooltip,
+    AddG2UvTextureLayerTooltip,
     AddTextureLayerHint,
     BakingTextures,
     BakeTexturesForSave,

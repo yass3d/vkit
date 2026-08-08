@@ -122,6 +122,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Écraser"),
         TextKey::ScanTextureLayer => Some("Texture du scan"),
         TextKey::PinPrompt => Some("Placez un repère sur chacun, ou ajustez sans"),
+        TextKey::TextureNeedsImage => Some("Ajoutez une image depuis le panneau latéral"),
+        TextKey::TexturePinPairPrompt => {
+            Some("Placez des broches correspondantes à gauche et à droite")
+        }
         TextKey::SymmetrySuggestion => Some("Le miroir est conseillé pour un ajustement plus net"),
         TextKey::SymmetryChangeTitle => Some("Les repères seront réinitialisés"),
         TextKey::SymmetryChangeConfirm => Some("Confirmer"),
@@ -500,6 +504,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::AddTextureLayer => Some("Ajouter une image"),
         TextKey::AddG2UvTextureLayer => Some("Ajouter une UV"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Place une photo de visage sur la tete et l'edite comme texture")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Ajoute une texture face G2 dans sa propre disposition UV et l'edite")
+        }
         TextKey::AddTextureLayerHint => {
             Some("Ajoutez une image de visage ou une texture G2 avec le bouton +.")
         }

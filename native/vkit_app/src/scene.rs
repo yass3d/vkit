@@ -494,6 +494,13 @@ pub struct SurfaceMesh {
     pub bounds: Bounds3,
 
     pub visible_bounds: Bounds3,
+    /// Where the face is, for a scan that carries a body under it.
+    ///
+    /// Held rather than derived: the viewport asks for this about ten times a
+    /// frame, and for a tall scan the answer costs a pass over every visible
+    /// vertex. The mesh does not change under a `SurfaceMesh`, so once is
+    /// enough — deriving it per call was a whole-mesh allocation per draw.
+    facial_focus_bounds: Bounds3,
 
     pub revision: u64,
 
@@ -690,6 +697,7 @@ impl SurfaceMesh {
         } else {
             Arc::new(TriangleBvh::build(&mesh, &editable_triangle_ids))
         };
+        let facial_focus_bounds = facial_focus_bounds(&mesh, &visible_triangle_ids, visible_bounds);
         Ok(Self {
             mesh,
             normals,
@@ -700,6 +708,7 @@ impl SurfaceMesh {
             smoothing_topology,
             bounds,
             visible_bounds,
+            facial_focus_bounds,
             revision,
             topology_revision,
             visible_bvh,
@@ -709,6 +718,8 @@ impl SurfaceMesh {
 
     fn with_deformed_render_vertices(&self, mesh: Arc<Mesh>, bounds: Bounds3) -> Self {
         let visible_bounds = visible_bounds(&mesh, &self.visible_triangle_ids);
+        let facial_focus_bounds =
+            facial_focus_bounds(&mesh, &self.visible_triangle_ids, visible_bounds);
         let normals = Arc::new(vertex_normals(&mesh, &self.visible_triangle_ids));
         let empty_bvh = Arc::new(TriangleBvh::empty());
         Self {
@@ -721,6 +732,7 @@ impl SurfaceMesh {
             smoothing_topology: Arc::clone(&self.smoothing_topology),
             bounds,
             visible_bounds,
+            facial_focus_bounds,
             revision: self.revision.wrapping_add(1).max(1),
             topology_revision: self.topology_revision,
             visible_bvh: Arc::clone(&empty_bvh),
@@ -771,20 +783,7 @@ impl SurfaceMesh {
     }
 
     pub fn facial_focus_bounds(&self) -> Bounds3 {
-        let extent = self.visible_bounds.max - self.visible_bounds.min;
-        if extent.y <= extent.z.max(1.0e-4) * 3.0 {
-            return self.visible_bounds;
-        }
-        let lower_y = self.visible_bounds.max.y - extent.y * 0.13;
-        let focused: Vec<Vec3> = visible_vertex_points(&self.mesh, &self.visible_triangle_ids)
-            .into_iter()
-            .filter(|point| point.y >= lower_y)
-            .collect();
-        if focused.len() < 3 {
-            self.visible_bounds
-        } else {
-            Bounds3::from_points(&focused)
-        }
+        self.facial_focus_bounds
     }
 
     pub fn endpoint_local_point(&self, endpoint: SurfaceEndpoint) -> Option<DVec3> {
@@ -1123,6 +1122,32 @@ fn visible_bounds(mesh: &Mesh, visible_triangle_ids: &[u32]) -> Bounds3 {
             .into_iter()
             .map(|vertex_id| mesh.vertices[vertex_id as usize])
     }))
+}
+
+/// The bounds of the face alone on a scan that arrived with a body attached.
+///
+/// A head crop is its own answer and returns immediately. Anything much taller
+/// than it is deep is a bust or a full body, and framing on all of it would put
+/// the face in the top eighth of the view, so the top band is measured instead.
+fn facial_focus_bounds(mesh: &Mesh, visible_triangle_ids: &[u32], visible: Bounds3) -> Bounds3 {
+    let extent = visible.max - visible.min;
+    if extent.y <= extent.z.max(1.0e-4) * 3.0 {
+        return visible;
+    }
+    let lower_y = f64::from(visible.max.y - extent.y * 0.13);
+    let mut counted = 0usize;
+    let focused = Bounds3::from_f64_points(
+        visible_triangle_ids
+            .iter()
+            .flat_map(|&triangle_id| {
+                mesh.triangles[triangle_id as usize]
+                    .into_iter()
+                    .map(|vertex_id| mesh.vertices[vertex_id as usize])
+            })
+            .filter(|point| point[1] >= lower_y)
+            .inspect(|_| counted += 1),
+    );
+    if counted < 3 { visible } else { focused }
 }
 
 fn surface_revision(mesh: &Mesh, visible_triangle_ids: &[u32]) -> u64 {

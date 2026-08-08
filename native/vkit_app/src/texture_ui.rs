@@ -616,7 +616,14 @@ fn draw_add_layer_slot(ui: &mut Ui, state: &mut AppState) {
     );
     let [left, right] = split_row_in_two(rect);
 
-    if add_layer_half(ui, state, left, TextKey::AddTextureLayer, Icon::Picture) {
+    if add_layer_half(
+        ui,
+        state,
+        left,
+        TextKey::AddTextureLayer,
+        TextKey::AddTextureLayerTooltip,
+        Icon::Picture,
+    ) {
         state.dispatch(Action::RequestTextureImageBrowse(
             TextureSourceMode::LandmarkPins,
         ));
@@ -626,6 +633,7 @@ fn draw_add_layer_slot(ui: &mut Ui, state: &mut AppState) {
         state,
         right,
         TextKey::AddG2UvTextureLayer,
+        TextKey::AddG2UvTextureLayerTooltip,
         Icon::HeadTexture,
     ) {
         state.dispatch(Action::RequestTextureImageBrowse(
@@ -642,11 +650,23 @@ fn split_row_in_two(rect: Rect) -> [Rect; 2] {
     ]
 }
 
-fn add_layer_half(ui: &mut Ui, state: &AppState, rect: Rect, label: TextKey, glyph: Icon) -> bool {
+fn add_layer_half(
+    ui: &mut Ui,
+    state: &AppState,
+    rect: Rect,
+    label: TextKey,
+    hint: TextKey,
+    glyph: Icon,
+) -> bool {
     let caption = text(state.locale, label);
-    let response = ui
-        .interact(rect, ui.id().with(label as u32), Sense::click())
-        .on_hover_text(caption);
+    // The tip used to repeat the caption, which tells someone who does not
+    // already know the difference between these two buttons exactly nothing.
+    // It says what the layer is *for* now.
+    let response = crate::ui_components::tooltip(
+        ui.interact(rect, ui.id().with(label as u32), Sense::click()),
+        text(state.locale, hint),
+        None,
+    );
 
     let hovered = response.hovered();
     if hovered {

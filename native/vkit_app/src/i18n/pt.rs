@@ -126,6 +126,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Substituir"),
         TextKey::ScanTextureLayer => Some("Textura do scan"),
         TextKey::PinPrompt => Some("Coloque um pino em cada um, ou ajuste sem eles"),
+        TextKey::TextureNeedsImage => Some("Adicione uma imagem pelo painel lateral"),
+        TextKey::TexturePinPairPrompt => {
+            Some("Coloque pinos correspondentes à esquerda e à direita")
+        }
         TextKey::SymmetrySuggestion => {
             Some("Recomenda-se o espelhamento para um ajuste mais limpo")
         }
@@ -508,6 +512,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::AddTextureLayer => Some("Adicionar imagem"),
         TextKey::AddG2UvTextureLayer => Some("Adicionar mapa UV"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Coloca uma foto de rosto na cabeca e a edita como textura")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Adiciona uma textura face do G2 no seu proprio layout UV e a edita")
+        }
         TextKey::AddTextureLayerHint => {
             Some("Adicione uma imagem de rosto ou textura G2 com o botão +.")
         }

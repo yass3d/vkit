@@ -119,6 +119,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("上書き"),
         TextKey::ScanTextureLayer => Some("スキャンテクスチャ"),
         TextKey::PinPrompt => Some("それぞれにピンを置くか、ピンなしで進めます"),
+        TextKey::TextureNeedsImage => Some("サイドパネルから画像を追加してください"),
+        TextKey::TexturePinPairPrompt => Some("左右に対応するピンを打って合わせます"),
         TextKey::SymmetrySuggestion => Some("きれいに合わせるため左右対称をおすすめします"),
         TextKey::SymmetryChangeTitle => Some("ピンがリセットされます"),
         TextKey::SymmetryChangeConfirm => Some("確認"),
@@ -479,6 +481,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("支援者向け先行公開、再配布禁止"),
         TextKey::AddTextureLayer => Some("画像を追加"),
         TextKey::AddG2UvTextureLayer => Some("UVマップを追加"),
+        TextKey::AddTextureLayerTooltip => Some("顔写真を配置してテクスチャとして編集します"),
+        TextKey::AddG2UvTextureLayerTooltip => Some("G2 用の face テクスチャを追加して編集します"),
         TextKey::AddTextureLayerHint => {
             Some("＋ボタンで顔画像または G2 テクスチャを追加してください。")
         }

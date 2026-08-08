@@ -179,6 +179,36 @@ pub fn prepare_mesh_import_with_progress(
     }
 }
 
+/// What a mesh file holds before anything is done to it.
+///
+/// The editor never carries a scan at this size — it rebuilds one down to
+/// [`MAX_SCAN_TRIANGLES`] first. This reads the file and stops, so the cost of
+/// that rebuild can be weighed against what skipping it would leave behind.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MeshCensus {
+    pub triangles: usize,
+    pub vertices: usize,
+}
+
+/// Reads a mesh at the size it was authored, performing no rebuild.
+pub fn census_at_native_resolution(path: &Path) -> Result<MeshCensus, ImportError> {
+    let root = path.parent().unwrap_or_else(|| Path::new("."));
+    let mesh = match extension(path).as_deref() {
+        Some("glb" | "gltf") => glb::load_glb(path, root, |_| {}).map_err(ImportError::NativeMesh),
+        Some("fbx") => {
+            let workspace = TempDir::new().map_err(|error| {
+                ImportError::NativeMesh(format!("could not open a workspace: {error}"))
+            })?;
+            fbx::load_fbx(path, workspace.path(), |_| {}).map_err(ImportError::NativeMesh)
+        }
+        _ => Err(ImportError::UnsupportedExtension),
+    }?;
+    Ok(MeshCensus {
+        triangles: mesh.triangle_count(),
+        vertices: mesh.vertex_count(),
+    })
+}
+
 /// Bounds the container file itself. A `.gltf` container is only the JSON, so for that input
 /// this gate says nothing about the payload; what bounds a `.gltf` is the importer's payload
 /// budget, which every external buffer, image, and decompressed buffer view draws from.

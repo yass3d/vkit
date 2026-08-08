@@ -302,7 +302,7 @@ pub(crate) struct MorphFilterLayout {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum VisibleMorphRow {
+pub(crate) enum VisibleMorphRow {
     EyeClosure,
     Control(usize),
 }
@@ -3252,7 +3252,7 @@ fn draw_face_morph_list(ui: &mut Ui, state: &mut AppState) {
     }
 }
 
-fn visible_morph_rows(state: &AppState) -> Vec<VisibleMorphRow> {
+pub(crate) fn visible_morph_rows(state: &AppState) -> Vec<VisibleMorphRow> {
     let mut visible = Vec::new();
     let query_is_empty = state.morph_library.query.trim().is_empty();
     let eye_category_matches = matches!(
@@ -3280,20 +3280,12 @@ fn visible_morph_rows(state: &AppState) -> Vec<VisibleMorphRow> {
             .iter()
             .enumerate()
             .filter_map(|(index, control)| {
-                let category_matches = match state.morph_library.category_filter {
-                    MorphCategoryFilter::All => true,
-                    MorphCategoryFilter::Category(MorphCategory::Cheeks) => {
-                        matches!(
-                            control.category,
-                            MorphCategory::Cheeks | MorphCategory::Cheekbones
-                        )
-                    }
-                    MorphCategoryFilter::Category(category) => control.category == category,
-                };
-                if !category_matches {
-                    return None;
-                }
-                if state.morph_library.modified_only() && !control.is_modified() {
+                // Category, the modified-only pile and the left/right side all
+                // live in the library. This list used to decide them again on
+                // its own, which is why the left/right toggle appeared to do
+                // nothing: the flag was set and only the library's own filter
+                // read it, and nothing draws from that.
+                if !state.morph_library.control_passes_non_text_filters(control) {
                     return None;
                 }
                 if query_is_empty {

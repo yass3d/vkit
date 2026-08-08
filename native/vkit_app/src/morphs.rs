@@ -761,19 +761,38 @@ impl MorphLibrary {
         changed
     }
 
-    fn control_matches_normalized_filters(&self, control: &MorphControl, query: &str) -> bool {
+    /// Every filter that looks at the morph itself rather than at what it is
+    /// called in the reader's language.
+    ///
+    /// Search lives with the caller because a localised name is not something
+    /// the library knows. Everything else lives here, so a filter added later
+    /// cannot reach one list and miss the other — which is exactly how the
+    /// left/right toggle came to flip a flag nobody read: the list the
+    /// interface actually draws was filtering on its own and had never heard
+    /// of it.
+    #[must_use]
+    pub fn control_passes_non_text_filters(&self, control: &MorphControl) -> bool {
         let category_matches = match self.category_filter {
             MorphCategoryFilter::All => true,
+            // Cheekbones read as part of the cheeks to anyone looking for them.
+            MorphCategoryFilter::Category(MorphCategory::Cheeks) => matches!(
+                control.category,
+                MorphCategory::Cheeks | MorphCategory::Cheekbones
+            ),
             MorphCategoryFilter::Category(category) => control.category == category,
         };
-        let search_matches = query.is_empty()
-            || normalize_search(&format!("{} {}", control.label, control.id)).contains(query);
         let pile_matches = match self.list_filter {
             MorphListFilter::All => true,
             MorphListFilter::Active => control.is_modified(),
         };
         let side_matches = self.show_one_sided || !control.symmetry.is_one_sided();
-        category_matches && search_matches && pile_matches && side_matches
+        category_matches && pile_matches && side_matches
+    }
+
+    fn control_matches_normalized_filters(&self, control: &MorphControl, query: &str) -> bool {
+        let search_matches = query.is_empty()
+            || normalize_search(&format!("{} {}", control.label, control.id)).contains(query);
+        self.control_passes_non_text_filters(control) && search_matches
     }
 
     #[allow(
@@ -1736,6 +1755,47 @@ mod tests {
              changed what it catches and the new spelling wants a case in the tests above",
             names.len()
         );
+    }
+
+    #[test]
+    fn the_list_the_interface_draws_honours_the_side_toggle() {
+        // The toggle set a flag, the library's filter read it, and the list on
+        // screen was built by a *second* function in `ui` that decided category,
+        // pile and side for itself. Every test passed, because the library was
+        // the only thing under test and the library was right.
+        //
+        // The two now share one predicate. This walks the same controls through
+        // it and asserts the count the interface would show, so a list that
+        // starts filtering on its own again fails here.
+        let mut library = MorphLibrary {
+            controls: vec![
+                control_named("Brow Inner Up", MorphCategory::Brows),
+                control_named("PHMBrowsInnerUpL", MorphCategory::Brows),
+                control_named("PHMBrowsInnerUpR", MorphCategory::Brows),
+            ],
+            ..MorphLibrary::default()
+        };
+        let listed = |library: &MorphLibrary| {
+            library
+                .controls()
+                .iter()
+                .filter(|control| library.control_passes_non_text_filters(control))
+                .count()
+        };
+
+        library.show_one_sided = true;
+        assert_eq!(listed(&library), 3, "the toggle on lists every morph");
+
+        library.show_one_sided = false;
+        assert_eq!(
+            listed(&library),
+            1,
+            "the toggle off has to drop the left and right pair from the list"
+        );
+
+        // And the library's own answer agrees, so the two cannot drift apart
+        // again without one of these failing.
+        assert_eq!(library.visible_indices().len(), listed(&library));
     }
 
     #[test]

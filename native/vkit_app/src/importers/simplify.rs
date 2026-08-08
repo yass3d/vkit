@@ -49,6 +49,10 @@ impl AttributeMesh {
     pub fn triangle_count(&self) -> usize {
         self.triangles.len()
     }
+
+    pub fn vertex_count(&self) -> usize {
+        self.positions.len()
+    }
 }
 
 #[derive(Debug, Default)]

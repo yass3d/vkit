@@ -69,7 +69,19 @@ impl SculptTargets {
     pub const EYES: Self = Self(SculptTarget::Eyes as u8);
     pub const INNER_MOUTH: Self = Self(SculptTarget::InnerMouth as u8);
     pub const LIPS: Self = Self(SculptTarget::Lips as u8);
-    pub const FACE_SURFACE: Self = Self(SculptTarget::HeadSkin as u8 | SculptTarget::Lips as u8);
+    /// What someone reshaping a face reaches for without being asked: the skin
+    /// and the parts sitting on it that have to travel with it.
+    ///
+    /// The tear line and the lashes are attached to the surface, so leaving
+    /// them out means the first pull around an eye tears them off the face.
+    /// The eyes, teeth and inner mouth are parts *behind* the surface and stay
+    /// off until they are asked for.
+    pub const FACE_SURFACE: Self = Self(
+        SculptTarget::HeadSkin as u8
+            | SculptTarget::Tear as u8
+            | SculptTarget::Eyelashes as u8
+            | SculptTarget::Lips as u8,
+    );
     pub const ALL: Self = Self(
         SculptTarget::HeadSkin as u8
             | SculptTarget::Tear as u8
@@ -94,6 +106,11 @@ impl SculptTargets {
 
     pub const fn without(self, target: SculptTarget) -> Self {
         Self(self.0 & !(target as u8))
+    }
+
+    /// The groups in both sets — what is selected *and* on screen, typically.
+    pub const fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
     }
 
     pub const fn is_empty(self) -> bool {
@@ -1891,4 +1908,46 @@ pub fn ray_triangle(
     }
     let distance = edge_ac.dot(q) * inverse;
     (distance > 1.0e-9).then_some((distance, [1.0 - u - v, u, v]))
+}
+
+#[cfg(test)]
+mod default_target_tests {
+    use super::*;
+
+    #[test]
+    fn the_face_someone_reshapes_is_the_skin_and_what_rides_on_it() {
+        let default = SculptTargets::default();
+        for wanted in [
+            SculptTarget::HeadSkin,
+            SculptTarget::Tear,
+            SculptTarget::Eyelashes,
+            SculptTarget::Lips,
+        ] {
+            assert!(
+                default.contains(wanted),
+                "{wanted:?} is part of the face surface and must start editable"
+            );
+        }
+        for behind in [
+            SculptTarget::Eyes,
+            SculptTarget::TeethTongue,
+            SculptTarget::InnerMouth,
+        ] {
+            assert!(
+                !default.contains(behind),
+                "{behind:?} sits behind the surface and must be asked for"
+            );
+        }
+    }
+
+    #[test]
+    fn intersection_keeps_only_what_both_sides_hold() {
+        let both = SculptTargets::FACE_SURFACE.intersection(SculptTargets::ALL);
+        assert_eq!(both, SculptTargets::FACE_SURFACE);
+        assert!(
+            SculptTargets::HEAD_SKIN
+                .intersection(SculptTargets::EYELASHES)
+                .is_empty()
+        );
+    }
 }

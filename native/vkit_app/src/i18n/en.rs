@@ -114,6 +114,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::Overwrite => "Overwrite",
         TextKey::ScanTextureLayer => "Scan texture",
         TextKey::PinPrompt => "Place a pin on each, or fit without them",
+        TextKey::TextureNeedsImage => "Add an image from the side panel",
+        TextKey::TexturePinPairPrompt => "Place matching pins on the left and the right",
         TextKey::SymmetrySuggestion => "Mirroring is recommended for a cleaner match",
         TextKey::SymmetryChangeTitle => "The pins will be reset",
         TextKey::SymmetryChangeConfirm => "Confirm",
@@ -466,6 +468,12 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::LicensePcEaTooltip => "patron early access, no redistribution",
         TextKey::AddTextureLayer => "Add image",
         TextKey::AddG2UvTextureLayer => "Add UV map",
+        TextKey::AddTextureLayerTooltip => {
+            "Places a face photograph on the head and edits it as a texture"
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            "Adds a G2 face texture in its own UV layout and edits it"
+        }
         TextKey::AddTextureLayerHint => "Add a face image or G2 texture with the + button.",
         TextKey::BakingTextures => "Baking textures…",
         TextKey::BakeTexturesForSave => "Bake Textures for Save",

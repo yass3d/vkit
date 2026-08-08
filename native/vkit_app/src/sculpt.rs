@@ -294,12 +294,22 @@ impl SculptSession {
         enabled
     }
 
+    /// Switches one group off, or back on, in the view.
+    ///
+    /// Switching a group off also stops the brush reaching it. The two masks
+    /// are otherwise independent — a group can be turned back on for editing
+    /// while it stays hidden, which is how you shape a part behind another —
+    /// but that has to be asked for, because nobody hides something in order
+    /// to keep deforming it blind.
     pub fn set_visible_target_enabled(&mut self, target: SculptTarget, enabled: bool) {
         self.visible_targets = if enabled {
             self.visible_targets.with(target)
         } else {
             self.visible_targets.without(target)
         };
+        if !enabled {
+            self.targets = self.targets.without(target);
+        }
 
         self.solo = None;
     }

@@ -130,6 +130,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Überschreiben"),
         TextKey::ScanTextureLayer => Some("Scan-Textur"),
         TextKey::PinPrompt => Some("Setzen Sie je einen Pin, oder fitten Sie ohne"),
+        TextKey::TextureNeedsImage => Some("Fügen Sie über die Seitenleiste ein Bild hinzu"),
+        TextKey::TexturePinPairPrompt => Some("Setzen Sie links und rechts zusammengehörige Pins"),
         TextKey::SymmetrySuggestion => {
             Some("Für einen saubereren Abgleich wird Spiegeln empfohlen")
         }
@@ -506,6 +508,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("Early Access für Unterstützer, keine Weitergabe"),
         TextKey::AddTextureLayer => Some("Bild hinzufügen"),
         TextKey::AddG2UvTextureLayer => Some("UV-Map hinzufügen"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Legt ein Gesichtsfoto auf den Kopf und bearbeitet es als Textur")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Fuegt eine G2-Face-Textur im eigenen UV-Layout hinzu und bearbeitet sie")
+        }
         TextKey::AddTextureLayerHint => {
             Some("Mit der +-Schaltfläche ein Gesichtsbild oder eine G2-Textur hinzufügen.")
         }

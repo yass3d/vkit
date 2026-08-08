@@ -116,6 +116,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("ওভাররাইট"),
         TextKey::ScanTextureLayer => Some("স্ক্যান টেক্সচার"),
         TextKey::PinPrompt => Some("প্রতিটিতে একটি পিন রাখুন, বা পিন ছাড়াই ফিট করুন"),
+        TextKey::TextureNeedsImage => Some("সাইড প্যানেল থেকে একটি ছবি যোগ করুন"),
+        TextKey::TexturePinPairPrompt => Some("বাঁ ও ডান দিকে মিলযুক্ত পিন বসান"),
         TextKey::SymmetrySuggestion => Some("নিখুঁত মিলের জন্য মিররিং করা ভালো"),
         TextKey::SymmetryChangeTitle => Some("পিনগুলো রিসেট হয়ে যাবে"),
         TextKey::SymmetryChangeConfirm => Some("নিশ্চিত করুন"),
@@ -433,6 +435,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("পৃষ্ঠপোষকদের আগাম প্রবেশ, পুনর্বিতরণ নয়"),
         TextKey::AddTextureLayer => Some("ছবি যোগ"),
         TextKey::AddG2UvTextureLayer => Some("UV ম্যাপ যোগ"),
+        TextKey::AddTextureLayerTooltip => Some("মুখের ছবি মাথায় বসিয়ে টেক্সচার হিসেবে সম্পাদনা করে"),
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("G2-এর face টেক্সচার তার নিজস্ব UV বিন্যাসে যোগ করে ও সম্পাদনা করে")
+        }
         TextKey::AddTextureLayerHint => Some("+ বোতাম দিয়ে মুখের ছবি বা G2 টেক্সচার যোগ করুন।"),
         TextKey::BakingTextures => Some("টেক্সচার বেক হচ্ছে…"),
         TextKey::BakeTexturesForSave => Some("সংরক্ষণের জন্য টেক্সচার বেক"),

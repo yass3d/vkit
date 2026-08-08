@@ -120,6 +120,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("Ghi đè"),
         TextKey::ScanTextureLayer => Some("Texture bản quét"),
         TextKey::PinPrompt => Some("Đặt một ghim lên mỗi bên, hoặc khớp không cần ghim"),
+        TextKey::TextureNeedsImage => Some("Thêm ảnh từ bảng bên"),
+        TextKey::TexturePinPairPrompt => Some("Đặt các ghim tương ứng ở bên trái và bên phải"),
         TextKey::SymmetrySuggestion => Some("Nên bật đối xứng để khớp sạch hơn"),
         TextKey::SymmetryChangeTitle => Some("Các pin sẽ bị đặt lại"),
         TextKey::SymmetryChangeConfirm => Some("Xác nhận"),
@@ -476,6 +478,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("truy cập sớm cho patron, không phát tán lại"),
         TextKey::AddTextureLayer => Some("Thêm ảnh"),
         TextKey::AddG2UvTextureLayer => Some("Thêm bản đồ UV"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("Dat anh khuon mat len dau va chinh sua nhu mot texture")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("Them texture face cua G2 theo bo cuc UV rieng va chinh sua")
+        }
         TextKey::AddTextureLayerHint => Some("Dùng nút + để thêm ảnh khuôn mặt hoặc texture G2."),
         TextKey::BakingTextures => Some("Đang bake texture…"),
         TextKey::BakeTexturesForSave => Some("Bake texture để lưu"),

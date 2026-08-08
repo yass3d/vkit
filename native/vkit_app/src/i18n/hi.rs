@@ -116,6 +116,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Overwrite => Some("बदलें"),
         TextKey::ScanTextureLayer => Some("स्कैन टेक्सचर"),
         TextKey::PinPrompt => Some("हर एक पर पिन रखें, या बिना पिन के फ़िट करें"),
+        TextKey::TextureNeedsImage => Some("साइड पैनल से एक छवि जोड़ें"),
+        TextKey::TexturePinPairPrompt => Some("बाईं और दाईं ओर मेल खाते पिन लगाएँ"),
         TextKey::SymmetrySuggestion => Some("साफ़ मिलान के लिए मिररिंग की सलाह है"),
         TextKey::SymmetryChangeTitle => Some("पिन रीसेट हो जाएँगे"),
         TextKey::SymmetryChangeConfirm => Some("पुष्टि करें"),
@@ -439,6 +441,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::LicensePcEaTooltip => Some("पैट्रन के लिए अर्ली एक्सेस, पुनर्वितरण नहीं"),
         TextKey::AddTextureLayer => Some("इमेज जोड़ें"),
         TextKey::AddG2UvTextureLayer => Some("UV मैप जोड़ें"),
+        TextKey::AddTextureLayerTooltip => {
+            Some("चेहरे की तस्वीर सिर पर रखता है और उसे टेक्सचर की तरह संपादित करता है")
+        }
+        TextKey::AddG2UvTextureLayerTooltip => {
+            Some("G2 का face टेक्सचर उसके अपने UV लेआउट में जोड़ता है और संपादित करता है")
+        }
         TextKey::AddTextureLayerHint => Some("+ बटन से चेहरे की छवि या G2 टेक्सचर जोड़ें।"),
         TextKey::BakingTextures => Some("टेक्सचर बेक हो रहे हैं…"),
         TextKey::BakeTexturesForSave => Some("सहेजने के लिए टेक्सचर बेक करें"),
