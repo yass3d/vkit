@@ -579,7 +579,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Escurecer"),
         TextKey::BrushSaturate => Some("Saturar"),
         TextKey::BrushDesaturate => Some("Dessaturar"),
-        TextKey::ShowLayersOnly => Some("Apenas camadas"),
+        TextKey::ShowLayersOnly => Some("Apenas imagens das camadas"),
         TextKey::BaseWithoutSkin => Some("Camada"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "As camadas pintadas sobre a cor sólida, sem o preset; a textura exportada não muda",

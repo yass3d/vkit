@@ -9,6 +9,7 @@ impl AppState {
         self.builtin_hair_scalps = Arc::new(Vec::new());
         self.vam_edit_sources.clear();
         self.vam_uv_mapping = None;
+        self.neutral_skin_preview = None;
         self.face_uv_rows = None;
         self.vam_uv_mapping_warning = None;
         self.texture_project.forget_layer_rasters();
@@ -154,6 +155,10 @@ impl AppState {
                 self.vam_morph_groups = payload.morph_groups;
                 self.vam_morph_regions = payload.morph_regions;
                 self.vam_uv_mapping = payload.uv_mapping;
+                self.neutral_skin_preview = None;
+                if self.texture_project.hide_vam_skin_preview {
+                    self.refresh_neutral_skin_preview();
+                }
                 self.rebuild_face_uv_rows();
 
                 // A freshly indexed catalog can hand over a different G2 UV map (a template or
@@ -189,6 +194,7 @@ impl AppState {
                 self.builtin_hair_scalps = Arc::new(Vec::new());
                 self.vam_edit_sources.clear();
                 self.vam_uv_mapping = None;
+                self.neutral_skin_preview = None;
                 self.face_uv_rows = None;
                 self.vam_uv_mapping_warning = None;
                 self.clear_skin_preview_selection();

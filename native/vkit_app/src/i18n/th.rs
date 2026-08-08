@@ -479,7 +479,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Burn"),
         TextKey::BrushSaturate => Some("เพิ่มความอิ่มสี"),
         TextKey::BrushDesaturate => Some("ลดความอิ่มสี"),
-        TextKey::ShowLayersOnly => Some("แสดงเฉพาะเลเยอร์"),
+        TextKey::ShowLayersOnly => Some("เฉพาะรูปภาพเลเยอร์"),
         TextKey::BaseWithoutSkin => Some("เลเยอร์"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("เลเยอร์ที่วาดบนสีพื้น โดยไม่ใช้พรีเซ็ต เท็กซ์เจอร์ที่ส่งออกไม่เปลี่ยน")

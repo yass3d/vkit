@@ -571,7 +571,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Assombrir"),
         TextKey::BrushSaturate => Some("Saturer"),
         TextKey::BrushDesaturate => Some("Désaturer"),
-        TextKey::ShowLayersOnly => Some("Calques seuls"),
+        TextKey::ShowLayersOnly => Some("Images des calques seuls"),
         TextKey::BaseWithoutSkin => Some("Calque"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Les calques peints sur la couleur unie, sans le préréglage ; la texture exportée est inchangée",

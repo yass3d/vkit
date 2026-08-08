@@ -571,7 +571,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Nachbelichten"),
         TextKey::BrushSaturate => Some("Sättigen"),
         TextKey::BrushDesaturate => Some("Entsättigen"),
-        TextKey::ShowLayersOnly => Some("Nur Ebenen"),
+        TextKey::ShowLayersOnly => Some("Nur Ebenenbilder"),
         TextKey::BaseWithoutSkin => Some("Ebene"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Die gemalten Ebenen auf der einfarbigen Fläche, ohne Preset; die exportierte Textur bleibt gleich",

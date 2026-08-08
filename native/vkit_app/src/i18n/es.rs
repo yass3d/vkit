@@ -571,7 +571,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Subexponer"),
         TextKey::BrushSaturate => Some("Saturar"),
         TextKey::BrushDesaturate => Some("Desaturar"),
-        TextKey::ShowLayersOnly => Some("Solo capas"),
+        TextKey::ShowLayersOnly => Some("Solo imágenes de capas"),
         TextKey::BaseWithoutSkin => Some("Capa"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Las capas pintadas sobre el color sólido, sin el preajuste; la textura exportada no cambia",

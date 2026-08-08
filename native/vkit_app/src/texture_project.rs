@@ -2451,6 +2451,7 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
     let mut resampled_preview_face: Option<Arc<SkinImage>> = None;
     let mut base_face = None;
     if request.bake_base == TextureBakeBase::CurrentSkin
+        && !request.hide_skin_preview
         && let Some(base) = request.base_preview.as_deref()
     {
         let reusable = request.cached_base_face.as_ref().filter(|cached| {
@@ -3188,7 +3189,7 @@ fn optional_skin_image_view(image: Option<&Arc<SkinImage>>) -> Option<RgbaView<'
     })
 }
 
-fn neutral_preview(
+pub(crate) fn neutral_preview(
     revision: u64,
     mapping: &G2UvMapping,
     colour: [u8; 3],

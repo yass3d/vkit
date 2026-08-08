@@ -549,7 +549,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Burn"),
         TextKey::BrushSaturate => Some("Tambah saturasi"),
         TextKey::BrushDesaturate => Some("Kurangi saturasi"),
-        TextKey::ShowLayersOnly => Some("Hanya lapisan"),
+        TextKey::ShowLayersOnly => Some("Hanya gambar lapisan"),
         TextKey::BaseWithoutSkin => Some("Lapisan"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Lapisan yang dilukis di atas warna solid, tanpa preset; tekstur yang diekspor tidak berubah",

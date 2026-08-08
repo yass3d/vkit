@@ -512,7 +512,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushBurn => "번",
         TextKey::BrushSaturate => "채도 증가",
         TextKey::BrushDesaturate => "채도 감소",
-        TextKey::ShowLayersOnly => "레이어만 보기",
+        TextKey::ShowLayersOnly => "레이어 이미지만 보기",
         TextKey::BaseWithoutSkin => "레이어",
         TextKey::BaseWithoutSkinTooltip => {
             "프리셋 없이 그린 레이어만 솔리드 위에 표시합니다. 내보내는 텍스처는 그대로입니다"

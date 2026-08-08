@@ -123,6 +123,7 @@ impl AppState {
         }
         self.expected_texture_bake_request = None;
         let succeeded = outcome.is_ok();
+        let first_bake = self.texture_project.baked.is_none();
         let result_matches_request = match outcome.as_ref() {
             Ok(baked) => baked.source_revision == project_revision,
             Err(_) => true,
@@ -136,7 +137,13 @@ impl AppState {
             if request_is_current {
                 self.texture_project.baked_resolution = resolution;
             }
-            self.base_view_mode = BaseViewMode::Texture;
+            // Only the first bake pulls the viewport over to the textured
+            // view: someone who has not seen their layers yet should. After
+            // that the mode is the reader's own choice, and a background bake
+            // finishing is no reason to change it under them.
+            if first_bake {
+                self.base_view_mode = BaseViewMode::Texture;
+            }
         }
 
         if let Some(queued) = self.texture_project.bake_queued.take() {
@@ -144,8 +151,39 @@ impl AppState {
         }
     }
 
+    /// Builds the plain-colour stand-in the head wears while "layers only"
+    /// waits for a bake.
+    ///
+    /// The revision is derived from the colour, so the same colour keeps the
+    /// same GPU upload and a changed colour forces one; the salt keeps it out
+    /// of the range bake revisions count through.
+    pub(crate) fn refresh_neutral_skin_preview(&mut self) {
+        let Some(mapping) = self.vam_uv_mapping.as_ref() else {
+            self.neutral_skin_preview = None;
+            return;
+        };
+        let [red, green, blue] = self.g2_solid_color_rgb;
+        let revision = 0x5EED_0000_0000_0000_u64
+            | u64::from(red) << 16
+            | u64::from(green) << 8
+            | u64::from(blue);
+        if self
+            .neutral_skin_preview
+            .as_ref()
+            .is_some_and(|preview| preview.revision == revision)
+        {
+            return;
+        }
+        self.neutral_skin_preview =
+            crate::texture_project::neutral_preview(revision, mapping, self.g2_solid_color_rgb)
+                .ok()
+                .map(Arc::new);
+    }
+
     fn selected_skin_face_diffuse(&self) -> Option<vkit_core::vam::AssetLocator> {
-        if self.texture_project.bake_base != TextureBakeBase::CurrentSkin {
+        if self.texture_project.bake_base != TextureBakeBase::CurrentSkin
+            || self.texture_project.hide_vam_skin_preview
+        {
             return None;
         }
         let selected = self.selected_skin_id.as_deref()?;

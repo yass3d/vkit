@@ -535,7 +535,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Burn"),
         TextKey::BrushSaturate => Some("Tăng bão hòa"),
         TextKey::BrushDesaturate => Some("Giảm bão hòa"),
-        TextKey::ShowLayersOnly => Some("Chỉ các lớp"),
+        TextKey::ShowLayersOnly => Some("Chỉ ảnh lớp"),
         TextKey::BaseWithoutSkin => Some("Lớp"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("Các lớp đã vẽ trên màu đơn sắc, không có preset; texture xuất ra không đổi")

@@ -487,7 +487,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("বার্ন"),
         TextKey::BrushSaturate => Some("স্যাচুরেট"),
         TextKey::BrushDesaturate => Some("ডিস্যাচুরেট"),
-        TextKey::ShowLayersOnly => Some("শুধু লেয়ার"),
+        TextKey::ShowLayersOnly => Some("কেবল লেয়ার ছবি"),
         TextKey::BaseWithoutSkin => Some("লেয়ার"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("প্রিসেট ছাড়া সলিড রঙের উপরে আঁকা লেয়ার; এক্সপোর্ট করা টেক্সচার অপরিবর্তিত")

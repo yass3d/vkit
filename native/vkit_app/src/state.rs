@@ -345,7 +345,12 @@ pub struct AppState {
 
     pub vam_package_index: Arc<PackageIndex>,
 
-    pub skin_hidden_restore: Option<SkinHiddenRestore>,
+    /// What the head wears in "layers only" until a bake arrives.
+    ///
+    /// Kept ready rather than derived on demand because the viewport asks with
+    /// a shared borrow; rebuilt when the toggle, the base colour or the UV
+    /// mapping changes, which is nowhere near every frame.
+    pub neutral_skin_preview: Option<Arc<SkinPreview>>,
     pub var_metadata: vkit_core::vam::VarMetadata,
 
     pub package_from_this_head: bool,
@@ -596,7 +601,7 @@ impl Default for AppState {
             pending_edit_carry: None,
             vam_morph_index: Arc::new(VaMMorphIndex::default()),
             vam_package_index: Arc::new(PackageIndex::default()),
-            skin_hidden_restore: None,
+            neutral_skin_preview: None,
             var_metadata: vkit_core::vam::VarMetadata::default(),
             package_from_this_head: true,
             package_morphs: Vec::new(),
@@ -980,7 +985,11 @@ impl AppState {
         }
 
         if self.texture_project.hide_vam_skin_preview {
-            return None;
+            // The plain base, so the head is never the untextured fallback.
+            // Flipping the whole viewport to the solid view and waiting for a
+            // bake to flip it back is what used to leave a white face wherever
+            // that bake was late, failed, or never came.
+            return self.neutral_skin_preview.as_ref().map(Arc::clone);
         }
         self.skin_preview.as_ref().map(Arc::clone)
     }
@@ -1432,6 +1441,9 @@ impl AppState {
             }
             Action::SetG2SolidColor(value) => {
                 self.g2_solid_color_rgb = value;
+                if self.texture_project.hide_vam_skin_preview {
+                    self.refresh_neutral_skin_preview();
+                }
             }
             Action::SetWireframeColor(value) => {
                 self.wireframe_color_rgb = value;
@@ -1810,17 +1822,7 @@ impl AppState {
                 }
                 self.texture_project.hide_vam_skin_preview = value;
                 if value {
-                    self.skin_hidden_restore = Some(SkinHiddenRestore {
-                        base_view_mode: self.base_view_mode,
-                        bake_base: self.texture_project.bake_base,
-                    });
-                    self.base_view_mode = BaseViewMode::Solid;
-                    if self.texture_project.bake_base == TextureBakeBase::CurrentSkin {
-                        self.texture_project.bake_base = TextureBakeBase::Transparent;
-                    }
-                } else if let Some(restore) = self.skin_hidden_restore.take() {
-                    self.base_view_mode = restore.base_view_mode;
-                    self.texture_project.bake_base = restore.bake_base;
+                    self.refresh_neutral_skin_preview();
                 }
                 self.texture_project.mark_dirty();
             }

@@ -320,12 +320,6 @@ pub enum AttentionTarget {
     PackageName,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SkinHiddenRestore {
-    pub base_view_mode: BaseViewMode,
-    pub bake_base: crate::texture_project::TextureBakeBase,
-}
-
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct MissingPackageFields {
     pub creator: bool,
@@ -729,7 +723,7 @@ mod tests {
         let vmi = folder.path().join("cheekbones.vmi");
         let vmb = folder.path().join("cheekbones.vmb");
         std::fs::write(&vmi, b"{}").expect("the descriptor");
-        std::fs::write(&vmb, b" ").expect("the deltas");
+        std::fs::write(&vmb, b"\x00").expect("the deltas");
 
         // Either half brings the other, and the picked one stays first.
         let from_vmi = with_morph_twins(vec![vmi.clone()]);
@@ -756,7 +750,7 @@ mod tests {
 
         // And a file that is not half of anything is left exactly as it is.
         let texture = folder.path().join("face.png");
-        std::fs::write(&texture, b" ").expect("a texture");
+        std::fs::write(&texture, b"\x00").expect("a texture");
         assert_eq!(morph_twin_of(&texture), None);
         assert_eq!(with_morph_twins(vec![texture.clone()]), vec![texture]);
     }

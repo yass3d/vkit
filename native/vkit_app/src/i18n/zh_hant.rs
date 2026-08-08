@@ -520,7 +520,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("加深"),
         TextKey::BrushSaturate => Some("加飽和"),
         TextKey::BrushDesaturate => Some("去飽和"),
-        TextKey::ShowLayersOnly => Some("僅顯示圖層"),
+        TextKey::ShowLayersOnly => Some("僅顯示圖層影像"),
         TextKey::BaseWithoutSkin => Some("圖層"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("不用預設，只把繪製的圖層顯示在純色上；匯出的貼圖不變")

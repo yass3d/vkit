@@ -1383,7 +1383,12 @@ fn shaping_and_texturing_are_told_apart() {
 }
 
 #[test]
-fn hiding_the_vam_skin_gives_back_what_it_took() {
+fn layers_only_is_a_flag_and_not_a_viewport_takeover() {
+    // The toggle used to flip the viewport to the solid view and swap the bake
+    // base, remembering both in a side pocket to put back later. The moment
+    // the bake that was supposed to flip the view back was late, failed, or
+    // never came, the head sat untextured — the white face. The toggle sets
+    // its flag and marks the composite stale; nothing else is its business.
     let mut state = AppState {
         base_view_mode: BaseViewMode::Texture,
         ..AppState::default()
@@ -1392,21 +1397,58 @@ fn hiding_the_vam_skin_gives_back_what_it_took() {
 
     state.dispatch(Action::SetTextureHideVaMSkin(true));
     assert!(state.texture_project.hide_vam_skin_preview);
-    assert_eq!(state.base_view_mode, BaseViewMode::Solid);
+    assert_eq!(
+        state.base_view_mode,
+        BaseViewMode::Texture,
+        "view untouched"
+    );
     assert_eq!(
         state.texture_project.bake_base,
-        crate::texture_project::TextureBakeBase::Transparent
+        crate::texture_project::TextureBakeBase::CurrentSkin,
+        "the setting stays; the worker ignores the skin while hiding"
     );
-
-    state.dispatch(Action::SetTextureHideVaMSkin(true));
+    assert!(state.texture_project.dirty, "the composite went stale");
 
     state.dispatch(Action::SetTextureHideVaMSkin(false));
     assert!(!state.texture_project.hide_vam_skin_preview);
     assert_eq!(state.base_view_mode, BaseViewMode::Texture);
+}
+
+#[test]
+fn layers_only_wears_the_plain_base_while_the_bake_is_still_coming() {
+    // What the white face actually was: hide on, no bake yet, and the preview
+    // fell through to nothing. With the mapping known, the head must wear the
+    // plain base colour immediately — and keep wearing it if the bake never
+    // arrives at all.
+    let mut state = AppState {
+        skin_preview: Some(skin_preview(1, [200, 180, 170, 255])),
+        ..AppState::default()
+    };
+    state.vam_uv_mapping = Some(skin_uv_mapping());
+
+    state.dispatch(Action::SetTextureHideVaMSkin(true));
+    let stand_in = state
+        .active_skin_preview()
+        .expect("hiding must not leave the head with nothing to wear");
+    let face = &stand_in.face;
     assert_eq!(
-        state.texture_project.bake_base,
-        crate::texture_project::TextureBakeBase::CurrentSkin
+        face.rgba8[..3],
+        state.g2_solid_color_rgb,
+        "the stand-in wears the configured base colour"
     );
+
+    let before = stand_in.revision;
+    state.dispatch(Action::SetG2SolidColor([10, 20, 30]));
+    let recoloured = state.active_skin_preview().expect("still dressed");
+    assert_eq!(recoloured.face.rgba8[..3], [10, 20, 30]);
+    assert_ne!(
+        recoloured.revision, before,
+        "a new colour must be a new revision, or the GPU keeps the old upload"
+    );
+
+    state.dispatch(Action::SetTextureHideVaMSkin(false));
+    let skin = state.active_skin_preview().expect("the worn skin is back");
+    assert_eq!(skin.revision, 1, "unhiding returns the VaM skin preview");
 }
 
 #[test]
@@ -2116,40 +2158,6 @@ fn no_stage_is_refused_from_a_cold_start() {
             state.status
         );
     }
-}
-
-#[test]
-fn layers_only_puts_the_skin_back_the_way_it_found_it() {
-    // The toggle used to say "show texture in the 3D view" and flip a preview
-    // flag, which is not what anyone tuning a decal is asking. What they want
-    // to see is the decal, not the decal over whichever VaM skin happens to be
-    // loaded. It switches the skin preset to the layer state now -- and that is
-    // only safe if switching back is exact.
-    let mut state = AppState::default();
-    let base_before = state.base_view_mode;
-    state.texture_project.bake_base = TextureBakeBase::CurrentSkin;
-
-    state.dispatch(Action::SetTextureHideVaMSkin(true));
-    assert!(state.texture_project.hide_vam_skin_preview);
-    assert_eq!(
-        state.base_view_mode,
-        BaseViewMode::Solid,
-        "the skin has to come off for the layers to be the thing you see"
-    );
-    assert_eq!(
-        state.texture_project.bake_base,
-        TextureBakeBase::Transparent,
-        "baking onto the current skin makes no sense once it is hidden"
-    );
-
-    state.dispatch(Action::SetTextureHideVaMSkin(false));
-    assert!(!state.texture_project.hide_vam_skin_preview);
-    assert_eq!(state.base_view_mode, base_before, "the view mode came back");
-    assert_eq!(
-        state.texture_project.bake_base,
-        TextureBakeBase::CurrentSkin,
-        "the bake base it moved out of the way has to be restored, or the          toggle quietly rewrites what gets exported"
-    );
 }
 
 #[test]
@@ -5070,22 +5078,6 @@ fn baking_onto_a_missing_skin_points_at_the_panel_that_supplies_one() {
     assert_eq!(
         state.take_pending_attention(),
         Some(AttentionTarget::SkinTextureMode)
-    );
-}
-
-#[test]
-fn hiding_the_vam_skin_drops_the_view_and_the_bake_to_the_flat_base() {
-    use crate::texture_project::TextureBakeBase;
-    let mut state = AppState::default();
-    state.texture_project.bake_base = TextureBakeBase::CurrentSkin;
-    state.base_view_mode = BaseViewMode::Texture;
-
-    state.dispatch(Action::SetTextureHideVaMSkin(true));
-
-    assert_eq!(state.base_view_mode, BaseViewMode::Solid);
-    assert_eq!(
-        state.texture_project.bake_base,
-        TextureBakeBase::Transparent
     );
 }
 

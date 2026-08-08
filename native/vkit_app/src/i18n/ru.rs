@@ -559,7 +559,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Затемнитель"),
         TextKey::BrushSaturate => Some("Насытить"),
         TextKey::BrushDesaturate => Some("Обесцветить"),
-        TextKey::ShowLayersOnly => Some("Только слои"),
+        TextKey::ShowLayersOnly => Some("Только изображения слоёв"),
         TextKey::BaseWithoutSkin => Some("Слой"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Нарисованные слои на сплошном цвете, без пресета; экспортируемая текстура не меняется",

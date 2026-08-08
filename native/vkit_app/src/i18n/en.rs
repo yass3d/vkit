@@ -525,7 +525,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushBurn => "Burn",
         TextKey::BrushSaturate => "Saturate",
         TextKey::BrushDesaturate => "Desaturate",
-        TextKey::ShowLayersOnly => "Layers only",
+        TextKey::ShowLayersOnly => "Layer images only",
         TextKey::BaseWithoutSkin => "Layer",
         TextKey::BaseWithoutSkinTooltip => {
             "The painted layers on the solid colour, without the preset; the exported texture is unchanged"

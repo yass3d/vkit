@@ -536,7 +536,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("焼き込み"),
         TextKey::BrushSaturate => Some("彩度を上げる"),
         TextKey::BrushDesaturate => Some("彩度を下げる"),
-        TextKey::ShowLayersOnly => Some("レイヤーのみ表示"),
+        TextKey::ShowLayersOnly => Some("レイヤー画像のみ表示"),
         TextKey::BaseWithoutSkin => Some("レイヤー"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "プリセットなしで、描いたレイヤーだけをソリッドの上に表示します。書き出すテクスチャは変わりません",

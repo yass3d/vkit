@@ -499,7 +499,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("बर्न"),
         TextKey::BrushSaturate => Some("सैचुरेट"),
         TextKey::BrushDesaturate => Some("डीसैचुरेट"),
-        TextKey::ShowLayersOnly => Some("केवल लेयर"),
+        TextKey::ShowLayersOnly => Some("केवल लेयर छवियाँ"),
         TextKey::BaseWithoutSkin => Some("लेयर"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("प्रीसेट के बिना, सॉलिड रंग पर सिर्फ़ पेंट की गई लेयर; निर्यात होने वाला टेक्सचर वही रहता है")
