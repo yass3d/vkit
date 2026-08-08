@@ -209,7 +209,7 @@ const DETAIL_HELP_ROWS: [(TextKey, TextKey); 14] = [
     (TextKey::HelpLight, TextKey::ShortcutLight),
     (TextKey::HelpUndo, TextKey::ShortcutUndo),
 ];
-const PROJECTION_HELP_ROWS: [(TextKey, TextKey); 6] = [
+const PROJECTION_HELP_ROWS: [(TextKey, TextKey); 7] = [
     (
         TextKey::HelpProjectionPaint,
         TextKey::ShortcutProjectionPaint,
@@ -221,6 +221,7 @@ const PROJECTION_HELP_ROWS: [(TextKey, TextKey); 6] = [
     ),
     (TextKey::HelpProjectionZoom, TextKey::ShortcutProjectionZoom),
     (TextKey::HelpBrushSize, TextKey::ShortcutBrushSize),
+    (TextKey::HelpBrushStrength, TextKey::ShortcutBrushStrength),
     (TextKey::HelpProjectionDone, TextKey::ShortcutProjectionDone),
 ];
 const SAVE_HELP_ROWS: [(TextKey, TextKey); 8] = [
@@ -4150,11 +4151,16 @@ fn help_scope(state: &AppState) -> HelpScope {
     HelpScope::Tab(state.active_tab)
 }
 
-/// The card the sculpt and texture tabs share.
+/// Every help card that is shown while a brush is in hand.
+///
+/// There is more than one because the projection tool takes over the card, and
+/// that is exactly how the brush gestures came to be listed on one and not the
+/// other. Named together so a card added later has to answer for them too.
 #[cfg(test)]
-pub(crate) const fn detail_help_rows() -> &'static [(TextKey, TextKey)] {
-    &DETAIL_HELP_ROWS
-}
+pub(crate) const BRUSH_HELP_CARDS: [(&str, &[(TextKey, TextKey)]); 2] = [
+    ("sculpt and texture", &DETAIL_HELP_ROWS),
+    ("projection", &PROJECTION_HELP_ROWS),
+];
 
 fn viewport_help_rows(scope: HelpScope) -> &'static [(TextKey, TextKey)] {
     match scope {
@@ -4211,11 +4217,13 @@ fn viewport_help_popup_rect(
         .max(220.0)
         .min((viewport.width() - 32.0).max(0.0));
     let height = MINI_HELP_CONTENT_INSET_Y * 2.0 + rows.len() as f32 * HELP_ROW_HEIGHT;
-    let rect = Rect::from_min_size(
-        pos2(viewport.left() + 16.0, button.top() - 8.0 - height),
-        vec2(width, height),
-    );
-    (width >= 220.0 && viewport.contains_rect(rect)).then_some(rect)
+    // Rising from the button, but never above the viewport: a card that grew
+    // one row too tall used to fail `contains_rect` and disappear altogether,
+    // taking every shortcut on it with it. Sitting a little higher than
+    // intended beats not being there.
+    let top = (button.top() - 8.0 - height).max(viewport.top() + 8.0);
+    let rect = Rect::from_min_size(pos2(viewport.left() + 16.0, top), vec2(width, height));
+    (width >= 220.0 && height <= viewport.height() - 16.0).then_some(rect)
 }
 
 fn viewport_help_contains(ui: &Ui, state: &AppState, viewport: Rect, pointer: Pos2) -> bool {

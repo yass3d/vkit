@@ -1891,16 +1891,20 @@ fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
 fn the_help_card_names_the_brush_gestures_nobody_finds_alone() {
     // Size and strength are on every brush in both tabs and are the two people
     // report not knowing about. If they are not in the card, they are nowhere.
-    let rows = crate::viewport::detail_help_rows();
-    for wanted in [TextKey::HelpBrushSize, TextKey::HelpBrushStrength] {
-        assert!(
-            rows.iter().any(|(function, _)| *function == wanted),
-            "{wanted:?} is missing from the sculpt and texture help"
-        );
+    for (card, rows) in crate::viewport::BRUSH_HELP_CARDS {
+        for wanted in [
+            TextKey::HelpBrushSize,
+            TextKey::HelpBrushStrength,
+            TextKey::ShortcutBrushSize,
+            TextKey::ShortcutBrushStrength,
+        ] {
+            assert!(
+                rows.iter()
+                    .any(|(function, shortcut)| *function == wanted || *shortcut == wanted),
+                "the {card} card does not mention {wanted:?}"
+            );
+        }
     }
-    let shortcuts: Vec<TextKey> = rows.iter().map(|(_, shortcut)| *shortcut).collect();
-    assert!(shortcuts.contains(&TextKey::ShortcutBrushSize));
-    assert!(shortcuts.contains(&TextKey::ShortcutBrushStrength));
     for locale in Locale::ALL {
         let strength = text(locale, TextKey::ShortcutBrushStrength);
         assert!(
