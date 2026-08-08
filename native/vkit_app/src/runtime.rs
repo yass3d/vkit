@@ -261,7 +261,6 @@ fn log_font_report(report: &theme::FontReport, locale: Locale) {
             "font_fallback",
             "no Windows UI font could be loaded",
         );
-        eprintln!("Vkit could not load any Windows UI font; labels may use fallback glyphs");
         return;
     }
     let chain = report
@@ -285,14 +284,12 @@ fn log_font_report(report: &theme::FontReport, locale: Locale) {
         "font_loaded",
         &format!("locale={locale:?}; chain={chain}"),
     );
-    eprintln!("Vkit UI font chain ({locale:?}): {chain}");
     if !report.korean_ready {
         log(
             Severity::Warning,
             "font_fallback",
             "Korean system font could not be loaded",
         );
-        eprintln!("Vkit could not load a Korean system font; labels may use fallback glyphs");
     }
     if !report.locale_ready {
         log(
@@ -300,7 +297,6 @@ fn log_font_report(report: &theme::FontReport, locale: Locale) {
             "font_locale_fallback",
             &format!("no primary-script font for {locale:?} could be loaded"),
         );
-        eprintln!("Vkit could not load a {locale:?} system font; labels may use fallback glyphs");
     }
 }
 
@@ -492,7 +488,7 @@ fn dropped_file_action(path: &std::path::Path) -> Option<Action> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "dsf" => Some(Action::LoadTemplate(path.to_path_buf())),
-        "obj" | "glb" | "fbx" => Some(Action::LoadScan(path.to_path_buf())),
+        "obj" | "glb" | "gltf" | "fbx" => Some(Action::LoadScan(path.to_path_buf())),
         _ => None,
     }
 }
@@ -525,6 +521,23 @@ impl ApplicationHandler<RuntimeEvent> for NativeApplication {
             return;
         };
         if window_id != runtime.window.id() {
+            return;
+        }
+
+        // The numpad is answered here and nowhere else. egui reports a numpad
+        // digit as the same `Key::Num1` a main-row digit produces, so a numpad
+        // press would swing the camera *and* switch the top tab. Claiming it
+        // before egui sees it is what keeps the two keyboards apart -- there is
+        // no flag further downstream that could tell them apart.
+        if let WindowEvent::KeyboardInput { event: key, .. } = &event
+            && claims_numpad(key, runtime.context.egui_wants_keyboard_input())
+        {
+            if let Some(shortcut) =
+                runtime_shortcut_for_physical_key(key.physical_key, key.state, key.repeat, false)
+            {
+                runtime.state.dispatch(shortcut.into_action());
+            }
+            runtime.window.request_redraw();
             return;
         }
 
@@ -624,6 +637,18 @@ fn should_log_job_progress(
 
 fn elapsed_ms(started: Option<Instant>) -> f64 {
     started.map_or(0.0, |at| at.elapsed().as_secs_f64() * 1000.0)
+}
+
+/// Take away egui's built-in quit shortcut.
+///
+/// `Options::quit_shortcuts` ships holding Command+Q, which on Windows is Ctrl+Q
+/// — a key pair close enough to Ctrl+W and Ctrl+A to hit by accident, and it
+/// closes the window outright: no prompt, no autosave flush, and whatever was on
+/// the head at the time is gone. Nothing in Vkit asked for the binding; it simply
+/// arrived with the framework. The window's own close button stays the one way
+/// out, and it goes through the path that can still refuse.
+fn disarm_quit_shortcuts(context: &Context) {
+    context.options_mut(|options| options.quit_shortcuts.clear());
 }
 
 fn directory_bytes(path: &std::path::Path) -> u64 {
@@ -824,6 +849,32 @@ impl RuntimeShortcut {
     }
 }
 
+/// Whether this event is a numpad key the runtime answers on its own.
+///
+/// Only while nothing is being typed into: a numpad digit belongs to a text
+/// field the moment one has focus, and a camera that swung because someone
+/// typed a number into a name would be worse than the collision this avoids.
+fn claims_numpad(key: &winit::event::KeyEvent, keyboard_captured: bool) -> bool {
+    !keyboard_captured && matches!(key.physical_key, PhysicalKey::Code(code) if is_numpad(code))
+}
+
+const fn is_numpad(code: KeyCode) -> bool {
+    matches!(
+        code,
+        KeyCode::Numpad0
+            | KeyCode::Numpad1
+            | KeyCode::Numpad2
+            | KeyCode::Numpad3
+            | KeyCode::Numpad4
+            | KeyCode::Numpad5
+            | KeyCode::Numpad6
+            | KeyCode::Numpad7
+            | KeyCode::Numpad8
+            | KeyCode::Numpad9
+            | KeyCode::NumpadDecimal
+    )
+}
+
 fn runtime_shortcut_for_physical_key(
     physical_key: PhysicalKey,
     state: ElementState,
@@ -835,22 +886,37 @@ fn runtime_shortcut_for_physical_key(
     }
 
     match physical_key {
-        PhysicalKey::Code(KeyCode::Home | KeyCode::NumpadDecimal) => {
+        PhysicalKey::Code(KeyCode::Home | KeyCode::NumpadDecimal | KeyCode::Numpad0) => {
             Some(RuntimeShortcut::ResetCamera)
         }
         PhysicalKey::Code(KeyCode::Numpad5) => Some(RuntimeShortcut::ToggleProjection),
 
-        PhysicalKey::Code(KeyCode::Numpad1) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::Back,
+        // The numpad is read as the face is seen from the front: the side keys
+        // swing left and right, the column keys go over and under, and the four
+        // corners are the diagonals they already point at.
+        PhysicalKey::Code(KeyCode::Numpad4) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::LeftSide,
         )),
-        PhysicalKey::Code(KeyCode::Numpad3) => Some(RuntimeShortcut::StandardView(
+        PhysicalKey::Code(KeyCode::Numpad6) => Some(RuntimeShortcut::StandardView(
             crate::camera::StandardView::RightSide,
         )),
-        PhysicalKey::Code(KeyCode::Numpad7) => Some(RuntimeShortcut::StandardView(
+        PhysicalKey::Code(KeyCode::Numpad8) => Some(RuntimeShortcut::StandardView(
             crate::camera::StandardView::Top,
         )),
-        PhysicalKey::Code(KeyCode::Numpad9) => Some(RuntimeShortcut::StandardView(
+        PhysicalKey::Code(KeyCode::Numpad2) => Some(RuntimeShortcut::StandardView(
             crate::camera::StandardView::Bottom,
+        )),
+        PhysicalKey::Code(KeyCode::Numpad7) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::FrontUpperLeft,
+        )),
+        PhysicalKey::Code(KeyCode::Numpad9) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::FrontUpperRight,
+        )),
+        PhysicalKey::Code(KeyCode::Numpad1) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::FrontLowerLeft,
+        )),
+        PhysicalKey::Code(KeyCode::Numpad3) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::FrontLowerRight,
         )),
         _ => None,
     }
@@ -914,6 +980,10 @@ struct Runtime {
     last_sculpt_timing_serial: u64,
     sculpt_timing_log_count: u8,
     repaint_trace_count: u8,
+
+    /// The request id and dispatch instant of the bake currently on the worker thread, so the log
+    /// can separate the composite itself from the UI frame that consumes it.
+    texture_bake_started: Option<(u64, Instant)>,
 
     frame_trace: Option<FrameTrace>,
 
@@ -1033,7 +1103,6 @@ impl Runtime {
                         "settings_load_failed",
                         &error.to_string(),
                     );
-                    eprintln!("Vkit settings load failed: {error}");
                     None
                 }
             })
@@ -1047,6 +1116,8 @@ impl Runtime {
         }
 
         let context = Context::default();
+        disarm_quit_shortcuts(&context);
+        crate::update_check::start(&context);
 
         let recovery = crate::recovery::RecoveryStore::discover();
         let abandoned = recovery.as_ref().and_then(|store| {
@@ -1128,7 +1199,6 @@ impl Runtime {
                 "renderer_install_failed",
                 &error.to_string(),
             );
-            eprintln!("Vkit mesh renderer unavailable: {error}");
         }
         if let Some(surface) = startup_surface.as_ref() {
             surface.paint(StartupPhase::Preferences);
@@ -1149,6 +1219,7 @@ impl Runtime {
         state.dispatch(Action::SetBaseViewMode(saved.base_view_mode));
         state.dispatch(Action::SetSurfaceSmoothPasses(saved.surface_smooth_passes));
         state.dispatch(Action::SetTooltipsEnabled(saved.tooltips_enabled));
+        state.dispatch(Action::SetShowOneSidedMorphs(saved.show_one_sided_morphs));
 
         state.dispatch(Action::SetDefaultSkin(saved.default_skin_id.clone()));
         state.dispatch(Action::SetLastSkin(saved.last_skin_id.clone()));
@@ -1326,6 +1397,7 @@ impl Runtime {
             last_sculpt_timing_serial: 0,
             sculpt_timing_log_count: 0,
             repaint_trace_count: 0,
+            texture_bake_started: None,
             frame_trace: std::env::var_os("VKIT_TRACE_FRAME").map(|_| FrameTrace::default()),
             pointer_release_count: 0,
             last_logged_job_progress: None,
@@ -2150,6 +2222,19 @@ impl Runtime {
             return;
         };
         let request_id = request.request_id();
+        if let crate::texture_project::TextureWorkRequest::Bake(bake) = &request {
+            log(
+                Severity::Debug,
+                "texture_bake_started",
+                &format!(
+                    "request_id={request_id}; resolution={}; layers={}; cached_rasters={}",
+                    bake.resolution,
+                    bake.layers.len(),
+                    bake.cached_layer_rasters.len()
+                ),
+            );
+            self.texture_bake_started = Some((request_id, Instant::now()));
+        }
         let fallback = request.clone();
         let proxy = self.proxy.clone();
         if let Err(error) = self.texture_assets.start(request, move || {
@@ -2200,12 +2285,17 @@ impl Runtime {
                     request_id,
                     outcome,
                 } => {
+                    let bake_ms = elapsed_ms(
+                        self.texture_bake_started
+                            .take_if(|(started, _)| *started == request_id)
+                            .map(|(_, at)| at),
+                    );
                     match &outcome {
                         Ok(baked) => log(
                             Severity::Debug,
                             "texture_bake_ready",
                             &format!(
-                                "channels={}; request_id={}",
+                                "channels={}; request_id={}; bake_ms={bake_ms:.1}",
                                 baked.images.len(),
                                 baked.request_id
                             ),
@@ -2497,6 +2587,7 @@ impl Runtime {
             base_view_mode: self.state.base_view_mode,
             surface_smooth_passes: self.state.surface_smooth_passes,
             tooltips_enabled: self.state.tooltips_enabled,
+            show_one_sided_morphs: self.state.morph_library.show_one_sided,
 
             last_skin_id: self.state.selected_skin_id.clone(),
             default_skin_id: self.state.default_skin_id.clone(),
@@ -2541,7 +2632,6 @@ impl Runtime {
                 "settings_save_failed",
                 &error.to_string(),
             );
-            eprintln!("Vkit settings save failed: {error}");
             return;
         }
         self.last_saved_preferences = Some(preferences);
@@ -2800,11 +2890,30 @@ mod tests {
             None
         );
 
+        // Laid out the way the keys sit under a hand, so a wrong pairing reads
+        // as wrong here too: 4 and 6 to the sides, 8 over and 2 under, and the
+        // corners on the diagonals they point at.
         for (code, view) in [
-            (KeyCode::Numpad1, crate::camera::StandardView::Back),
-            (KeyCode::Numpad3, crate::camera::StandardView::RightSide),
-            (KeyCode::Numpad7, crate::camera::StandardView::Top),
-            (KeyCode::Numpad9, crate::camera::StandardView::Bottom),
+            (KeyCode::Numpad4, crate::camera::StandardView::LeftSide),
+            (KeyCode::Numpad6, crate::camera::StandardView::RightSide),
+            (KeyCode::Numpad8, crate::camera::StandardView::Top),
+            (KeyCode::Numpad2, crate::camera::StandardView::Bottom),
+            (
+                KeyCode::Numpad7,
+                crate::camera::StandardView::FrontUpperLeft,
+            ),
+            (
+                KeyCode::Numpad9,
+                crate::camera::StandardView::FrontUpperRight,
+            ),
+            (
+                KeyCode::Numpad1,
+                crate::camera::StandardView::FrontLowerLeft,
+            ),
+            (
+                KeyCode::Numpad3,
+                crate::camera::StandardView::FrontLowerRight,
+            ),
         ] {
             assert_eq!(
                 runtime_shortcut_for_physical_key(
@@ -2934,11 +3043,83 @@ mod drop_tests {
         let route = |name: &str| dropped_file_action(std::path::Path::new(name));
         assert!(matches!(route("head.obj"), Some(Action::LoadScan(_))));
         assert!(matches!(route("head.GLB"), Some(Action::LoadScan(_))));
+        assert!(matches!(route("head.gltf"), Some(Action::LoadScan(_))));
         assert!(matches!(route("head.fbx"), Some(Action::LoadScan(_))));
         assert!(matches!(route("base.dsf"), Some(Action::LoadTemplate(_))));
 
         assert!(route("notes.txt").is_none());
         assert!(route("photo.png").is_none());
         assert!(route("no-extension").is_none());
+    }
+
+    #[test]
+    fn the_numpad_and_the_number_row_are_two_different_keyboards() {
+        // egui reports a numpad digit as the same `Key::Num1` the main row
+        // produces. The top tabs answer to Num1..Num4 and the camera answers to
+        // Numpad1..Numpad4, so one press of numpad 1 swung the view *and*
+        // switched the tab. There is no flag downstream that could tell them
+        // apart, which is why the numpad is claimed before egui ever sees it.
+        let numpad = [
+            KeyCode::Numpad0,
+            KeyCode::Numpad1,
+            KeyCode::Numpad2,
+            KeyCode::Numpad3,
+            KeyCode::Numpad4,
+            KeyCode::Numpad5,
+            KeyCode::Numpad6,
+            KeyCode::Numpad7,
+            KeyCode::Numpad8,
+            KeyCode::Numpad9,
+            KeyCode::NumpadDecimal,
+        ];
+        for code in numpad {
+            assert!(is_numpad(code), "{code:?} is on the numpad");
+        }
+
+        // The main row is not claimed: those digits are the tab shortcuts, and
+        // swallowing them here would trade one collision for a dead key.
+        for code in [
+            KeyCode::Digit0,
+            KeyCode::Digit1,
+            KeyCode::Digit2,
+            KeyCode::Digit3,
+            KeyCode::Digit4,
+            KeyCode::Digit9,
+        ] {
+            assert!(!is_numpad(code), "{code:?} belongs to the number row");
+        }
+
+        // Every claimed key has somewhere to go. A key taken from egui and then
+        // dropped would be a key that does nothing at all.
+        for code in numpad {
+            assert!(
+                runtime_shortcut_for_physical_key(
+                    PhysicalKey::Code(code),
+                    ElementState::Pressed,
+                    false,
+                    false,
+                )
+                .is_some(),
+                "{code:?} is claimed from egui but answers to nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn no_key_combination_can_close_the_window_behind_the_user() {
+        let context = Context::default();
+        assert!(
+            !context.options(|options| options.quit_shortcuts.is_empty()),
+            "egui is expected to ship a quit shortcut; if this stops being true the guard below \
+             is measuring nothing and should be re-derived rather than deleted"
+        );
+
+        disarm_quit_shortcuts(&context);
+
+        assert!(
+            context.options(|options| options.quit_shortcuts.is_empty()),
+            "a quit shortcut survived: Ctrl+Q would close the window with no prompt and no \
+             autosave flush, losing whatever was on the head"
+        );
     }
 }

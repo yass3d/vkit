@@ -380,7 +380,7 @@ fn swapping_the_appearance_keeps_the_expression_on_the_new_face() {
     );
 
     state
-        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new())
+        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new(), 0)
         .unwrap();
 
     assert_eq!(
@@ -415,7 +415,7 @@ fn direct_morph_edit_reuses_the_selected_vmi_as_the_default_save_target() {
     let selected = PathBuf::from(r"C:\VaM\Custom\Atom\Person\Morphs\female\Face.vmi");
 
     state
-        .install_direct_edit_output(Arc::new(tiny_output()), Some(&selected), Vec::new())
+        .install_direct_edit_output(Arc::new(tiny_output()), Some(&selected), Vec::new(), 0)
         .unwrap();
 
     assert_eq!(state.output_path, selected.to_string_lossy());
@@ -440,7 +440,7 @@ fn morph_compare_blends_toward_the_loaded_shape_without_moving_the_export() {
     state.workspace.eye_morph = Some(Arc::new(tiny_morph()));
     state.set_edit_source_mode(EditSourceMode::CustomMorph);
     state
-        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new())
+        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new(), 0)
         .unwrap();
 
     let origin_y = tiny_output().vertices[1][1];
@@ -482,7 +482,7 @@ fn morph_compare_is_absent_for_the_scan_head_flow() {
     state.workspace.eye_morph = Some(Arc::new(tiny_morph()));
     state.set_edit_source_mode(EditSourceMode::CustomMorph);
     state
-        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new())
+        .install_direct_edit_output(Arc::new(tiny_output()), None, Vec::new(), 0)
         .unwrap();
     assert!(state.morph_compare_available());
 
@@ -674,7 +674,7 @@ fn restoring_a_skin_needs_the_uv_mapping_and_says_so_by_failing_without_it() {
     without.apply_default_skin();
     assert_eq!(
         without.selected_skin_id, None,
-        "without the mapping the restore cannot land -- which is why its          position in the catalog handler is the whole bug"
+        "without the mapping the restore cannot land -- which is why its position in the catalog handler is the whole bug"
     );
 
     let mut with = AppState::default();
@@ -979,10 +979,23 @@ fn a_heavy_import_says_why_it_is_slow() {
         0.4,
         Some(HEAVY_MESH_TRIANGLES * 3),
     );
-    let note = heavy
-        .size_note(Locale::Korean)
-        .expect("a heavy mesh explains itself");
-    assert!(note.contains("300"), "the count is in the note: {note}");
+    // Every language has to name the same mesh. Korean used to divide by a
+    // thousand and then say 만 -- ten thousand -- so it read every mesh as ten
+    // times its real size, and a test that only looked for "300" was happy to
+    // let it. The count itself is what gets asserted now.
+    for locale in Locale::ALL {
+        let note = heavy
+            .size_note(locale)
+            .expect("a heavy mesh explains itself");
+        assert!(
+            note.contains("300,000"),
+            "{locale:?} names the wrong number of triangles: {note}"
+        );
+        assert!(
+            !note.contains("{count}"),
+            "{locale:?} left the placeholder in: {note}"
+        );
+    }
 
     assert!(
         ImportProgress::with_size(ImportPhase::Simplification, 0.4, Some(12_000))
@@ -1198,6 +1211,55 @@ fn the_stencil_goes_down_when_its_owners_move_on() {
 }
 
 #[test]
+fn a_stencil_raised_over_a_new_image_lands_centred_on_a_framed_head() {
+    use crate::texture_project::{StencilPlacement, TextureSourceMode};
+
+    let mut state = ready_state();
+    state.dispatch(Action::RequestTab(Tab::Texture));
+    let first = state
+        .texture_project
+        .add_image_layer(PathBuf::from("first.png"), TextureSourceMode::LandmarkPins);
+    state.dispatch(Action::SetTextureProjectionStencil(true));
+    assert!(state.texture_project.projection_stencil);
+
+    let dragged = StencilPlacement::default().panned([420.0, -260.0]);
+    state.dispatch(Action::SetTextureProjectionPlacement(dragged));
+    assert_eq!(state.texture_project.projection_placement, dragged);
+
+    state.dispatch(Action::SetTextureProjectionStencil(false));
+    state.dispatch(Action::SetTextureProjectionStencil(true));
+    assert_eq!(
+        state.texture_project.projection_placement, dragged,
+        "re-raising the stencil over the same image threw away the placement the user dragged"
+    );
+
+    state.dispatch(Action::SetTextureProjectionStencil(false));
+    state.workspace.result_camera.distance *= 12.0;
+    let second = state
+        .texture_project
+        .add_image_layer(PathBuf::from("second.png"), TextureSourceMode::LandmarkPins);
+    assert_ne!(first, second);
+
+    state.dispatch(Action::SetTextureProjectionStencil(true));
+    assert_eq!(
+        state.texture_project.projection_placement,
+        StencilPlacement::default(),
+        "the new image came up at the previous image's offset, off the pane"
+    );
+
+    let bounds = state
+        .result_head_bounds()
+        .expect("ready state has a generated result head");
+    let mut reframed = state.workspace.result_camera;
+    reframed.frame(bounds);
+    assert_eq!(
+        state.workspace.result_camera.distance, reframed.distance,
+        "raising the stencil over a new image left the camera where the user had zoomed it"
+    );
+    assert_eq!(state.workspace.result_camera.target, reframed.target);
+}
+
+#[test]
 fn undo_on_the_texture_stage_stays_on_the_texture_stage() {
     let mut state = ready_state();
     state.dispatch(Action::RequestTab(Tab::Texture));
@@ -1286,6 +1348,7 @@ fn a_painted_layer_passes_the_bake_gate_without_pins() {
         .find(|layer| layer.id == id)
         .expect("the layer");
     layer.painted = Some(TextureLayerPaint {
+        revision: 1,
         width: 4,
         height: 4,
         rgba8: Arc::new(vec![0; 64]),
@@ -2015,6 +2078,194 @@ fn no_op_resets_create_no_morph_or_sculpt_history() {
 
     assert!(state.morph_reset_undo.is_none());
     assert_eq!(state.sculpt.history_len(), 0);
+}
+
+#[test]
+fn no_stage_is_refused_from_a_cold_start() {
+    // Opening nothing means the G2 template is the head, so there is something
+    // for every stage past the fit to work on. Sculpt already knew this and
+    // texture and save did not: the escape hatch read `tab == Tab::Morph` and
+    // was never widened when the other two arrived, so a cold start could only
+    // reach sculpt and everything downstream looked like it required a visit
+    // there first.
+    //
+    // What is asserted is the decision, not the geometry that follows it.
+    // Installing the template needs real G2 data the repository does not ship,
+    // so the pipeline past this point belongs to a manual run -- but the refusal
+    // that used to happen *before* the pipeline is gone, and that is the change.
+    for landing in [Tab::Morph, Tab::Texture, Tab::Result] {
+        let mut state = AppState::default();
+        state.workspace.template_geometry = Some(Arc::new(canonical_body_template()));
+        assert!(state.scan_path.is_none(), "this is the cold start");
+        assert!(
+            state.can_enter_detail_from_template(),
+            "the template is the head when no scan has been opened"
+        );
+        assert!(
+            crate::ui::top_tab_available(&state, landing),
+            "{landing:?} has to be clickable, or it is reachable in state and              dead in the interface"
+        );
+
+        state.dispatch(Action::RequestTab(landing));
+        assert!(
+            !matches!(
+                state.status.key,
+                TextKey::MorphUnavailable | TextKey::ResultUnavailable
+            ),
+            "{landing:?} was turned away at the door instead of being tried: {:?}",
+            state.status
+        );
+    }
+}
+
+#[test]
+fn layers_only_puts_the_skin_back_the_way_it_found_it() {
+    // The toggle used to say "show texture in the 3D view" and flip a preview
+    // flag, which is not what anyone tuning a decal is asking. What they want
+    // to see is the decal, not the decal over whichever VaM skin happens to be
+    // loaded. It switches the skin preset to the layer state now -- and that is
+    // only safe if switching back is exact.
+    let mut state = AppState::default();
+    let base_before = state.base_view_mode;
+    state.texture_project.bake_base = TextureBakeBase::CurrentSkin;
+
+    state.dispatch(Action::SetTextureHideVaMSkin(true));
+    assert!(state.texture_project.hide_vam_skin_preview);
+    assert_eq!(
+        state.base_view_mode,
+        BaseViewMode::Solid,
+        "the skin has to come off for the layers to be the thing you see"
+    );
+    assert_eq!(
+        state.texture_project.bake_base,
+        TextureBakeBase::Transparent,
+        "baking onto the current skin makes no sense once it is hidden"
+    );
+
+    state.dispatch(Action::SetTextureHideVaMSkin(false));
+    assert!(!state.texture_project.hide_vam_skin_preview);
+    assert_eq!(state.base_view_mode, base_before, "the view mode came back");
+    assert_eq!(
+        state.texture_project.bake_base,
+        TextureBakeBase::CurrentSkin,
+        "the bake base it moved out of the way has to be restored, or the          toggle quietly rewrites what gets exported"
+    );
+}
+
+#[test]
+fn a_package_is_built_from_the_head_or_from_files_and_never_both() {
+    // The two used to be an independent switch beside an always-visible list,
+    // so a package could ask for the current head *and* carry attachments. When
+    // the head had not been touched the export refused everything with
+    // "identical to the loaded G2 template" -- a real failure, reported for a
+    // package the user had already told us to build from files.
+    let workspace = tempfile::tempdir().expect("temporary morph folder");
+    let vmi = workspace.path().join("Brow.vmi");
+    let vmb = workspace.path().join("Brow.vmb");
+    std::fs::write(&vmi, "{}").expect("vmi fixture");
+    std::fs::write(&vmb, [0_u8; 4]).expect("vmb fixture");
+
+    let mut state = AppState {
+        package_from_this_head: true,
+        ..Default::default()
+    };
+
+    state.dispatch(Action::AddPackageFiles(
+        PackageSlot::Morph,
+        vec![vmi.clone()],
+    ));
+    assert!(
+        !state.package_from_this_head,
+        "picking a file is choosing the file route, and has to say so"
+    );
+
+    // Choosing the head back is the other half of the same choice: the
+    // attachments go, rather than lingering on screen unpackaged.
+    state.dispatch(Action::SetPackageFromThisHead(true));
+    assert!(state.package_morphs.is_empty());
+    assert!(state.package_textures.is_empty());
+}
+
+#[test]
+fn half_a_morph_brings_the_other_half_with_it() {
+    // A VaM morph is two files that are useless apart: the .vmi describes it
+    // and the .vmb carries the deltas. Shipping one without the other is a
+    // package that silently does nothing in VaM.
+    let workspace = tempfile::tempdir().expect("temporary morph folder");
+    let vmi = workspace.path().join("Brow.vmi");
+    let vmb = workspace.path().join("Brow.vmb");
+    std::fs::write(&vmi, "{}").expect("vmi fixture");
+    std::fs::write(&vmb, [0_u8; 4]).expect("vmb fixture");
+
+    for picked in [&vmi, &vmb] {
+        let mut state = AppState::default();
+        state.dispatch(Action::AddPackageFiles(
+            PackageSlot::Morph,
+            vec![picked.clone()],
+        ));
+        let paths: Vec<_> = state
+            .package_morphs
+            .iter()
+            .map(|file| file.path.clone())
+            .collect();
+        assert!(
+            paths.contains(&vmi) && paths.contains(&vmb),
+            "picking {picked:?} brought {paths:?}"
+        );
+        assert_eq!(paths.len(), 2, "one twin each, not a pile of duplicates");
+    }
+
+    // A half with no twin on disk stays a half. Inventing the path would trade
+    // a real complaint for a missing file nobody chose.
+    let lone = workspace.path().join("Lonely.vmi");
+    std::fs::write(&lone, "{}").expect("lone fixture");
+    let mut state = AppState::default();
+    state.dispatch(Action::AddPackageFiles(
+        PackageSlot::Morph,
+        vec![lone.clone()],
+    ));
+    assert_eq!(
+        state.package_morphs.len(),
+        1,
+        "a twin that is not there must not be conjured"
+    );
+
+    // Textures are single files and must not acquire imaginary partners.
+    let texture = workspace.path().join("Face.png");
+    std::fs::write(&texture, [0_u8; 4]).expect("texture fixture");
+    let mut state = AppState::default();
+    state.dispatch(Action::AddPackageFiles(
+        PackageSlot::Texture,
+        vec![texture.clone()],
+    ));
+    assert_eq!(state.package_textures.len(), 1);
+}
+
+#[test]
+fn the_export_metadata_starts_blank_and_keeps_whatever_is_typed() {
+    // A seeded group is a value the user never chose, and because this field is
+    // remembered they would have to notice it and clear it before their own
+    // choice could stick. Blank asks the question instead of answering it.
+    let fresh = AppState::default();
+    assert!(
+        fresh.vam_export_group.is_empty(),
+        "the group came pre-filled with {:?}",
+        fresh.vam_export_group
+    );
+    assert!(
+        fresh.vam_export_region.is_empty(),
+        "the region came pre-filled with {:?}",
+        fresh.vam_export_region
+    );
+    assert!(fresh.vam_export_display_name.is_empty());
+
+    // Typed once, it stays -- including back to blank, which has to survive the
+    // trip too or clearing the field would silently undo itself.
+    let mut state = AppState::default();
+    state.dispatch(Action::SetVaMExportGroup("Look: Head".to_owned()));
+    assert_eq!(state.vam_export_group, "Look: Head");
+    state.dispatch(Action::SetVaMExportGroup(String::new()));
+    assert!(state.vam_export_group.is_empty(), "clearing must stick");
 }
 
 #[test]
@@ -4723,6 +4974,7 @@ fn a_look_for_the_other_figure_is_refused_rather_than_switching_figures() {
         sex,
         kind: VaMEditSourceKind::AppearancePreset,
         missing_morphs: 0,
+        morph_refs: 0,
     };
     let male_look = look("male-look", Some(vkit_core::vam::SkinSex::Male));
     let unlabelled = look("no-figure-look", None);

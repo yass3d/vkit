@@ -1,17 +1,108 @@
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::{HashMap, HashSet, hash_map::Entry},
     fmt::Write as _,
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use gltf::{buffer, image, mesh::Mode};
+use gltf::{
+    Semantic,
+    accessor::{DataType, Dimensions},
+    buffer, image,
+    mesh::Mode,
+};
 
+use super::gltf_container::{self, PayloadBudget};
 use super::simplify::{AttributeMesh, AttributeMeshBuilder, Corner, FaceLabels};
 
 type Matrix = [[f64; 4]; 4];
-const MAX_EXTERNAL_PAYLOAD_BYTES: u64 = 1_500_000_000;
+
+/// Ceilings applied per primitive, mirroring the per-document ones `simplify` enforces. A sparse
+/// accessor declares its length in JSON with no buffer to bound it, and a triangle strip expands
+/// to three indices per vertex, so both counts have to be checked before anything is allocated
+/// rather than after.
+const MAX_PRIMITIVE_VERTICES: usize = 12_000_000;
+const MAX_PRIMITIVE_TRIANGLES: usize = 5_000_000;
+
+/// What the walk stepped over rather than refusing the file for. Every field is a place where
+/// this importer used to return `Err` for something that costs the user geometry they could have
+/// had; the counts are written to the diagnostics log so that "half my model is missing" can be
+/// answered from the log rather than guessed at.
+#[derive(Debug, Default)]
+struct SkipTally {
+    surfaceless_primitives: usize,
+    unreadable_primitives: usize,
+    out_of_range_triangles: usize,
+    non_finite_triangles: usize,
+    dropped_index_tail: usize,
+    dropped_uv_streams: usize,
+    revisited_nodes: usize,
+    bind_pose_meshes: usize,
+    unreferenced_roots: usize,
+    deep_subtrees: usize,
+    non_finite_nodes: usize,
+    normal_corrected_primitives: usize,
+}
+
+impl SkipTally {
+    fn is_empty(&self) -> bool {
+        let SkipTally {
+            surfaceless_primitives,
+            unreadable_primitives,
+            out_of_range_triangles,
+            non_finite_triangles,
+            dropped_index_tail,
+            dropped_uv_streams,
+            revisited_nodes,
+            bind_pose_meshes,
+            unreferenced_roots,
+            deep_subtrees,
+            non_finite_nodes,
+            normal_corrected_primitives,
+        } = self;
+        *surfaceless_primitives == 0
+            && *unreadable_primitives == 0
+            && *out_of_range_triangles == 0
+            && *non_finite_triangles == 0
+            && *dropped_index_tail == 0
+            && *dropped_uv_streams == 0
+            && *revisited_nodes == 0
+            && *bind_pose_meshes == 0
+            && *unreferenced_roots == 0
+            && *deep_subtrees == 0
+            && *non_finite_nodes == 0
+            && *normal_corrected_primitives == 0
+    }
+
+    fn report(&self) {
+        if self.is_empty() {
+            return;
+        }
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "importers",
+            "gltf_partial_import",
+            &format!(
+                "surfaceless_primitives={}; unreadable_primitives={}; out_of_range_triangles={}; \
+                 non_finite_triangles={}; dropped_index_tail={}; dropped_uv_streams={}; \
+                 revisited_nodes={}; bind_pose_meshes={}; unreferenced_roots={}; \
+                 deep_subtrees={}; non_finite_nodes={}; normal_corrected_primitives={}",
+                self.surfaceless_primitives,
+                self.unreadable_primitives,
+                self.out_of_range_triangles,
+                self.non_finite_triangles,
+                self.dropped_index_tail,
+                self.dropped_uv_streams,
+                self.revisited_nodes,
+                self.bind_pose_meshes,
+                self.unreferenced_roots,
+                self.deep_subtrees,
+                self.non_finite_nodes,
+                self.normal_corrected_primitives
+            ),
+        );
+    }
+}
 
 #[derive(Debug, Default)]
 struct PositionWelder {
@@ -33,15 +124,25 @@ impl PositionWelder {
     }
 }
 
+/// Reads a `.glb` or `.gltf` into the mesh the fitter works on.
+///
+/// The order below is the whole point of this function. Geometry is walked first and finished
+/// first; the material library is written afterwards and cannot fail the import. Every appearance
+/// step used to sit in front of the walk and share its `Result`, which meant a texture in a format
+/// this build does not decode, a texture folder that could not be created, or a sidecar `.png` the
+/// user forgot to copy each refused a file whose vertices were never even read. Nothing about a
+/// texture may cost a user their scan.
 pub(crate) fn load_glb(
     path: &Path,
     appearance_root: &Path,
     mut progress: impl FnMut(f32),
 ) -> Result<AttributeMesh, String> {
     progress(0.05);
-    let gltf = gltf::Gltf::open(path).map_err(|error| format!("invalid GLB: {error}"))?;
-    reject_unsupported_features(&gltf)?;
-    let buffers = load_buffers(path, &gltf)?;
+    let gltf_container::PreparedContainer {
+        gltf,
+        buffers,
+        mut budget,
+    } = gltf_container::prepare(path)?;
     progress(0.16);
 
     let material_names = gltf
@@ -53,21 +154,15 @@ pub(crate) fn load_glb(
         vec![PathBuf::from("vkit-import.mtl")],
         material_names,
     );
-    write_material_library(
-        &gltf,
-        &buffers,
-        path.parent().unwrap_or_else(|| Path::new(".")),
-        appearance_root,
-    )?;
 
-    let scene = gltf
-        .default_scene()
-        .or_else(|| gltf.scenes().next())
-        .ok_or_else(|| "GLB contains no scene".to_owned())?;
     let mut welder = PositionWelder::default();
     let mut visited_nodes = 0_usize;
+    let mut emitted = HashSet::new();
+    let mut tally = SkipTally::default();
     let node_total = gltf.nodes().len().max(1);
-    for node in scene.nodes() {
+    let (roots, unreferenced_roots) = walk_roots(&gltf);
+    tally.unreferenced_roots = unreferenced_roots;
+    for node in roots {
         visit_node(
             node,
             identity(),
@@ -77,81 +172,67 @@ pub(crate) fn load_glb(
                 welder: &mut welder,
                 builder: &mut builder,
                 visited_nodes: &mut visited_nodes,
+                emitted: &mut emitted,
+                tally: &mut tally,
             },
             &mut |visited| {
                 progress(0.16 + 0.74 * (visited as f32 / node_total as f32).min(1.0));
             },
         )?;
     }
+    tally.report();
     let mut mesh = builder.finish()?;
     mesh.welded_coincident_vertices = welder.welded_duplicates;
+    progress(0.95);
+
+    write_material_library(
+        &gltf,
+        &buffers,
+        path.parent().unwrap_or_else(|| Path::new(".")),
+        appearance_root,
+        &mut budget,
+    );
     progress(1.0);
     Ok(mesh)
 }
 
-fn reject_unsupported_features(gltf: &gltf::Gltf) -> Result<(), String> {
-    if gltf.animations().next().is_some() {
-        return Err("animated GLB input is unsupported; export a static mesh".to_owned());
-    }
-    if gltf.skins().next().is_some() {
-        return Err(
-            "skinned GLB input is unsupported; apply the armature before export".to_owned(),
-        );
-    }
-    for extension in gltf.extensions_used() {
-        if matches!(
-            extension,
-            "KHR_draco_mesh_compression" | "EXT_meshopt_compression" | "KHR_texture_transform"
-        ) {
-            return Err(format!(
-                "GLB extension {extension} is unsupported; export uncompressed geometry with baked UVs"
-            ));
+/// The nodes the walk starts from, and how many of them the scene never mentioned.
+///
+/// The default scene comes first, so a well-formed file is walked exactly as its author meant.
+/// Then every node no other node claims as a child is added if the scene missed it, which covers
+/// two shapes that are spec-valid and used to import as nothing at all: a document with no
+/// `scenes` array (the spec makes it optional, and glTF used as a library of meshes routinely
+/// omits it) and a mesh node the exporter left out of the scene it wrote. Nodes already reached
+/// are skipped rather than emitted twice, so instancing across scenes is untouched.
+fn walk_roots<'a>(gltf: &'a gltf::Gltf) -> (Vec<gltf::Node<'a>>, usize) {
+    let mut roots = Vec::new();
+    let mut claimed = HashSet::new();
+    if let Some(scene) = gltf.default_scene().or_else(|| gltf.scenes().next()) {
+        for node in scene.nodes() {
+            if claimed.insert(node.index()) {
+                roots.push(node);
+            }
         }
     }
-    let supported_required = ["KHR_materials_unlit"];
-    if let Some(extension) = gltf
-        .extensions_required()
-        .find(|extension| !supported_required.contains(extension))
-    {
-        return Err(format!(
-            "required GLB extension {extension} is unsupported by the native importer"
-        ));
-    }
-    Ok(())
-}
-
-fn load_buffers(path: &Path, gltf: &gltf::Gltf) -> Result<Vec<Vec<u8>>, String> {
-    let root = path.parent().unwrap_or_else(|| Path::new("."));
-    let mut buffers = Vec::with_capacity(gltf.buffers().len());
-    let mut total_bytes = 0_u64;
-    for buffer in gltf.buffers() {
-        let data = match buffer.source() {
-            buffer::Source::Bin => gltf
-                .blob
-                .as_ref()
-                .ok_or_else(|| "GLB declares a binary buffer but has no BIN payload".to_owned())?
-                .clone(),
-            buffer::Source::Uri(uri) => read_uri(root, uri, "buffer")?.0,
-        };
-        if data.len() < buffer.length() {
-            return Err(format!(
-                "GLB buffer {} has {} bytes but declares {}",
-                buffer.index(),
-                data.len(),
-                buffer.length()
-            ));
+    let mut parented = vec![false; gltf.nodes().len()];
+    for node in gltf.nodes() {
+        for child in node.children() {
+            if let Some(slot) = parented.get_mut(child.index()) {
+                *slot = true;
+            }
         }
-        total_bytes = total_bytes
-            .checked_add(data.len() as u64)
-            .ok_or_else(|| "GLB buffer byte count overflow".to_owned())?;
-        if total_bytes > MAX_EXTERNAL_PAYLOAD_BYTES {
-            return Err(format!(
-                "GLB buffers total {total_bytes} bytes; the bounded native importer limit is {MAX_EXTERNAL_PAYLOAD_BYTES} bytes"
-            ));
-        }
-        buffers.push(data);
     }
-    Ok(buffers)
+    let mut unreferenced = 0_usize;
+    for node in gltf.nodes() {
+        if parented.get(node.index()).copied().unwrap_or(false) {
+            continue;
+        }
+        if claimed.insert(node.index()) {
+            unreferenced += 1;
+            roots.push(node);
+        }
+    }
+    (roots, unreferenced)
 }
 
 struct SceneWalk<'a> {
@@ -159,8 +240,20 @@ struct SceneWalk<'a> {
     welder: &'a mut PositionWelder,
     builder: &'a mut AttributeMeshBuilder,
     visited_nodes: &'a mut usize,
+    /// Node indices already emitted. glTF nodes must form a forest, so a second reference to one
+    /// is malformed; without this, a document where sixty transform-only nodes each list the next
+    /// one twice costs 2^60 visits and the import never returns — no panic, no error, no cancel.
+    emitted: &'a mut HashSet<usize>,
+    tally: &'a mut SkipTally,
 }
 
+/// Walks one node and its subtree, emitting whatever geometry it carries.
+///
+/// The two bail-outs near the top used to refuse the whole document, and both are per-node facts
+/// about a document whose other nodes are perfectly readable: a hierarchy deeper than this walk
+/// will recurse through, and a composed transform that has gone non-finite because some ancestor
+/// carried a zero scale an exporter later inverted. A head parked on a sane branch of such a file
+/// costs the user nothing now; the subtree is stepped over and counted instead.
 fn visit_node(
     node: gltf::Node<'_>,
     parent: Matrix,
@@ -173,23 +266,19 @@ fn visit_node(
         welder,
         builder,
         visited_nodes,
+        emitted,
+        tally,
     } = &mut *walk;
     let (welder, builder, visited_nodes) = (&mut **welder, &mut **builder, &mut **visited_nodes);
+    let (emitted, tally) = (&mut **emitted, &mut **tally);
     let buffers: &[Vec<u8>] = buffers;
     if depth > 256 {
-        return Err("GLB scene hierarchy exceeds 256 levels".to_owned());
+        tally.deep_subtrees += 1;
+        return Ok(());
     }
-    if node.skin().is_some() {
-        return Err(format!(
-            "GLB node {} references a skin; apply the armature before export",
-            node.index()
-        ));
-    }
-    if node.weights().is_some() {
-        return Err(format!(
-            "GLB node {} has morph weights; apply morph targets before export",
-            node.index()
-        ));
+    if !emitted.insert(node.index()) {
+        tally.revisited_nodes += 1;
+        return Ok(());
     }
     let local = node
         .transform()
@@ -197,112 +286,117 @@ fn visit_node(
         .map(|column| column.map(f64::from));
     let world = multiply(parent, local);
     if !world.iter().flatten().all(|value| value.is_finite()) {
-        return Err(format!(
-            "GLB node {} has a non-finite transform",
-            node.index()
-        ));
+        tally.non_finite_nodes += 1;
+        return Ok(());
     }
     if let Some(mesh) = node.mesh() {
         let group = Some(safe_label(
             node.name().or(mesh.name()).unwrap_or("Mesh"),
             &format!("GLB_Node_{}", node.index()),
         ));
+        let skinned = node.skin().is_some();
+        if skinned {
+            tally.bind_pose_meshes += 1;
+        }
+        let placement = mesh_placement(skinned, world);
         for primitive in mesh.primitives() {
-            if primitive.mode() != Mode::Triangles {
-                return Err(format!(
-                    "GLB mesh {} primitive {} uses {:?}; only triangle primitives are supported",
-                    mesh.index(),
-                    primitive.index(),
-                    primitive.mode()
-                ));
-            }
-            if primitive.morph_targets().next().is_some() {
-                return Err(format!(
-                    "GLB mesh {} primitive {} has morph targets; apply them before export",
-                    mesh.index(),
-                    primitive.index()
-                ));
-            }
-            let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
-            let positions = reader
-                .read_positions()
-                .ok_or_else(|| format!("GLB mesh {} has no POSITION stream", mesh.index()))?
-                .map(|position| transform_point(world, position.map(f64::from)))
-                .collect::<Vec<_>>();
-            if positions.is_empty() || !positions.iter().flatten().all(|value| value.is_finite()) {
-                return Err(format!(
-                    "GLB mesh {} contains an empty or non-finite POSITION stream",
-                    mesh.index()
-                ));
+            let Some(topology) = Topology::of(primitive.mode()) else {
+                tally.surfaceless_primitives += 1;
+                continue;
+            };
+            let local_positions = match read_positions(&primitive, buffers) {
+                Ok(positions) => positions,
+                Err(reason) => {
+                    tally.unreadable_primitives += 1;
+                    let _ = crate::diagnostics::record(
+                        crate::diagnostics::Severity::Warning,
+                        "importers",
+                        "gltf_primitive_skipped",
+                        &format!(
+                            "mesh={} primitive={}; {reason}",
+                            mesh.index(),
+                            primitive.index()
+                        ),
+                    );
+                    continue;
+                }
+            };
+            if local_positions.is_empty() {
+                tally.unreadable_primitives += 1;
+                continue;
             }
             let material = primitive.material();
             let pbr = material.pbr_metallic_roughness();
-            if pbr
-                .base_color_texture()
-                .is_some_and(|texture| texture.tex_coord() != 0)
-            {
-                return Err(format!(
-                    "GLB material {:?} uses a nonzero base-color UV set, which is unsupported",
-                    material.index()
-                ));
+            let base_color = pbr.base_color_texture();
+            let transform = base_color
+                .as_ref()
+                .and_then(gltf::texture::Info::texture_transform);
+            let uv_set = transform
+                .as_ref()
+                .and_then(gltf::texture::TextureTransform::tex_coord)
+                .or_else(|| base_color.as_ref().map(gltf::texture::Info::tex_coord))
+                .unwrap_or(0);
+            let mut uvs = read_tex_coords(&primitive, buffers, uv_set, local_positions.len());
+            if uvs.is_none() && primitive.get(&Semantic::TexCoords(uv_set)).is_some() {
+                tally.dropped_uv_streams += 1;
             }
-            let uvs = reader.read_tex_coords(0).map(|stream| {
-                stream
-                    .into_f32()
-                    .map(|uv| uv.map(f64::from))
-                    .collect::<Vec<_>>()
-            });
-            if uvs.as_ref().is_some_and(|uvs| uvs.len() != positions.len()) {
-                return Err(format!(
-                    "GLB mesh {} has a mismatched TEXCOORD_0 stream",
-                    mesh.index()
-                ));
+            if let (Some(uvs), Some(transform)) = (uvs.as_mut(), transform.as_ref()) {
+                apply_texture_transform(transform, uvs);
             }
-            if pbr.base_color_texture().is_some() && uvs.is_none() {
-                return Err(format!(
-                    "GLB material {:?} has a base-color texture but the mesh has no TEXCOORD_0 stream",
-                    material.index()
-                ));
+            let source_indices = read_indices(&primitive, buffers, local_positions.len());
+            if matches!(topology, Topology::Triangles) && !source_indices.len().is_multiple_of(3) {
+                tally.dropped_index_tail += 1;
             }
-            let indices = reader
-                .read_indices()
-                .map(|indices| indices.into_u32().collect::<Vec<_>>())
-                .unwrap_or_else(|| (0..positions.len() as u32).collect());
-            if indices.len() % 3 != 0 {
-                return Err(format!(
-                    "GLB mesh {} triangle index count is not divisible by three",
-                    mesh.index()
-                ));
-            }
+            let Some(indices) = topology.expand(source_indices) else {
+                tally.unreadable_primitives += 1;
+                continue;
+            };
             let labels = FaceLabels {
                 group: group.clone(),
                 material: Some(material_name(material.index(), material.name())),
             };
 
+            let normals_disagree = read_normals(&primitive, buffers, local_positions.len())
+                .is_some_and(|normals| {
+                    winding_disagrees_with_normals(&local_positions, &normals, &indices)
+                });
+            if normals_disagree {
+                tally.normal_corrected_primitives += 1;
+            }
+            let positions = local_positions
+                .into_iter()
+                .map(|position| transform_point(placement, position))
+                .collect::<Vec<_>>();
             let canonical_ids = positions
                 .iter()
                 .map(|&position| welder.canonical_id(position))
                 .collect::<Vec<_>>();
-            let reverse_winding = linear_determinant(world) < 0.0;
+            let reverse_winding = (linear_determinant(placement) < 0.0) != normals_disagree;
             for indices in indices.chunks_exact(3) {
                 let mut triangle = [indices[0], indices[1], indices[2]];
                 if reverse_winding {
                     triangle.swap(1, 2);
                 }
                 let corners = triangle.map(|index| {
-                    let index_usize = index as usize;
-                    positions.get(index_usize).map(|&position| Corner {
-                        source_vertex: canonical_ids[index_usize],
+                    let index = index as usize;
+                    positions.get(index).copied().map(|position| Corner {
+                        source_vertex: canonical_ids.get(index).copied().unwrap_or_default(),
                         position,
-                        uv: uvs.as_ref().map(|uvs| uvs[index_usize]),
+                        uv: uvs.as_ref().and_then(|uvs| uvs.get(index).copied()),
                     })
                 });
                 let [Some(a), Some(b), Some(c)] = corners else {
-                    return Err(format!(
-                        "GLB mesh {} has an out-of-range index",
-                        mesh.index()
-                    ));
+                    tally.out_of_range_triangles += 1;
+                    continue;
                 };
+                if ![a.position, b.position, c.position]
+                    .iter()
+                    .flatten()
+                    .all(|value| value.is_finite())
+                {
+                    tally.non_finite_triangles += 1;
+                    continue;
+                }
                 builder.add_triangle(labels.clone(), [a, b, c])?;
             }
         }
@@ -319,6 +413,8 @@ fn visit_node(
                 welder,
                 builder,
                 visited_nodes,
+                emitted,
+                tally,
             },
             progress,
         )?;
@@ -326,40 +422,600 @@ fn visit_node(
     Ok(())
 }
 
+/// The matrix that places a primitive's vertices, which is not always its node's world matrix.
+///
+/// A rigged head stores its bind pose in `POSITION`, which is exactly the geometry a fitter wants,
+/// so a skin is read past rather than refused. The transform rule is not the unskinned one though,
+/// and getting it wrong is the only mistake in this area that imports silently instead of failing:
+/// glTF 2.0 states that the world transform of a node referencing a skinned mesh MUST be ignored,
+/// because a skinned vertex is placed by its joints and joint transforms are already expressed in
+/// scene space. Applying the node's matrix on top would move a Ready Player Me or VRM head by
+/// whatever translation and scale the exporter parked on that node, with no error anywhere.
+/// Children still inherit the real world matrix — this rule is about one mesh's vertices, not
+/// about the hierarchy.
+fn mesh_placement(skinned: bool, world: Matrix) -> Matrix {
+    if skinned { identity() } else { world }
+}
+
+/// Folds `KHR_texture_transform` into the UVs themselves.
+///
+/// The extension is an affine transform on texture coordinates and touches nothing else, so it is
+/// resolved here where Vkit's single UV per corner can hold the result. The composition is
+/// translate · rotate · scale applied to the coordinate as a column vector, matching the
+/// extension's own reference implementation, and the rotation is counter-clockwise as the spec
+/// words it. A wrong sign or a wrong order would misplace a texture and could never misplace a
+/// vertex, which is why this is worth doing at all rather than refusing the file over it.
+fn apply_texture_transform(transform: &gltf::texture::TextureTransform<'_>, uvs: &mut [[f64; 2]]) {
+    let [offset_u, offset_v] = transform.offset().map(f64::from);
+    let [scale_u, scale_v] = transform.scale().map(f64::from);
+    let (sine, cosine) = f64::from(transform.rotation()).sin_cos();
+    for uv in uvs {
+        let (u, v) = (uv[0] * scale_u, uv[1] * scale_v);
+        *uv = [
+            offset_u + u * cosine - v * sine,
+            offset_v + u * sine + v * cosine,
+        ];
+    }
+}
+
+/// The three primitive modes that carry a surface. `POINTS`, `LINES`, `LINE_LOOP` and
+/// `LINE_STRIP` are absent on purpose: they hold no triangles at all, so a document that mixes CAD
+/// edge geometry or an annotation polyline in with its shell is walked for the shell and the rest
+/// is stepped over rather than being grounds for refusing the file.
+#[derive(Clone, Copy, Debug)]
+enum Topology {
+    Triangles,
+    Strip,
+    Fan,
+}
+
+impl Topology {
+    fn of(mode: Mode) -> Option<Self> {
+        match mode {
+            Mode::Triangles => Some(Self::Triangles),
+            Mode::TriangleStrip => Some(Self::Strip),
+            Mode::TriangleFan => Some(Self::Fan),
+            Mode::Points | Mode::Lines | Mode::LineLoop | Mode::LineStrip => None,
+        }
+    }
+
+    /// Rewrites a strip or a fan as the equivalent triangle list. The strip's odd steps swap the
+    /// first two corners, which is the spec's own rule and the one place a plausible-looking
+    /// mistake would import cleanly and silently invert every other face normal. `None` means the
+    /// expansion would exceed what the simplifier accepts, which is checked before allocating.
+    fn expand(self, indices: Vec<u32>) -> Option<Vec<u32>> {
+        let triangles = match self {
+            Self::Triangles => indices.len() / 3,
+            Self::Strip | Self::Fan => indices.len().saturating_sub(2),
+        };
+        if triangles > MAX_PRIMITIVE_TRIANGLES {
+            return None;
+        }
+        match self {
+            Self::Triangles => Some(indices),
+            Self::Strip => {
+                let mut expanded = Vec::with_capacity(triangles * 3);
+                for (step, window) in indices.windows(3).enumerate() {
+                    let [first, second, third] = [window[0], window[1], window[2]];
+                    if step.is_multiple_of(2) {
+                        expanded.extend_from_slice(&[first, second, third]);
+                    } else {
+                        expanded.extend_from_slice(&[second, first, third]);
+                    }
+                }
+                Some(expanded)
+            }
+            Self::Fan => {
+                let mut expanded = Vec::with_capacity(triangles * 3);
+                let hub = *indices.first()?;
+                for window in indices.windows(2).skip(1) {
+                    expanded.extend_from_slice(&[hub, window[0], window[1]]);
+                }
+                Some(expanded)
+            }
+        }
+    }
+}
+
+/// Reads the index stream, or synthesises the draw-arrays sequence when a primitive has none. An
+/// unreadable index accessor degrades to the draw-arrays order rather than refusing the file: the
+/// vertices are in hand either way, and the worst outcome is a mesh whose faces are wrong, which
+/// the user can see.
+fn read_indices(primitive: &gltf::Primitive<'_>, buffers: &[Vec<u8>], vertices: usize) -> Vec<u32> {
+    let readable = primitive
+        .indices()
+        .filter(|accessor| validate_readable_accessor(accessor, buffers, "indices").is_ok());
+    if readable.is_some() {
+        let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
+        if let Some(indices) = reader.read_indices() {
+            return indices.into_u32().collect();
+        }
+    }
+    (0..vertices as u32).collect()
+}
+
+/// Reads one texture-coordinate set, or nothing. Every failure here is a texturing question and
+/// none of them may cost the caller its geometry, so the whole function returns `Option` and the
+/// caller treats `None` as "this mesh has no UVs". The named set is tried first because a material
+/// is free to point its base colour at `TEXCOORD_1`; set 0 is the fallback so that a mesh keeps
+/// the UVs it does have.
+fn read_tex_coords(
+    primitive: &gltf::Primitive<'_>,
+    buffers: &[Vec<u8>],
+    set: u32,
+    vertices: usize,
+) -> Option<Vec<[f64; 2]>> {
+    let mut wanted = vec![set];
+    if set != 0 {
+        wanted.push(0);
+    }
+    for set in wanted {
+        let Some(accessor) = primitive.get(&Semantic::TexCoords(set)) else {
+            continue;
+        };
+        if validate_readable_accessor(&accessor, buffers, "TEXCOORD").is_err()
+            || !tex_coords_are_interpretable(&accessor)
+        {
+            continue;
+        }
+        let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
+        let Some(stream) = reader.read_tex_coords(set) else {
+            continue;
+        };
+        let uvs = stream
+            .into_f32()
+            .map(|uv| uv.map(f64::from))
+            .collect::<Vec<_>>();
+        if uvs.len() == vertices {
+            return Some(uvs);
+        }
+    }
+    None
+}
+
+fn read_positions(
+    primitive: &gltf::Primitive<'_>,
+    buffers: &[Vec<u8>],
+) -> Result<Vec<[f64; 3]>, String> {
+    read_vec3_attribute(primitive, buffers, &Semantic::Positions, "POSITION")
+}
+
+/// Reads `NORMAL`, and only ever to settle a sign.
+///
+/// Vkit stores no normals: `Corner` carries a position and a UV, the OBJ bridge writes no `vn`,
+/// and every shading normal downstream is recomputed from winding. That is why the classic
+/// non-uniform-scale trap — transforming a normal by the matrix instead of its inverse transpose —
+/// cannot exist in this importer, and adding this read must not create it. So the stream is
+/// consumed in the node's own local space, compared against local positions, reduced to one
+/// boolean, and dropped. No normal is ever transformed, stored or handed downstream, which is what
+/// keeps the inverse-transpose question from arising at all.
+fn read_normals(
+    primitive: &gltf::Primitive<'_>,
+    buffers: &[Vec<u8>],
+    vertices: usize,
+) -> Option<Vec<[f64; 3]>> {
+    let normals = read_vec3_attribute(primitive, buffers, &Semantic::Normals, "NORMAL").ok()?;
+    (normals.len() == vertices).then_some(normals)
+}
+
+/// Reads a `VEC3` vertex stream itself instead of through `reader.read_positions()`, which
+/// reinterprets the bytes as `f32` whatever the accessor declares. Under `KHR_mesh_quantization`
+/// positions arrive as 8- or 16-bit integers, so that reinterpretation would yield silent garbage
+/// rather than an error. Un-normalized integers stay in their quantized range on purpose: the
+/// node's scale/translation, applied by the caller's world matrix, is what restores world units.
+fn read_vec3_attribute(
+    primitive: &gltf::Primitive<'_>,
+    buffers: &[Vec<u8>],
+    semantic: &Semantic,
+    label: &str,
+) -> Result<Vec<[f64; 3]>, String> {
+    let accessor = primitive
+        .get(semantic)
+        .ok_or_else(|| format!("no {label} stream"))?;
+    if accessor.dimensions() != Dimensions::Vec3 {
+        return Err(format!(
+            "{label} is {:?}; only VEC3 is supported",
+            accessor.dimensions()
+        ));
+    }
+    validate_readable_accessor(&accessor, buffers, label)?;
+    let component = position_component(accessor.data_type(), accessor.normalized())?;
+    let count = accessor.count();
+    if count > MAX_PRIMITIVE_VERTICES {
+        return Err(format!(
+            "{label} declares {count} vertices, past the {MAX_PRIMITIVE_VERTICES} this importer \
+             accepts in one primitive"
+        ));
+    }
+    let element = component.size * 3;
+    let mut values = vec![[0.0_f64; 3]; count];
+    if let Some(view) = accessor.view() {
+        let data = buffer_view_bytes(&view, buffers)?;
+        let stride = view.stride().unwrap_or(element);
+        for (index, value) in values.iter_mut().enumerate() {
+            let base = stride
+                .checked_mul(index)
+                .and_then(|span| span.checked_add(accessor.offset()))
+                .ok_or_else(|| format!("{label} range overflows"))?;
+            *value = read_vec3(data, base, &component)?;
+        }
+    }
+    if let Some(sparse) = accessor.sparse() {
+        apply_sparse_vec3(&sparse, buffers, &component, label, &mut values)?;
+    }
+    Ok(values)
+}
+
+/// The share of decisive triangles that must vote against the index order before it is flipped,
+/// and the fewest decisive triangles a vote is allowed to be decided on. A converter that reversed
+/// the index buffer without touching `NORMAL` reverses every triangle of the primitive, so a real
+/// inversion polls at or very near 100%; a mesh with a handful of badly authored normals polls a
+/// few per cent. Nothing lands between those on purpose — when the vote is anywhere near close,
+/// the file is left exactly as its author wrote it.
+const WINDING_VOTE_MAJORITY: usize = 4;
+const WINDING_VOTE_QUORUM: usize = 16;
+
+/// Whether a primitive's index order contradicts the normals shipped alongside it.
+///
+/// The determinant check catches inversion introduced by a mirrored *node transform*. It is blind
+/// to inversion baked into the index buffer itself, which is what `assimp`'s
+/// `aiProcess_FlipWindingOrder` and the FBX2glTF forks built on it produce: the index order is
+/// reversed and `NORMAL` is left alone. Such a file imports inside out and nothing downstream
+/// notices, because every shading normal is recomputed from winding. Both streams are in the same
+/// local space here, so no transform enters this comparison and no inverse transpose is needed.
+fn winding_disagrees_with_normals(
+    positions: &[[f64; 3]],
+    normals: &[[f64; 3]],
+    indices: &[u32],
+) -> bool {
+    let mut with = 0_usize;
+    let mut against = 0_usize;
+    for triangle in indices.chunks_exact(3) {
+        let corners = [triangle[0], triangle[1], triangle[2]]
+            .map(|index| positions.get(index as usize).copied());
+        let [Some(a), Some(b), Some(c)] = corners else {
+            continue;
+        };
+        let edge = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let other = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let face = [
+            edge[1] * other[2] - edge[2] * other[1],
+            edge[2] * other[0] - edge[0] * other[2],
+            edge[0] * other[1] - edge[1] * other[0],
+        ];
+        let mut shipped = [0.0_f64; 3];
+        for index in triangle {
+            let Some(normal) = normals.get(*index as usize) else {
+                continue;
+            };
+            for (axis, value) in shipped.iter_mut().enumerate() {
+                *value += normal[axis];
+            }
+        }
+        let vote = face[0] * shipped[0] + face[1] * shipped[1] + face[2] * shipped[2];
+        if !vote.is_finite() || vote == 0.0 {
+            continue;
+        }
+        if vote > 0.0 {
+            with += 1;
+        } else {
+            against += 1;
+        }
+    }
+    against >= WINDING_VOTE_QUORUM && against >= with.saturating_mul(WINDING_VOTE_MAJORITY)
+}
+
+/// Overlays a sparse accessor's deviations onto the base stream.
+///
+/// The base is all zeros when the accessor names no bufferView, which is the shape glTF uses for
+/// a stream that is mostly one value — Blender shape keys and `gltf-transform` both emit it. An
+/// override naming a vertex past the accessor's own count is dropped rather than being an error,
+/// because the rest of the stream is still exactly what the exporter meant.
+fn apply_sparse_vec3(
+    sparse: &gltf::accessor::sparse::Sparse<'_>,
+    buffers: &[Vec<u8>],
+    component: &PositionComponent,
+    label: &str,
+    positions: &mut [[f64; 3]],
+) -> Result<(), String> {
+    let indices = sparse.indices();
+    let index_view = indices.view();
+    let index_data = buffer_view_bytes(&index_view, buffers)?;
+    let index_size = indices.index_type().size();
+    let index_stride = index_view.stride().unwrap_or(index_size);
+
+    let values = sparse.values();
+    let value_view = values.view();
+    let value_data = buffer_view_bytes(&value_view, buffers)?;
+    let element = component.size * 3;
+    let value_stride = value_view.stride().unwrap_or(element);
+
+    for step in 0..sparse.count() {
+        let index_at = index_stride
+            .checked_mul(step)
+            .and_then(|span| span.checked_add(indices.offset()))
+            .and_then(|span| span.checked_add(index_size).map(|end| (span, end)))
+            .ok_or_else(|| format!("{label} sparse index range overflows"))?;
+        let raw = index_data
+            .get(index_at.0..index_at.1)
+            .ok_or_else(|| format!("{label} sparse indices read past their bufferView"))?;
+        let target = match index_size {
+            1 => u64::from(u8::from_le_bytes(le_bytes(raw))),
+            2 => u64::from(u16::from_le_bytes(le_bytes(raw))),
+            _ => u64::from(u32::from_le_bytes(le_bytes(raw))),
+        };
+        let value_at = value_stride
+            .checked_mul(step)
+            .and_then(|span| span.checked_add(values.offset()))
+            .ok_or_else(|| format!("{label} sparse value range overflows"))?;
+        let value = read_vec3(value_data, value_at, component)?;
+        if let Ok(target) = usize::try_from(target)
+            && let Some(slot) = positions.get_mut(target)
+        {
+            *slot = value;
+        }
+    }
+    Ok(())
+}
+
+fn read_vec3(data: &[u8], base: usize, component: &PositionComponent) -> Result<[f64; 3], String> {
+    let mut position = [0.0_f64; 3];
+    for (axis, value) in position.iter_mut().enumerate() {
+        let at = base
+            .checked_add(component.size * axis)
+            .ok_or_else(|| "POSITION range overflows".to_owned())?;
+        let end = at
+            .checked_add(component.size)
+            .ok_or_else(|| "POSITION range overflows".to_owned())?;
+        let bytes = data
+            .get(at..end)
+            .ok_or_else(|| "POSITION reads past its bufferView".to_owned())?;
+        *value = (component.read)(bytes);
+    }
+    Ok(position)
+}
+
+struct PositionComponent {
+    size: usize,
+    read: fn(&[u8]) -> f64,
+}
+
+fn position_component(data_type: DataType, normalized: bool) -> Result<PositionComponent, String> {
+    let component = match (data_type, normalized) {
+        (DataType::F32, _) => PositionComponent {
+            size: 4,
+            read: |bytes| f64::from(f32::from_le_bytes(le_bytes(bytes))),
+        },
+        (DataType::I8, false) => PositionComponent {
+            size: 1,
+            read: |bytes| f64::from(i8::from_le_bytes(le_bytes(bytes))),
+        },
+        (DataType::I8, true) => PositionComponent {
+            size: 1,
+            read: |bytes| (f64::from(i8::from_le_bytes(le_bytes(bytes))) / 127.0).max(-1.0),
+        },
+        (DataType::U8, false) => PositionComponent {
+            size: 1,
+            read: |bytes| f64::from(u8::from_le_bytes(le_bytes(bytes))),
+        },
+        (DataType::U8, true) => PositionComponent {
+            size: 1,
+            read: |bytes| f64::from(u8::from_le_bytes(le_bytes(bytes))) / 255.0,
+        },
+        (DataType::I16, false) => PositionComponent {
+            size: 2,
+            read: |bytes| f64::from(i16::from_le_bytes(le_bytes(bytes))),
+        },
+        (DataType::I16, true) => PositionComponent {
+            size: 2,
+            read: |bytes| (f64::from(i16::from_le_bytes(le_bytes(bytes))) / 32767.0).max(-1.0),
+        },
+        (DataType::U16, false) => PositionComponent {
+            size: 2,
+            read: |bytes| f64::from(u16::from_le_bytes(le_bytes(bytes))),
+        },
+        (DataType::U16, true) => PositionComponent {
+            size: 2,
+            read: |bytes| f64::from(u16::from_le_bytes(le_bytes(bytes))) / 65535.0,
+        },
+        (DataType::U32, _) => {
+            return Err(
+                "POSITION uses UNSIGNED_INT, which glTF does not permit for vertex positions"
+                    .to_owned(),
+            );
+        }
+    };
+    Ok(component)
+}
+
+/// Decides whether a texture-coordinate accessor can be read at all, and this is a crash gate
+/// before it is a quality one: `gltf`'s `read_tex_coords` matches only `U8`, `U16` and `F32` and
+/// ends its match in `unreachable!()`, so handing it a `BYTE`/`SHORT`/`UNSIGNED_INT` set — legal
+/// JSON that its own validator accepts — kills the process outright under `panic = "abort"`, with
+/// no dialog and no log line. Un-normalized `U8`/`U16` is excluded for a different reason: the
+/// crate divides integers by their type maximum regardless, so such a set decodes to a near-zero
+/// smear. In both cases the mesh imports without UVs rather than not at all.
+fn tex_coords_are_interpretable(accessor: &gltf::Accessor<'_>) -> bool {
+    match accessor.data_type() {
+        DataType::F32 => true,
+        DataType::U8 | DataType::U16 => accessor.normalized(),
+        DataType::I8 | DataType::I16 | DataType::U32 => false,
+    }
+}
+
+/// Proves an accessor's byte range lies inside its buffer view before `gltf`'s iterators touch
+/// it. Their range arithmetic is unchecked and assumes `count >= 1`, so a forged accessor is
+/// caught here rather than by an arithmetic abort.
+fn validate_readable_accessor(
+    accessor: &gltf::Accessor<'_>,
+    buffers: &[Vec<u8>],
+    label: &str,
+) -> Result<(), String> {
+    let count = accessor.count();
+    if count == 0 {
+        return Err(format!("{label} accessor is empty"));
+    }
+    let element = accessor.size();
+    if element == 0 {
+        return Err(format!("{label} accessor has a zero-sized element"));
+    }
+    match accessor.view() {
+        Some(view) => {
+            validate_strided_range(&view, buffers, accessor.offset(), element, count, label)?
+        }
+        None if accessor.sparse().is_none() => {
+            return Err(format!("{label} accessor has no bufferView"));
+        }
+        None => {}
+    }
+    if let Some(sparse) = accessor.sparse() {
+        let overrides = sparse.count();
+        if overrides == 0 {
+            return Err(format!("{label} accessor declares no sparse overrides"));
+        }
+        let indices = sparse.indices();
+        validate_strided_range(
+            &indices.view(),
+            buffers,
+            indices.offset(),
+            indices.index_type().size(),
+            overrides,
+            &format!("{label} sparse indices"),
+        )?;
+        let values = sparse.values();
+        validate_strided_range(
+            &values.view(),
+            buffers,
+            values.offset(),
+            element,
+            overrides,
+            &format!("{label} sparse values"),
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_strided_range(
+    view: &buffer::View<'_>,
+    buffers: &[Vec<u8>],
+    offset: usize,
+    element: usize,
+    count: usize,
+    label: &str,
+) -> Result<(), String> {
+    let data = buffer_view_bytes(view, buffers)?;
+    let stride = view.stride().unwrap_or(element);
+    if stride < element {
+        return Err(format!(
+            "{label} accessor has a {stride} byte stride for {element} byte elements"
+        ));
+    }
+    let end = stride
+        .checked_mul(count - 1)
+        .and_then(|span| span.checked_add(element))
+        .and_then(|span| span.checked_add(offset))
+        .ok_or_else(|| format!("{label} accessor range overflows"))?;
+    if end > data.len() {
+        return Err(format!(
+            "{label} accessor reads {end} bytes from a {} byte bufferView",
+            data.len()
+        ));
+    }
+    Ok(())
+}
+
+fn buffer_view_bytes<'a>(
+    view: &buffer::View<'_>,
+    buffers: &'a [Vec<u8>],
+) -> Result<&'a [u8], String> {
+    let buffer = buffers
+        .get(view.buffer().index())
+        .ok_or_else(|| format!("glTF bufferView {} names a missing buffer", view.index()))?;
+    let end = view
+        .offset()
+        .checked_add(view.length())
+        .ok_or_else(|| format!("glTF bufferView {} range overflows", view.index()))?;
+    buffer
+        .get(view.offset()..end)
+        .ok_or_else(|| format!("glTF bufferView {} lies outside its buffer", view.index()))
+}
+
+fn le_bytes<const N: usize>(bytes: &[u8]) -> [u8; N] {
+    let mut value = [0_u8; N];
+    let length = bytes.len().min(N);
+    value[..length].copy_from_slice(&bytes[..length]);
+    value
+}
+
+/// Writes the `.mtl` that carries the imported colours and, where one can be extracted, the
+/// diffuse map.
+///
+/// Nothing in here returns an error, and that is deliberate rather than lazy. Everything this
+/// function produces is optional downstream — the scene loader reads the `.mtl` with `.ok()` and
+/// no scan texture layer is created when no material carries a diffuse map — so there is no
+/// appearance failure whose right answer is "the user gets no scan". Each one is recorded instead,
+/// naming the image and the reason, so "where did my texture go" is answerable from the log.
 fn write_material_library(
     gltf: &gltf::Gltf,
     buffers: &[Vec<u8>],
     source_root: &Path,
     destination_root: &Path,
-) -> Result<(), String> {
-    fs::create_dir_all(destination_root.join("textures"))
-        .map_err(|error| format!("failed to create GLB appearance workspace: {error}"))?;
-    let mut mtl = String::from("# Vkit native GLB material bridge\n");
+    budget: &mut PayloadBudget,
+) {
+    let mut dropped = Vec::new();
+    if let Err(error) = fs::create_dir_all(destination_root.join("textures")) {
+        dropped.push(format!("no textures folder could be created: {error}"));
+    }
+    let mut mtl = String::from("# Vkit native glTF material bridge\n");
     let mut extracted_images = HashMap::<usize, PathBuf>::new();
     for material in gltf.materials() {
         write_material(
             &mut mtl,
             &material,
-            buffers,
-            source_root,
-            destination_root,
-            &mut extracted_images,
-        )?;
+            &mut MaterialSink {
+                gltf,
+                buffers,
+                source_root,
+                destination_root,
+                extracted_images: &mut extracted_images,
+                budget,
+                dropped: &mut dropped,
+            },
+        );
     }
     writeln!(mtl, "newmtl {}", material_name(None, None)).unwrap();
     writeln!(mtl, "Kd 1 1 1\nd 1").unwrap();
-    fs::write(destination_root.join("vkit-import.mtl"), mtl)
-        .map_err(|error| format!("failed to write native GLB material library: {error}"))
+    if let Err(error) = fs::write(destination_root.join("vkit-import.mtl"), mtl) {
+        dropped.push(format!(
+            "the material library could not be written: {error}"
+        ));
+    }
+    if dropped.is_empty() {
+        return;
+    }
+    let _ = crate::diagnostics::record(
+        crate::diagnostics::Severity::Warning,
+        "importers",
+        "gltf_appearance_dropped",
+        &format!("dropped={}; {}", dropped.len(), dropped.join("; ")),
+    );
 }
 
-fn write_material(
-    mtl: &mut String,
-    material: &gltf::Material<'_>,
-    buffers: &[Vec<u8>],
-    source_root: &Path,
-    destination_root: &Path,
-    extracted_images: &mut HashMap<usize, PathBuf>,
-) -> Result<(), String> {
+/// Everything the material writer needs, and the list of what it had to give up.
+struct MaterialSink<'a> {
+    gltf: &'a gltf::Gltf,
+    buffers: &'a [Vec<u8>],
+    source_root: &'a Path,
+    destination_root: &'a Path,
+    extracted_images: &'a mut HashMap<usize, PathBuf>,
+    budget: &'a mut PayloadBudget,
+    dropped: &'a mut Vec<String>,
+}
+
+/// Writes one material. The `newmtl`, `Kd` and `d` lines are always written; only `map_Kd` is
+/// conditional, because a texture that cannot be extracted costs the material its map and nothing
+/// else. This is the shape the FBX importer has always had.
+fn write_material(mtl: &mut String, material: &gltf::Material<'_>, sink: &mut MaterialSink<'_>) {
     let pbr = material.pbr_metallic_roughness();
     let [red, green, blue, alpha] = pbr.base_color_factor();
     writeln!(
@@ -369,127 +1025,122 @@ fn write_material(
     )
     .unwrap();
     writeln!(mtl, "Kd {red} {green} {blue}\nd {alpha}").unwrap();
-    if let Some(texture) = pbr.base_color_texture() {
-        if texture.tex_coord() != 0 {
-            return Err("GLB base-color textures must use TEXCOORD_0".to_owned());
-        }
-        let image = texture.texture().source();
-        let path = if let Some(path) = extracted_images.get(&image.index()) {
-            path.clone()
-        } else {
-            let (bytes, extension) = image_bytes(&image, buffers, source_root)?;
-            let relative = PathBuf::from(format!("textures/image_{}.{}", image.index(), extension));
-            fs::write(destination_root.join(&relative), bytes).map_err(|error| {
-                format!("failed to extract GLB image {}: {error}", image.index())
-            })?;
-            extracted_images.insert(image.index(), relative.clone());
-            relative
-        };
-        writeln!(mtl, "map_Kd {}", path.to_string_lossy().replace('\\', "/")).unwrap();
+    let Some(info) = pbr.base_color_texture() else {
+        return;
+    };
+    let texture = info.texture();
+    let Some(image) = texture.source() else {
+        sink.dropped.push(format!(
+            "texture {} names no image this build can reach; its only source is a compressed \
+             texture extension with no PNG or JPEG fallback",
+            texture.index()
+        ));
+        return;
+    };
+    let index = image.index();
+    let path = match sink.extracted_images.get(&index) {
+        Some(path) => path.clone(),
+        None => match extract_image(&image, sink) {
+            Ok(relative) => {
+                sink.extracted_images.insert(index, relative.clone());
+                relative
+            }
+            Err(reason) => {
+                sink.dropped.push(format!("image {index}: {reason}"));
+                return;
+            }
+        },
+    };
+    writeln!(mtl, "map_Kd {}", path.to_string_lossy().replace('\\', "/")).unwrap();
+}
+
+fn extract_image(image: &gltf::Image<'_>, sink: &mut MaterialSink<'_>) -> Result<PathBuf, String> {
+    if !image_source_is_readable(sink.gltf, image.index()) {
+        return Err(
+            "the image declares neither a bufferView with a MIME type nor a URI, so the crate \
+             would abort the process reading it"
+                .to_owned(),
+        );
     }
-    Ok(())
+    let (bytes, extension) = image_bytes(image, sink.buffers, sink.source_root, sink.budget)?;
+    let relative = PathBuf::from(format!("textures/image_{}.{}", image.index(), extension));
+    fs::write(sink.destination_root.join(&relative), bytes)
+        .map_err(|error| format!("could not be extracted: {error}"))?;
+    Ok(relative)
+}
+
+/// Proves an image entry has the shape `gltf::Image::source` assumes before that method is called.
+///
+/// It reads `mime_type.unwrap()` for an image with a `bufferView`, and `uri.unwrap()` for one
+/// without — and `gltf-json` has no cross-field rule that would have caught either, so both shapes
+/// are legal JSON that its own validator accepts. Under `panic = "abort"` reaching one kills the
+/// process with no dialog and no log line, which surfaces to the user as the import worker simply
+/// vanishing. The JSON is public, so the shape is checked here instead.
+fn image_source_is_readable(gltf: &gltf::Gltf, index: usize) -> bool {
+    let Some(image) = gltf.as_json().images.get(index) else {
+        return false;
+    };
+    if image.buffer_view.is_some() {
+        return image.mime_type.is_some();
+    }
+    image.uri.is_some()
 }
 
 fn image_bytes(
     image: &gltf::Image<'_>,
     buffers: &[Vec<u8>],
     source_root: &Path,
+    budget: &mut PayloadBudget,
 ) -> Result<(Vec<u8>, &'static str), String> {
     match image.source() {
         image::Source::View { view, mime_type } => {
-            let extension = image_extension(mime_type)?;
-            let buffer = buffers.get(view.buffer().index()).ok_or_else(|| {
-                format!("GLB image {} references a missing buffer", image.index())
-            })?;
-            let end = view
-                .offset()
-                .checked_add(view.length())
-                .ok_or_else(|| "GLB image buffer range overflow".to_owned())?;
-            let bytes = buffer.get(view.offset()..end).ok_or_else(|| {
-                format!("GLB image {} has an invalid buffer range", image.index())
-            })?;
+            let extension = image_extension(mime_type, "")?;
+            let bytes = buffer_view_bytes(&view, buffers)?;
+            budget.charge(bytes.len() as u64, "image")?;
             Ok((bytes.to_vec(), extension))
         }
         image::Source::Uri { uri, mime_type } => {
-            let (bytes, uri_mime) = read_uri(source_root, uri, "image")?;
-            let inferred_mime = if uri.to_ascii_lowercase().ends_with(".png") {
-                Some("image/png")
-            } else if uri.to_ascii_lowercase().ends_with(".jpg")
-                || uri.to_ascii_lowercase().ends_with(".jpeg")
-            {
-                Some("image/jpeg")
-            } else {
-                None
-            };
-            let mime = mime_type
-                .or(uri_mime.as_deref())
-                .or(inferred_mime)
-                .ok_or_else(|| {
-                    format!(
-                        "GLB image {} has no supported MIME type or PNG/JPEG extension",
-                        image.index()
-                    )
-                })?;
-            let extension = image_extension(mime)?;
+            let (bytes, uri_mime) = gltf_container::read_uri(source_root, uri, "image", budget)?;
+            let mime = mime_type.or(uri_mime.as_deref()).unwrap_or_default();
+            let extension = image_extension(mime, uri)?;
             Ok((bytes, extension))
         }
     }
 }
 
-fn image_extension(mime: &str) -> Result<&'static str, String> {
-    match mime.to_ascii_lowercase().as_str() {
-        "image/png" => Ok("png"),
-        "image/jpeg" | "image/jpg" => Ok("jpg"),
-        _ => Err(format!(
-            "GLB image MIME type {mime:?} is unsupported; use PNG or JPEG"
-        )),
+/// Names the file extension to write a texture under: from the declared MIME type when there is
+/// one, and from the URI's own suffix when there is not.
+///
+/// The set is the formats this build can decode later, not a judgement about the file. KTX2, DDS
+/// and AVIF are absent because Vkit has no decoder for them, and the honest outcome for one of
+/// those is a material without a map — never a refused document, which is what this used to
+/// produce. WebP is present because the `image` crate decodes it in pure Rust for free. A declared
+/// MIME is believed over the file name, because a producer that names a format and then contradicts
+/// it in the suffix has told us the bytes are not what the suffix claims.
+fn image_extension(mime: &str, uri: &str) -> Result<&'static str, String> {
+    if !mime.is_empty() {
+        return match mime.to_ascii_lowercase().as_str() {
+            "image/png" => Ok("png"),
+            "image/jpeg" | "image/jpg" => Ok("jpg"),
+            "image/webp" => Ok("webp"),
+            _ => Err(format!(
+                "is a {mime:?} image, which this build has no decoder for; PNG, JPEG and WebP read"
+            )),
+        };
     }
-}
-
-fn read_uri(root: &Path, uri: &str, label: &str) -> Result<(Vec<u8>, Option<String>), String> {
-    if let Some(data) = uri.strip_prefix("data:") {
-        let (metadata, encoded) = data
-            .split_once(',')
-            .ok_or_else(|| format!("GLB {label} data URI is malformed"))?;
-        let mime = metadata
-            .split(';')
-            .next()
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned);
-        if !metadata.split(';').any(|value| value == "base64") {
-            return Err(format!("GLB {label} data URI must use base64 encoding"));
-        }
-        return BASE64
-            .decode(encoded)
-            .map(|bytes| (bytes, mime))
-            .map_err(|error| format!("GLB {label} data URI is invalid: {error}"));
-    }
-    if uri.contains('%') || uri.contains(':') || uri.contains('\\') {
-        return Err(format!("GLB {label} URI {uri:?} is not a safe local path"));
-    }
-    let relative = Path::new(uri);
-    if relative.is_absolute()
-        || relative
-            .components()
-            .any(|component| !matches!(component, Component::Normal(_)))
-    {
-        return Err(format!(
-            "GLB {label} URI {uri:?} is not a safe relative path"
-        ));
-    }
-    let source = root.join(relative);
-    let bytes = source
-        .metadata()
-        .map_err(|error| format!("failed to inspect GLB {label} URI {uri:?}: {error}"))?
-        .len();
-    if bytes > MAX_EXTERNAL_PAYLOAD_BYTES {
-        return Err(format!(
-            "GLB {label} URI {uri:?} is {bytes} bytes; the bounded importer limit is {MAX_EXTERNAL_PAYLOAD_BYTES} bytes"
-        ));
-    }
-    fs::read(source)
-        .map(|bytes| (bytes, None))
-        .map_err(|error| format!("failed to read GLB {label} URI {uri:?}: {error}"))
+    let lower = uri.to_ascii_lowercase();
+    [
+        (".png", "png"),
+        (".jpeg", "jpg"),
+        (".jpg", "jpg"),
+        (".webp", "webp"),
+    ]
+    .into_iter()
+    .find(|(suffix, _)| lower.ends_with(suffix))
+    .map(|(_, extension)| extension)
+    .ok_or_else(|| {
+        "declares no MIME type and its URI ends in no extension this build decodes".to_owned()
+    })
 }
 
 fn material_name(index: Option<usize>, name: Option<&str>) -> String {
@@ -596,12 +1247,6 @@ mod tests {
     }
 
     #[test]
-    fn unsafe_external_uri_is_rejected() {
-        let error = read_uri(Path::new("."), "../outside.bin", "buffer").unwrap_err();
-        assert!(error.contains("safe relative path"));
-    }
-
-    #[test]
     fn position_welder_is_exact_and_counts_duplicates() {
         let mut welder = PositionWelder::default();
         let first = welder.canonical_id([1.0, 2.0, 3.0]);
@@ -616,5 +1261,80 @@ mod tests {
             "the weld is exact by design; only bit-identical positions merge"
         );
         assert_eq!(welder.welded_duplicates, 1);
+    }
+
+    #[test]
+    fn quantized_position_components_map_to_their_declared_range() {
+        let normalized_short =
+            position_component(DataType::I16, true).expect("normalized short positions");
+        assert_eq!(normalized_short.size, 2);
+        assert_eq!((normalized_short.read)(&32767_i16.to_le_bytes()), 1.0);
+        assert_eq!((normalized_short.read)(&(-32768_i16).to_le_bytes()), -1.0);
+
+        let raw_short = position_component(DataType::I16, false).expect("raw short positions");
+        assert_eq!((raw_short.read)(&(-4096_i16).to_le_bytes()), -4096.0);
+
+        let normalized_byte =
+            position_component(DataType::U8, true).expect("normalized byte positions");
+        assert_eq!((normalized_byte.read)(&[255]), 1.0);
+
+        assert!(position_component(DataType::U32, false).is_err());
+    }
+
+    fn upward_normal(corners: [[f64; 3]; 4], triangle: &[u32]) -> f64 {
+        let pick = |at: usize| corners[triangle[at] as usize];
+        let (a, b, c) = (pick(0), pick(1), pick(2));
+        let u = [b[0] - a[0], b[1] - a[1]];
+        let v = [c[0] - a[0], c[1] - a[1]];
+        u[0] * v[1] - u[1] * v[0]
+    }
+
+    #[test]
+    fn strip_and_fan_expansion_wind_every_triangle_the_same_way() {
+        let quad = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ];
+        let strip = Topology::Strip.expand(vec![0, 1, 2, 3]).expect("strip");
+        assert_eq!(strip.len(), 6, "four strip vertices are two triangles");
+        for triangle in strip.chunks_exact(3) {
+            assert!(
+                upward_normal(quad, triangle) > 0.0,
+                "the odd step of a strip swaps its first two corners; without that every other \
+                 face imports inside out: {triangle:?}"
+            );
+        }
+        let fan = Topology::Fan.expand(vec![0, 1, 3, 2]).expect("fan");
+        assert_eq!(fan.len(), 6);
+        for triangle in fan.chunks_exact(3) {
+            assert!(upward_normal(quad, triangle) > 0.0, "{triangle:?}");
+        }
+    }
+
+    #[test]
+    fn a_surfaceless_primitive_mode_is_skipped_rather_than_refused() {
+        assert!(Topology::of(Mode::Points).is_none());
+        assert!(Topology::of(Mode::Lines).is_none());
+        assert!(Topology::of(Mode::LineLoop).is_none());
+        assert!(Topology::of(Mode::LineStrip).is_none());
+        assert!(Topology::of(Mode::TriangleStrip).is_some());
+        assert!(Topology::of(Mode::TriangleFan).is_some());
+    }
+
+    #[test]
+    fn an_index_tail_is_dropped_rather_than_refusing_the_primitive() {
+        let ragged = Topology::Triangles
+            .expand(vec![0, 1, 2, 3, 4])
+            .expect("a ragged index list still carries its whole triangles");
+        assert_eq!(ragged.chunks_exact(3).count(), 1);
+    }
+
+    #[test]
+    fn a_short_component_slice_reads_as_zero_rather_than_aborting() {
+        let float = position_component(DataType::F32, false).expect("float positions");
+        assert_eq!((float.read)(&[]), 0.0);
+        assert_eq!((float.read)(&[0, 0]), 0.0);
     }
 }

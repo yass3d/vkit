@@ -4,13 +4,24 @@ use super::*;
 pub(super) struct ProviderDiscoveryContext {
     pub(super) vam_root: Option<PathBuf>,
     pub(super) explicit_base: Option<PathBuf>,
+    /// Which figure the explicit base is already known to be, when it is the base a provider is
+    /// currently built from. Nothing else may fill this in: it is a fact read off a parse that
+    /// already happened, not a guess from the file name.
+    pub(super) explicit_base_sex: Option<GeometrySex>,
     pub(super) locale: Locale,
 }
 
 impl ProviderDiscoveryContext {
     pub(super) fn explicit_candidates(&self, sex: GeometrySex) -> Vec<PathBuf> {
         let mut candidates = Vec::with_capacity(2);
-        if let Some(path) = self.explicit_base.as_deref() {
+        // A base that is known to be the other figure costs a multi-megabyte OBJ parse to reach a
+        // rejection we can already state. Only skip it when the sex is known; an unknown base is
+        // still tried first, because it is the user's own choice.
+        if let Some(path) = self
+            .explicit_base
+            .as_deref()
+            .filter(|_| self.explicit_base_sex.is_none_or(|known| known == sex))
+        {
             candidates.push(path.to_path_buf());
         }
         if let Some(path) = AppState::provider_environment_path(sex)
@@ -187,6 +198,7 @@ pub struct PreparedDirectEdit {
     pub(super) output: OrderedObjMesh,
     pub(super) overwrite_source: Option<PathBuf>,
     pub(super) missing_morphs: Vec<String>,
+    pub(super) resolved_morphs: usize,
 }
 
 #[derive(Debug)]

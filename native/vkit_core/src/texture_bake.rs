@@ -269,7 +269,12 @@ pub fn place_image_on_g2_uv_in_region(
         let top_origin = triangle.map(|point| [point[0], 1.0 - point[1]]);
         raster_triangle(&mut output, top_origin, source, top_origin);
     }
-
+    feather_coverage_alpha(
+        &mut output.rgba8,
+        output.width,
+        output.height,
+        options.boundary_feather_pixels,
+    );
     Ok(output)
 }
 
@@ -286,6 +291,9 @@ pub struct ProjectionBrush {
 
     pub falloff: crate::sculpt::SculptFalloff,
     pub opacity: f32,
+
+    /// Take the stamped contribution back instead of laying more of it down.
+    pub erase: bool,
 }
 
 pub fn stamp_projection_onto_g2(
@@ -376,6 +384,12 @@ pub fn stamp_projection_onto_g2(
                 if weight <= 0.0 {
                     continue;
                 }
+                if brush.erase {
+                    if erase_alpha(target_rgba8, target_width, x, y, weight * brush.opacity) {
+                        painted += 1;
+                    }
+                    continue;
+                }
                 let Some(uv) = to_source(screen) else {
                     continue;
                 };
@@ -432,6 +446,32 @@ fn blend_over(target: &mut [u8], width: u32, x: u32, y: u32, source: [u8; 4], co
         slot[channel] = blended.round().clamp(0.0, 255.0) as u8;
     }
     slot[3] = (out_alpha * 255.0).round() as u8;
+}
+
+/// The inverse of [`blend_over`]: hold the colour and take the alpha back, so a
+/// soft brush lifts paint with the same profile it laid it down with. Reports
+/// whether anything actually moved, which lets a stroke over already-clear
+/// texels report no work and skip the re-bake.
+fn erase_alpha(target: &mut [u8], width: u32, x: u32, y: u32, coverage: f32) -> bool {
+    let index = (y as usize * width as usize + x as usize) * 4;
+    let Some(slot) = target.get_mut(index..index + 4) else {
+        return false;
+    };
+    if slot[3] == 0 {
+        return false;
+    }
+    let coverage = coverage.clamp(0.0, 1.0);
+    if coverage <= 0.0 {
+        return false;
+    }
+    let remaining = (f32::from(slot[3]) * (1.0 - coverage))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    if remaining == slot[3] {
+        return false;
+    }
+    slot[3] = remaining;
+    true
 }
 
 pub fn warp_image_to_g2_by_pins_in_region(
@@ -1203,16 +1243,69 @@ fn bilinear_sample(source: RgbaView<'_>, uv: [f32; 2]) -> [u8; 4] {
     })
 }
 
-fn feather_coverage_alpha(rgba8: &mut [u8], width: u32, height: u32, radius: u16) {
+/// Marks the transparent pixels that can be reached from the edge of the image.
+///
+/// A hole punched through the middle of the coverage -- an eye socket, a
+/// nostril, the mouth -- is transparent in exactly the same way as the space
+/// around the face. What separates them is reachability: the outside touches
+/// the border and a hole does not.
+fn transparent_region_touching_the_border(rgba8: &[u8], width: usize, height: usize) -> Vec<bool> {
+    let transparent = |index: usize| rgba8[index * 4 + 3] == 0;
+    let mut outside = vec![false; width * height];
+    // An explicit stack rather than recursion: an atlas is millions of pixels
+    // and a transparent border would otherwise be millions of frames deep.
+    let mut pending = Vec::new();
+    let push = |index: usize, outside: &mut Vec<bool>, pending: &mut Vec<usize>| {
+        if !outside[index] && transparent(index) {
+            outside[index] = true;
+            pending.push(index);
+        }
+    };
+    for x in 0..width {
+        push(x, &mut outside, &mut pending);
+        push((height - 1) * width + x, &mut outside, &mut pending);
+    }
+    for y in 0..height {
+        push(y * width, &mut outside, &mut pending);
+        push(y * width + width - 1, &mut outside, &mut pending);
+    }
+    while let Some(index) = pending.pop() {
+        let (x, y) = (index % width, index / width);
+        if x > 0 {
+            push(index - 1, &mut outside, &mut pending);
+        }
+        if x + 1 < width {
+            push(index + 1, &mut outside, &mut pending);
+        }
+        if y > 0 {
+            push(index - width, &mut outside, &mut pending);
+        }
+        if y + 1 < height {
+            push(index + width, &mut outside, &mut pending);
+        }
+    }
+    outside
+}
+
+pub fn feather_coverage_alpha(rgba8: &mut [u8], width: u32, height: u32, radius: u16) {
     if radius == 0 || rgba8.len() != width as usize * height as usize * 4 {
         return;
     }
     let width = width as usize;
     let height = height as usize;
     let maximum = u16::MAX / 2;
-    let mut distance = rgba8
-        .chunks_exact(4)
-        .map(|pixel| if pixel[3] == 0 { 0 } else { maximum })
+    // Seed only from the transparent region that reaches the edge of the atlas.
+    //
+    // Seeding from every transparent pixel is what made the eye sockets, the
+    // nostrils and the mouth bleed: those are holes *inside* the face, and a
+    // distance transform cannot tell them from the space outside it. Both are
+    // alpha zero. The difference is that only the outside touches the border,
+    // so a flood fill from the border says which is which -- and the softness
+    // then does what its name promises, which is soften the face boundary.
+    let outside = transparent_region_touching_the_border(rgba8, width, height);
+    let mut distance = outside
+        .iter()
+        .map(|&outside| if outside { 0 } else { maximum })
         .collect::<Vec<_>>();
     for y in 0..height {
         for x in 0..width {
@@ -1382,6 +1475,55 @@ mod tests {
         );
         assert_eq!(alpha(7, 7), 255, "past the feather depth it is untouched");
         assert_eq!(alpha(0, 0), 0, "uncovered pixels stay uncovered");
+    }
+
+    #[test]
+    fn a_hole_in_the_face_is_not_an_edge_of_it() {
+        // A face in UV space is a covered region with holes punched through it
+        // for the eyes, the nostrils and the mouth. Every one of those holes is
+        // transparent in exactly the same way as the space around the face, so
+        // a feather that seeds from "anything transparent" eats outward from
+        // each of them -- which is what made softening look wrong around the
+        // eyes while looking right along the jaw.
+        let (width, height) = (24_u32, 24_u32);
+        let mut rgba = solid(width, height, [255, 255, 255, 0]);
+        let at = |x: usize, y: usize| (y * width as usize + x) * 4 + 3;
+        for y in 4..20 {
+            for x in 4..20 {
+                rgba[at(x, y)] = 255;
+            }
+        }
+        // The socket: a hole with no path to the border.
+        for y in 10..14 {
+            for x in 10..14 {
+                rgba[at(x, y)] = 0;
+            }
+        }
+
+        feather_coverage_alpha(&mut rgba, width, height, 4);
+
+        let alpha = |x: usize, y: usize| rgba[at(x, y)];
+        assert_eq!(alpha(4, 12), 0, "the outer edge still softens");
+        assert!(
+            alpha(5, 12) > 0 && alpha(5, 12) < 255,
+            "the ramp still climbs inward from the outer edge"
+        );
+
+        // x 8 and 9 are the discriminating pair: five and six pixels inside the
+        // outer edge, so beyond its radius-4 reach, and one and two pixels from
+        // the socket, so squarely inside a feather the socket would cast. They
+        // read 255 only if the socket is not treated as an edge.
+        for x in 8..10 {
+            assert_eq!(
+                alpha(x, 12),
+                255,
+                "the socket bled outward and washed out ({x}, 12)"
+            );
+        }
+        for y in 8..10 {
+            assert_eq!(alpha(12, y), 255, "the socket bled upward at (12, {y})");
+        }
+        assert_eq!(alpha(10, 12), 0, "the hole itself stays a hole");
     }
 
     #[test]
@@ -1609,6 +1751,7 @@ mod projection_painting {
             radius: 20.0,
             falloff: crate::sculpt::SculptFalloff::Smooth,
             opacity: 1.0,
+            erase: false,
         };
 
         let to_source = |screen: [f32; 2]| Some([screen[0] / 100.0, screen[1] / 100.0]);
@@ -1675,6 +1818,7 @@ mod projection_painting {
                 radius: 20.0,
                 falloff: crate::sculpt::SculptFalloff::Smooth,
                 opacity: 1.0,
+                erase: false,
             },
             |screen| Some([screen[0] / 100.0, screen[1] / 100.0]),
         );
@@ -1710,11 +1854,126 @@ mod projection_painting {
                 radius: 30.0,
                 falloff: crate::sculpt::SculptFalloff::Smooth,
                 opacity: 1.0,
+                erase: false,
             },
             |_| None,
         );
         assert_eq!(painted, 0);
         assert!(target.rgba8.iter().all(|value| *value == 0));
+    }
+
+    fn red_stamp_brush() -> ProjectionBrush {
+        ProjectionBrush {
+            centre: [50.0, 50.0],
+            radius: 20.0,
+            falloff: crate::sculpt::SculptFalloff::Smooth,
+            opacity: 1.0,
+            erase: false,
+        }
+    }
+
+    #[test]
+    fn holding_the_eraser_takes_back_what_the_stamp_laid_down() {
+        let pixels = [255_u8, 0, 0, 255].repeat(16);
+        let source = RgbaView::new(&pixels, 4, 4).expect("a red square");
+        let mut target = TextureBakeImage::transparent(64, 64).expect("an atlas");
+        let brush = red_stamp_brush();
+        let to_source = |screen: [f32; 2]| Some([screen[0] / 100.0, screen[1] / 100.0]);
+        stamp_projection_onto_g2(
+            &mut target.rgba8,
+            64,
+            64,
+            source,
+            &full_quad(),
+            brush,
+            to_source,
+        );
+        let alpha_at = |image: &[u8], x: usize, y: usize| image[(y * 64 + x) * 4 + 3];
+        let stamped = target.rgba8.clone();
+        assert!(alpha_at(&stamped, 32, 32) >= 240, "the stamp did not land");
+
+        let erased = stamp_projection_onto_g2(
+            &mut target.rgba8,
+            64,
+            64,
+            source,
+            &full_quad(),
+            ProjectionBrush {
+                erase: true,
+                ..brush
+            },
+            to_source,
+        );
+        assert!(erased > 0, "the eraser touched nothing");
+        assert!(
+            alpha_at(&target.rgba8, 32, 32) < alpha_at(&stamped, 32, 32) / 8,
+            "the brush centre survived: {} of {}",
+            alpha_at(&target.rgba8, 32, 32),
+            alpha_at(&stamped, 32, 32)
+        );
+        assert!(
+            target
+                .rgba8
+                .chunks_exact(4)
+                .zip(stamped.chunks_exact(4))
+                .all(|(now, before)| now[3] <= before[3]),
+            "the eraser added paint somewhere"
+        );
+    }
+
+    #[test]
+    fn erasing_clear_texels_reports_no_work() {
+        let pixels = [255_u8, 0, 0, 255].repeat(16);
+        let source = RgbaView::new(&pixels, 4, 4).expect("a red square");
+        let mut target = TextureBakeImage::transparent(64, 64).expect("an atlas");
+        let erased = stamp_projection_onto_g2(
+            &mut target.rgba8,
+            64,
+            64,
+            source,
+            &full_quad(),
+            ProjectionBrush {
+                erase: true,
+                ..red_stamp_brush()
+            },
+            |screen: [f32; 2]| Some([screen[0] / 100.0, screen[1] / 100.0]),
+        );
+        assert_eq!(erased, 0, "erasing nothing must not mark the project dirty");
+        assert!(target.rgba8.iter().all(|value| *value == 0));
+    }
+
+    #[test]
+    fn the_eraser_reaches_paint_the_stencil_no_longer_covers() {
+        let pixels = [255_u8, 0, 0, 255].repeat(16);
+        let source = RgbaView::new(&pixels, 4, 4).expect("a red square");
+        let mut target = TextureBakeImage::transparent(64, 64).expect("an atlas");
+        let brush = red_stamp_brush();
+        stamp_projection_onto_g2(
+            &mut target.rgba8,
+            64,
+            64,
+            source,
+            &full_quad(),
+            brush,
+            |screen: [f32; 2]| Some([screen[0] / 100.0, screen[1] / 100.0]),
+        );
+
+        let erased = stamp_projection_onto_g2(
+            &mut target.rgba8,
+            64,
+            64,
+            source,
+            &full_quad(),
+            ProjectionBrush {
+                erase: true,
+                ..brush
+            },
+            |_| None,
+        );
+        assert!(
+            erased > 0,
+            "the eraser must not need the stencil to still be over the paint"
+        );
     }
 }
 

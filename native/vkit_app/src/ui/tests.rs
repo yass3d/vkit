@@ -264,7 +264,7 @@ fn the_title_language_capsule_fits_every_language_name() {
                 .x;
             assert!(
                 label + crate::ui::TITLE_LOCALE_CHROME <= width + 0.5,
-                "{:?} names itself {:?}, which needs {:.1}pt of capsule and has {width:.1}pt --                  the combo would grow into the settings button",
+                "{:?} names itself {:?}, which needs {:.1}pt of capsule and has {width:.1}pt -- the combo would grow into the settings button",
                 locale,
                 locale.selector_label(),
                 label + crate::ui::TITLE_LOCALE_CHROME
@@ -590,6 +590,157 @@ fn workflow_tabs_expose_four_visible_stages() {
         for (_, key) in TOP_TABS {
             assert!(!text(locale, key).trim().is_empty());
         }
+    }
+
+    // The number keys run 1..=TOP_TABS.len(). A fifth tab would be drawn with a
+    // "5" it has no binding for, so it has to be given one deliberately.
+    assert_eq!(
+        TOP_TABS.len(),
+        4,
+        "the number keys cover 1 to 4; a new tab needs a key of its own"
+    );
+}
+
+#[test]
+fn the_update_capsule_yields_before_it_squeezes_the_tabs() {
+    use super::window_chrome::caption_layout;
+
+    // The smallest window the app allows, with the widest language name the
+    // picker can show. This is the worst case a real user can put the title bar
+    // in, and it is where an optional badge would do its damage.
+    let bar = Rect::from_min_size(
+        egui::pos2(0.0, 0.0),
+        egui::vec2(
+            crate::boot_window::MIN_WIDTH as f32,
+            crate::theme::TOP_BAR_HEIGHT,
+        ),
+    );
+    let widest_locale = crate::ui::TITLE_LOCALE_MAX_WIDTH;
+    // What the collapsed circle asks for. It expands on hover by painting over
+    // its neighbours, so the layout never sees the wider shape -- which is why
+    // a badge can afford to exist here at all.
+    let capsule = 32.0;
+
+    let without = caption_layout(bar, widest_locale, 0.0);
+    let with = caption_layout(bar, widest_locale, capsule);
+    assert!(
+        with.tab_width >= super::window_chrome::TOP_TAB_FLOOR,
+        "a tab fell to {}pt, under the floor that keeps the strip usable",
+        with.tab_width
+    );
+
+    // A badge wide enough to matter still has to stand down here.
+    let greedy = caption_layout(bar, widest_locale, 120.0);
+    assert!(
+        greedy.update_rect.is_none(),
+        "at the minimum width a wide badge has to stand down"
+    );
+    assert_eq!(
+        greedy.tab_width, without.tab_width,
+        "standing down means the tabs keep every point they had"
+    );
+
+    // On a window with room to spare it takes its place and the tabs are still
+    // whole, which is the only case where showing it is worth anything.
+    let roomy = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1920.0, bar.height()));
+    let shown = caption_layout(roomy, widest_locale, capsule);
+    assert!(shown.update_rect.is_some(), "there is room here");
+    assert_eq!(
+        shown.tab_width,
+        caption_layout(roomy, widest_locale, 0.0).tab_width,
+        "a wide window gives the capsule its room out of slack, not out of the tabs"
+    );
+    assert!(
+        shown.update_rect.expect("shown").is_positive(),
+        "the circle has a real extent to click"
+    );
+}
+
+#[test]
+fn nothing_shifts_in_the_title_bar_when_there_is_no_update() {
+    use super::window_chrome::title_update_rect;
+
+    let brand = Rect::from_min_size(egui::pos2(10.0, 6.0), egui::vec2(146.0, 32.0));
+    assert!(
+        title_update_rect(brand, 0.0).is_none(),
+        "no release, no capsule, and so nothing to carve out of the drag region"
+    );
+
+    // When there is one, it sits inside the room the brand cell grew by, and
+    // the gap in front of it stays draggable.
+    let capsule = title_update_rect(brand, 74.0).expect("a width means a capsule");
+    assert!(
+        brand.contains_rect(capsule),
+        "the capsule escaped the cell that made room for it"
+    );
+    assert!(
+        capsule.left() > brand.left(),
+        "the capsule must leave the title text in front of it"
+    );
+    assert_eq!(capsule.right(), brand.right());
+}
+
+#[test]
+fn the_reset_button_offers_itself_back_and_then_stops() {
+    let context = egui::Context::default();
+    let id = Id::new("test.morph.reset");
+
+    let _ = context.run_ui(egui::RawInput::default(), |ui| {
+        // A window that was never opened must not read as open, or leftover
+        // state would turn the reset button into an undo button on a fresh run.
+        assert!(!morph_reset_undo_is_offered(ui, id));
+
+        offer_morph_reset_undo(ui, id);
+        assert!(
+            morph_reset_undo_is_offered(ui, id),
+            "the offer is live the instant the reset lands"
+        );
+
+        // Taking the offer withdraws it, so a second click cannot undo twice.
+        forget_morph_reset_undo(ui, id);
+        assert!(!morph_reset_undo_is_offered(ui, id));
+
+        // And it lapses on its own: the deadline is an absolute time, so one
+        // already in the past reads as expired and clears itself rather than
+        // being re-checked forever.
+        let lapsed = ui.input(|input| input.time) - 1.0;
+        ui.data_mut(|data| data.insert_temp(id.with("undo-until"), lapsed));
+        assert!(
+            !morph_reset_undo_is_offered(ui, id),
+            "an expired offer must not keep the label on undo"
+        );
+        assert!(
+            ui.data(|data| data.get_temp::<f64>(id.with("undo-until")).is_none()),
+            "an expired offer clears itself"
+        );
+    });
+}
+
+#[test]
+fn a_number_key_reaches_exactly_what_its_button_would() {
+    // The click path and the keys share one availability predicate and one
+    // redirect. If they ever diverge the keyboard becomes a second, quieter set
+    // of rules that nothing documents.
+    let mut state = AppState::default();
+    for (tab, _) in TOP_TABS {
+        assert_eq!(
+            top_tab_target(&state, tab),
+            if tab == Tab::Edit {
+                Tab::Alignment
+            } else {
+                tab
+            },
+            "before a head exists, the first stage lands on its alignment half"
+        );
+    }
+
+    state.dispatch(Action::RequestTab(Tab::Alignment));
+    for (tab, _) in TOP_TABS {
+        let target = top_tab_target(&state, tab);
+        assert!(
+            target == tab || (tab == Tab::Edit && target == Tab::Alignment),
+            "{tab:?} may only redirect within its own stage, never to another"
+        );
     }
 }
 
@@ -1162,7 +1313,7 @@ fn no_tab_name_outgrows_its_cell_at_the_full_tab_width() {
                 );
                 assert_eq!(
                     fitted, label,
-                    "{locale:?} calls this tab {label:?}, which does not fit                      the {} points a tab gets",
+                    "{locale:?} calls this tab {label:?}, which does not fit the {} points a tab gets",
                     super::TOP_TAB_WIDTH
                 );
             }

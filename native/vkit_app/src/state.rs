@@ -531,8 +531,11 @@ impl Default for AppState {
             complete_pairs: 0,
             output_path: String::new(),
             vam_export_display_name: String::new(),
-            vam_export_group: "Vkit".to_owned(),
-            vam_export_region: "Morph".to_owned(),
+            // Blank, not a guess. Whatever is typed here is remembered, so a
+            // seeded default would be a value the user never chose and would
+            // have to notice and clear before their own choice could stick.
+            vam_export_group: String::new(),
+            vam_export_region: String::new(),
             vam_export_is_pose_control: false,
             vam_export_bone_correction: true,
             pending_overwrite_path: None,
@@ -1260,7 +1263,7 @@ impl AppState {
             Action::RefreshVaMCatalog => self.force_vam_catalog_refresh(),
             Action::SelectVaMEditSource(id) => self.select_vam_edit_source(&id),
             Action::SelectBaseFace => self.select_base_face(),
-            Action::BeginDirectEdit => self.enter_direct_edit(),
+            Action::BeginDirectEdit => self.enter_direct_edit(Tab::Morph),
             Action::SetFigureSex(value) => self.set_figure_sex(value),
             Action::LoadScan(path) => self.load_scan(path),
             Action::FinishScanImport { path, outcome } => self.finish_scan_import(path, outcome),
@@ -1405,6 +1408,7 @@ impl AppState {
                 self.surface_smooth_passes = passes.min(VAM_SMOOTH_PASSES_MAX);
             }
             Action::SetTooltipsEnabled(enabled) => self.tooltips_enabled = enabled,
+            Action::SetShowOneSidedMorphs(show) => self.morph_library.show_one_sided = show,
             Action::SetSaveSection(section) => self.save_section = section,
             Action::ResetAllSettings => self.settings_reset = true,
             Action::MeasureCache => self.cache_measure_requested = true,
@@ -1597,7 +1601,7 @@ impl AppState {
                     && placement.scale.is_finite()
                     && placement.rotation.is_finite()
                 {
-                    self.texture_project.projection_placement = placement;
+                    self.texture_project.place_projection_stencil(placement);
                 }
             }
             Action::SetTextureProjectionOpacity(value) => {
@@ -1609,7 +1613,10 @@ impl AppState {
                 self.texture_project.retouch_reverse = value;
             }
             Action::BeginTextureEdit => self.texture_project.begin_undo_transaction(),
-            Action::EndTextureEdit => self.texture_project.end_undo_transaction(),
+            Action::EndTextureEdit => {
+                self.texture_project.end_undo_transaction();
+                self.texture_project.end_clone_stroke();
+            }
             Action::AddTextureImage(path, source_mode) => {
                 self.add_texture_image(path, source_mode);
             }
@@ -1817,9 +1824,6 @@ impl AppState {
                 }
                 self.texture_project.mark_dirty();
             }
-            Action::SetTextureBakedPreviewEnabled(value) => {
-                self.texture_project.baked_preview_enabled = value;
-            }
             Action::SetTextureOutputPbr(value) => self.texture_project.output_pbr = value,
             Action::RequestTextureBake(quality) => self.request_texture_bake(quality),
             Action::FinishTextureDecode {
@@ -1971,8 +1975,31 @@ impl AppState {
                 control_id,
                 outcome,
             } => self.finish_vam_morph(catalog_revision, geometry_revision, &control_id, outcome),
-            Action::SetPackageFromThisHead(value) => self.package_from_this_head = value,
+            Action::SetPackageFromThisHead(value) => {
+                self.package_from_this_head = value;
+                // The two are a choice, not two switches. Turning the head back
+                // on drops the attachments rather than leaving a list that is
+                // still on screen but no longer packaged -- and turning it off
+                // is how picking a file stops the head being baked at all,
+                // which is what used to fail with "identical to the loaded G2
+                // template" when the head had not been touched.
+                if value {
+                    self.package_morphs.clear();
+                    self.package_textures.clear();
+                }
+            }
             Action::AddPackageFiles(slot, paths) => {
+                // Picking a file is the same statement as choosing the file
+                // route, so it makes it rather than requiring a second click.
+                self.package_from_this_head = false;
+                let paths = match slot {
+                    // A VaM morph is two files that are useless apart: the .vmi
+                    // describes it and the .vmb holds the deltas. Picking one
+                    // and shipping a package without the other is a mistake
+                    // nobody makes on purpose, so the twin comes along.
+                    PackageSlot::Morph => with_morph_twins(paths),
+                    PackageSlot::Texture => paths,
+                };
                 let list = match slot {
                     PackageSlot::Morph => &mut self.package_morphs,
                     PackageSlot::Texture => &mut self.package_textures,
@@ -2004,6 +2031,22 @@ impl AppState {
 
         if !self.is_texturing() && self.texture_project.active_tool == TextureTool::Projection {
             self.texture_project.set_active_tool(TextureTool::PinPair);
+        }
+        self.settle_projection_entry();
+    }
+
+    /// A stencil raised over an image it has never been placed against starts centred on the pane,
+    /// with the head framed behind it. Re-raising the stencil over a layer the user has already
+    /// dragged leaves both the placement and the camera exactly where they left them.
+    fn settle_projection_entry(&mut self) {
+        if !self.texture_project.projection_stencil
+            || !self.texture_project.stencil_needs_fresh_placement()
+        {
+            return;
+        }
+        self.texture_project.centre_projection_stencil();
+        if let Some(bounds) = self.result_head_bounds() {
+            self.workspace.result_camera.frame(bounds);
         }
     }
 
@@ -2060,13 +2103,21 @@ impl AppState {
             self.placed_head = true;
         }
 
-        if tab == Tab::Morph && self.scan_path.is_none() && !self.tab_available(Tab::Morph) {
+        // No scan opened means the G2 template *is* the head, so every stage
+        // downstream of the fit has something to work on. This used to say
+        // `tab == Tab::Morph`, which is why sculpt let you in from a cold start
+        // and texture and save did not -- not a rule about what they need, just
+        // a condition that was never widened when the others were added.
+        if matches!(tab, Tab::Morph | Tab::Texture | Tab::Result)
+            && self.can_enter_detail_from_template()
+            && !self.tab_available(tab)
+        {
             if self.busy() {
                 self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
                 return;
             }
             self.set_edit_source_mode(EditSourceMode::CustomMorph);
-            self.enter_direct_edit();
+            self.enter_direct_edit(tab);
             return;
         }
         if !self.tab_available(tab) {
@@ -2193,11 +2244,11 @@ impl AppState {
         self.pending_direct_edit_source = Some(source);
     }
 
-    fn enter_direct_edit(&mut self) {
+    fn enter_direct_edit(&mut self, landing: Tab) {
         if self.edit_source_mode != EditSourceMode::CustomMorph {
             return;
         }
-        self.begin_template_edit(false);
+        self.begin_template_edit(false, landing);
     }
 
     fn select_base_face(&mut self) {
@@ -2213,7 +2264,7 @@ impl AppState {
         self.morph_library.reset();
         self.custom_morph_origin = None;
         self.morph_compare_blend = 1.0;
-        self.begin_template_edit(true);
+        self.begin_template_edit(true, Tab::Morph);
     }
 
     fn resolve_eyelid_control_now(&mut self, id: &str) {
@@ -2347,7 +2398,7 @@ impl AppState {
         Some([self.manual_eye_gaze[0], gaze_y.clamp(-1.0, 1.0) as f32])
     }
 
-    fn begin_template_edit(&mut self, force_reinstall: bool) {
+    fn begin_template_edit(&mut self, force_reinstall: bool, landing: Tab) {
         if self.busy() {
             self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
             return;
@@ -2382,7 +2433,7 @@ impl AppState {
                 }
             };
             let install_started = std::time::Instant::now();
-            if let Err(detail) = self.install_direct_edit_output(output, None, Vec::new()) {
+            if let Err(detail) = self.install_direct_edit_output(output, None, Vec::new(), 0) {
                 self.status = StatusMessage::with_detail(
                     TextKey::GenerationFailed,
                     StatusTone::Error,
@@ -2398,7 +2449,21 @@ impl AppState {
                 StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
             return;
         }
-        self.active_tab = Tab::Morph;
+        // Landing where the click asked rather than always on sculpt. Being
+        // dragged to a tab you did not press is what made the old behaviour
+        // read as "sculpt must be visited first".
+        self.active_tab = landing;
+        if landing == Tab::Result {
+            // Save composes its own preview, and entering it without one shows
+            // an empty stage.
+            if let Err(detail) = self.commit_save_preview() {
+                self.status = StatusMessage::with_detail(
+                    TextKey::GenerationFailed,
+                    StatusTone::Error,
+                    detail,
+                );
+            }
+        }
 
         let _ = crate::diagnostics::record(
             crate::diagnostics::Severity::Debug,
@@ -2446,6 +2511,7 @@ impl AppState {
         output: Arc<OrderedObjMesh>,
         source_path: Option<&Path>,
         missing_morphs: Vec<String>,
+        resolved_morphs: usize,
     ) -> Result<(), String> {
         let carry = self.pending_edit_carry.take();
         self.clear_generated_buffers();
@@ -2492,43 +2558,30 @@ impl AppState {
         } else {
             self.set_default_vam_output_path_if_empty();
         }
-        self.status = if missing_morphs.is_empty() {
-            StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Success)
-        } else {
-            let preview = missing_morphs
-                .iter()
-                .take(5)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ");
-            let suffix = if missing_morphs.len() > 5 {
-                format!(" 외 {}개", missing_morphs.len() - 5)
-            } else {
-                String::new()
-            };
-            let diagnostic = missing_morphs.join(" | ");
+        // Naming the morphs that went missing tells the user nothing they can
+        // act on: the file is gone, so what it would have done to this face is
+        // exactly the thing that can no longer be determined. Interrupting with
+        // an alarm of unknowable size, on load after load, trains the user to
+        // ignore the status line. The names still go to vkit.log -- now with
+        // the count that resolved beside them, which is what was missing when
+        // reading that log. The user is only stopped when nothing loaded at
+        // all, which certainly means the base face is on screen.
+        if !missing_morphs.is_empty() {
             let _ = crate::diagnostics::record(
                 crate::diagnostics::Severity::Warning,
                 "appearance",
                 "missing_morphs",
-                &diagnostic,
+                &format!(
+                    "resolved={resolved_morphs}; missing={}; {}",
+                    missing_morphs.len(),
+                    missing_morphs.join(" | ")
+                ),
             );
-            let detail = match self.locale {
-                Locale::Korean => format!(
-                    "일부 모프를 찾을 수 없습니다 ({}개): {preview}{suffix}",
-                    missing_morphs.len()
-                ),
-                Locale::Japanese => format!(
-                    "一部のモーフが見つかりません ({}): {preview}",
-                    missing_morphs.len()
-                ),
-
-                _ => format!(
-                    "Some morphs could not be found ({}): {preview}",
-                    missing_morphs.len()
-                ),
-            };
-            StatusMessage::with_detail(TextKey::MorphPreviewUpdated, StatusTone::Warning, detail)
+        }
+        self.status = if missing_morphs.is_empty() || resolved_morphs > 0 {
+            StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Success)
+        } else {
+            StatusMessage::new(TextKey::SourceMorphMissing, StatusTone::Warning)
         };
         if carried_morphs {
             self.morph_preview_dirty = true;
@@ -2913,6 +2966,8 @@ impl AppState {
         self.expected_texture_bake_request = None;
         self.texture_project.bake_loading = false;
         self.texture_project.baked = None;
+
+        self.texture_project.forget_geometry_bound_rasters();
         if !self.texture_project.layers.is_empty() {
             self.texture_project.dirty = true;
         }

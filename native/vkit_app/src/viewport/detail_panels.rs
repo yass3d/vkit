@@ -137,15 +137,29 @@ pub(super) fn detail_numeric_label_width(text_width: f32, control_width: f32) ->
     (text_width + 2.0).min(cap)
 }
 
+/// How a number is written: the span it moves through, how many places it
+/// keeps, and whether it reads as a percentage. Three answers to one question,
+/// so they arrive together — which also leaves the shortcut where every other
+/// control in this crate puts it, last.
+pub(super) struct NumericFormat {
+    pub range: std::ops::RangeInclusive<f32>,
+    pub decimals: usize,
+    pub percent: bool,
+}
+
 pub(super) fn detail_numeric_control(
     ui: &mut Ui,
     label: &str,
     value: &mut f32,
-    range: std::ops::RangeInclusive<f32>,
-    decimals: usize,
-    percent: bool,
+    format: NumericFormat,
     width: f32,
+    shortcut: Option<&str>,
 ) -> bool {
+    let NumericFormat {
+        range,
+        decimals,
+        percent,
+    } = format;
     let mut changed = false;
     let text_width = ui
         .painter()
@@ -161,22 +175,25 @@ pub(super) fn detail_numeric_control(
         vec2(width, crate::theme::CONTROL_H_DENSE),
         Layout::left_to_right(Align::Center),
         |ui| {
-            ui.add_sized(
+            let label_response = ui.add_sized(
                 [label_width, 20.0],
                 egui::Label::new(
                     RichText::new(label)
                         .size(crate::theme::BODY_FONT_SIZE)
                         .color(COLOR_MUTED),
                 )
-                .truncate(),
+                .truncate()
+                .sense(Sense::hover()),
             );
             let slider = FilledNumericSlider::new(value, range)
                 .decimals(decimals)
                 .min_width(180.0)
                 .value_gap(0.0);
-            changed = ui
-                .add(if percent { slider.percent() } else { slider })
-                .changed();
+            let slider = ui.add(if percent { slider.percent() } else { slider });
+            changed = slider.changed();
+            // Both halves answer the hover: the label is what a hand reaches
+            // for when it does not know the control has a key at all.
+            crate::ui_components::tooltip(label_response | slider, label, shortcut);
         },
     );
     changed
@@ -610,26 +627,85 @@ pub(super) struct TextureSurfaceHit {
     barycentric: [f64; 3],
 }
 
+/// One mapped head triangle, with everything a ray test needs already gathered: the two levels of
+/// indirection (mapping row to canonical triangle to three vertex rows) and the f32-to-f64 widening
+/// are what a dab used to redo ~16.7k times.
+#[derive(Clone, Copy)]
+struct HeadPickTriangle {
+    triangle_index: u32,
+    is_face: bool,
+    corners: [glam::DVec3; 3],
+}
+
+/// The candidate list plus the two inputs it was gathered from. The strong handles are the point:
+/// they keep the keyed allocations alive, so pointer identity cannot be reused underneath us.
+struct HeadPickCandidates {
+    mesh: Arc<SurfaceMesh>,
+    mapping: Arc<vkit_core::vam::G2UvMapping>,
+    triangles: Arc<Vec<HeadPickTriangle>>,
+}
+
+thread_local! {
+    static HEAD_PICK_CANDIDATES: std::cell::RefCell<Option<HeadPickCandidates>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Gathered once per (generated head, UV map) pair and then reused for every dab of every stroke.
+/// A morph, a sculpt or a catalog rescan replaces one of those `Arc`s and rebuilds the list.
+fn head_pick_candidates(
+    mesh: &Arc<SurfaceMesh>,
+    mapping: &Arc<vkit_core::vam::G2UvMapping>,
+) -> Arc<Vec<HeadPickTriangle>> {
+    HEAD_PICK_CANDIDATES.with(|cell| {
+        let mut held = cell.borrow_mut();
+        if let Some(cached) = held.as_ref()
+            && Arc::ptr_eq(&cached.mesh, mesh)
+            && Arc::ptr_eq(&cached.mapping, mapping)
+        {
+            return Arc::clone(&cached.triangles);
+        }
+        let triangles = Arc::new(
+            mapping
+                .triangles
+                .iter()
+                .filter(|triangle| triangle.on_head)
+                .filter_map(|mapped| {
+                    let triangle_index = mapped.canonical_triangle_index;
+                    let triangle = mesh.mesh.triangles.get(triangle_index as usize)?;
+                    Some(HeadPickTriangle {
+                        triangle_index,
+                        is_face: mapped.material_region == vkit_core::vam::UvMaterialRegion::Face,
+                        corners: triangle.map(|vertex| {
+                            glam::DVec3::from_array(mesh.mesh.vertices[vertex as usize])
+                        }),
+                    })
+                })
+                .collect::<Vec<_>>(),
+        );
+        *held = Some(HeadPickCandidates {
+            mesh: Arc::clone(mesh),
+            mapping: Arc::clone(mapping),
+            triangles: Arc::clone(&triangles),
+        });
+        triangles
+    })
+}
+
 pub(super) fn texture_surface_hit(state: &AppState, ray: Ray3) -> Option<TextureSurfaceHit> {
-    let result = state.workspace.result.as_deref()?;
-    let mapping = state.vam_uv_mapping.as_deref()?;
+    let result = state.workspace.result.as_ref()?;
+    let mapping = state.vam_uv_mapping.as_ref()?;
     let origin = ray.origin;
     let direction = ray.direction;
-    mapping
-        .triangles
+    head_pick_candidates(result, mapping)
         .iter()
-        .filter(|triangle| triangle.on_head)
-        .filter_map(|mapped| {
-            let triangle_index = mapped.canonical_triangle_index;
-            let triangle = result.mesh.triangles.get(triangle_index as usize)?;
-            let [a, b, c] = triangle
-                .map(|vertex| glam::DVec3::from_array(result.mesh.vertices[vertex as usize]));
+        .filter_map(|candidate| {
+            let [a, b, c] = candidate.corners;
             ray_triangle(origin, direction, a, b, c, true).map(|(distance, barycentric)| {
                 (
                     distance,
-                    mapped.material_region == vkit_core::vam::UvMaterialRegion::Face,
+                    candidate.is_face,
                     TextureSurfaceHit {
-                        triangle_index,
+                        triangle_index: candidate.triangle_index,
                         barycentric,
                     },
                 )
@@ -651,13 +727,16 @@ pub(super) fn handle_texture_paint_interaction(
     let drag_id = Id::new(TEXTURE_TARGET_MASK_DRAG);
     if input_blocked {
         ui.data_mut(|data| data.remove::<Pos2>(drag_id));
-        clear_brush_size_gesture(ui.ctx(), Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID));
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
+        );
         state.dispatch(Action::EndTextureEdit);
         return;
     }
     let size_update = handle_brush_size_gesture(
         ui,
-        Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID),
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
         viewport,
         state.texture_project.mask_brush_radius,
         TEXTURE_BRUSH_SIZE_SENSITIVITY,
@@ -667,6 +746,22 @@ pub(super) fn handle_texture_paint_interaction(
         state.dispatch(Action::SetTextureMaskBrushRadius(radius));
     }
     if size_update.consumed {
+        return;
+    }
+
+    // On a 2D brush "how much" means opacity, so Shift+F sweeps that instead.
+    let strength_update = crate::ui_components::handle_brush_strength_gesture(
+        ui,
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
+        viewport,
+        state.texture_project.mask_brush_opacity,
+        BRUSH_STRENGTH_SENSITIVITY,
+        0.01..=1.0,
+    );
+    if let Some(opacity) = strength_update.strength {
+        state.dispatch(Action::SetTextureMaskBrushOpacity(opacity));
+    }
+    if strength_update.consumed {
         return;
     }
     if let Some(radius) =
@@ -680,22 +775,22 @@ pub(super) fn handle_texture_paint_interaction(
         return;
     }
     let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
-    if pressed && response.hovered() {
-        state.dispatch(Action::BeginTextureEdit);
-    }
     if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) || !response.hovered() {
         return;
+    }
+    if !state.texture_project.edit_transaction_active() {
+        state.dispatch(Action::BeginTextureEdit);
     }
     let Some(pointer) = ui.input(|input| input.pointer.interact_pos()) else {
         return;
     };
     let spacing = (state.texture_project.mask_brush_radius
-        * viewport.width().min(viewport.height())
+        * texture_brush_points_per_uv(ui, state, viewport, camera, pointer)
         * crate::texture_ui::BRUSH_SPACING_FRACTION)
         .max(1.0);
     let reverse = ui.input(|input| input.modifiers.alt);
     let tool = state.texture_project.active_tool;
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal) && reverse {
+    if matches!(tool, TextureTool::CloneStamp) && reverse {
         if pressed
             && let Some(hit) = camera
                 .ray_from_screen(pointer, viewport)
@@ -737,35 +832,108 @@ pub(super) fn handle_texture_paint_interaction(
     ui.ctx().request_repaint();
 }
 
+/// How many screen points one G2 UV unit spans at the surface under `pointer`.
+///
+/// The dab the texture brush lands is sized as a fraction of the square G2 mask
+/// (`apply_layer_mask_dab`), i.e. a UV radius, so its screen footprint grows and shrinks with the
+/// camera. Measuring the local UV-to-screen scale is what lets the ring and the stroke spacing be
+/// stated in the same units as the dab instead of in a fraction of the viewport, which only
+/// agreed with the dab at one accidental camera distance.
+pub(super) fn measure_texture_brush_points_per_uv(
+    state: &AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    pointer: Pos2,
+) -> Option<f32> {
+    let hit = camera
+        .ray_from_screen(pointer, viewport)
+        .and_then(|ray| texture_surface_hit(state, ray))?;
+    let uvs = state
+        .vam_uv_mapping
+        .as_deref()?
+        .triangles
+        .iter()
+        .find(|triangle| {
+            triangle.canonical_triangle_index == hit.triangle_index
+                && triangle.material_region == vkit_core::vam::UvMaterialRegion::Face
+        })?
+        .uvs;
+    let result = state.workspace.result.as_deref()?;
+    let corners = *result.mesh.triangles.get(hit.triangle_index as usize)?;
+    let mut screen = [Pos2::ZERO; 3];
+    for (slot, vertex) in screen.iter_mut().zip(corners) {
+        let point = glam::DVec3::from_array(*result.mesh.vertices.get(vertex as usize)?);
+        *slot = camera.project(point.as_vec3(), viewport)?.screen;
+    }
+    let screen_area = (screen[1].x - screen[0].x)
+        .mul_add(
+            screen[2].y - screen[0].y,
+            -((screen[1].y - screen[0].y) * (screen[2].x - screen[0].x)),
+        )
+        .abs();
+    let uv_area = (uvs[1][0] - uvs[0][0])
+        .mul_add(
+            uvs[2][1] - uvs[0][1],
+            -((uvs[1][1] - uvs[0][1]) * (uvs[2][0] - uvs[0][0])),
+        )
+        .abs();
+    (screen_area > 0.0 && uv_area > 1.0e-12).then(|| (screen_area / uv_area).sqrt())
+}
+
+/// [`measure_texture_brush_points_per_uv`], remembered across frames. Sliding the cursor off the
+/// head — or holding the brush-size gesture anchor off it — has nothing to measure, and snapping
+/// the ring to a viewport-sized fallback there would read as the brush changing size. The last
+/// surface the cursor was actually over is the honest answer until it is over another one.
+fn texture_brush_points_per_uv(
+    ui: &Ui,
+    state: &AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    pointer: Pos2,
+) -> f32 {
+    let id = Id::new(TEXTURE_BRUSH_UV_SCALE_ID);
+    if let Some(measured) = measure_texture_brush_points_per_uv(state, viewport, camera, pointer) {
+        ui.data_mut(|data| data.insert_temp(id, measured));
+        return measured;
+    }
+    ui.data(|data| data.get_temp::<f32>(id))
+        .filter(|scale| scale.is_finite() && *scale > 0.0)
+        .unwrap_or_else(|| viewport.width().min(viewport.height()))
+}
+
 pub(super) fn paint_texture_brush_cursor(
     ui: &Ui,
     state: &AppState,
     response: &Response,
     viewport: Rect,
+    camera: TurntableCamera,
 ) {
-    let sizing = brush_size_gesture_anchor(ui, Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID));
-    if sizing.is_none() && !response.hovered() {
-        return;
-    }
-    let Some(pointer) = sizing.or_else(|| ui.input(|input| input.pointer.hover_pos())) else {
+    let hover = response
+        .hovered()
+        .then(|| ui.input(|input| input.pointer.hover_pos()))
+        .flatten();
+    let Some(cursor) = crate::ui_components::brush_cursor(
+        ui,
+        hover,
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
+        Some((
+            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
+            state.texture_project.mask_brush_opacity,
+        )),
+    ) else {
         return;
     };
     let radius = (state.texture_project.mask_brush_radius
-        * viewport.width().min(viewport.height()))
+        * texture_brush_points_per_uv(ui, state, viewport, camera, cursor.at))
     .max(2.0);
-    let reverse = ui.input(|input| input.modifiers.alt);
-    ui.painter().circle_stroke(
-        pointer,
-        radius,
-        Stroke::new(
-            1.5,
-            if reverse {
-                crate::theme::COLOR_DESTRUCTIVE
-            } else {
-                Color32::WHITE
-            },
-        ),
-    );
+    let reverse =
+        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
+    let color = if reverse {
+        crate::theme::COLOR_DESTRUCTIVE
+    } else {
+        Color32::WHITE
+    };
+    crate::ui_components::paint_brush_cursor(ui.painter(), cursor, radius, color);
 }
 
 fn stencil_brush_radius_points(state: &AppState, stencil: Rect) -> f32 {
@@ -779,17 +947,33 @@ pub(super) fn paint_stencil_brush_cursor(
     response: &Response,
     stencil: Rect,
 ) {
-    let sizing = brush_size_gesture_anchor(ui, Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID));
-    if sizing.is_none() && !response.hovered() {
-        return;
-    }
-    let Some(pointer) = sizing.or_else(|| ui.input(|input| input.pointer.latest_pos())) else {
+    let hover = response
+        .hovered()
+        .then(|| ui.input(|input| input.pointer.latest_pos()))
+        .flatten();
+    let Some(cursor) = crate::ui_components::brush_cursor(
+        ui,
+        hover,
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
+        Some((
+            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
+            state.texture_project.mask_brush_opacity,
+        )),
+    ) else {
         return;
     };
-    ui.painter().circle_stroke(
-        pointer,
+    let erase =
+        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
+    let color = if erase {
+        crate::theme::COLOR_DESTRUCTIVE
+    } else {
+        Color32::WHITE
+    };
+    crate::ui_components::paint_brush_cursor(
+        ui.painter(),
+        cursor,
         stencil_brush_radius_points(state, stencil),
-        Stroke::new(1.5, Color32::WHITE),
+        color,
     );
 }
 
@@ -940,6 +1124,7 @@ fn stamp_projection_dab(
     triangles: &[vkit_core::texture_bake::ProjectedTriangle],
     centre: Pos2,
     radius: f32,
+    erase: bool,
 ) -> usize {
     let Some(source) = state
         .texture_project
@@ -976,6 +1161,7 @@ fn stamp_projection_dab(
 
         falloff: state.texture_project.mask_brush_falloff,
         opacity: state.texture_project.mask_brush_opacity.clamp(0.0, 1.0),
+        erase,
     };
     state
         .texture_project
@@ -999,7 +1185,10 @@ pub(super) fn handle_projection_stencil(
                 Id::new(STENCIL_STROKE_TRIANGLES),
             );
         });
-        clear_brush_size_gesture(ui.ctx(), Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID));
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
+        );
 
         if state.texture_project.edit_transaction_active() {
             state.dispatch(Action::EndTextureEdit);
@@ -1041,7 +1230,7 @@ pub(super) fn handle_projection_stencil(
 
     let size_update = handle_brush_size_gesture(
         ui,
-        Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID),
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
         viewport,
         state.texture_project.mask_brush_radius,
         TEXTURE_BRUSH_SIZE_SENSITIVITY,
@@ -1051,6 +1240,24 @@ pub(super) fn handle_projection_stencil(
         state.dispatch(Action::SetTextureMaskBrushRadius(radius));
     }
     if size_update.consumed {
+        return;
+    }
+    // The stencil brush had size and no strength, alone among the brushes. It
+    // paints with the same opacity every other 2D brush does, so it answers to
+    // the same sweep -- there was no reason for it to be the exception beyond
+    // nobody having wired it.
+    let strength_update = crate::ui_components::handle_brush_strength_gesture(
+        ui,
+        crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
+        viewport,
+        state.texture_project.mask_brush_opacity,
+        BRUSH_STRENGTH_SENSITIVITY,
+        0.01..=1.0,
+    );
+    if let Some(opacity) = strength_update.strength {
+        state.dispatch(Action::SetTextureMaskBrushOpacity(opacity));
+    }
+    if strength_update.consumed {
         return;
     }
     if let Some(radius) =
@@ -1073,12 +1280,11 @@ pub(super) fn handle_projection_stencil(
         }
         return;
     }
-    if ui.input(|input| input.pointer.button_pressed(PointerButton::Primary)) && response.hovered()
-    {
-        state.dispatch(Action::BeginTextureEdit);
-    }
     if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) || !response.hovered() {
         return;
+    }
+    if !state.texture_project.edit_transaction_active() {
+        state.dispatch(Action::BeginTextureEdit);
     }
     let Some(pointer) = ui.input(|input| input.pointer.interact_pos()) else {
         return;
@@ -1110,8 +1316,10 @@ pub(super) fn handle_projection_stencil(
             ui.data_mut(|data| data.insert_temp(cache_id, std::sync::Arc::clone(&projected)));
             projected
         });
+    let erase =
+        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
     for point in stroke_points {
-        stamp_projection_dab(state, stencil, &triangles, point, radius);
+        stamp_projection_dab(state, stencil, &triangles, point, radius, erase);
     }
     ui.data_mut(|data| data.insert_temp(last_id, last));
     ui.ctx().request_repaint();
@@ -1280,6 +1488,46 @@ pub(super) fn nearest_texture_target_pin(
         })
         .min_by(|left, right| left.0.total_cmp(&right.0))
         .map(|(_, index)| index)
+}
+
+/// Marks the clone anchor on the model itself.
+///
+/// The 3D side could set an anchor with Alt and then showed nothing at all, so
+/// there was no way to tell whether the pick had registered, or where it landed
+/// once the camera moved. Projected from the triangle it was picked on, the
+/// same way the pins are, so it tracks the surface rather than the screen.
+pub(super) fn paint_clone_anchor_on_surface(
+    ui: &Ui,
+    state: &AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+) {
+    if state.texture_project.active_tool != TextureTool::CloneStamp {
+        return;
+    }
+    let Some((triangle_index, barycentric)) = state.texture_project.clone_sample_surface else {
+        return;
+    };
+    let Some(result) = state.workspace.result.as_deref() else {
+        return;
+    };
+    let Some(triangle) = result.mesh.triangles.get(triangle_index as usize) else {
+        return;
+    };
+    let point =
+        triangle
+            .iter()
+            .zip(barycentric)
+            .fold(glam::DVec3::ZERO, |sum, (&vertex, weight)| {
+                sum + glam::DVec3::from_array(result.mesh.vertices[vertex as usize]) * weight
+            });
+    let Some(projected) = camera.project(point.as_vec3(), viewport) else {
+        return;
+    };
+    // Behind the camera is not somewhere to draw a marker.
+    if projected.depth > 0.0 {
+        crate::ui_components::paint_clone_anchor(ui.painter(), projected.screen);
+    }
 }
 
 pub(super) fn paint_texture_target_pins(

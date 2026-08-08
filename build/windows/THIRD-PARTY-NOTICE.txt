@@ -15,13 +15,21 @@ vendored tract-tflite importer contains a documented Vkit modification
 for the standard DEQUANTIZE and PRELU operators. Upstream license texts and a
 patch declaration are retained in native/vendor/tract-tflite.
 
+Vkit reads Draco-compressed glTF geometry with draco-core (Apache-2.0),
+unmodified and fetched by Cargo. It is a Rust port of Google's Draco, not a
+binding to it: no build script, no C or C++ source, and no unsafe code, so
+the pure-Rust statement above still holds with it linked in. Vkit's own
+EXT_meshopt_compression decoders are written in Rust in
+native/vkit_core/src/formats/meshopt.rs and depend on nothing. They are
+checked against meshopt-rs (MIT), which is a test-only dependency: it is
+built for `cargo test` and is not part of Vkit.exe.
+
 Vkit embeds the Lucide icon set, used for the toolbar and panel glyphs. Each
-SVG retains its upstream @license header; one glyph, wig.svg, is Vkit's own
-work drawn to the same conventions because Lucide has no wig icon. Lucide is
-ISC, and the glyphs it inherited from the Feather project are additionally
-MIT. Several of the icons Vkit uses are on that Feather list, so both halves
-of Lucide's license apply here and both require their notice to travel with
-every copy. The whole of that file is reproduced below, not only at
+SVG retains its upstream @license header. Lucide is ISC, and the glyphs it
+inherited from the Feather project are additionally MIT. Several of the icons
+Vkit uses are on that Feather list, so both halves of Lucide's license apply
+here and both require their notice to travel with every copy. The whole of
+that file is reproduced below, not only at
 native/vkit_app/resources/icons/LUCIDE-LICENSE.txt.
 
 Vkit embeds the Ko-fi mark, used the way Ko-fi publishes it for creators: as
@@ -106,8 +114,8 @@ These are the crates whose terms are something else:
     self_cell                     Apache-2.0 OR GPL-2.0-only; Apache-2.0 taken
     dpi                           Apache-2.0 AND MIT
     approx, codespan-reporting,   Apache-2.0, with no MIT alternative
-      flatbuffers, nalgebra,
-      simba, winit,
+      draco-core, flatbuffers,
+      nalgebra, simba, winit,
       unicode-general-category
 
 dyn-eq is the one file-level copyleft dependency here, and it arrives through
@@ -208,7 +216,7 @@ Apache License 2.0
 --------------------------------------------------------------------------
 
 Taken for every crate that offers it, and the only option offered by
-approx, codespan-reporting, flatbuffers, nalgebra, simba,
+approx, codespan-reporting, draco-core, flatbuffers, nalgebra, simba,
 unicode-general-category and winit.
 
                               Apache License
@@ -506,7 +514,7 @@ THIS SOFTWARE.
 Lucide icon set
 --------------------------------------------------------------------------
 
-Every toolbar and panel glyph except wig.svg, which is Vkit's own.
+Every toolbar and panel glyph.
 
 ISC License
 

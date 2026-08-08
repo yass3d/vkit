@@ -56,6 +56,28 @@ pub enum MorphSource {
     LocalVaM,
 }
 
+/// Which half of the face a morph moves.
+///
+/// Read once from the name when the control is built, because the name is the
+/// only evidence there is and re-deriving it per frame would be the same answer
+/// at a cost. Left and right are kept apart rather than collapsed to a flag: a
+/// side is worth knowing for pairing and mirroring later, and it costs nothing
+/// to carry now.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HorizontalSymmetry {
+    /// Moves both halves together, or sits on the centre line.
+    #[default]
+    Mirrored,
+    Left,
+    Right,
+}
+
+impl HorizontalSymmetry {
+    pub const fn is_one_sided(self) -> bool {
+        matches!(self, Self::Left | Self::Right)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MorphAvailability {
     Resolved,
@@ -84,6 +106,7 @@ pub struct MorphControl {
     pub label: String,
     pub category: MorphCategory,
     pub source: MorphSource,
+    pub symmetry: HorizontalSymmetry,
     pub value: f32,
 
     pub target: MorphTargetBinding,
@@ -263,9 +286,11 @@ impl MorphControl {
         source: MorphSource,
         target: Arc<MorphTarget>,
     ) -> Self {
+        let (id, label) = (id.into(), label.into());
         Self {
-            id: id.into(),
-            label: label.into(),
+            symmetry: horizontal_symmetry(&label).or(horizontal_symmetry(&id)),
+            id,
+            label,
             category,
             source,
             value: target.default as f32,
@@ -283,9 +308,11 @@ impl MorphControl {
         source: MorphSource,
         slider_contract: MorphTargetBinding,
     ) -> Self {
+        let (id, label) = (id.into(), label.into());
         Self {
-            id: id.into(),
-            label: label.into(),
+            symmetry: horizontal_symmetry(&label).or(horizontal_symmetry(&id)),
+            id,
+            label,
             category,
             source,
             value: slider_contract.default as f32,
@@ -305,11 +332,12 @@ impl MorphControl {
         maximum: f64,
         default: f64,
     ) -> Result<Self, FormatError> {
-        let id = id.into();
+        let (id, label) = (id.into(), label.into());
         let slider = MorphTargetBinding::unresolved(&id, minimum, maximum, default)?;
         Ok(Self {
+            symmetry: horizontal_symmetry(&label).or(horizontal_symmetry(&id)),
             id,
-            label: label.into(),
+            label,
             category,
             source: MorphSource::PackagedVaM,
             value: default as f32,
@@ -356,12 +384,112 @@ pub enum MorphListFilter {
     Active,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MorphLibrary {
     controls: Vec<MorphControl>,
     pub query: String,
     pub category_filter: MorphCategoryFilter,
     list_filter: MorphListFilter,
+
+    /// Whether morphs that move one side of the face alone stay in the list.
+    ///
+    /// Unlike the category capsules this one outlives a category change: it is a
+    /// property of the whole library, not a selection within one part of it.
+    pub show_one_sided: bool,
+}
+
+impl Default for MorphLibrary {
+    fn default() -> Self {
+        Self {
+            controls: Vec::new(),
+            query: String::new(),
+            category_filter: MorphCategoryFilter::default(),
+            list_filter: MorphListFilter::default(),
+            show_one_sided: true,
+        }
+    }
+}
+
+/// Does this morph name say it moves one side of the face by itself?
+///
+/// Derived from the names actually reachable here — the 576 built-ins plus a
+/// 120-package sample of the installed library — because nobody enforced a
+/// convention and three different spellings are in use at once.
+///
+/// Three shapes have to be told apart, and each one breaks the obvious rule for
+/// the other two:
+///
+/// - `Cheek Squish Left`, `BrowD_L` — separated, the easy case.
+/// - `JawLeft`, `PHMSnarlRight` — glued on, but the capital starts a new
+///   camel-case word, so splitting on that seam finds them.
+/// - `PHMEyesSizeL`, `PHMMouthSmileSimpleR` — a bare capital stuck to the end of
+///   a word with no seam of its own. This is the dominant shape in the built-in
+///   set (38 mirror pairs of it) and camel-case splitting alone reads it as
+///   "sizel", so a trailing lone L or R is treated as its own word.
+///
+/// What must NOT match matters just as much: `ChinCleft` and `TM_Upright1` carry
+/// "left" and "right" inside a longer word and sit dead centre on the face, so a
+/// side word only counts when it is a whole word.
+///
+/// A trailing capital is only read as a side when the rest of the name has more
+/// than one letter, which keeps a name that is merely titled `L` from vanishing.
+fn horizontal_symmetry(name: &str) -> HorizontalSymmetry {
+    /// A lone letter only marks a side when it was written as a capital.
+    ///
+    /// Names carry hashed suffixes — `TM_RollRight1-fc5737e5` — and splitting one
+    /// of those can leave a bare `r`. Requiring the capital keeps hash debris from
+    /// hiding a morph, and costs nothing: every side marker in the real data is
+    /// upper case.
+    fn side_of(word: &str, was_capital: bool) -> Option<HorizontalSymmetry> {
+        match word {
+            "left" | "lft" => Some(HorizontalSymmetry::Left),
+            "right" | "rgt" => Some(HorizontalSymmetry::Right),
+            "l" if was_capital => Some(HorizontalSymmetry::Left),
+            "r" if was_capital => Some(HorizontalSymmetry::Right),
+            _ => None,
+        }
+    }
+
+    let mut found = None;
+    for token in name.split(|character: char| !character.is_alphabetic()) {
+        if token.is_empty() {
+            continue;
+        }
+        let mut word = String::new();
+        let mut word_was_capital = false;
+        let mut previous_was_lower = false;
+
+        for (index, character) in token.char_indices() {
+            let starts_camel_word = character.is_uppercase() && previous_was_lower;
+            // A capital L or R closing the token is the side marker on its own,
+            // even with no seam before it: PHMEyesSizeL, not "sizel".
+            let is_trailing_side = matches!(character, 'L' | 'R')
+                && index + character.len_utf8() == token.len()
+                && token.len() > 2;
+            if starts_camel_word || is_trailing_side {
+                found = found.or(side_of(&word, word_was_capital));
+                word.clear();
+            }
+            if word.is_empty() {
+                word_was_capital = character.is_uppercase();
+            }
+            previous_was_lower = character.is_lowercase();
+            word.extend(character.to_lowercase());
+        }
+        found = found.or(side_of(&word, word_was_capital));
+    }
+    found.unwrap_or(HorizontalSymmetry::Mirrored)
+}
+
+impl HorizontalSymmetry {
+    /// Keep the first side that was named; a label and an id can disagree only
+    /// when one of them is silent, and a stated side outranks silence.
+    const fn or(self, other: Self) -> Self {
+        match self {
+            Self::Mirrored => other,
+            sided => sided,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -644,7 +772,8 @@ impl MorphLibrary {
             MorphListFilter::All => true,
             MorphListFilter::Active => control.is_modified(),
         };
-        category_matches && search_matches && pile_matches
+        let side_matches = self.show_one_sided || !control.symmetry.is_one_sided();
+        category_matches && search_matches && pile_matches && side_matches
     }
 
     #[allow(
@@ -1486,5 +1615,175 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(Arc::strong_count(&template), 1);
         assert!(controls.iter().all(|control| !control.target.is_resolved()));
+    }
+
+    #[test]
+    fn a_side_word_inside_a_longer_word_is_not_a_side() {
+        // Every name here was taken from the real library, not invented. The two
+        // groups are the two ways a substring test goes wrong, and both occur.
+        for centred in [
+            "ChinCleft",
+            "PHMChinCleft",
+            "TM_Upright1-db5c6ba7",
+            "TM_UprightSmoother-2a97977c",
+            "Brow Height",
+            "Lips Pucker (REN)",
+            "Eyes Closed (REN)",
+            "LIps Top Width",
+            "PHMNoseSide-Side",
+            "Mouth Side Crease B",
+        ] {
+            assert_eq!(
+                horizontal_symmetry(centred),
+                HorizontalSymmetry::Mirrored,
+                "{centred} moves both sides; hiding it would take a centre-line morph off the list"
+            );
+        }
+
+        for sided in [
+            // Separated.
+            "Cheek Squish Left",
+            "Cheek Squish Right",
+            "Iris Placement L",
+            "BrowD_L",
+            "EyeSquint_R",
+            "BK Breast Diameter L",
+            "LT Areola S2S R",
+            // Glued on, but starting a camel-case word.
+            "PHMSnarlLeft",
+            "PHMSnarlRight",
+            "JawLeft",
+            "PBMBicepsLeftSWM",
+            "TM_RollRight1-fc5737e5",
+            // A bare capital closing the word, with no seam of its own. This is
+            // the dominant shape in the built-in set — 38 mirror pairs of it —
+            // and it is the one an earlier rule read as "sizel" and let through.
+            "PHMEyesSizeL",
+            "PHMEyesSizeR",
+            "PHMMouthSmileSimpleL",
+            "PHMMouthSmileSimpleR",
+            "PHMBrowDefineL",
+            "PHMCheeksDimpleCreaseR",
+            "PHMEyelidsUpperHeightL",
+            "PHMNostrilsWidthR",
+            "PHMFlirtingFeminineL",
+            "PHMTemplesDefineR",
+        ] {
+            assert!(
+                horizontal_symmetry(sided).is_one_sided(),
+                "{sided} moves one side alone and should hide with the toggle off"
+            );
+        }
+    }
+
+    #[test]
+    fn the_rule_agrees_with_the_real_built_in_list() {
+        // The manifests are the shipped built-in set, so this measures the rule
+        // against the population it actually runs on rather than against
+        // examples chosen to suit it.
+        let manifests = [
+            include_str!("../resources/g2f-builtin-morph-names.txt"),
+            include_str!("../resources/g2m-builtin-morph-names.txt"),
+        ];
+        let names: std::collections::BTreeSet<&str> = manifests
+            .iter()
+            .flat_map(|file| file.lines())
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        let sided: Vec<&str> = names
+            .iter()
+            .copied()
+            .filter(|name| horizontal_symmetry(name).is_one_sided())
+            .collect();
+
+        // Every one of these should have a mirror twin in the list, and that is
+        // the independent check: a rule that fired on a centre-line morph would
+        // produce a name with no opposite number. Only the side MARKER is
+        // flipped — swapping every L and R would turn "EyeLids" into "EyeRids"
+        // and invent failures.
+        let twin_of = |name: &str| -> Option<String> {
+            if let Some(stem) = name.strip_suffix('L') {
+                return Some(format!("{stem}R"));
+            }
+            if let Some(stem) = name.strip_suffix('R') {
+                return Some(format!("{stem}L"));
+            }
+            if name.contains("Left") {
+                return Some(name.replace("Left", "Right"));
+            }
+            if name.contains("Right") {
+                return Some(name.replace("Right", "Left"));
+            }
+            None
+        };
+        let lone: Vec<&str> = sided
+            .iter()
+            .copied()
+            .filter(|name| twin_of(name).is_none_or(|twin| !names.contains(twin.as_str())))
+            .collect();
+        assert_eq!(
+            lone,
+            ["Iris Placement L"],
+            "a one-sided morph with no opposite number is either a naming quirk or a false \
+             positive; only the known quirk should be here"
+        );
+
+        assert_eq!(
+            sided.len(),
+            81,
+            "the built-in set holds 81 one-sided morphs of {}; if this number moved, the rule \
+             changed what it catches and the new spelling wants a case in the tests above",
+            names.len()
+        );
+    }
+
+    #[test]
+    fn the_side_filter_outlives_a_category_change() {
+        let mut library = MorphLibrary {
+            controls: vec![
+                control_named("Cheek Squish Left", MorphCategory::Cheeks),
+                control_named("ChinCleft", MorphCategory::Cheeks),
+                control_named("BrowD_L", MorphCategory::Brows),
+            ],
+            ..MorphLibrary::default()
+        };
+
+        assert!(
+            library.show_one_sided,
+            "shown by default on a fresh library"
+        );
+        assert_eq!(library.visible_indices().len(), 3);
+
+        library.show_one_sided = false;
+        assert_eq!(
+            library.visible_indices(),
+            vec![1],
+            "only the centre-line morph survives"
+        );
+
+        // A category capsule narrows within a part; this one is a property of the
+        // whole library and must still hold after switching parts.
+        library.category_filter = MorphCategoryFilter::Category(MorphCategory::Brows);
+        assert!(
+            library.visible_indices().is_empty(),
+            "the one brow morph is one-sided, so the brow category is empty while the toggle is off"
+        );
+    }
+
+    fn control_named(label: &str, category: MorphCategory) -> MorphControl {
+        MorphControl {
+            id: label.to_owned(),
+            label: label.to_owned(),
+            category,
+            source: MorphSource::VaMBuiltin,
+            symmetry: horizontal_symmetry(label),
+            value: 0.0,
+            target: MorphTargetBinding::unresolved(label, 0.0, 1.0, 0.0)
+                .expect("a 0..1 slider range is valid"),
+            genital_target: None,
+            availability: MorphAvailability::Resolved,
+            unsupported_formula_count: 0,
+        }
     }
 }

@@ -82,6 +82,7 @@ pub enum Action {
     SetBaseViewMode(BaseViewMode),
     SetSurfaceSmoothPasses(u8),
     SetTooltipsEnabled(bool),
+    SetShowOneSidedMorphs(bool),
     SetSaveSection(SaveSection),
 
     ResetAllSettings,
@@ -240,7 +241,6 @@ pub enum Action {
     SetTextureBoundaryFeather(u16),
     SetTextureBakeBase(TextureBakeBase),
     SetTextureHideVaMSkin(bool),
-    SetTextureBakedPreviewEnabled(bool),
     SetTextureOutputPbr(TexturePbrConvention),
     RequestTextureBake(TextureBakeQuality),
     FinishTextureDecode {
@@ -454,7 +454,6 @@ impl Action {
             | Self::SetTextureBoundaryFeather(_)
             | Self::SetTextureBakeBase(_)
             | Self::SetTextureHideVaMSkin(_)
-            | Self::SetTextureBakedPreviewEnabled(_)
             | Self::SetTextureOutputPbr(_)
             | Self::RequestTextureBake(_)
             | Self::ExportResult
@@ -489,6 +488,7 @@ impl Action {
             | Self::SetScanFidelity(_)
             | Self::SetSurfaceSmoothPasses(_)
             | Self::SetTooltipsEnabled(_)
+            | Self::SetShowOneSidedMorphs(_)
             | Self::SetSaveSection(_)
             | Self::ResetAllSettings
             | Self::MeasureCache

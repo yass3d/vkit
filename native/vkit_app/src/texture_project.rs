@@ -21,7 +21,8 @@ use vkit_core::{
         AlphaMaskView, TextureBakeImage, TextureBakeOptions, TextureBlendMode,
         TextureColorAdjustments, TextureWarpPin, apply_color_adjustments,
         bake_projected_texture_to_g2, composite_rgba, composite_rgba_masked,
-        place_image_on_g2_uv_in_region, resize_direct_uv, warp_image_to_g2_by_pins_in_region,
+        feather_coverage_alpha, place_image_on_g2_uv_in_region, resize_direct_uv,
+        warp_image_to_g2_by_pins_in_region,
     },
     texture_transfer::{TextureTransferOptions, TextureTransferOutcome, transfer_texture_to_g2},
     vam::{G2UvMapping, UvMaterialRegion},
@@ -146,16 +147,14 @@ impl TextureSourceMode {
             Self::ScanMesh => &[
                 TextureTool::MaskBrush,
                 TextureTool::CloneStamp,
-                TextureTool::Heal,
                 TextureTool::DodgeBurn,
                 TextureTool::Sponge,
             ],
             Self::LandmarkPins => &[
-                TextureTool::PinPair,
                 TextureTool::Projection,
+                TextureTool::PinPair,
                 TextureTool::MaskBrush,
                 TextureTool::CloneStamp,
-                TextureTool::Heal,
                 TextureTool::DodgeBurn,
                 TextureTool::Sponge,
             ],
@@ -198,19 +197,17 @@ pub enum TextureTool {
     Projection,
     MaskBrush,
     CloneStamp,
-    Heal,
     DodgeBurn,
     Sponge,
 }
 
 impl TextureTool {
     #[cfg(test)]
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::PinPair,
         Self::Projection,
         Self::MaskBrush,
         Self::CloneStamp,
-        Self::Heal,
         Self::DodgeBurn,
         Self::Sponge,
     ];
@@ -218,7 +215,17 @@ impl TextureTool {
     pub const fn is_paint_brush(self) -> bool {
         matches!(
             self,
-            Self::MaskBrush | Self::CloneStamp | Self::Heal | Self::DodgeBurn | Self::Sponge
+            Self::MaskBrush | Self::CloneStamp | Self::DodgeBurn | Self::Sponge
+        )
+    }
+
+    /// The one rule for Alt across the texture tools: it reverses the stroke.
+    /// Clone Stamp and Heal are the exceptions — there Alt picks the sample —
+    /// and Pin Pair ignores it entirely, deleting on secondary click instead.
+    pub const fn alt_inverts(self) -> bool {
+        matches!(
+            self,
+            Self::Projection | Self::MaskBrush | Self::DodgeBurn | Self::Sponge
         )
     }
 }
@@ -336,10 +343,21 @@ impl StencilPlacement {
 
 #[derive(Clone, Debug)]
 pub struct TextureLayerPaint {
+    /// Stamped from a process-wide clock every time the atlas changes, so a texture cache that
+    /// holds an older revision can ask which boxes it has to patch instead of re-uploading the
+    /// whole 2048/4096-square atlas.
+    pub revision: u64,
     pub width: u32,
     pub height: u32,
 
     pub rgba8: Arc<Vec<u8>>,
+}
+
+static PAINT_CLOCK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Revisions never repeat, so a cache holding a stale one can only ever be told to redraw.
+fn next_paint_revision() -> u64 {
+    PAINT_CLOCK.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -378,6 +396,10 @@ pub struct TextureLayer {
     pub edited_image: Option<Arc<SkinImage>>,
 
     pub edited_regions: VecDeque<(u64, [u32; 4])>,
+
+    /// The boxes each `painted.revision` touched, newest last — the same bookkeeping
+    /// `edited_regions` does for the source image, for the projected atlas.
+    pub painted_regions: VecDeque<(u64, [u32; 4])>,
     pub source_view_zoom: f32,
     pub source_view_center: [f32; 2],
     pub loading: bool,
@@ -415,6 +437,7 @@ impl TextureLayer {
             image: None,
             edited_image: None,
             edited_regions: VecDeque::new(),
+            painted_regions: VecDeque::new(),
             source_view_zoom: 1.0,
             source_view_center: [0.5, 0.5],
             loading: true,
@@ -509,6 +532,7 @@ impl TextureLayer {
             image: None,
             edited_image: None,
             edited_regions: VecDeque::new(),
+            painted_regions: VecDeque::new(),
             source_view_zoom: 1.0,
             source_view_center: [0.5, 0.5],
             loading: false,
@@ -539,6 +563,8 @@ pub struct TextureBakedSet {
 
     pub layer_rasters: BTreeMap<u64, CachedTextureLayerRaster>,
 
+    pub base_face: Option<CachedBaseFace>,
+
     pub scan_atlases: BTreeMap<u64, Arc<SkinImage>>,
 }
 
@@ -568,6 +594,20 @@ pub const PREVIEW_BAKE_RESOLUTION: u32 = 1024;
 #[must_use]
 pub fn is_bakeable_resolution(edge: u32) -> bool {
     edge == PREVIEW_BAKE_RESOLUTION || is_texture_resolution(edge)
+}
+
+/// The VaM skin face resampled to a bake resolution. The face itself never changes while anyone is
+/// painting, yet every bake box-resized it twice — once for the Diffuse base and once more inside
+/// the preview build.
+#[derive(Clone, Debug)]
+pub struct CachedBaseFace {
+    pub preview_revision: u64,
+    pub resolution: u32,
+
+    /// True when this was resampled from the preview's own face rather than decoded from disk at a
+    /// higher resolution, which is the only case where the preview build may reuse it.
+    pub from_preview_face: bool,
+    pub image: Arc<SkinImage>,
 }
 
 #[derive(Clone, Debug)]
@@ -622,10 +662,28 @@ pub struct TextureProject {
     pub bake_error: Option<String>,
     pub dirty: bool,
     pub baked: Option<TextureBakedSet>,
+
+    /// Per-layer G2-space rasters, kept across bakes and keyed by layer id and bake resolution.
+    /// They outlive `baked` on purpose: dropping the composite (a regenerated head, an emptied
+    /// composite, a layer hidden for one round) must not cost a re-warp of every layer, and a
+    /// full-resolution export must not evict the preview raster the viewport is editing against.
+    layer_rasters: BTreeMap<(u64, u32), CachedTextureLayerRaster>,
+
+    /// The skin face the last bake resampled, offered back to the next one. Keyed on the preview
+    /// revision, so a skin swap misses on its own.
+    base_face: Option<CachedBaseFace>,
     pub baked_preview_enabled: bool,
 
     pub hide_vam_skin_preview: bool,
     pub clone_sample: Option<[f32; 2]>,
+
+    /// Where on the surface the anchor was picked, when it was picked there.
+    ///
+    /// The UV alone cannot be drawn on the model: UV to screen is not a
+    /// function anyone can invert cheaply. Keeping the triangle and its
+    /// barycentric weights lets the marker be projected the same way the pins
+    /// are, so it stays on the right spot as the camera moves.
+    pub clone_sample_surface: Option<(u32, [f64; 3])>,
 
     clone_offset: Option<[f32; 2]>,
 
@@ -642,6 +700,10 @@ pub struct TextureProject {
     pub projection_stencil: bool,
 
     pub projection_placement: StencilPlacement,
+
+    /// The layer `projection_placement` was authored for. A stencil raised over any other layer
+    /// has never been positioned by the user, so it is safe to centre it.
+    projection_placed_for: Option<u64>,
 
     pub projection_opacity: f32,
 
@@ -677,9 +739,12 @@ impl Default for TextureProject {
             bake_error: None,
             dirty: false,
             baked: None,
+            layer_rasters: BTreeMap::new(),
+            base_face: None,
             baked_preview_enabled: true,
             hide_vam_skin_preview: false,
             clone_sample: None,
+            clone_sample_surface: None,
             clone_offset: None,
             stroke: None,
             preview_stroke: None,
@@ -688,6 +753,7 @@ impl Default for TextureProject {
             bake_failed_revision: None,
             projection_stencil: false,
             projection_placement: StencilPlacement::default(),
+            projection_placed_for: None,
             projection_opacity: 0.55,
             retouch_reverse: false,
             edit_revision: 0,
@@ -911,6 +977,21 @@ impl TextureProject {
         self.projection_stencil = self.active_tool == TextureTool::Projection;
     }
 
+    /// True while the stencil is standing over an image nobody has placed it against yet.
+    pub fn stencil_needs_fresh_placement(&self) -> bool {
+        self.projection_placed_for != self.selected_layer_id
+    }
+
+    pub fn centre_projection_stencil(&mut self) {
+        self.projection_placement = StencilPlacement::default();
+        self.projection_placed_for = self.selected_layer_id;
+    }
+
+    pub fn place_projection_stencil(&mut self, placement: StencilPlacement) {
+        self.projection_placement = placement;
+        self.projection_placed_for = self.selected_layer_id;
+    }
+
     pub fn mark_dirty(&mut self) {
         self.edit_revision = self.edit_revision.saturating_add(1);
         self.dirty = true;
@@ -952,6 +1033,18 @@ impl TextureProject {
                 let first_bake = self.baked.is_none();
 
                 self.adopt_scan_atlases(&baked.layer_rasters, &baked.scan_atlases);
+                self.absorb_layer_rasters(&baked.layer_rasters);
+
+                // Only the preview-sized resample is worth holding: it is the one the next bake
+                // asks for while someone paints, and an export-sized face is 67 MB that a second
+                // export would have to be waiting on to earn.
+                if let Some(base_face) = baked
+                    .base_face
+                    .as_ref()
+                    .filter(|face| face.resolution == PREVIEW_BAKE_RESOLUTION.min(self.resolution))
+                {
+                    self.base_face = Some(base_face.clone());
+                }
                 self.baked = Some(baked);
                 if first_bake {
                     self.baked_preview_enabled = true;
@@ -967,6 +1060,60 @@ impl TextureProject {
                 }
             }
         }
+    }
+
+    /// The resampled skin face a bake at `resolution` may reuse.
+    pub fn cached_base_face(&self, resolution: u32) -> Option<CachedBaseFace> {
+        self.base_face
+            .as_ref()
+            .filter(|cached| cached.resolution == resolution)
+            .cloned()
+    }
+
+    /// The rasters a bake at `resolution` may reuse, keyed by layer id.
+    pub fn cached_layer_rasters(&self, resolution: u32) -> BTreeMap<u64, CachedTextureLayerRaster> {
+        self.layer_rasters
+            .iter()
+            .filter(|((_, cached), _)| *cached == resolution)
+            .map(|((id, _), raster)| (*id, raster.clone()))
+            .collect()
+    }
+
+    fn absorb_layer_rasters(&mut self, baked: &BTreeMap<u64, CachedTextureLayerRaster>) {
+        let mut rasters = std::mem::take(&mut self.layer_rasters);
+        for (id, raster) in baked {
+            rasters.insert((*id, raster.resolution), raster.clone());
+        }
+
+        // Every raster in one bake carries that bake's resolution. Keep the preview slot the
+        // viewport edits against and whatever this bake just produced, and drop a
+        // full-resolution export raster at the next preview bake rather than holding a
+        // 4096-square atlas per layer for the rest of the session.
+        let preview = PREVIEW_BAKE_RESOLUTION.min(self.resolution);
+        let baked_at = baked.values().map(|raster| raster.resolution).max();
+        rasters.retain(|(id, resolution), _| {
+            (*resolution == preview || Some(*resolution) == baked_at)
+                && self.layers.iter().any(|layer| layer.id == *id)
+        });
+        self.layer_rasters = rasters;
+    }
+
+    /// The generated head changed. Only the scan projection is bound to that geometry; an image
+    /// layer is warped into G2 UV space and survives it.
+    pub fn forget_geometry_bound_rasters(&mut self) {
+        let mut rasters = std::mem::take(&mut self.layer_rasters);
+        rasters.retain(|(id, _), _| {
+            !self
+                .layers
+                .iter()
+                .any(|layer| layer.id == *id && layer.source_mode == TextureSourceMode::ScanMesh)
+        });
+        self.layer_rasters = rasters;
+    }
+
+    /// The G2 UV map itself was replaced, so every raster drawn into it is meaningless.
+    pub fn forget_layer_rasters(&mut self) {
+        self.layer_rasters.clear();
     }
 
     pub fn baked_layer_raster(&self, layer_id: u64) -> Option<&SkinImage> {
@@ -1022,11 +1169,15 @@ impl TextureProject {
             return 0;
         }
 
+        if brush.erase && layer.painted.is_none() {
+            return 0;
+        }
+
         let painted = match layer.painted.as_mut() {
             Some(paint) => {
                 let (width, height) = (paint.width, paint.height);
                 let rgba8 = Arc::make_mut(&mut paint.rgba8);
-                vkit_core::texture_bake::stamp_projection_onto_g2(
+                let painted = vkit_core::texture_bake::stamp_projection_onto_g2(
                     rgba8.as_mut_slice(),
                     width,
                     height,
@@ -1034,7 +1185,11 @@ impl TextureProject {
                     triangles,
                     brush,
                     to_source,
-                )
+                );
+                if painted > 0 {
+                    paint.revision = next_paint_revision();
+                }
+                painted
             }
             None => {
                 let mut rgba8 = vec![0; edge as usize * edge as usize * 4];
@@ -1049,6 +1204,7 @@ impl TextureProject {
                 );
                 if painted > 0 {
                     layer.painted = Some(TextureLayerPaint {
+                        revision: next_paint_revision(),
                         width: edge,
                         height: edge,
                         rgba8: Arc::new(rgba8),
@@ -1061,7 +1217,11 @@ impl TextureProject {
             return 0;
         }
 
+        // A stamp covers whatever the stencil reached, which nobody reports back as a box.
+        layer.painted_regions.clear();
+
         layer.pins.clear();
+        layer.mask_preview = None;
         layer.invalidate_raster();
         self.mark_dirty();
         painted
@@ -1236,6 +1396,32 @@ impl TextureProject {
         layer.source_view_center = center.map(|value| value.clamp(0.0, 1.0));
     }
 
+    /// Lets go of the offset a stroke was working at, without forgetting the
+    /// anchor.
+    ///
+    /// This is what makes it a clone stamp rather than a fixed displacement.
+    /// The offset used to be worked out once and then kept for the rest of the
+    /// session, so every later dab anywhere on the face pulled from the same
+    /// rigid distance away from wherever the pointer happened to be. Every
+    /// other tool of this kind re-bases on the press: the anchor stays where
+    /// Alt put it, and each new stroke measures from it afresh.
+    pub fn end_clone_stroke(&mut self) {
+        self.clone_offset = None;
+    }
+
+    /// The same anchor, picked by clicking the model rather than the canvas.
+    pub fn set_clone_sample_on_surface(
+        &mut self,
+        point: [f32; 2],
+        triangle_index: u32,
+        barycentric: [f64; 3],
+    ) {
+        self.set_clone_sample(point);
+        if self.clone_sample.is_some() {
+            self.clone_sample_surface = Some((triangle_index, barycentric));
+        }
+    }
+
     pub fn set_clone_sample(&mut self, point: [f32; 2]) {
         if point
             .into_iter()
@@ -1243,6 +1429,9 @@ impl TextureProject {
         {
             self.clone_sample = Some(point);
             self.clone_offset = None;
+            // A flat pick has no surface behind it. Clearing this keeps a stale
+            // marker from hovering over the model at the previous anchor.
+            self.clone_sample_surface = None;
         }
     }
 
@@ -1255,10 +1444,7 @@ impl TextureProject {
     ) {
         if !matches!(
             tool,
-            TextureTool::CloneStamp
-                | TextureTool::Heal
-                | TextureTool::DodgeBurn
-                | TextureTool::Sponge
+            TextureTool::CloneStamp | TextureTool::DodgeBurn | TextureTool::Sponge
         ) || !point
             .into_iter()
             .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
@@ -1269,7 +1455,7 @@ impl TextureProject {
         let falloff = self.mask_brush_falloff;
         let opacity = self.mask_brush_opacity.clamp(0.01, 1.0);
 
-        let source_offset = matches!(tool, TextureTool::CloneStamp | TextureTool::Heal)
+        let source_offset = matches!(tool, TextureTool::CloneStamp)
             .then(|| {
                 let offset = self.clone_offset.or_else(|| {
                     self.clone_sample
@@ -1290,7 +1476,7 @@ impl TextureProject {
             };
             let coverage = stroke_coverage(&mut self.stroke, layer_id, tool, size);
             let rgba8 = Arc::make_mut(&mut paint.rgba8);
-            apply_retouch_pixels(
+            let touched = apply_retouch_pixels(
                 rgba8,
                 size,
                 RetouchStroke {
@@ -1306,6 +1492,16 @@ impl TextureProject {
                 },
                 coverage,
             );
+            paint.revision = next_paint_revision();
+            let revision = paint.revision;
+            if let Some(touched) = touched {
+                layer.painted_regions.push_back((revision, touched));
+                while layer.painted_regions.len() > EDITED_REGION_HISTORY {
+                    layer.painted_regions.pop_front();
+                }
+            } else {
+                layer.painted_regions.clear();
+            }
             layer.invalidate_raster();
             self.mark_dirty();
             return;
@@ -1431,7 +1627,9 @@ impl TextureProject {
         layer.adjustments.exposure = solved.exposure;
         layer.adjustments.saturation = solved.saturation;
         layer.adjustments.temperature = solved.temperature;
-        layer.invalidate_raster();
+
+        // Adjustments are applied to a copy of the raster during the composite, so a tone match
+        // must not throw the raster away.
         self.mark_dirty();
     }
 
@@ -1558,6 +1756,8 @@ pub struct TextureBakeRequest {
     pub resolution: u32,
     pub boundary_feather_pixels: u16,
     pub cached_layer_rasters: BTreeMap<u64, CachedTextureLayerRaster>,
+
+    pub cached_base_face: Option<CachedBaseFace>,
 
     pub base_face_source: Option<vkit_core::vam::AssetLocator>,
 }
@@ -1913,17 +2113,6 @@ fn apply_retouch_pixels(
     if tool == TextureTool::CloneStamp && source_offset.is_none() {
         return None;
     }
-    let correction = (tool == TextureTool::Heal).then(|| {
-        heal_correction(
-            rgba8,
-            size,
-            center,
-            radius,
-            source_offset,
-            [min_x, min_y, max_x, max_y],
-        )
-    });
-
     for y in min_y..=max_y {
         for x in min_x..=max_x {
             let distance = (x as f32 - center[0]).hypot(y as f32 - center[1]);
@@ -1949,23 +2138,6 @@ fn apply_retouch_pixels(
                         y as f32 - source_offset[1],
                     );
                     blend_source_over(&mut rgba8[offset..offset + 4], source, step.blend);
-                }
-                TextureTool::Heal => {
-                    let Some(correction) = correction.as_ref() else {
-                        continue;
-                    };
-                    let target = correction.resolve(
-                        rgba8,
-                        size,
-                        x as f32,
-                        y as f32,
-                        source_offset,
-                        [x as usize - min_x as usize, y as usize - min_y as usize],
-                    );
-                    for channel in 0..3 {
-                        rgba8[offset + channel] =
-                            lerp_u8(rgba8[offset + channel], target[channel], step.blend);
-                    }
                 }
                 TextureTool::DodgeBurn => {
                     let linear = [0, 1, 2].map(|channel| srgb_to_linear(rgba8[offset + channel]));
@@ -2054,119 +2226,6 @@ fn sample_bilinear(rgba8: &[u8], size: RasterSize, x: f32, y: f32) -> [f32; 4] {
         top + (bottom - top) * fy
     })
 }
-
-struct HealCorrection {
-    grid: Vec<[f32; 3]>,
-    origin: [f32; 2],
-
-    scale: [f32; 2],
-}
-
-const HEAL_GRID: usize = 16;
-
-const HEAL_SWEEPS: usize = 96;
-
-impl HealCorrection {
-    fn resolve(
-        &self,
-        rgba8: &[u8],
-        size: RasterSize,
-        x: f32,
-        y: f32,
-        source_offset: Option<[f32; 2]>,
-        _cell: [usize; 2],
-    ) -> [u8; 3] {
-        let base = match source_offset {
-            Some(offset) => sample_bilinear(rgba8, size, x - offset[0], y - offset[1]),
-            None => [0.0, 0.0, 0.0, 255.0],
-        };
-        let correction = self.sample(x, y);
-        std::array::from_fn(|channel| {
-            (base[channel] + correction[channel])
-                .round()
-                .clamp(0.0, 255.0) as u8
-        })
-    }
-
-    fn sample(&self, x: f32, y: f32) -> [f32; 3] {
-        let gx = ((x - self.origin[0]) / self.scale[0]).clamp(0.0, (HEAL_GRID - 1) as f32);
-        let gy = ((y - self.origin[1]) / self.scale[1]).clamp(0.0, (HEAL_GRID - 1) as f32);
-        let x0 = gx.floor() as usize;
-        let y0 = gy.floor() as usize;
-        let x1 = (x0 + 1).min(HEAL_GRID - 1);
-        let y1 = (y0 + 1).min(HEAL_GRID - 1);
-        let fx = gx - x0 as f32;
-        let fy = gy - y0 as f32;
-        let cell = |cx: usize, cy: usize| self.grid[cy * HEAL_GRID + cx];
-        let (a, b, c, d) = (cell(x0, y0), cell(x1, y0), cell(x0, y1), cell(x1, y1));
-        std::array::from_fn(|channel| {
-            let top = a[channel] + (b[channel] - a[channel]) * fx;
-            let bottom = c[channel] + (d[channel] - c[channel]) * fx;
-            top + (bottom - top) * fy
-        })
-    }
-}
-
-fn heal_correction(
-    rgba8: &[u8],
-    size: RasterSize,
-    center: [f32; 2],
-    radius: f32,
-    source_offset: Option<[f32; 2]>,
-    _bounds: [u32; 4],
-) -> HealCorrection {
-    let origin = [center[0] - radius, center[1] - radius];
-    let scale = [
-        (radius * 2.0 / (HEAL_GRID - 1) as f32).max(f32::MIN_POSITIVE),
-        (radius * 2.0 / (HEAL_GRID - 1) as f32).max(f32::MIN_POSITIVE),
-    ];
-    let mut grid = vec![[0.0_f32; 3]; HEAL_GRID * HEAL_GRID];
-    let mut fixed = vec![false; HEAL_GRID * HEAL_GRID];
-
-    for cy in 0..HEAL_GRID {
-        for cx in 0..HEAL_GRID {
-            let x = origin[0] + cx as f32 * scale[0];
-            let y = origin[1] + cy as f32 * scale[1];
-            let normalized = (x - center[0]).hypot(y - center[1]) / radius.max(f32::MIN_POSITIVE);
-            if normalized < HEAL_RIM {
-                continue;
-            }
-            let destination = sample_bilinear(rgba8, size, x, y);
-            let source = match source_offset {
-                Some(offset) => sample_bilinear(rgba8, size, x - offset[0], y - offset[1]),
-                None => [0.0, 0.0, 0.0, 255.0],
-            };
-            let index = cy * HEAL_GRID + cx;
-            fixed[index] = true;
-            grid[index] = std::array::from_fn(|channel| destination[channel] - source[channel]);
-        }
-    }
-
-    for _ in 0..HEAL_SWEEPS {
-        for cy in 1..HEAL_GRID - 1 {
-            for cx in 1..HEAL_GRID - 1 {
-                let index = cy * HEAL_GRID + cx;
-                if fixed[index] {
-                    continue;
-                }
-                let up = grid[index - HEAL_GRID];
-                let down = grid[index + HEAL_GRID];
-                let left = grid[index - 1];
-                let right = grid[index + 1];
-                grid[index] = std::array::from_fn(|channel| {
-                    0.25 * (up[channel] + down[channel] + left[channel] + right[channel])
-                });
-            }
-        }
-    }
-    HealCorrection {
-        grid,
-        origin,
-        scale,
-    }
-}
-
-const HEAL_RIM: f32 = 0.86;
 
 const DODGE_BURN_STOPS: f32 = 1.0;
 
@@ -2386,16 +2445,53 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
         boundary_feather_pixels: request.boundary_feather_pixels,
     };
     let mut channels = BTreeMap::<TextureChannel, TextureBakeImage>::new();
+
+    // The resample of the skin face, when it came from the preview's own face and can therefore be
+    // handed to the preview build instead of being computed a second time.
+    let mut resampled_preview_face: Option<Arc<SkinImage>> = None;
+    let mut base_face = None;
     if request.bake_base == TextureBakeBase::CurrentSkin
         && let Some(base) = request.base_preview.as_deref()
     {
-        let full = base_face_at(request, base);
-        let face = full.as_ref().unwrap_or(&base.face);
-        let view = RgbaView::new(&face.rgba8, face.width, face.height)?;
+        let reusable = request.cached_base_face.as_ref().filter(|cached| {
+            cached.preview_revision == base.revision && cached.resolution == request.resolution
+        });
+        let (resized, from_preview_face) = match reusable {
+            Some(cached) => (Arc::clone(&cached.image), cached.from_preview_face),
+            None => {
+                let full = base_face_at(request, base);
+                let face = full.as_ref().unwrap_or(&base.face);
+                let view = RgbaView::new(&face.rgba8, face.width, face.height)?;
+                let baked = resize_direct_uv(view, request.resolution, request.resolution)
+                    .map_err(|error| error.to_string())?;
+                (
+                    Arc::new(SkinImage::new(
+                        base.revision,
+                        baked.width,
+                        baked.height,
+                        baked.rgba8,
+                    )?),
+                    full.is_none(),
+                )
+            }
+        };
+        base_face = Some(CachedBaseFace {
+            preview_revision: base.revision,
+            resolution: request.resolution,
+            from_preview_face,
+            image: Arc::clone(&resized),
+        });
+        if from_preview_face {
+            resampled_preview_face = Some(Arc::clone(&resized));
+        }
         channels.insert(
             TextureChannel::Diffuse,
-            resize_direct_uv(view, request.resolution, request.resolution)
-                .map_err(|error| error.to_string())?,
+            TextureBakeImage::from_rgba8(
+                resized.rgba8.as_ref().clone(),
+                request.resolution,
+                request.resolution,
+            )
+            .map_err(|error| error.to_string())?,
         );
     }
 
@@ -2449,9 +2545,9 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
 
         layer_rasters.insert(layer.id, raster.clone());
 
-        let mut pixels = raster.image.rgba8.as_ref().clone();
-        if layer.channel.is_color() {
-            apply_color_adjustments(&mut pixels, layer.adjustments);
+        let mut pixels = std::borrow::Cow::Borrowed(raster.image.rgba8.as_slice());
+        if layer.channel.is_color() && layer.adjustments != TextureColorAdjustments::default() {
+            apply_color_adjustments(pixels.to_mut(), layer.adjustments);
         }
         let _ = crate::diagnostics::record(
             crate::diagnostics::Severity::Debug,
@@ -2468,12 +2564,16 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
                 cached_hit,
             ),
         );
-        apply_channel_interpretation(
-            &mut pixels,
-            layer.channel,
-            layer.normal_strength,
-            layer.scalar_invert,
-        );
+        if layer.channel == TextureChannel::Normal
+            || (layer.scalar_invert && !layer.channel.is_color())
+        {
+            apply_channel_interpretation(
+                pixels.to_mut(),
+                layer.channel,
+                layer.normal_strength,
+                layer.scalar_invert,
+            );
+        }
         let base = channels.entry(layer.channel).or_insert(
             TextureBakeImage::transparent(request.resolution, request.resolution)
                 .map_err(|error| error.to_string())?,
@@ -2521,6 +2621,11 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
         request.request_id,
         &request.mapping,
         preview_base,
+        // Only the face this bake actually resampled off the preview, and only when the preview
+        // build is starting from that same preview.
+        resampled_preview_face
+            .as_ref()
+            .filter(|_| preview_base.is_some()),
         request.neutral_base_rgb,
         &images,
     )?);
@@ -2530,6 +2635,7 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
         images,
         preview,
         layer_rasters,
+        base_face,
         scan_atlases,
     })
 }
@@ -2623,8 +2729,15 @@ fn rasterize_layer_unmirrored(
             )
         };
 
-        return TextureBakeImage::from_rgba8(rgba8, options.width, options.height)
-            .map_err(|error| format!("layer {} paint is unusable: {error}", layer.name));
+        let mut baked = TextureBakeImage::from_rgba8(rgba8, options.width, options.height)
+            .map_err(|error| format!("layer {} paint is unusable: {error}", layer.name))?;
+        feather_coverage_alpha(
+            &mut baked.rgba8,
+            baked.width,
+            baked.height,
+            options.boundary_feather_pixels,
+        );
+        return Ok(baked);
     }
     match layer.source_mode {
         TextureSourceMode::LandmarkPins => {
@@ -2959,6 +3072,11 @@ fn build_baked_preview(
     revision: u64,
     mapping: &G2UvMapping,
     base: Option<&SkinPreview>,
+
+    // `base.face` already box-resized to the bake resolution, when the bake happened to compute
+    // exactly that. The same input, the same target size and the same box filter, so reusing it is
+    // pixel-identical to resampling the face here a second time.
+    resampled_face: Option<&Arc<SkinImage>>,
     neutral_rgb: [u8; 3],
     images: &BTreeMap<TextureChannel, Arc<SkinImage>>,
 ) -> Result<SkinPreview, String> {
@@ -2969,15 +3087,20 @@ fn build_baked_preview(
     };
     preview.revision = revision;
     if let Some(diffuse) = images.get(&TextureChannel::Diffuse) {
-        let mut composite = resize_rgba_box(
-            RgbaView {
-                rgba8: &preview.face.rgba8,
-                width: preview.face.width,
-                height: preview.face.height,
-            },
-            diffuse.width,
-            diffuse.height,
-        );
+        let reusable = resampled_face
+            .filter(|face| face.width == diffuse.width && face.height == diffuse.height);
+        let mut composite = match reusable {
+            Some(face) => face.rgba8.as_ref().clone(),
+            None => resize_rgba_box(
+                RgbaView {
+                    rgba8: &preview.face.rgba8,
+                    width: preview.face.width,
+                    height: preview.face.height,
+                },
+                diffuse.width,
+                diffuse.height,
+            ),
+        };
         composite_rgba(
             &mut composite,
             &diffuse.rgba8,
@@ -3199,6 +3322,7 @@ mod tests {
             TextureSourceMode::LandmarkPins,
         );
         layer.painted = Some(TextureLayerPaint {
+            revision: next_paint_revision(),
             width: 2048,
             height: 2048,
             rgba8: Arc::new(vec![0; 2048 * 2048 * 4]),
@@ -3216,6 +3340,7 @@ mod tests {
                 radius: 0.1,
                 falloff: SculptFalloff::Smooth,
                 opacity: 1.0,
+                erase: false,
             },
             |_| None,
         );
@@ -3250,6 +3375,184 @@ mod tests {
 
         assert!(region[0] > 24 && region[2] < 40, "{region:?}");
         assert!(region[1] > 24 && region[3] < 40, "{region:?}");
+    }
+
+    #[test]
+    fn a_dab_on_the_projected_atlas_records_the_box_it_touched() {
+        let mut project = TextureProject::default();
+        let mut layer = TextureLayer::image(
+            1,
+            PathBuf::from("face.png"),
+            TextureSourceMode::LandmarkPins,
+        );
+        let before = next_paint_revision();
+        layer.painted = Some(TextureLayerPaint {
+            revision: next_paint_revision(),
+            width: 64,
+            height: 64,
+            rgba8: Arc::new([120, 120, 120, 255].repeat(64 * 64)),
+        });
+        project.layers.push(layer);
+        project.mask_brush_radius = 0.05;
+
+        project.apply_retouch_dab(1, TextureTool::DodgeBurn, [0.5, 0.5], false);
+        let layer = &project.layers[0];
+        let paint = layer.painted.as_ref().expect("the atlas is still there");
+        let (revision, region) = *layer.painted_regions.back().expect("a dab was recorded");
+        assert_eq!(
+            revision, paint.revision,
+            "the box is tagged with the revision it produced"
+        );
+        assert!(
+            paint.revision > before,
+            "a dab has to move the atlas revision or no texture cache will refresh"
+        );
+
+        // A canvas holding the whole atlas only has to re-upload the brush's own footprint.
+        assert!(region[0] > 24 && region[2] < 40, "{region:?}");
+        assert!(region[1] > 24 && region[3] < 40, "{region:?}");
+    }
+
+    #[test]
+    fn a_stamp_asks_the_canvas_to_redraw_the_whole_atlas() {
+        let mut project = TextureProject::default();
+        let mut layer = TextureLayer::image(
+            1,
+            PathBuf::from("face.png"),
+            TextureSourceMode::LandmarkPins,
+        );
+        layer.painted = Some(TextureLayerPaint {
+            revision: next_paint_revision(),
+            width: 64,
+            height: 64,
+            rgba8: Arc::new(vec![0; 64 * 64 * 4]),
+        });
+        layer.painted_regions.push_back((1, [0, 0, 1, 1]));
+        project.layers.push(layer);
+        project.selected_layer_id = Some(1);
+
+        let source = SkinImage::new(0, 4, 4, [200, 180, 170, 255].repeat(16)).unwrap();
+        let triangle = vkit_core::texture_bake::ProjectedTriangle {
+            screen: [[0.45, 0.45], [0.55, 0.45], [0.5, 0.55]],
+            uv: [[0.2, 0.2], [0.8, 0.2], [0.5, 0.8]],
+        };
+        let painted = project.stamp_projection(
+            &source,
+            std::slice::from_ref(&triangle),
+            vkit_core::texture_bake::ProjectionBrush {
+                centre: [0.5, 0.5],
+                radius: 0.2,
+                falloff: SculptFalloff::Smooth,
+                opacity: 1.0,
+                erase: false,
+            },
+            |_| Some([0.5, 0.5]),
+        );
+        assert!(painted > 0, "the stamp has to reach the atlas");
+        assert!(
+            project.layers[0].painted_regions.is_empty(),
+            "a stamp reports no box, so the history must not claim the atlas is patchable"
+        );
+    }
+
+    #[test]
+    fn the_resampled_skin_face_is_only_offered_back_at_its_own_resolution() {
+        let project = TextureProject {
+            base_face: Some(CachedBaseFace {
+                preview_revision: 7,
+                resolution: PREVIEW_BAKE_RESOLUTION,
+                from_preview_face: true,
+                image: Arc::new(SkinImage::new(7, 1, 1, vec![1, 2, 3, 4]).unwrap()),
+            }),
+            ..Default::default()
+        };
+        assert!(
+            project.cached_base_face(PREVIEW_BAKE_RESOLUTION).is_some(),
+            "the next preview bake must not resample the skin again"
+        );
+        assert!(
+            project.cached_base_face(4096).is_none(),
+            "an export must never composite over a preview-sized base"
+        );
+    }
+
+    #[test]
+    fn the_preview_build_reuses_a_resample_the_bake_already_paid_for() {
+        let mapping = G2UvMapping {
+            source_path: PathBuf::new(),
+            coordinate_rms_cm: 0.0,
+            coordinate_max_cm: 0.0,
+            uncovered_triangles: 0,
+            faces: Vec::new(),
+            triangles: vec![vkit_core::vam::G2UvTriangle {
+                canonical_face_index: 0,
+                canonical_triangle_index: 0,
+                material_region: UvMaterialRegion::Face,
+                on_head: true,
+                position_indices: [0, 1, 2],
+                uvs: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            }],
+        };
+        let mut base = neutral_preview(1, &mapping, [200, 100, 50]).unwrap();
+        let face = (0..16 * 16)
+            .flat_map(|index| [(index % 251) as u8, 40, 90, 255])
+            .collect::<Vec<_>>();
+        base.face = Arc::new(SkinImage::new(1, 16, 16, face).unwrap());
+
+        let mut images = BTreeMap::new();
+        images.insert(
+            TextureChannel::Diffuse,
+            Arc::new(SkinImage::new(2, 4, 4, [255, 0, 0, 128].repeat(16)).unwrap()),
+        );
+
+        let resampled = Arc::new(
+            SkinImage::new(
+                1,
+                4,
+                4,
+                resize_rgba_box(
+                    RgbaView {
+                        rgba8: &base.face.rgba8,
+                        width: base.face.width,
+                        height: base.face.height,
+                    },
+                    4,
+                    4,
+                ),
+            )
+            .unwrap(),
+        );
+
+        let resampled_here =
+            build_baked_preview(3, &mapping, Some(&base), None, [0, 0, 0], &images).unwrap();
+        let handed_over = build_baked_preview(
+            3,
+            &mapping,
+            Some(&base),
+            Some(&resampled),
+            [0, 0, 0],
+            &images,
+        )
+        .unwrap();
+        assert_eq!(
+            resampled_here.face.rgba8, handed_over.face.rgba8,
+            "reusing the bake's own resample has to be pixel-identical to redoing it"
+        );
+
+        let wrong_size = Arc::new(SkinImage::new(1, 2, 2, vec![9; 16]).unwrap());
+        let refused = build_baked_preview(
+            3,
+            &mapping,
+            Some(&base),
+            Some(&wrong_size),
+            [0, 0, 0],
+            &images,
+        )
+        .unwrap();
+        assert_eq!(
+            resampled_here.face.rgba8, refused.face.rgba8,
+            "a resample of the wrong size must be ignored, not stretched over the face"
+        );
     }
 
     fn one_stroke(layer_id: u64, tool: TextureTool, size: impl Into<RasterSize>) -> StrokeCoverage {
@@ -3518,6 +3821,100 @@ mod tests {
             2048,
             16
         ));
+    }
+
+    fn preview_raster(id: u64) -> CachedTextureLayerRaster {
+        CachedTextureLayerRaster {
+            mirror: FaceMirror::Off,
+            raster_revision: 0,
+            resolution: PREVIEW_BAKE_RESOLUTION,
+            boundary_feather_pixels: 16,
+            image: Arc::new(SkinImage::solid(id, [20, 40, 60, 255])),
+        }
+    }
+
+    #[test]
+    fn a_new_head_keeps_the_image_raster_and_drops_the_scan_projection() {
+        let mut project = TextureProject::default();
+        let image =
+            project.add_image_layer(PathBuf::from("face.png"), TextureSourceMode::LandmarkPins);
+        let scan = project
+            .ensure_scan_layer("scan".to_owned())
+            .expect("a scan layer");
+        project.absorb_layer_rasters(&BTreeMap::from([
+            (image, preview_raster(image)),
+            (scan, preview_raster(scan)),
+        ]));
+
+        project.forget_geometry_bound_rasters();
+        let kept = project.cached_layer_rasters(PREVIEW_BAKE_RESOLUTION);
+        assert!(
+            kept.contains_key(&image),
+            "an image layer is warped into G2 UV space, not onto the head that changed"
+        );
+        assert!(
+            !kept.contains_key(&scan),
+            "the scan projection is baked against the head, so it must go"
+        );
+    }
+
+    #[test]
+    fn a_layer_hidden_for_one_bake_keeps_the_raster_it_already_paid_for() {
+        let mut project = TextureProject::default();
+        let kept =
+            project.add_image_layer(PathBuf::from("face.png"), TextureSourceMode::LandmarkPins);
+        let hidden =
+            project.add_image_layer(PathBuf::from("brow.png"), TextureSourceMode::LandmarkPins);
+        project.absorb_layer_rasters(&BTreeMap::from([
+            (kept, preview_raster(kept)),
+            (hidden, preview_raster(hidden)),
+        ]));
+
+        // The next bake composites only the visible layer, so its map carries only that one.
+        project.absorb_layer_rasters(&BTreeMap::from([(kept, preview_raster(kept))]));
+        let cache = project.cached_layer_rasters(PREVIEW_BAKE_RESOLUTION);
+        assert!(cache.contains_key(&hidden), "hiding a layer is not an edit");
+
+        project.remove_layer(hidden);
+        project.absorb_layer_rasters(&BTreeMap::from([(kept, preview_raster(kept))]));
+        assert!(
+            !project
+                .cached_layer_rasters(PREVIEW_BAKE_RESOLUTION)
+                .contains_key(&hidden),
+            "a deleted layer must not hold its raster forever"
+        );
+    }
+
+    #[test]
+    fn an_export_bake_leaves_the_preview_raster_the_viewport_edits_against() {
+        let mut project = TextureProject::default();
+        let layer =
+            project.add_image_layer(PathBuf::from("face.png"), TextureSourceMode::LandmarkPins);
+        project.absorb_layer_rasters(&BTreeMap::from([(layer, preview_raster(layer))]));
+
+        let mut export = preview_raster(layer);
+        export.resolution = project.resolution;
+        project.absorb_layer_rasters(&BTreeMap::from([(layer, export)]));
+
+        assert!(
+            project
+                .cached_layer_rasters(PREVIEW_BAKE_RESOLUTION)
+                .contains_key(&layer),
+            "a full-resolution export must not evict the preview raster"
+        );
+        assert!(
+            project
+                .cached_layer_rasters(project.resolution)
+                .contains_key(&layer),
+            "a second export in a row should still find its raster"
+        );
+
+        // Back to editing: the export atlas is the expensive one to hold, so it goes.
+        project.absorb_layer_rasters(&BTreeMap::from([(layer, preview_raster(layer))]));
+        assert!(
+            project.cached_layer_rasters(project.resolution).is_empty(),
+            "the export raster is dropped once the viewport bakes again"
+        );
     }
 
     #[test]
@@ -3921,13 +4318,13 @@ mod tests {
         );
 
         let neutral = [0xe8, 0xb2, 0x78];
-        let preview = build_baked_preview(3, &mapping, None, neutral, &images).unwrap();
+        let preview = build_baked_preview(3, &mapping, None, None, neutral, &images).unwrap();
         assert_eq!(preview.face.rgba8[3], 255);
         assert!(preview.face.rgba8[0] > u32::from(neutral[0]) as u8);
         assert!(preview.face.rgba8[1] < neutral[1]);
         assert_ne!(preview.face.rgba8.as_slice(), &[255, 0, 0, 128]);
 
-        let dark = build_baked_preview(4, &mapping, None, [20, 30, 40], &images).unwrap();
+        let dark = build_baked_preview(4, &mapping, None, None, [20, 30, 40], &images).unwrap();
         assert!(
             dark.face.rgba8[2] < preview.face.rgba8[2],
             "the neutral base ignored the solid colour"
@@ -4165,52 +4562,6 @@ mod tests {
     }
 
     #[test]
-    fn healing_takes_texture_from_the_source_and_light_from_the_destination() {
-        let size = RasterSize {
-            width: 64,
-            height: 16,
-        };
-        let mut rgba8 = vec![0_u8; 64 * 16 * 4];
-        for y in 0..16_usize {
-            for x in 0..64_usize {
-                let stripe = if x % 4 == 0 { 20 } else { 0 };
-                let base = if x < 32 { 60 } else { 170 };
-                let value = (base + stripe) as u8;
-                let offset = (y * 64 + x) * 4;
-                rgba8[offset..offset + 4].copy_from_slice(&[value, value, value, 255]);
-            }
-        }
-        let mut coverage = one_stroke(1, TextureTool::Heal, size);
-        apply_retouch_pixels(
-            &mut rgba8,
-            size,
-            RetouchStroke {
-                tool: TextureTool::Heal,
-
-                point: [48.0 / 63.0, 0.5],
-                clone_offset: Some([32.0 / 63.0, 0.0]),
-                reverse: false,
-            },
-            BrushDab {
-                radius: 0.25,
-                falloff: SculptFalloff::Linear,
-                opacity: 1.0,
-            },
-            &mut coverage,
-        );
-        let centre = (8 * 64 + 48) * 4;
-
-        assert!(
-            rgba8[centre] > 140,
-            "healed centre is {} and should still be bright",
-            rgba8[centre]
-        );
-
-        let plain = (8 * 64 + 49) * 4;
-        assert_ne!(rgba8[centre], rgba8[plain], "the source's grain arrived");
-    }
-
-    #[test]
     fn retouch_dodge_changes_only_the_working_pixels() {
         let mut rgba8 = [80, 90, 100, 255].repeat(64);
         apply_retouch_pixels(
@@ -4250,6 +4601,59 @@ const EDITED_REGION_HISTORY: usize = 96;
 #[cfg(test)]
 mod source_modes {
     use super::*;
+
+    #[test]
+    fn the_clone_anchor_stays_put_while_every_stroke_measures_from_it_afresh() {
+        // A clone stamp is an anchor plus a per-stroke offset. The offset used
+        // to be worked out on the first dab and then kept for the rest of the
+        // session, so every later stamp pulled from the same rigid distance
+        // away from wherever the pointer was -- a fixed displacement, not a
+        // stamp. Releasing the button lets go of the offset and nothing else.
+        let mut project = TextureProject::default();
+        project.set_clone_sample([0.25, 0.25]);
+        assert_eq!(project.clone_sample, Some([0.25, 0.25]));
+
+        project.clone_offset = Some([0.5, 0.5]);
+        project.end_clone_stroke();
+        assert_eq!(
+            project.clone_offset, None,
+            "the offset has to be released when the button is"
+        );
+        assert_eq!(
+            project.clone_sample,
+            Some([0.25, 0.25]),
+            "the anchor is where Alt put it and a stroke ending does not move it"
+        );
+
+        // Picking again is the one thing that does move it, and it drops any
+        // offset with it so the next stroke cannot measure from the old pair.
+        project.clone_offset = Some([0.5, 0.5]);
+        project.set_clone_sample([0.75, 0.1]);
+        assert_eq!(project.clone_sample, Some([0.75, 0.1]));
+        assert_eq!(project.clone_offset, None);
+    }
+
+    #[test]
+    fn an_anchor_picked_on_the_canvas_has_no_surface_behind_it() {
+        // The marker on the model is projected from the triangle the anchor was
+        // picked on. An anchor picked flat has no triangle, and a stale one
+        // would leave a crosshair floating over the head at the old spot.
+        let mut project = TextureProject::default();
+        project.set_clone_sample_on_surface([0.4, 0.4], 12, [0.5, 0.25, 0.25]);
+        assert_eq!(project.clone_sample_surface, Some((12, [0.5, 0.25, 0.25])));
+
+        project.set_clone_sample([0.6, 0.6]);
+        assert_eq!(
+            project.clone_sample_surface, None,
+            "a flat pick has to clear the surface the marker was drawn from"
+        );
+
+        // A refused point changes nothing, marker included.
+        project.set_clone_sample_on_surface([0.2, 0.2], 3, [1.0, 0.0, 0.0]);
+        project.set_clone_sample([9.0, 9.0]);
+        assert_eq!(project.clone_sample, Some([0.2, 0.2]));
+        assert_eq!(project.clone_sample_surface, Some((3, [1.0, 0.0, 0.0])));
+    }
 
     #[test]
     fn no_tool_is_unreachable() {

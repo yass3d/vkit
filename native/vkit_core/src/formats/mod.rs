@@ -1,9 +1,11 @@
 mod canonical_anatomy;
+mod draco;
 mod dsf;
 mod dsf_morph;
 mod embedded_morph;
 mod g2_obj;
 mod mesh;
+mod meshopt;
 mod morph;
 mod mtl;
 mod obj;
@@ -18,6 +20,11 @@ pub use canonical_anatomy::{
     canonical_head_groups_cache_path, collect_canonical_head_groups,
     derive_canonical_head_group_faces, ensure_canonical_head_groups, has_canonical_head_groups,
     read_canonical_head_groups, write_canonical_head_groups,
+};
+pub use draco::{
+    AttributeKind as DracoAttributeKind, DracoAttribute, DracoError, DracoMesh,
+    MAX_BITSTREAM_VERSION as DRACO_MAX_BITSTREAM_VERSION,
+    MAX_DECODED_BYTES as DRACO_MAX_DECODED_BYTES, decode_mesh as decode_draco_mesh,
 };
 pub use dsf::{
     DazBone, DazGeometry, HEAD_SKIN_MATERIALS, HEAD_VISUAL_EXCLUDED_MATERIALS,
@@ -41,6 +48,10 @@ pub use g2_obj::{
     normalize_g2m_template_geometry, topology_digest,
 };
 pub use mesh::{Mesh, canonical_mesh_hash, canonical_mesh_hash_hex};
+pub use meshopt::{
+    Filter as MeshoptFilter, MAX_DECODED_BYTES as MESHOPT_MAX_DECODED_BYTES, MeshoptError,
+    Mode as MeshoptMode, decode_buffer_view as decode_meshopt_buffer_view,
+};
 pub use morph::{
     MorphAuthoring, MorphCompatibility, MorphTarget, ObjMorphSource, infer_target_unit_scale,
     load_obj_morph_target, validate_morph_topology,

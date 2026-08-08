@@ -16,7 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureNamePlaceholder => Some("Masukkan nama tekstur"),
         TextKey::TextureOverwriteTitle => Some("Ini akan mengganti tekstur bernama sama"),
         TextKey::OpenScan => Some("Pindai Kepala"),
-        TextKey::SourceMorphMissing => Some("Morph hilang"),
+        TextKey::SourceMorphMissing => Some("Tidak ada morph look ini yang terpasang"),
         TextKey::EditDetails => Some("Sunting Detail"),
         TextKey::Female => Some("Perempuan"),
         TextKey::Male => Some("Laki-laki"),
@@ -215,6 +215,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Detail rambut berbeda dari aslinya."),
         TextKey::NoMatchingHair => Some("Tidak ada preset rambut yang cocok"),
         TextKey::MorphSearch => Some("Cari Morph"),
+        TextKey::MorphOneSidedFilter => Some("Kiri / kanan"),
+        TextKey::MorphOneSidedFilterHint => {
+            Some("Tampilkan morph yang hanya menggerakkan satu sisi wajah")
+        }
         TextKey::AppearanceSearch => Some("Cari Look"),
         TextKey::LookFind => Some("Muat Look"),
         TextKey::CameraTrackballArmed => {
@@ -281,6 +285,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Ekspresi"),
         TextKey::NoMatchingMorphs => Some("Tidak ada morph yang cocok"),
         TextKey::ResetMorphs => Some("Atur Ulang Semua"),
+        TextKey::UndoMorphReset => Some("Batalkan reset"),
+        TextKey::LightRotationGesture => Some("Shift+Seret klik kanan"),
+        TextKey::UpdateAvailable => Some("Perbarui"),
+        TextKey::PackageFromFiles => Some("Pilih berkas"),
+        TextKey::PackageMorphFiles => Some("Morph"),
+        TextKey::PackageTextureFiles => Some("Tekstur"),
+        TextKey::PackageListEmpty => Some("Belum ada yang ditambahkan"),
+        TextKey::LightingStudio => Some("Studio"),
+        TextKey::LightingSoft => Some("Lembut"),
+        TextKey::LightingDaylight => Some("Cahaya siang"),
+        TextKey::LightingWarm => Some("Hangat"),
+        TextKey::LightingGloss => Some("Cek kilap"),
+        TextKey::LightingPortrait => Some("Potret"),
+        TextKey::ImportLoadingMesh => Some("Memuat mesh"),
+        TextKey::ImportSimplifying => Some("Menyederhanakan mesh"),
+        TextKey::StageOptimizeHead => Some("Optimalkan kepala"),
+        TextKey::StagePrepareInput => Some("Menyiapkan masukan"),
+        TextKey::StageAlignScan => Some("Menyelaraskan pindaian"),
+        TextKey::StageFitShape => Some("Menyesuaikan bentuk G2"),
+        TextKey::StageValidate => Some("Memvalidasi struktur"),
+        TextKey::StagePrepareResult => Some("Menyiapkan hasil"),
+        TextKey::HeavyMeshNote => Some("sekitar {count} segitiga -- makin banyak makin lama"),
         TextKey::TransformGroups => Some("Bagian"),
         TextKey::CollapseTransformGroups => Some("Tutup bagian"),
         TextKey::ExpandTransformGroups => Some("Buka bagian"),
@@ -314,7 +340,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptFailed => Some("Operasi sculpt gagal"),
         TextKey::Ready => Some("Siap"),
         TextKey::Busy => Some("Penyuntingan terkunci selama proses"),
-        TextKey::NeedScan => Some("Buka dulu OBJ, GLB, atau FBX kepala pindaian"),
+        TextKey::NeedScan => Some(
+            "Buka dulu OBJ, GLB, atau FBX kepala pindaian, atau mulai dari look yang sudah ada di VaM",
+        ),
+        TextKey::ScanLoadFailed => Some("Berkas kepala itu tidak bisa dibaca"),
         TextKey::NeedEyeMorph => Some("Morph mata bawaan tidak kompatibel dengan G2 ini"),
         TextKey::ReviewEyePins => Some("Periksa pin kelopak mata yang merah"),
         TextKey::ResultUnavailable => Some("Fit wajah terlebih dahulu"),
@@ -376,7 +405,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Snap Tampilan"),
         TextKey::ShortcutSnapView => Some("Alt + Seret Roda"),
         TextKey::HelpStandardViews => Some("Tampilan Standar"),
-        TextKey::ShortcutStandardViews => Some("Numpad 1 3 7 9"),
+        TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => Some("Pilih folder VaM Anda agar basis G2 disiapkan otomatis"),
         TextKey::ResultEmpty => Some("Tidak ada morph siap"),
@@ -507,7 +536,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Burn"),
         TextKey::BrushSaturate => Some("Tambah saturasi"),
         TextKey::BrushDesaturate => Some("Kurangi saturasi"),
-        TextKey::ShowBakedTexture => Some("Tampilkan tekstur di tampilan 3D"),
+        TextKey::ShowLayersOnly => Some("Hanya lapisan"),
         TextKey::BaseWithoutSkin => Some("Lapisan"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Lapisan yang dilukis di atas warna solid, tanpa preset; tekstur yang diekspor tidak berubah",
@@ -528,15 +557,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureToolClone => {
             Some("Clone Stamp — Alt-klik sampel, lalu lukis untuk menyalinnya")
         }
-        TextKey::TextureToolHeal => Some("Healing — memadukan area yang dilukis dengan sekitarnya"),
         TextKey::TextureToolDodgeBurn => {
             Some("Dodge/Burn — mencerahkan; tahan Alt untuk menggelapkan")
         }
         TextKey::TextureToolSponge => {
             Some("Sponge — menambah saturasi; tahan Alt untuk menguranginya")
-        }
-        TextKey::TextureNavigationTooltip => {
-            Some("Roda mouse: zoom · Seret tengah atau Space + seret: geser")
         }
         TextKey::SelectTextureLayer => Some("Pilih lapisan tekstur."),
         TextKey::LoadingTextureImage => Some("Memuat gambar…"),

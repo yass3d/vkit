@@ -16,7 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureNamePlaceholder => Some("Введите имя текстуры"),
         TextKey::TextureOverwriteTitle => Some("Текстуры с таким же именем будут заменены"),
         TextKey::OpenScan => Some("Скан головы"),
-        TextKey::SourceMorphMissing => Some("Отсутствующие морфы"),
+        TextKey::SourceMorphMissing => Some("Ни один морф этого лука не установлен"),
         TextKey::EditDetails => Some("Правка деталей"),
         TextKey::Female => Some("Женский"),
         TextKey::Male => Some("Мужской"),
@@ -221,6 +221,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Детализация волос отличается от настоящей."),
         TextKey::NoMatchingHair => Some("Подходящих пресетов волос нет"),
         TextKey::MorphSearch => Some("Поиск морфов"),
+        TextKey::MorphOneSidedFilter => Some("Лево / право"),
+        TextKey::MorphOneSidedFilterHint => {
+            Some("Показывать морфы, изменяющие только одну половину лица")
+        }
         TextKey::AppearanceSearch => Some("Поиск образов"),
         TextKey::LookFind => Some("Загрузить образ"),
         TextKey::CameraTrackballArmed => {
@@ -287,6 +291,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Мимика"),
         TextKey::NoMatchingMorphs => Some("Подходящих морфов нет"),
         TextKey::ResetMorphs => Some("Сбросить все"),
+        TextKey::UndoMorphReset => Some("Отменить сброс"),
+        TextKey::LightRotationGesture => Some("Shift+Перетаскивание ПКМ"),
+        TextKey::UpdateAvailable => Some("Обновить"),
+        TextKey::PackageFromFiles => Some("Выбрать файлы"),
+        TextKey::PackageMorphFiles => Some("Морфы"),
+        TextKey::PackageTextureFiles => Some("Текстуры"),
+        TextKey::PackageListEmpty => Some("Пока ничего не добавлено"),
+        TextKey::LightingStudio => Some("Студийный"),
+        TextKey::LightingSoft => Some("Мягкий"),
+        TextKey::LightingDaylight => Some("Дневной"),
+        TextKey::LightingWarm => Some("Тёплый"),
+        TextKey::LightingGloss => Some("Проверка бликов"),
+        TextKey::LightingPortrait => Some("Портрет"),
+        TextKey::ImportLoadingMesh => Some("Загрузка меша"),
+        TextKey::ImportSimplifying => Some("Упрощение меша"),
+        TextKey::StageOptimizeHead => Some("Оптимизация головы"),
+        TextKey::StagePrepareInput => Some("Подготовка данных"),
+        TextKey::StageAlignScan => Some("Выравнивание скана"),
+        TextKey::StageFitShape => Some("Подгонка формы G2"),
+        TextKey::StageValidate => Some("Проверка структуры"),
+        TextKey::StagePrepareResult => Some("Подготовка результата"),
+        TextKey::HeavyMeshNote => Some("около {count} треугольников -- чем больше, тем дольше"),
         TextKey::TransformGroups => Some("Части"),
         TextKey::CollapseTransformGroups => Some("Свернуть части"),
         TextKey::ExpandTransformGroups => Some("Развернуть части"),
@@ -322,7 +348,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptFailed => Some("Операция скульптинга не удалась"),
         TextKey::Ready => Some("Готово"),
         TextKey::Busy => Some("Редактирование заблокировано во время генерации"),
-        TextKey::NeedScan => Some("Сначала откройте скан головы в формате OBJ, GLB или FBX"),
+        TextKey::NeedScan => Some(
+            "Сначала откройте скан головы в формате OBJ, GLB или FBX либо начните с образа, уже установленного в VaM",
+        ),
+        TextKey::ScanLoadFailed => Some("Не удалось прочитать этот файл головы"),
         TextKey::NeedEyeMorph => Some("Встроенный морф глаз несовместим с этим G2"),
         TextKey::ReviewEyePins => Some("Проверьте красные точки на веках"),
         TextKey::ResultUnavailable => Some("Сначала подгоните лицо"),
@@ -388,7 +417,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Привязка вида"),
         TextKey::ShortcutSnapView => Some("Alt + тянуть колесом"),
         TextKey::HelpStandardViews => Some("Стандартные виды"),
-        TextKey::ShortcutStandardViews => Some("Numpad 1 3 7 9"),
+        TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("Выберите папку VaM, чтобы база G2 подготовилась автоматически")
@@ -521,7 +550,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Затемнитель"),
         TextKey::BrushSaturate => Some("Насытить"),
         TextKey::BrushDesaturate => Some("Обесцветить"),
-        TextKey::ShowBakedTexture => Some("Показывать текстуру в 3D-виде"),
+        TextKey::ShowLayersOnly => Some("Только слои"),
         TextKey::BaseWithoutSkin => Some("Слой"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Нарисованные слои на сплошном цвете, без пресета; экспортируемая текстура не меняется",
@@ -540,16 +569,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureToolClone => {
             Some("Штамп — Alt-щелчок задаёт образец, затем рисуйте, чтобы копировать")
         }
-        TextKey::TextureToolHeal => {
-            Some("Восстанавливающая кисть — смешивает закрашенную область с окружением")
-        }
         TextKey::TextureToolDodgeBurn => {
             Some("Осветлитель/Затемнитель — осветляет; Alt — затемняет")
         }
         TextKey::TextureToolSponge => Some("Губка — добавляет насыщенность; Alt — убирает её"),
-        TextKey::TextureNavigationTooltip => {
-            Some("Колесо мыши: зум · СКМ или Пробел + перетаскивание: панорамирование")
-        }
         TextKey::SelectTextureLayer => Some("Выберите слой текстуры."),
         TextKey::LoadingTextureImage => Some("Загрузка изображения…"),
         TextKey::ScanTextureAlignment => {

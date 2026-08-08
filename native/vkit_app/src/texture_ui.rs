@@ -27,9 +27,9 @@ use crate::{
     },
     ui_components::{
         BRUSH_FALLOFF_COMPACT_WIDTH, FilledNumericSlider, Icon, animated_segmented_group,
-        brush_falloff_selector, brush_size_gesture_anchor, clear_brush_size_gesture,
-        compact_brush_numeric_control, control_affordances, handle_brush_size_gesture, icon_button,
-        paint_icon, paint_list_row_highlight, paint_texture_pin, segment_button, switch_row,
+        brush_falloff_selector, clear_brush_size_gesture, compact_brush_numeric_control,
+        control_affordances, handle_brush_size_gesture, icon_button, paint_icon,
+        paint_list_row_highlight, paint_texture_pin, segment_button, switch_row,
     },
 };
 
@@ -51,7 +51,6 @@ const TEXTURE_THUMBNAIL_SIZE: f32 = 36.0;
 const TEXTURE_PIN_HIT_RADIUS: f32 = 12.0;
 
 const TEXTURE_BRUSH_CONTROL_WIDTH: f32 = 320.0;
-const TEXTURE_BRUSH_SIZE_ID: &str = "vkit.texture.source.brush-size";
 const TEXTURE_BRUSH_SIZE_SENSITIVITY: f32 = 0.0008;
 const TEXTURE_AUTO_BAKE_DEBOUNCE: Duration = Duration::from_millis(48);
 
@@ -116,13 +115,15 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
     source_ui.set_clip_rect(rect);
     let ui = &mut source_ui;
     ui.painter().rect_filled(rect, 0.0, COLOR_BG);
-    let response = ui
-        .interact(
-            rect,
-            Id::new("vkit.texture.source-workspace"),
-            Sense::click_and_drag(),
-        )
-        .on_hover_text(text(state.locale, TextKey::TextureNavigationTooltip));
+    // No hover text on the canvas itself. It covers the whole 2D view, so the
+    // tip fired the moment the tab opened and parked itself over the top tabs
+    // -- a hint nobody asked for, in front of the thing they were reaching for.
+    // The help button in the corner already says all of this.
+    let response = ui.interact(
+        rect,
+        Id::new("vkit.texture.source-workspace"),
+        Sense::click_and_drag(),
+    );
     let Some(layer) = state.texture_project.selected_layer().cloned() else {
         paint_empty_source(ui, state.locale, rect);
         return;
@@ -185,12 +186,19 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
         handle_source_pins(ui, state, &response, image_rect, &layer);
     }
     if !texture_paint_tool(state.texture_project.active_tool) {
-        clear_brush_size_gesture(ui.ctx(), Id::new(TEXTURE_BRUSH_SIZE_ID));
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
+        );
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+        );
     }
     let brush_size = texture_paint_tool(state.texture_project.active_tool).then(|| {
         handle_brush_size_gesture(
             ui,
-            Id::new(TEXTURE_BRUSH_SIZE_ID),
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
             image_rect,
             state.texture_project.mask_brush_radius,
             TEXTURE_BRUSH_SIZE_SENSITIVITY,
@@ -200,7 +208,23 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
     if let Some(radius) = brush_size.and_then(|update| update.radius) {
         state.dispatch(Action::SetTextureMaskBrushRadius(radius));
     }
-    let brush_input_blocked = brush_size.is_some_and(|update| update.consumed);
+    // The flat canvas paints with the same brush as the surface does, so it
+    // answers to the same two sweeps. It had only ever heard of the first.
+    let brush_strength = texture_paint_tool(state.texture_project.active_tool).then(|| {
+        crate::ui_components::handle_brush_strength_gesture(
+            ui,
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+            image_rect,
+            state.texture_project.mask_brush_opacity,
+            crate::ui_components::BRUSH_STRENGTH_SENSITIVITY,
+            0.01..=1.0,
+        )
+    });
+    if let Some(opacity) = brush_strength.and_then(|update| update.strength) {
+        state.dispatch(Action::SetTextureMaskBrushOpacity(opacity));
+    }
+    let brush_input_blocked = brush_size.is_some_and(|update| update.consumed)
+        || brush_strength.is_some_and(|update| update.consumed);
     let texture_actions = if navigation.panning || header_blocked {
         Vec::new()
     } else {
@@ -336,15 +360,20 @@ fn draw_layer_toolbar(ui: &mut Ui, state: &mut AppState) {
 
     if !state.texture_project.layers.is_empty() {
         ui.add_space(SPACE_2);
-        let mut enabled = state.texture_project.baked_preview_enabled;
+        // What anyone tuning a decal wants to see is the decal, not the decal
+        // on top of whichever VaM skin happens to be loaded. This drops the
+        // skin preset and leaves the layers over a plain base -- the same view
+        // the skin settings call the layer state -- and puts it back when
+        // switched off, including the bake base it had to move out of the way.
+        let mut layers_only = state.texture_project.hide_vam_skin_preview;
         if switch_row(
             ui,
-            &mut enabled,
-            text(state.locale, TextKey::ShowBakedTexture),
+            &mut layers_only,
+            text(state.locale, TextKey::ShowLayersOnly),
         )
         .changed()
         {
-            state.dispatch(Action::SetTextureBakedPreviewEnabled(enabled));
+            state.dispatch(Action::SetTextureHideVaMSkin(layers_only));
         }
     }
 }
@@ -408,7 +437,13 @@ fn draw_layer_row(
     );
 
     if let Some(paint) = layer.painted.as_ref() {
-        paint_projection_thumbnail(ui, thumb, layer.id, layer.raster_revision, paint);
+        paint_projection_thumbnail(
+            ui,
+            thumb,
+            layer.id,
+            paint,
+            state.texture_project.edit_transaction_active(),
+        );
     } else {
         paint_thumbnail(
             ui,
@@ -803,7 +838,6 @@ fn draw_selected_layer_controls(ui: &mut Ui, state: &mut AppState, layer: &Textu
             state.texture_project.active_tool,
             TextureTool::MaskBrush
                 | TextureTool::CloneStamp
-                | TextureTool::Heal
                 | TextureTool::DodgeBurn
                 | TextureTool::Sponge
         ) || layer.mask.is_some()
@@ -993,7 +1027,14 @@ pub(crate) fn schedule_texture_auto_bake(ui: &Ui, state: &mut AppState) {
 
     let revision = state.texture_project.edit_revision();
     let now = ui.input(|input| input.time);
-    if state.texture_project.edit_transaction_active() {
+    let mid_stroke = state.texture_project.edit_transaction_active();
+    // A stroke in motion never bakes either way: every new dab pushes the deadline out. What
+    // differs is what happens when the pointer holds still with the button down. A paint brush
+    // falls through to the ready check, so a stroke that pauses for the debounce catches the
+    // preview up mid-drag — Dodge/Burn and Sponge have no live overlay anywhere and are otherwise
+    // invisible until the button comes up. Pin drags and stencil placement, whose whole gesture is
+    // one continuous adjustment, stay deferred until the transaction closes.
+    if mid_stroke && !state.texture_project.active_tool.is_paint_brush() {
         let timer = TextureAutoBakeTimer {
             revision,
             ready_at: now + TEXTURE_AUTO_BAKE_DEBOUNCE.as_secs_f64(),
@@ -1007,16 +1048,17 @@ pub(crate) fn schedule_texture_auto_bake(ui: &Ui, state: &mut AppState) {
     let timer = match timer {
         Some(timer) if timer.revision == revision => timer,
         previous => {
+            let debounced = now + TEXTURE_AUTO_BAKE_DEBOUNCE.as_secs_f64();
             let timer = TextureAutoBakeTimer {
                 revision,
-                ready_at: previous.map_or(
-                    now + TEXTURE_AUTO_BAKE_DEBOUNCE.as_secs_f64(),
-                    |timer| {
-                        timer
-                            .ready_at
-                            .min(now + TEXTURE_AUTO_BAKE_DEBOUNCE.as_secs_f64())
-                    },
-                ),
+                // Mid-stroke each dab pushes the deadline out, so only a pause bakes. Between
+                // strokes the earliest pending deadline wins instead, so a run of edits cannot
+                // postpone the preview indefinitely.
+                ready_at: if mid_stroke {
+                    debounced
+                } else {
+                    previous.map_or(debounced, |timer| timer.ready_at.min(debounced))
+                },
                 requested: false,
             };
             ui.data_mut(|data| data.insert_temp(id, timer));
@@ -1123,6 +1165,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
             &mut radius,
             0.002..=0.25,
             1,
+            Some(crate::shortcuts::BRUSH_SIZE_HINT),
         )
         .changed()
         {
@@ -1136,6 +1179,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
             &mut strength,
             0.01..=1.0,
             0,
+            Some(crate::shortcuts::BRUSH_STRENGTH_HINT),
         )
         .changed()
         {
@@ -1184,6 +1228,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
             &mut opacity,
             0.0..=1.0,
             0,
+            None,
         )
         .changed()
         {
@@ -1231,6 +1276,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
         &mut radius,
         0.002..=0.25,
         1,
+        Some(crate::shortcuts::BRUSH_SIZE_HINT),
     )
     .changed()
     {
@@ -1244,6 +1290,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
         &mut opacity,
         0.01..=1.0,
         0,
+        Some(crate::shortcuts::BRUSH_STRENGTH_HINT),
     )
     .changed()
     {
@@ -1381,53 +1428,48 @@ fn handle_source_texture_tools(
         tool,
         TextureTool::MaskBrush
             | TextureTool::CloneStamp
-            | TextureTool::Heal
             | TextureTool::DodgeBurn
             | TextureTool::Sponge
     ) {
         return Vec::new();
     }
 
-    let pointer = brush_size_gesture_anchor(ui, Id::new(TEXTURE_BRUSH_SIZE_ID))
-        .or_else(|| ui.input(|input| input.pointer.interact_pos()));
+    let pointer = ui.input(|input| input.pointer.interact_pos());
+    let cursor = crate::ui_components::brush_cursor(
+        ui,
+        pointer,
+        crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
+        Some((
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+            state.texture_project.mask_brush_opacity,
+        )),
+    );
     let alt = ui.input(|input| input.modifiers.alt);
-    if let Some(pointer) = pointer
-        && image_rect.contains(pointer)
+    if let Some(cursor) = cursor
+        && image_rect.contains(cursor.at)
     {
         let radius =
             state.texture_project.mask_brush_radius * image_rect.width().min(image_rect.height());
-        ui.painter().circle_stroke(
-            pointer,
-            radius.max(2.0),
-            Stroke::new(
-                1.5,
-                if alt {
-                    crate::theme::COLOR_DESTRUCTIVE
-                } else {
-                    Color32::WHITE
-                },
-            ),
-        );
+        let color = if alt && tool.alt_inverts() {
+            crate::theme::COLOR_DESTRUCTIVE
+        } else {
+            Color32::WHITE
+        };
+        crate::ui_components::paint_brush_cursor(ui.painter(), cursor, radius.max(2.0), color);
     }
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal)
+    if matches!(tool, TextureTool::CloneStamp)
         && let Some(sample) = state.texture_project.clone_sample
     {
         let center = pos2(
             image_rect.left() + sample[0] * image_rect.width(),
             image_rect.top() + sample[1] * image_rect.height(),
         );
-        ui.painter()
-            .circle_stroke(center, 5.0, Stroke::new(1.25, COLOR_PRIMARY));
-        ui.painter().line_segment(
-            [center - vec2(7.0, 0.0), center + vec2(7.0, 0.0)],
-            Stroke::new(1.0, COLOR_PRIMARY),
-        );
-        ui.painter().line_segment(
-            [center - vec2(0.0, 7.0), center + vec2(0.0, 7.0)],
-            Stroke::new(1.0, COLOR_PRIMARY),
-        );
+        crate::ui_components::paint_clone_anchor(ui.painter(), center);
     }
     if brush_input_blocked {
+        if state.texture_project.edit_transaction_active() {
+            state.dispatch(Action::EndTextureEdit);
+        }
         return Vec::new();
     }
     let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
@@ -1445,15 +1487,15 @@ fn handle_source_texture_tools(
     if !down || !response.hovered() {
         return Vec::new();
     }
-    if pressed {
+    if !state.texture_project.edit_transaction_active() {
         state.dispatch(Action::BeginTextureEdit);
     }
     let source = normalized_image_point(image_rect, pointer);
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal) && alt && pressed {
+    if matches!(tool, TextureTool::CloneStamp) && alt && pressed {
         ui.data_mut(|data| data.remove::<Pos2>(drag_id));
         return vec![Action::SetTextureCloneSample(source)];
     }
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal) && alt {
+    if matches!(tool, TextureTool::CloneStamp) && alt {
         return Vec::new();
     }
     let spacing = (state.texture_project.mask_brush_radius
@@ -1491,9 +1533,7 @@ fn handle_source_texture_tools(
         .filter_map(|point| {
             let source = normalized_image_point(image_rect, *point);
             if tool == TextureTool::MaskBrush {
-                let uv = map_source_point_to_g2(warp_pins.as_deref()?, source)
-                    .ok()
-                    .flatten()?;
+                let uv = mask_uv_for_canvas_point(layer, warp_pins.as_deref(), source)?;
                 Some(Action::AddTextureMaskDab {
                     id: layer.id,
                     uv,
@@ -1516,6 +1556,27 @@ fn handle_source_texture_tools(
         ui.ctx().request_repaint();
     }
     actions
+}
+
+/// Where a point on the 2D canvas lands in G2 UV space.
+///
+/// A G2-space layer shows the flat atlas itself — a `MaterialUv` layer always, a
+/// `ScanMesh` layer once `adopt_scan_atlases` hands it the transferred atlas — so the
+/// canvas *is* the UV square and only the vertical flip stands between them. A
+/// landmark layer shows the photograph, which reaches UV only through its pin warp.
+fn mask_uv_for_canvas_point(
+    layer: &TextureLayer,
+    warp_pins: Option<&[TextureWarpPin]>,
+    source: [f32; 2],
+) -> Option<[f32; 2]> {
+    match layer.source_mode {
+        TextureSourceMode::LandmarkPins => {
+            map_source_point_to_g2(warp_pins?, source).ok().flatten()
+        }
+        TextureSourceMode::MaterialUv | TextureSourceMode::ScanMesh => {
+            Some([source[0], 1.0 - source[1]])
+        }
+    }
 }
 
 pub(crate) fn brush_stroke_points(
@@ -1715,7 +1776,7 @@ fn draw_projection_canvas(
     let canvas = Rect::from_center_size(bounds.center(), Vec2::splat(edge));
     ui.painter().rect_filled(canvas, 0.0, COLOR_BG);
     if let Some(paint) = layer.painted.as_ref() {
-        let texture = projection_canvas_texture_handle(ui, layer.id, layer.raster_revision, paint);
+        let texture = projection_canvas_texture_handle(ui, layer, paint);
         ui.painter().image(
             texture.id(),
             canvas,
@@ -1836,41 +1897,80 @@ fn handle_projection_canvas_tools(
         tool,
         TextureTool::MaskBrush
             | TextureTool::CloneStamp
-            | TextureTool::Heal
             | TextureTool::DodgeBurn
             | TextureTool::Sponge
     );
     if !editing {
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
+        );
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+        );
         return;
     }
     let alt = ui.input(|input| input.modifiers.alt);
+
+    // This canvas is where anyone who works flat spends their time, and it had
+    // neither sweep. F and Shift+F worked over the model and did nothing here,
+    // which is the wrong way round for someone who paints in UV space.
+    let size = handle_brush_size_gesture(
+        ui,
+        crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
+        canvas,
+        state.texture_project.mask_brush_radius,
+        TEXTURE_BRUSH_SIZE_SENSITIVITY,
+        0.002..=0.25,
+    );
+    if let Some(radius) = size.radius {
+        state.dispatch(Action::SetTextureMaskBrushRadius(radius));
+    }
+    let strength = crate::ui_components::handle_brush_strength_gesture(
+        ui,
+        crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+        canvas,
+        state.texture_project.mask_brush_opacity,
+        crate::ui_components::BRUSH_STRENGTH_SENSITIVITY,
+        0.01..=1.0,
+    );
+    if let Some(opacity) = strength.strength {
+        state.dispatch(Action::SetTextureMaskBrushOpacity(opacity));
+    }
+
     let pointer = ui.input(|input| input.pointer.interact_pos());
-    if let Some(pointer) = pointer.filter(|point| canvas.contains(*point))
-        && response.hovered()
+    let hovering = response.hovered().then_some(pointer).flatten();
+    if let Some(cursor) = crate::ui_components::brush_cursor(
+        ui,
+        hovering,
+        crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
+        Some((
+            crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
+            state.texture_project.mask_brush_opacity,
+        )),
+    ) && canvas.contains(cursor.at)
     {
         let radius = state.texture_project.mask_brush_radius * canvas.width();
-        ui.painter().circle_stroke(
-            pointer,
-            radius.max(2.0),
-            Stroke::new(
-                1.5,
-                if alt {
-                    crate::theme::COLOR_DESTRUCTIVE
-                } else {
-                    Color32::WHITE
-                },
-            ),
-        );
+        let color = if alt && tool.alt_inverts() {
+            crate::theme::COLOR_DESTRUCTIVE
+        } else {
+            Color32::WHITE
+        };
+        crate::ui_components::paint_brush_cursor(ui.painter(), cursor, radius.max(2.0), color);
     }
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal)
+    // A sweep owns the pointer while it runs, or the same drag would paint.
+    if size.consumed || strength.consumed {
+        return;
+    }
+    if matches!(tool, TextureTool::CloneStamp)
         && let Some(sample) = state.texture_project.clone_sample
     {
         let center = pos2(
             canvas.left() + sample[0] * canvas.width(),
             canvas.top() + sample[1] * canvas.height(),
         );
-        ui.painter()
-            .circle_stroke(center, 5.0, Stroke::new(1.25, COLOR_PRIMARY));
+        crate::ui_components::paint_clone_anchor(ui.painter(), center);
     }
     let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
     let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
@@ -1887,19 +1987,19 @@ fn handle_projection_canvas_tools(
     if !down || !response.hovered() {
         return;
     }
-    if pressed {
+    if !state.texture_project.edit_transaction_active() {
         state.dispatch(Action::BeginTextureEdit);
     }
     let point = [
         ((pointer.x - canvas.left()) / canvas.width()).clamp(0.0, 1.0),
         ((pointer.y - canvas.top()) / canvas.height()).clamp(0.0, 1.0),
     ];
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal) && alt && pressed {
+    if matches!(tool, TextureTool::CloneStamp) && alt && pressed {
         ui.data_mut(|data| data.remove::<Pos2>(drag_id));
         state.dispatch(Action::SetTextureCloneSample(point));
         return;
     }
-    if matches!(tool, TextureTool::CloneStamp | TextureTool::Heal) && alt {
+    if matches!(tool, TextureTool::CloneStamp) && alt {
         return;
     }
     let spacing =
@@ -1923,7 +2023,7 @@ fn handle_projection_canvas_tools(
             state.dispatch(Action::AddTextureMaskDab {
                 id: layer.id,
                 uv: [uv[0], 1.0 - uv[1]],
-                source: None,
+                source: Some(uv),
                 subtract,
             });
         } else {
@@ -1943,44 +2043,69 @@ fn handle_projection_canvas_tools(
 #[derive(Clone)]
 struct ProjectionCanvasTextureCache {
     revision: u64,
+    width: u32,
+    height: u32,
     handle: TextureHandle,
 }
 
 fn projection_canvas_texture_handle(
     ui: &Ui,
-    layer_id: u64,
-    revision: u64,
+    layer: &TextureLayer,
     paint: &crate::texture_project::TextureLayerPaint,
 ) -> TextureHandle {
-    let id = Id::new(("vkit.texture.projection-canvas", layer_id));
+    let size = [paint.width as usize, paint.height as usize];
+    let id = Id::new(("vkit.texture.projection-canvas", layer.id));
     if let Some(mut cache) = ui.data(|data| data.get_temp::<ProjectionCanvasTextureCache>(id)) {
-        if cache.revision != revision {
-            cache.handle.set(
-                egui::ColorImage::from_rgba_unmultiplied(
-                    [paint.width as usize, paint.height as usize],
-                    &paint.rgba8,
+        if cache.revision != paint.revision
+            || cache.width != paint.width
+            || cache.height != paint.height
+        {
+            // A dab touches a few hundred pixels of a 2048/4096-square atlas. Patch the box the
+            // strokes reported and leave the rest of the upload alone.
+            let patch = (cache.width == paint.width && cache.height == paint.height)
+                .then(|| paint_atlas_region_since(layer, cache.revision, paint.revision))
+                .flatten();
+            match patch {
+                Some([min_x, min_y, max_x, max_y]) => cache.handle.set_partial(
+                    [min_x as usize, min_y as usize],
+                    rgba_region_color_image(
+                        &paint.rgba8,
+                        paint.width,
+                        [min_x, min_y, max_x, max_y],
+                    ),
+                    TextureOptions::LINEAR,
                 ),
-                TextureOptions::LINEAR,
-            );
-            cache.revision = revision;
+                None => cache.handle.set(
+                    egui::ColorImage::from_rgba_unmultiplied(size, &paint.rgba8),
+                    TextureOptions::LINEAR,
+                ),
+            }
+            cache.revision = paint.revision;
+            cache.width = paint.width;
+            cache.height = paint.height;
             ui.data_mut(|data| data.insert_temp(id, cache.clone()));
         }
         return cache.handle;
     }
     let handle = ui.ctx().load_texture(
-        format!("vkit-projection-canvas-{layer_id}"),
-        egui::ColorImage::from_rgba_unmultiplied(
-            [paint.width as usize, paint.height as usize],
-            &paint.rgba8,
-        ),
+        format!("vkit-projection-canvas-{}", layer.id),
+        egui::ColorImage::from_rgba_unmultiplied(size, &paint.rgba8),
         TextureOptions::LINEAR,
     );
     let cache = ProjectionCanvasTextureCache {
-        revision,
+        revision: paint.revision,
+        width: paint.width,
+        height: paint.height,
         handle: handle.clone(),
     };
     ui.data_mut(|data| data.insert_temp(id, cache));
     handle
+}
+
+/// The union of the boxes the atlas reported between two revisions, or `None` when the history
+/// does not join them and the whole atlas has to be re-uploaded.
+fn paint_atlas_region_since(layer: &TextureLayer, from: u64, to: u64) -> Option<[u32; 4]> {
+    region_union_since(&layer.painted_regions, from, to)
 }
 
 fn mask_preview_texture_handle(ui: &Ui, layer_id: u64, image: &SkinImage) -> TextureHandle {
@@ -2186,16 +2311,20 @@ fn adjusted_source_texture_handle(
 }
 
 fn painted_region_since(layer: &TextureLayer, from: u64, to: u64) -> Option<[u32; 4]> {
+    region_union_since(&layer.edited_regions, from, to)
+}
+
+fn region_union_since(
+    regions: &std::collections::VecDeque<(u64, [u32; 4])>,
+    from: u64,
+    to: u64,
+) -> Option<[u32; 4]> {
     if to <= from {
         return None;
     }
     let mut expected = from.wrapping_add(1);
     let mut bounds: Option<[u32; 4]> = None;
-    for (revision, region) in layer
-        .edited_regions
-        .iter()
-        .skip_while(|(revision, _)| *revision <= from)
-    {
+    for (revision, region) in regions.iter().skip_while(|(revision, _)| *revision <= from) {
         if *revision != expected {
             return None;
         }
@@ -2215,31 +2344,59 @@ fn painted_region_since(layer: &TextureLayer, from: u64, to: u64) -> Option<[u32
 
 fn region_color_image(
     image: &SkinImage,
-    [min_x, min_y, max_x, max_y]: [u32; 4],
+    region: [u32; 4],
     adjustments: TextureColorAdjustments,
 ) -> egui::ColorImage {
+    let (size, mut rgba) = crop_region(&image.rgba8, image.width, region);
+    if adjustments != TextureColorAdjustments::default() {
+        apply_color_adjustments(&mut rgba, adjustments);
+    }
+    egui::ColorImage::from_rgba_unmultiplied(size, &rgba)
+}
+
+fn rgba_region_color_image(rgba8: &[u8], width: u32, region: [u32; 4]) -> egui::ColorImage {
+    let (size, rgba) = crop_region(rgba8, width, region);
+    egui::ColorImage::from_rgba_unmultiplied(size, &rgba)
+}
+
+fn crop_region(
+    rgba8: &[u8],
+    source_width: u32,
+    [min_x, min_y, max_x, max_y]: [u32; 4],
+) -> ([usize; 2], Vec<u8>) {
     let width = (max_x - min_x + 1) as usize;
     let height = (max_y - min_y + 1) as usize;
     let mut rgba = Vec::with_capacity(width * height * 4);
     for y in min_y..=max_y {
-        let row = (y as usize * image.width as usize + min_x as usize) * 4;
-        rgba.extend_from_slice(&image.rgba8[row..row + width * 4]);
+        let row = (y as usize * source_width as usize + min_x as usize) * 4;
+        rgba.extend_from_slice(&rgba8[row..row + width * 4]);
     }
-    if adjustments != TextureColorAdjustments::default() {
-        apply_color_adjustments(&mut rgba, adjustments);
-    }
-    egui::ColorImage::from_rgba_unmultiplied([width, height], &rgba)
+    ([width, height], rgba)
+}
+
+/// The layer row is 36 points tall. Downscaling once to this edge is far cheaper than handing egui
+/// a 2048/4096-square atlas and letting it sample a thumbnail out of it.
+const PROJECTION_THUMBNAIL_EDGE: u32 = 128;
+
+/// The most often a stroke that never opened an undo transaction can force the downscale.
+const PROJECTION_THUMBNAIL_MIN_INTERVAL: f64 = 0.25;
+
+#[derive(Clone)]
+struct ProjectionThumbnailCache {
+    revision: u64,
+    refreshed_at: f64,
+    handle: TextureHandle,
 }
 
 fn paint_projection_thumbnail(
     ui: &Ui,
     rect: Rect,
     layer_id: u64,
-    revision: u64,
     paint: &crate::texture_project::TextureLayerPaint,
+    stroke_in_progress: bool,
 ) {
     ui.painter().rect_filled(rect, CONTROL_RADIUS, COLOR_BG);
-    let texture = projection_canvas_texture_handle(ui, layer_id, revision, paint);
+    let texture = projection_thumbnail_handle(ui, layer_id, paint, stroke_in_progress);
     ui.painter().image(
         texture.id(),
         rect,
@@ -2252,6 +2409,90 @@ fn paint_projection_thumbnail(
         Stroke::new(1.0, COLOR_BORDER),
         egui::StrokeKind::Inside,
     );
+}
+
+fn projection_thumbnail_handle(
+    ui: &Ui,
+    layer_id: u64,
+    paint: &crate::texture_project::TextureLayerPaint,
+    stroke_in_progress: bool,
+) -> TextureHandle {
+    let id = Id::new(("vkit.texture.projection-thumbnail", layer_id));
+    let now = ui.input(|input| input.time);
+    let cached = ui.data(|data| data.get_temp::<ProjectionThumbnailCache>(id));
+    if let Some(cache) = &cached {
+        if cache.revision == paint.revision {
+            return cache.handle.clone();
+        }
+        // Downscaling reads the whole atlas, so hold it for the stroke: a 36-point thumbnail one
+        // stroke behind is invisible, and releasing the pointer refreshes it.
+        if stroke_in_progress {
+            return cache.handle.clone();
+        }
+        // A stroke that never opened a transaction would otherwise land here per dab. Floor the
+        // rate, and ask for the frame that catches up so the row cannot sit stale once the
+        // pointer goes quiet.
+        let held_for = now - cache.refreshed_at;
+        if held_for < PROJECTION_THUMBNAIL_MIN_INTERVAL {
+            ui.ctx().request_repaint_after(Duration::from_secs_f64(
+                PROJECTION_THUMBNAIL_MIN_INTERVAL - held_for,
+            ));
+            return cache.handle.clone();
+        }
+    }
+    let image = projection_thumbnail_image(paint);
+    match cached {
+        Some(mut cache) => {
+            cache.handle.set(image, TextureOptions::LINEAR);
+            cache.revision = paint.revision;
+            cache.refreshed_at = now;
+            let handle = cache.handle.clone();
+            ui.data_mut(|data| data.insert_temp(id, cache));
+            handle
+        }
+        None => {
+            let handle = ui.ctx().load_texture(
+                format!("vkit-projection-thumbnail-{layer_id}"),
+                image,
+                TextureOptions::LINEAR,
+            );
+            ui.data_mut(|data| {
+                data.insert_temp(
+                    id,
+                    ProjectionThumbnailCache {
+                        revision: paint.revision,
+                        refreshed_at: now,
+                        handle: handle.clone(),
+                    },
+                )
+            });
+            handle
+        }
+    }
+}
+
+/// Subsampled, not averaged: the GPU was already picking single texels out of the atlas for a
+/// 36-point row, so this looks the same and reads 16k pixels instead of the whole 4-to-16-megapixel
+/// atlas. A box filter here would cost more than the upload it is saving.
+fn projection_thumbnail_image(
+    paint: &crate::texture_project::TextureLayerPaint,
+) -> egui::ColorImage {
+    let edge = PROJECTION_THUMBNAIL_EDGE.min(paint.width).min(paint.height);
+    if edge == 0 || paint.rgba8.len() != paint.width as usize * paint.height as usize * 4 {
+        return egui::ColorImage::from_rgba_unmultiplied([1, 1], &[0, 0, 0, 0]);
+    }
+    let mut rgba = Vec::with_capacity(edge as usize * edge as usize * 4);
+    for y in 0..edge {
+        let row = (u64::from(y) * u64::from(paint.height) / u64::from(edge)) as usize
+            * paint.width as usize
+            * 4;
+        for x in 0..edge {
+            let offset =
+                row + (u64::from(x) * u64::from(paint.width) / u64::from(edge)) as usize * 4;
+            rgba.extend_from_slice(&paint.rgba8[offset..offset + 4]);
+        }
+    }
+    egui::ColorImage::from_rgba_unmultiplied([edge as usize, edge as usize], &rgba)
 }
 
 fn paint_thumbnail(ui: &Ui, rect: Rect, layer_id: u64, image: Option<&SkinImage>) {
@@ -2394,7 +2635,6 @@ const fn texture_tool_text_key(tool: TextureTool) -> TextKey {
         TextureTool::Projection => TextKey::ProjectImage,
         TextureTool::MaskBrush => TextKey::TextureToolMask,
         TextureTool::CloneStamp => TextKey::TextureToolClone,
-        TextureTool::Heal => TextKey::TextureToolHeal,
         TextureTool::DodgeBurn => TextKey::TextureToolDodgeBurn,
         TextureTool::Sponge => TextKey::TextureToolSponge,
     }
@@ -2406,7 +2646,6 @@ const fn texture_tool_shortcut(tool: TextureTool) -> Option<Shortcut> {
         TextureTool::CloneStamp => Some(Shortcut::TextureCloneBrush),
         TextureTool::Projection
         | TextureTool::MaskBrush
-        | TextureTool::Heal
         | TextureTool::DodgeBurn
         | TextureTool::Sponge => None,
     }
@@ -2418,8 +2657,7 @@ const fn tool_icon(tool: TextureTool) -> Icon {
         TextureTool::Projection => Icon::Projector,
         TextureTool::MaskBrush => Icon::TextureMask,
         TextureTool::CloneStamp => Icon::CloneStamp,
-        TextureTool::Heal => Icon::Healing,
-        TextureTool::DodgeBurn => Icon::LightBulb,
+        TextureTool::DodgeBurn => Icon::DodgeBurn,
         TextureTool::Sponge => Icon::TextureSponge,
     }
 }

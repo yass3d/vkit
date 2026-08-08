@@ -112,6 +112,8 @@ pub struct Preferences {
     pub surface_smooth_passes: u8,
     #[serde(default = "default_tooltips_enabled")]
     pub tooltips_enabled: bool,
+    #[serde(default = "default_show_one_sided_morphs")]
+    pub show_one_sided_morphs: bool,
 
     #[serde(default)]
     pub last_skin_id: Option<String>,
@@ -256,6 +258,7 @@ impl Default for Preferences {
             base_view_mode: BaseViewMode::default(),
             surface_smooth_passes: default_surface_smooth_passes(),
             tooltips_enabled: default_tooltips_enabled(),
+            show_one_sided_morphs: default_show_one_sided_morphs(),
             last_skin_id: None,
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::default(),
@@ -364,6 +367,11 @@ const fn default_surface_smooth_passes() -> u8 {
 }
 
 const fn default_tooltips_enabled() -> bool {
+    true
+}
+
+/// A first run shows everything; hiding is the deliberate act.
+const fn default_show_one_sided_morphs() -> bool {
     true
 }
 
@@ -830,6 +838,7 @@ mod tests {
             base_view_mode: BaseViewMode::Texture,
             surface_smooth_passes: 4,
             tooltips_enabled: true,
+            show_one_sided_morphs: false,
             last_skin_id: None,
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::Flat,

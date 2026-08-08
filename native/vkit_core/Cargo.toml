@@ -12,6 +12,12 @@ rig = []
 [dependencies]
 vkit-geometry-core = { path = "../vkit_geometry_core" }
 vkit-semantic = { path = "../vkit_semantic" }
+draco-core = { version = "=1.2.0", default-features = false, features = [
+    "decoder",
+    "edgebreaker_valence_decode",
+    "legacy_bitstream_decode",
+    "point_cloud_decode",
+] }
 flate2.workspace = true
 glam.workspace = true
 lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode", "std"] }
@@ -24,4 +30,5 @@ thiserror.workspace = true
 
 [dev-dependencies]
 approx = "0.5"
+meshopt-rs = { version = "=0.1.2", features = ["experimental"] }
 tempfile = "3"

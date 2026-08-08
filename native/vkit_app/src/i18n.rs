@@ -374,6 +374,8 @@ text_keys! {
     SettingsVaMRoot,
     NoMatchingHair,
     MorphSearch,
+    MorphOneSidedFilter,
+    MorphOneSidedFilterHint,
     AppearanceSearch,
     LookFind,
     CameraTrackballArmed,
@@ -436,6 +438,46 @@ text_keys! {
     MorphCategoryExpression,
     NoMatchingMorphs,
     ResetMorphs,
+    UndoMorphReset,
+
+    LightRotationGesture,
+
+    UpdateAvailable,
+
+    PackageFromFiles,
+    PackageMorphFiles,
+    PackageTextureFiles,
+    PackageListEmpty,
+
+    LightingStudio,
+
+    LightingSoft,
+
+    LightingDaylight,
+
+    LightingWarm,
+
+    LightingGloss,
+
+    LightingPortrait,
+
+    ImportLoadingMesh,
+
+    ImportSimplifying,
+
+    StageOptimizeHead,
+
+    StagePrepareInput,
+
+    StageAlignScan,
+
+    StageFitShape,
+
+    StageValidate,
+
+    StagePrepareResult,
+
+    HeavyMeshNote,
     TransformGroups,
     CollapseTransformGroups,
     ExpandTransformGroups,
@@ -465,6 +507,7 @@ text_keys! {
     Ready,
     Busy,
     NeedScan,
+    ScanLoadFailed,
     NeedEyeMorph,
     ReviewEyePins,
     ResultUnavailable,
@@ -627,7 +670,7 @@ text_keys! {
     BakeBase,
     TransparentOverlay,
     CurrentSkinBake,
-    ShowBakedTexture,
+    ShowLayersOnly,
     BaseWithoutSkin,
     BaseWithoutSkinTooltip,
     SolidColorTooltip,
@@ -638,10 +681,8 @@ text_keys! {
     TextureToolPinPair,
     TextureToolMask,
     TextureToolClone,
-    TextureToolHeal,
     TextureToolDodgeBurn,
     TextureToolSponge,
-    TextureNavigationTooltip,
     SelectTextureLayer,
     LoadingTextureImage,
     ScanTextureAlignment,
@@ -2165,8 +2206,8 @@ mod tests {
             assert_eq!(text(Locale::English, key), english);
         }
 
-        assert_eq!(text(Locale::English, TextKey::ResetMorphs), "Reset All");
-        assert_eq!(text(Locale::Korean, TextKey::ResetMorphs), "전체 초기화");
+        assert_eq!(text(Locale::English, TextKey::ResetMorphs), "Reset morphs");
+        assert_eq!(text(Locale::Korean, TextKey::ResetMorphs), "모프 초기화");
         assert_eq!(
             text(Locale::English, TextKey::ResetSculpt),
             "Reset Deformation"

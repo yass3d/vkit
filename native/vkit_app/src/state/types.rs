@@ -12,7 +12,7 @@ use vkit_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    i18n::{Locale, TextKey},
+    i18n::{Locale, TextKey, text},
     importers::{MeshImportPhase, MeshImportProgress},
     texture_project::TextureSourceMode,
 };
@@ -229,12 +229,8 @@ pub enum ImportPhase {
 impl ImportPhase {
     pub const fn label(self, locale: Locale) -> &'static str {
         match (locale, self) {
-            (Locale::Korean, Self::MeshLoading) => "메시 불러오는 중",
-            (Locale::Japanese, Self::MeshLoading) => "メッシュを読み込み中",
-            (_, Self::MeshLoading) => "Loading mesh",
-            (Locale::Korean, Self::Simplification) => "메시 단순화 중",
-            (Locale::Japanese, Self::Simplification) => "メッシュを単純化中",
-            (_, Self::Simplification) => "Simplifying mesh",
+            (_, Self::MeshLoading) => text(locale, TextKey::ImportLoadingMesh),
+            (_, Self::Simplification) => text(locale, TextKey::ImportSimplifying),
         }
     }
 }
@@ -248,6 +244,20 @@ pub struct ImportProgress {
 }
 
 pub const HEAVY_MESH_TRIANGLES: usize = 100_000;
+
+/// Groups a count into threes. Every locale this ships in reads grouped digits,
+/// and the separator is the one place they agree.
+fn group_digits(value: usize) -> String {
+    let digits = value.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
 
 impl ImportProgress {
     pub fn new(phase: ImportPhase, fraction: f32) -> Self {
@@ -272,12 +282,12 @@ impl ImportProgress {
         if triangles < HEAVY_MESH_TRIANGLES {
             return None;
         }
-        let thousands = triangles / 1_000;
-        Some(match locale {
-            Locale::Korean => format!("폴리곤 약 {thousands}만 개 -- 많을수록 오래 걸립니다"),
-            Locale::Japanese => format!("約 {thousands}k ポリゴン -- 多いほど時間がかかります"),
-            _ => format!("about {thousands}k triangles -- more of them takes longer"),
-        })
+        // The count goes in whole and unabbreviated. It used to be divided by a
+        // thousand and then handed to a Korean string that said 만 -- ten
+        // thousand -- so Korean read every mesh as ten times its real size. No
+        // locale carries a unit now, so no locale's arithmetic can disagree
+        // with its own words.
+        Some(text(locale, TextKey::HeavyMeshNote).replace("{count}", &group_digits(triangles)))
     }
 
     pub fn from_mesh_import(progress: MeshImportProgress) -> Self {
@@ -351,6 +361,44 @@ pub enum MorphNameDisplay {
     Localized,
 
     Original,
+}
+
+/// The two halves of a VaM morph, in the order VaM itself lists them.
+pub const MORPH_PAIR_EXTENSIONS: [&str; 2] = ["vmi", "vmb"];
+
+/// Adds the sibling of every picked `.vmi` or `.vmb` that exists on disk.
+///
+/// Only files that are actually there are added: a lone half stays lone rather
+/// than becoming a path to nothing, so the export still reports the real
+/// problem instead of a missing file it invented.
+#[must_use]
+pub fn with_morph_twins(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut complete = Vec::with_capacity(paths.len() * 2);
+    for path in paths {
+        let twin = morph_twin_of(&path).filter(|twin| twin.is_file());
+        if !complete.contains(&path) {
+            complete.push(path);
+        }
+        if let Some(twin) = twin
+            && !complete.contains(&twin)
+        {
+            complete.push(twin);
+        }
+    }
+    complete
+}
+
+/// The other half's path, whichever half was handed in.
+#[must_use]
+pub fn morph_twin_of(path: &Path) -> Option<PathBuf> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    let [vmi, vmb] = MORPH_PAIR_EXTENSIONS;
+    let twin = match extension.as_str() {
+        value if value == vmi => vmb,
+        value if value == vmb => vmi,
+        _ => return None,
+    };
+    Some(path.with_extension(twin))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -665,5 +713,51 @@ impl WorkspaceLoadLifecycle {
             Self::Idle => None,
             Self::Requested { path, .. } | Self::Running { path, .. } => Some(path),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_morph_is_two_files_and_picking_one_brings_the_other() {
+        // A VaM morph is a pair: the .vmi describes it and the .vmb carries the
+        // deltas. A package with one and not the other installs and then does
+        // nothing, which is the worst kind of failure -- it looks like it worked.
+        let folder = tempfile::tempdir().expect("a folder to pick from");
+        let vmi = folder.path().join("cheekbones.vmi");
+        let vmb = folder.path().join("cheekbones.vmb");
+        std::fs::write(&vmi, b"{}").expect("the descriptor");
+        std::fs::write(&vmb, b" ").expect("the deltas");
+
+        // Either half brings the other, and the picked one stays first.
+        let from_vmi = with_morph_twins(vec![vmi.clone()]);
+        assert_eq!(from_vmi, vec![vmi.clone(), vmb.clone()]);
+        let from_vmb = with_morph_twins(vec![vmb.clone()]);
+        assert_eq!(from_vmb, vec![vmb.clone(), vmi.clone()]);
+
+        // Picking both is not picking four.
+        assert_eq!(
+            with_morph_twins(vec![vmi.clone(), vmb.clone()]),
+            vec![vmi.clone(), vmb.clone()]
+        );
+    }
+
+    #[test]
+    fn a_twin_that_is_not_on_disk_is_not_invented() {
+        // Adding a path to a file nobody has would trade a real complaint --
+        // "this morph is missing its deltas" -- for a missing-file error about
+        // something the user never chose.
+        let folder = tempfile::tempdir().expect("a folder to pick from");
+        let lonely = folder.path().join("lonely.vmi");
+        std::fs::write(&lonely, b"{}").expect("the descriptor");
+        assert_eq!(with_morph_twins(vec![lonely.clone()]), vec![lonely]);
+
+        // And a file that is not half of anything is left exactly as it is.
+        let texture = folder.path().join("face.png");
+        std::fs::write(&texture, b" ").expect("a texture");
+        assert_eq!(morph_twin_of(&texture), None);
+        assert_eq!(with_morph_twins(vec![texture.clone()]), vec![texture]);
     }
 }

@@ -1,5 +1,67 @@
 use super::*;
 
+/// Sit the one-sided toggle in the gap the wrapping category capsules leave.
+///
+/// The capsules wrap, so the last row usually ends short of the edge, and that
+/// gap is dead space directly above the search field. Putting the toggle there
+/// costs no vertical room. When the last row happens to fill out, it takes a row
+/// of its own rather than overlapping a capsule.
+fn draw_one_sided_toggle(ui: &mut Ui, state: &mut AppState, categories: Id, categories_rect: Rect) {
+    let label = text(state.locale, TextKey::MorphOneSidedFilter);
+    let width = ui
+        .painter()
+        .layout_no_wrap(
+            label.to_owned(),
+            FontId::proportional(FONT_SM),
+            crate::theme::COLOR_TEXT,
+        )
+        .size()
+        .x
+        + SPACE_3 * 2.0;
+
+    let last_chip = crate::ui_components::chips_last_chip(ui, categories);
+    let row_top = last_chip.map_or(categories_rect.top(), |chip| chip.top());
+    let used_right = last_chip.map_or(categories_rect.left(), |chip| chip.right());
+    let fits_beside = ui.max_rect().right() - used_right - SPACE_2 >= width;
+
+    let rect = if fits_beside {
+        Rect::from_min_size(
+            pos2(ui.max_rect().right() - width, row_top),
+            vec2(width, CONTROL_H_DENSE),
+        )
+    } else {
+        ui.add_space(SPACE_2);
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(ui.available_width(), CONTROL_H_DENSE), Sense::hover());
+        Rect::from_min_size(
+            pos2(rect.right() - width, rect.top()),
+            vec2(width, CONTROL_H_DENSE),
+        )
+    };
+
+    let shown = state.morph_library.show_one_sided;
+    let response = ui.interact(rect, categories.with("one-sided"), Sense::click());
+    let (fill, ink) = if shown {
+        (crate::theme::COLOR_SURFACE_RAISED, crate::theme::COLOR_TEXT)
+    } else {
+        (crate::theme::COLOR_SURFACE, crate::theme::COLOR_MUTED)
+    };
+    ui.painter()
+        .rect_filled(rect, crate::theme::CONTROL_RADIUS, fill);
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(FONT_SM),
+        ink,
+    );
+    control_affordances(ui, &response, rect, f32::from(crate::theme::CONTROL_RADIUS));
+    if response.clicked() {
+        state.dispatch(Action::SetShowOneSidedMorphs(!shown));
+    }
+    response.on_hover_text(text(state.locale, TextKey::MorphOneSidedFilterHint));
+}
+
 pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilterLayout {
     set_capsule_widget_radius(ui);
 
@@ -18,7 +80,9 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
     let active = filters
         .iter()
         .position(|(filter, _)| state.morph_library.category_filter == *filter);
-    let (category_rect, clicked) = chips(ui, Id::new("vkit.morph.categories"), active, &labels);
+    let categories_id = Id::new("vkit.morph.categories");
+    let (category_rect, clicked) = chips(ui, categories_id, active, &labels);
+    draw_one_sided_toggle(ui, state, categories_id, category_rect);
     let selected = clicked.map(|index| filters[index].0);
     let scroll_to_top =
         selected.is_some_and(|filter| filter != state.morph_library.category_filter);

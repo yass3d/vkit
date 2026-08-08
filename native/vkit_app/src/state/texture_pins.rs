@@ -165,10 +165,7 @@ impl AppState {
         let tool = self.texture_project.active_tool;
         if !matches!(
             tool,
-            TextureTool::CloneStamp
-                | TextureTool::Heal
-                | TextureTool::DodgeBurn
-                | TextureTool::Sponge
+            TextureTool::CloneStamp | TextureTool::DodgeBurn | TextureTool::Sponge
         ) {
             return;
         }
@@ -199,10 +196,7 @@ impl AppState {
     ) {
         if self.block_mutation_while_busy()
             || !self.is_texturing()
-            || !matches!(
-                self.texture_project.active_tool,
-                TextureTool::CloneStamp | TextureTool::Heal
-            )
+            || !matches!(self.texture_project.active_tool, TextureTool::CloneStamp)
         {
             return;
         }
@@ -219,7 +213,8 @@ impl AppState {
             self.texture_surface_source_point(triangle_index, barycentric)
                 .map(|(_, point)| point)
         }) {
-            self.texture_project.set_clone_sample(point);
+            self.texture_project
+                .set_clone_sample_on_surface(point, triangle_index, barycentric);
         }
     }
 

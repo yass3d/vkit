@@ -233,7 +233,7 @@ fn preset_popovers_never_stack_a_second_scrollbar_around_their_library() {
                     panel_desired_vs_available(&mut state, viewport, panel, mode);
                 assert!(
                     desired <= available + 0.5,
-                    "viewport {height} / {panel:?} / {mode:?} / pass {pass}:                          popover wants {desired} of {available}",
+                    "viewport {height} / {panel:?} / {mode:?} / pass {pass}: popover wants {desired} of {available}",
                 );
             }
         }
@@ -527,6 +527,52 @@ fn overlay_alpha_and_sculpt_wire_palette_are_explicit() {
     assert_eq!(inactive_color, chosen);
     assert!((active_alpha - 0.32).abs() < f32::EPSILON);
     assert!(inactive_alpha > 0.0 && inactive_alpha < active_alpha);
+}
+
+#[test]
+fn the_island_names_whatever_a_stroke_would_actually_do() {
+    // The island used to name the selection while a held Shift quietly smoothed
+    // instead. Deriving the label from the stroke's own rule is what keeps the
+    // two from saying different things, so the tie is what gets pinned here —
+    // not the Shift case on its own.
+    for brush in SculptBrush::ALL {
+        for modifiers in [
+            egui::Modifiers::default(),
+            egui::Modifiers::SHIFT,
+            egui::Modifiers::CTRL,
+            egui::Modifiers::ALT,
+            egui::Modifiers::SHIFT | egui::Modifiers::ALT,
+            egui::Modifiers::SHIFT | egui::Modifiers::CTRL,
+        ] {
+            let mode = sculpt_input_mode(modifiers, brush);
+            let shown = brush_shown_for(mode, brush);
+            if mode == SculptInputMode::Smooth {
+                assert_eq!(
+                    shown,
+                    SculptBrush::Smooth,
+                    "{modifiers:?} on {brush:?} smooths, so the island has to say so"
+                );
+            }
+            // The reverse cannot be asserted: Inflate has no brush of its own,
+            // so a Ctrl held over a Smooth selection strokes as Inflate while
+            // the island keeps saying Smooth. That gap predates this change and
+            // is named in the notes rather than papered over here.
+            assert!(
+                shown == brush || mode == SculptInputMode::Smooth,
+                "{modifiers:?} moved the island off {brush:?} for something other than a held Shift"
+            );
+        }
+    }
+
+    // Nothing held is the plain case: the island shows the selection, and no
+    // modifier state has been written anywhere that a release would have to
+    // undo.
+    for brush in SculptBrush::ALL {
+        assert_eq!(
+            brush_shown_for(sculpt_input_mode(egui::Modifiers::default(), brush), brush),
+            brush
+        );
+    }
 }
 
 #[test]
@@ -859,7 +905,7 @@ fn an_open_popover_owns_its_rect_for_hit_testing() {
     assert_eq!(
         owner,
         Some(super::panels::viewport_tool_panel_layer()),
-        "the popover's own layer must answer for points inside it, or no list          in it can ever receive the wheel"
+        "the popover's own layer must answer for points inside it, or no list in it can ever receive the wheel"
     );
 }
 
@@ -1437,6 +1483,84 @@ fn a_texture_stroke_does_not_reach_the_face_through_the_neck() {
 }
 
 #[test]
+fn the_texture_brush_ring_tracks_the_camera_because_its_dab_is_measured_in_uv() {
+    use vkit_core::vam::{G2UvMapping, G2UvTriangle, UvMaterialRegion};
+
+    let geometry = DazGeometry::new(
+        "flat-face".into(),
+        vec![[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]],
+        vec![vec![0, 1, 2]],
+        vkit_core::formats::GroupTable {
+            indices: vec![0],
+            names: vec!["Head".into()],
+        },
+        vkit_core::formats::GroupTable {
+            indices: vec![0],
+            names: vec!["Face".into()],
+        },
+        json!({}),
+    )
+    .unwrap();
+    let mut state = AppState::default();
+    state.workspace.result = Some(std::sync::Arc::new(
+        SurfaceMesh::from_daz_head_visual(&geometry).unwrap(),
+    ));
+    state.vam_uv_mapping = Some(std::sync::Arc::new(G2UvMapping {
+        source_path: std::path::PathBuf::new(),
+        coordinate_rms_cm: 0.0,
+        coordinate_max_cm: 0.0,
+        uncovered_triangles: 0,
+        faces: Vec::new(),
+        triangles: vec![G2UvTriangle {
+            canonical_face_index: 0,
+            canonical_triangle_index: 0,
+            material_region: UvMaterialRegion::Face,
+            on_head: true,
+            position_indices: [0, 1, 2],
+            uvs: [[0.0, 0.0], [0.25, 0.0], [0.0, 0.25]],
+        }],
+    }));
+
+    let viewport = Rect::from_min_size(Pos2::ZERO, Vec2::new(1600.0, 900.0));
+    let mut camera = TurntableCamera {
+        yaw: 0.0,
+        pitch: 0.0,
+        target: glam::Vec3::ZERO,
+        distance: 8.0,
+        frame_radius: 2.0,
+        ..TurntableCamera::default()
+    };
+
+    let far = measure_texture_brush_points_per_uv(&state, viewport, camera, viewport.center())
+        .expect("the cursor sits on the face");
+    camera.distance = 4.0;
+    let near = measure_texture_brush_points_per_uv(&state, viewport, camera, viewport.center())
+        .expect("the cursor sits on the face");
+
+    // The dab is a fraction of the square G2 mask, so its screen footprint doubles when the
+    // camera halves its distance. The ring the user sees has to do the same; the old
+    // viewport-relative ring was this same number at both distances.
+    assert!(
+        (near / far - 2.0).abs() < 1.0e-3,
+        "halving the distance must double the screen span of a UV unit: {far} then {near}"
+    );
+    assert!(
+        (far - viewport.width().min(viewport.height())).abs() > 1.0,
+        "the measured span happened to equal the old viewport-relative ring, so this proves nothing"
+    );
+    assert!(
+        measure_texture_brush_points_per_uv(
+            &state,
+            viewport,
+            camera,
+            viewport.min + Vec2::splat(4.0),
+        )
+        .is_none(),
+        "there is nothing to measure off the head; that is what the remembered span is for"
+    );
+}
+
+#[test]
 fn template_pin_ray_skips_visible_eye_anatomy_but_occlusion_does_not() {
     let geometry = DazGeometry::new(
         "eye-over-skin".into(),
@@ -1694,7 +1818,7 @@ fn clearing_sculpt_pointer_stroke_removes_the_egui_drag_anchor() {
             },
         );
         data.insert_temp(
-            Id::new(SCULPT_BRUSH_SIZE_ID),
+            crate::ui_components::BrushSweeps::SCULPT.size(),
             crate::sweep_gesture::Sweep {
                 start_pointer: pos2(10.0, 20.0),
                 start_value: 64.0,
@@ -1716,9 +1840,9 @@ fn clearing_sculpt_pointer_stroke_removes_the_egui_drag_anchor() {
     );
     assert!(
         context
-            .data_mut(
-                |data| data.get_temp::<crate::sweep_gesture::Sweep>(Id::new(SCULPT_BRUSH_SIZE_ID))
-            )
+            .data_mut(|data| data.get_temp::<crate::sweep_gesture::Sweep>(
+                crate::ui_components::BrushSweeps::SCULPT.size()
+            ))
             .is_none()
     );
 }

@@ -28,15 +28,24 @@ pub enum ProjectionMode {
     Orthographic,
 }
 
+/// The views the numpad jumps to.
+///
+/// A face is worked from the front, so the four diagonals are quarter turns off
+/// the front rather than free orbits, and each sits on the numpad key that
+/// already points that way: 7 and 9 above, 1 and 3 below.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StandardView {
-    Back,
-
+    LeftSide,
     RightSide,
 
     Top,
 
     Bottom,
+
+    FrontUpperLeft,
+    FrontUpperRight,
+    FrontLowerLeft,
+    FrontLowerRight,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -48,6 +57,12 @@ pub struct TurntableCamera {
     pub target: Vec3,
     pub distance: f32,
     pub frame_radius: f32,
+
+    /// The box the camera was last framed against, kept so the fit can use the extent the camera
+    /// actually looks along instead of the bounding sphere. `frame_radius` must go on meaning
+    /// "scene scale" for lighting, ambient occlusion and near/far, so the tighter fit needs its
+    /// own input.
+    pub frame_bounds: Option<Bounds3>,
     pub fov_y_radians: f32,
     pub projection_mode: ProjectionMode,
 
@@ -65,6 +80,7 @@ impl Default for TurntableCamera {
             target: Vec3::ZERO,
             distance: 3.0,
             frame_radius: 1.0,
+            frame_bounds: None,
             fov_y_radians: DEFAULT_FOV_Y_RADIANS,
             projection_mode: ProjectionMode::Perspective,
             orthographic_scale: 2.36,
@@ -102,6 +118,7 @@ impl TurntableCamera {
     pub fn frame(&mut self, bounds: Bounds3) {
         self.target = bounds.center();
         self.frame_radius = bounds.radius().max(1.0e-4);
+        self.frame_bounds = Some(bounds);
         self.frame_current_target();
     }
 
@@ -118,6 +135,7 @@ impl TurntableCamera {
         if let Some(bounds) = bounds {
             self.target = bounds.center();
             self.frame_radius = bounds.radius().max(1.0e-4);
+            self.frame_bounds = Some(bounds);
         }
         self.reset_view();
     }
@@ -347,12 +365,20 @@ impl TurntableCamera {
     }
 
     pub fn look_from_standard_view(&mut self, view: StandardView) {
-        use std::f32::consts::{FRAC_PI_2, PI};
+        use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
+        // The diagonals lift by a quarter turn rather than the pitch limit: at
+        // the limit the camera is overhead and the face is edge on, which is
+        // exactly the framing these keys exist to avoid.
+        const DIAGONAL_PITCH: f32 = FRAC_PI_4 * 0.65;
         let (yaw, pitch) = match view {
-            StandardView::Back => (PI, 0.0),
+            StandardView::LeftSide => (-FRAC_PI_2, 0.0),
             StandardView::RightSide => (FRAC_PI_2, 0.0),
             StandardView::Top => (0.0, PITCH_LIMIT_RADIANS),
             StandardView::Bottom => (0.0, -PITCH_LIMIT_RADIANS),
+            StandardView::FrontUpperLeft => (-FRAC_PI_4, DIAGONAL_PITCH),
+            StandardView::FrontUpperRight => (FRAC_PI_4, DIAGONAL_PITCH),
+            StandardView::FrontLowerLeft => (-FRAC_PI_4, -DIAGONAL_PITCH),
+            StandardView::FrontLowerRight => (FRAC_PI_4, -DIAGONAL_PITCH),
         };
         self.yaw = yaw;
         self.pitch = pitch;
@@ -463,9 +489,30 @@ impl TurntableCamera {
         } else {
             1.0
         };
+        let half_height = self.framed_half_height();
         self.distance =
-            (self.frame_radius / self.half_fov_tan() * FRAME_MARGIN).max(self.frame_radius * 1.25);
-        self.orthographic_scale = self.frame_radius * 2.0 * FRAME_MARGIN;
+            (half_height / self.half_fov_tan() * FRAME_MARGIN).max(self.frame_radius * 1.25);
+        self.orthographic_scale = half_height * 2.0 * FRAME_MARGIN;
+    }
+
+    /// How much of the framed box has to fit vertically, measured along the axes the camera is
+    /// actually looking down. Falls back to the bounding-sphere radius when no box is on record,
+    /// and is clamped to it so the fit is never looser than it used to be.
+    fn framed_half_height(&self) -> f32 {
+        let Some(bounds) = self.frame_bounds else {
+            return self.frame_radius;
+        };
+        let half = (bounds.max - bounds.min) * 0.5;
+        if !half.is_finite() {
+            return self.frame_radius;
+        }
+        let (_, right, up) = self.basis();
+        let along =
+            |axis: Vec3| half.x * axis.x.abs() + half.y * axis.y.abs() + half.z * axis.z.abs();
+        along(up)
+            .max(along(right))
+            .max(self.frame_radius * 1.0e-3)
+            .min(self.frame_radius)
     }
 
     fn safe_fov_y_radians(&self) -> f32 {
@@ -520,10 +567,34 @@ mod tests {
             let (forward_from_target, _, _) = camera.basis();
             forward_from_target
         };
-        assert!(axis(StandardView::Back).z < -0.99);
+        assert!(axis(StandardView::LeftSide).x < -0.99);
         assert!(axis(StandardView::RightSide).x > 0.99);
         assert!(axis(StandardView::Top).y > 0.99);
         assert!(axis(StandardView::Bottom).y < -0.99);
+
+        // The diagonals are checked by sign rather than by angle, because a
+        // wrong yaw sign is the mistake that reads correctly in the source and
+        // wrong on screen: the view swings to the far side of the face.
+        for (view, side, height) in [
+            (StandardView::FrontUpperLeft, -1.0, 1.0),
+            (StandardView::FrontUpperRight, 1.0, 1.0),
+            (StandardView::FrontLowerLeft, -1.0, -1.0),
+            (StandardView::FrontLowerRight, 1.0, -1.0),
+        ] {
+            let forward = axis(view);
+            assert!(
+                forward.x * f32::from(side as i8) > 0.2,
+                "{view:?} must sit on its own side of the face"
+            );
+            assert!(
+                forward.y * f32::from(height as i8) > 0.2,
+                "{view:?} must sit above or below as its key suggests"
+            );
+            assert!(
+                forward.z > 0.2,
+                "{view:?} is a front diagonal and must stay in front of the face"
+            );
+        }
 
         let (_, right, up) = {
             let mut camera = TurntableCamera::default();
@@ -952,6 +1023,34 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.pitch < std::f32::consts::FRAC_PI_2);
         assert!(first.distance > 0.0);
+    }
+
+    #[test]
+    fn framing_fits_the_box_the_camera_sees_not_its_bounding_sphere() {
+        let bounds =
+            Bounds3::from_points(&[Vec3::new(-8.0, -13.5, -12.0), Vec3::new(8.0, 13.5, 12.0)]);
+        let mut tight = TurntableCamera::default();
+        tight.frame(bounds);
+
+        // The old fit, reproduced: no box on record, so the bounding sphere is all there is.
+        let mut sphere = TurntableCamera {
+            target: bounds.center(),
+            frame_radius: bounds.radius(),
+            ..Default::default()
+        };
+        sphere.reset_view();
+
+        assert_eq!(
+            tight.frame_radius, sphere.frame_radius,
+            "frame_radius must go on meaning scene scale for lighting and near/far"
+        );
+        assert!(
+            tight.distance < sphere.distance,
+            "a head-shaped box framed as a sphere sits {:.0}% too far back",
+            (sphere.distance / tight.distance - 1.0) * 100.0
+        );
+        assert!(tight.orthographic_scale < sphere.orthographic_scale);
+        assert!(tight.distance > tight.frame_radius);
     }
 
     #[test]

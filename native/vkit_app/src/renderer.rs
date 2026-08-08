@@ -3731,7 +3731,7 @@ mod tests {
                 continue;
             }
             let (meta, lanes) = punctual_uniform_data(&preset.profile(), 2.0);
-            assert_eq!(meta[0], 0.0, "{} gained a light", preset.label_en());
+            assert_eq!(meta[0], 0.0, "{preset:?} gained a light");
             assert!(lanes.iter().flatten().all(|lane| *lane == 0.0));
         }
     }

@@ -66,36 +66,18 @@ impl LightingPreset {
         self as u32
     }
 
-    pub const fn label_ko(self) -> &'static str {
+    /// Names the key rather than the words. Every preset reads in whatever
+    /// language the rest of the interface is speaking, which a pair of
+    /// hand-written label per language could never do.
+    pub const fn label_key(self) -> crate::i18n::TextKey {
+        use crate::i18n::TextKey;
         match self {
-            Self::Studio => "스튜디오",
-            Self::Soft => "부드럽게",
-            Self::Daylight => "주광",
-            Self::Warm => "따뜻하게",
-            Self::Gloss => "광택 확인",
-            Self::Portrait => "인물 조명",
-        }
-    }
-
-    pub const fn label_en(self) -> &'static str {
-        match self {
-            Self::Studio => "Studio",
-            Self::Soft => "Soft",
-            Self::Daylight => "Daylight",
-            Self::Warm => "Warm",
-            Self::Gloss => "Gloss Check",
-            Self::Portrait => "Portrait",
-        }
-    }
-
-    pub const fn label_ja(self) -> &'static str {
-        match self {
-            Self::Studio => "スタジオ",
-            Self::Soft => "ソフト",
-            Self::Daylight => "昼光",
-            Self::Warm => "ウォーム",
-            Self::Gloss => "光沢チェック",
-            Self::Portrait => "ポートレート",
+            Self::Studio => TextKey::LightingStudio,
+            Self::Soft => TextKey::LightingSoft,
+            Self::Daylight => TextKey::LightingDaylight,
+            Self::Warm => TextKey::LightingWarm,
+            Self::Gloss => TextKey::LightingGloss,
+            Self::Portrait => TextKey::LightingPortrait,
         }
     }
 
@@ -230,9 +212,12 @@ mod tests {
     fn preset_ids_are_stable_and_brightness_is_bounded() {
         for (index, preset) in LightingPreset::ALL.into_iter().enumerate() {
             assert_eq!(preset.id(), index as u32);
-            assert!(!preset.label_ko().is_empty());
-            assert!(!preset.label_en().is_empty());
-            assert!(!preset.label_ja().is_empty());
+            for locale in crate::i18n::Locale::ALL {
+                assert!(
+                    !crate::i18n::text(locale, preset.label_key()).is_empty(),
+                    "{preset:?} has nothing to say in {locale:?}"
+                );
+            }
             let profile = preset.profile();
             for value in profile
                 .key_radiance

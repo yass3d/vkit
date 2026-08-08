@@ -763,12 +763,7 @@ const fn tone_curve_label(curve: ToneMapping) -> TextKey {
 }
 
 pub(crate) const fn lighting_preset_label(preset: LightingPreset, locale: Locale) -> &'static str {
-    match locale {
-        Locale::Korean => preset.label_ko(),
-        Locale::Japanese => preset.label_ja(),
-
-        _ => preset.label_en(),
-    }
+    text(locale, preset.label_key())
 }
 
 fn about_divider(ui: &mut Ui) {

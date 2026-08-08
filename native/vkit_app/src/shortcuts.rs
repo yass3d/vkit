@@ -50,6 +50,7 @@ pub enum Shortcut {
     Undo,
 
     BrushSizeSweep,
+    BrushStrengthSweep,
 
     ViewTrackball,
 
@@ -62,7 +63,7 @@ pub enum Shortcut {
 
 impl Shortcut {
     #[cfg(test)]
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::TexturePinBrush,
@@ -71,6 +72,7 @@ impl Shortcut {
         Self::BrushSizeUp,
         Self::Undo,
         Self::BrushSizeSweep,
+        Self::BrushStrengthSweep,
         Self::ViewTrackball,
         Self::CancelStencil,
         Self::FrameSelected,
@@ -86,7 +88,7 @@ impl Shortcut {
             Self::BrushSizeDown => Key::OpenBracket,
             Self::BrushSizeUp => Key::CloseBracket,
             Self::Undo => Key::Z,
-            Self::BrushSizeSweep => Key::F,
+            Self::BrushSizeSweep | Self::BrushStrengthSweep => Key::F,
             Self::ViewTrackball => Key::R,
             Self::CancelStencil => Key::Escape,
             Self::FrameSelected => Key::F,
@@ -111,6 +113,7 @@ impl Shortcut {
             | Self::BrushSizeDown
             | Self::BrushSizeUp
             | Self::BrushSizeSweep
+            | Self::BrushStrengthSweep
             | Self::CancelStencil => ShortcutContext::DetailEdit,
         }
     }
@@ -127,6 +130,8 @@ impl Shortcut {
             | Self::SculptRestoreBrush
             | Self::BrushSizeDown
             | Self::BrushSizeUp => ModifierPolicy::Ignored,
+
+            Self::BrushStrengthSweep => ModifierPolicy::Exactly(Modifiers::SHIFT),
 
             Self::BrushSizeSweep
             | Self::ViewTrackball
@@ -146,6 +151,7 @@ impl Shortcut {
             Self::BrushSizeUp => "]",
             Self::Undo => "Ctrl+Z",
             Self::BrushSizeSweep => "F",
+            Self::BrushStrengthSweep => "Shift+F",
             Self::ViewTrackball => "R",
             Self::CancelStencil => "Esc",
             Self::FrameSelected => "F",
@@ -162,6 +168,14 @@ impl Shortcut {
     }
 }
 
+/// One control can answer to more than one press. A tooltip has room for a
+/// single line, so the presses are joined into one hint; the test below pins
+/// each join to the labels it stands for, so a rebound key cannot leave a hint
+/// behind advertising the old one.
+pub const BRUSH_SIZE_HINT: &str = "[ / ] / F";
+
+pub const BRUSH_STRENGTH_HINT: &str = "Shift+F";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,7 +183,7 @@ mod tests {
     #[test]
     fn every_label_names_the_key_it_is_bound_to() {
         for shortcut in Shortcut::ALL {
-            let expected = match shortcut.key() {
+            let key = match shortcut.key() {
                 Key::OpenBracket => "[",
                 Key::CloseBracket => "]",
                 Key::Tab => "Tab",
@@ -177,12 +191,38 @@ mod tests {
                 Key::Escape => "Esc",
                 key => key.name(),
             };
+            // When a policy demands a modifier the modifier is half the binding,
+            // so the label has to name it too. Two shortcuts share the F key and
+            // are told apart by Shift alone; without this, one of them would
+            // advertise a press that belongs to the other. Ctrl+Z spells its own
+            // modifier in the table above.
+            let expected = match shortcut.modifiers() {
+                ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::SHIFT => {
+                    format!("Shift+{key}")
+                }
+                _ => key.to_owned(),
+            };
             assert_eq!(
                 shortcut.label(),
                 expected,
                 "{shortcut:?} advertises a key it does not listen for"
             );
         }
+    }
+
+    #[test]
+    fn a_joined_hint_still_names_every_press_it_stands_for() {
+        assert_eq!(
+            BRUSH_SIZE_HINT,
+            format!(
+                "{} / {} / {}",
+                Shortcut::BrushSizeDown.label(),
+                Shortcut::BrushSizeUp.label(),
+                Shortcut::BrushSizeSweep.label()
+            ),
+            "the size hint has drifted from the presses that actually resize the brush"
+        );
+        assert_eq!(BRUSH_STRENGTH_HINT, Shortcut::BrushStrengthSweep.label());
     }
 
     #[test]

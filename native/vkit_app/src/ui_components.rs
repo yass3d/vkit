@@ -206,6 +206,49 @@ pub fn handle_brush_size_gesture(
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct BrushStrengthGestureUpdate {
+    pub consumed: bool,
+    pub strength: Option<f32>,
+}
+
+/// How far the pointer travels for a full swing of "how much".
+///
+/// One constant because it is one gesture. It used to sit in the viewport,
+/// where the flat canvas could not reach it -- which is part of why the flat
+/// canvas never had this sweep at all.
+pub const BRUSH_STRENGTH_SENSITIVITY: f32 = 0.004;
+
+/// Shift+F sweeps whatever "how much" means for the tool in hand.
+///
+/// It is the same gesture as the size sweep and deliberately so: one motion to
+/// learn, one modifier to tell the two apart. What it moves is decided by the
+/// caller rather than by this function, because the answer differs by surface —
+/// a 3D brush has a strength, a 2D one has an opacity — and only the call site
+/// knows which field is in front of the user.
+pub fn handle_brush_strength_gesture(
+    ui: &Ui,
+    id: Id,
+    viewport: Rect,
+    current_strength: f32,
+    sensitivity: f32,
+    strength_range: RangeInclusive<f32>,
+) -> BrushStrengthGestureUpdate {
+    let update = crate::sweep_gesture::handle_sweep(
+        ui,
+        id,
+        crate::shortcuts::Shortcut::BrushStrengthSweep,
+        viewport,
+        current_strength,
+        sensitivity,
+        Some(strength_range),
+    );
+    BrushStrengthGestureUpdate {
+        consumed: update.consumed,
+        strength: update.value,
+    }
+}
+
 pub fn island_rect(
     bounds: Rect,
     size: Vec2,
@@ -301,6 +344,129 @@ pub fn brush_size_gesture_anchor(ui: &Ui, id: Id) -> Option<Pos2> {
     })
 }
 
+/// The crosshair that marks where a clone stamp is reading from.
+///
+/// A ring alone reads as another brush cursor. Crosshair arms crossing an open
+/// centre read as a surveyed point — you can see exactly which pixel it sits
+/// on, which is the whole reason for putting it there: every later stamp is
+/// measured against this spot, so it has to be legible enough to aim by.
+pub fn paint_clone_anchor(painter: &egui::Painter, at: Pos2) {
+    const RADIUS: f32 = 5.5;
+    const ARM: f32 = 9.0;
+    // Drawn dark first, then light on top. Skin is mid-tone and a single-colour
+    // marker disappears into it on one face or the other.
+    for (width, color) in [
+        (2.6, Color32::from_black_alpha(150)),
+        (1.3, crate::theme::COLOR_PRIMARY),
+    ] {
+        painter.circle_stroke(at, RADIUS, Stroke::new(width, color));
+        for axis in [Vec2::X, Vec2::Y] {
+            // The arms stop short of the ring so the centre stays open.
+            painter.line_segment(
+                [at + axis * RADIUS * 1.35, at + axis * ARM],
+                Stroke::new(width, color),
+            );
+            painter.line_segment(
+                [at - axis * RADIUS * 1.35, at - axis * ARM],
+                Stroke::new(width, color),
+            );
+        }
+    }
+}
+
+/// The pair of sweeps a painting surface answers to.
+///
+/// One name yields both ids, so a surface cannot be given a size sweep and left
+/// without a strength sweep. That is not hypothetical: the stencil brush spent
+/// its whole life with `F` working and `Shift+F` doing nothing, because the two
+/// were separate constants wired at separate call sites and one of them was
+/// simply never written.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BrushSweeps(&'static str);
+
+impl BrushSweeps {
+    /// The 3D brush on the model.
+    pub const SCULPT: Self = Self("vkit.viewport.sculpt.brush");
+
+    /// Painting on the textured surface, and the stencil that shares its brush.
+    pub const TEXTURE_SURFACE: Self = Self("vkit.viewport.texture.brush");
+
+    /// The flat UV canvas.
+    pub const TEXTURE_CANVAS: Self = Self("vkit.texture.source.brush");
+
+    #[cfg(test)]
+    pub const ALL: [Self; 3] = [Self::SCULPT, Self::TEXTURE_SURFACE, Self::TEXTURE_CANVAS];
+
+    #[must_use]
+    pub fn size(self) -> Id {
+        Id::new((self.0, "size"))
+    }
+
+    #[must_use]
+    pub fn strength(self) -> Id {
+        Id::new((self.0, "strength"))
+    }
+}
+
+/// What the brush ring should be doing this frame.
+///
+/// Both sweeps pin the ring where the gesture began, so the pointer can travel
+/// without dragging the thing you are reading. Only what the ring *says*
+/// changes: a size sweep grows and shrinks it, a strength sweep fills it.
+#[derive(Clone, Copy, Debug)]
+pub struct BrushCursor {
+    pub at: Pos2,
+
+    /// `Some` only while a strength sweep runs, in 0..1. The ring is already
+    /// saying how wide; during a strength sweep it says how much instead, by
+    /// filling. Nothing to fill means the sweep is over and the ring goes back
+    /// to being an outline.
+    pub fill: Option<f32>,
+}
+
+/// Where and how to draw the ring, given both sweep ids and where the pointer
+/// is when neither is running.
+///
+/// This exists once because four surfaces paint this ring — sculpt, textured
+/// surface, stencil, and the flat UV canvas — and they were each deciding for
+/// themselves. Three of them had never heard of the strength sweep, which is
+/// why holding Shift+F felt like nothing was happening.
+pub fn brush_cursor(
+    ui: &Ui,
+    hover: Option<Pos2>,
+    size_id: Id,
+    strength: Option<(Id, f32)>,
+) -> Option<BrushCursor> {
+    if let Some((strength_id, value)) = strength
+        && let Some(at) = brush_size_gesture_anchor(ui, strength_id)
+    {
+        return Some(BrushCursor {
+            at,
+            fill: Some(value.clamp(0.0, 1.0)),
+        });
+    }
+    let at = brush_size_gesture_anchor(ui, size_id).or(hover)?;
+    Some(BrushCursor { at, fill: None })
+}
+
+/// Paints the ring, and fills it when a strength sweep says how much.
+///
+/// The fill is a disc rather than an arc or a bar: it reads as "this much
+/// paint" at a glance, at any brush size, without a number to look at.
+pub fn paint_brush_cursor(
+    painter: &egui::Painter,
+    cursor: BrushCursor,
+    radius: f32,
+    color: Color32,
+) {
+    if let Some(fill) = cursor.fill {
+        // Never fully transparent at zero: an empty ring is indistinguishable
+        // from no sweep at all, and the point is to show that one is running.
+        painter.circle_filled(cursor.at, radius, color.gamma_multiply(0.12 + 0.58 * fill));
+    }
+    painter.circle_stroke(cursor.at, radius, Stroke::new(1.5, color));
+}
+
 pub fn clear_brush_size_gesture(context: &egui::Context, id: Id) {
     context.data_mut(|data| data.remove::<crate::sweep_gesture::Sweep>(id));
 }
@@ -312,6 +478,7 @@ pub fn compact_brush_numeric_control(
     value: &mut f32,
     range: RangeInclusive<f32>,
     decimals: usize,
+    shortcut: Option<&str>,
 ) -> Response {
     let width = width.min(ui.available_width().max(0.0)).max(0.0);
     let (rect, row) = ui.allocate_exact_size(
@@ -341,7 +508,10 @@ pub fn compact_brush_numeric_control(
             .decimals(decimals)
             .min_width(child.available_width()),
     );
-    row | slider
+    // The hint hangs off the union so that the label reveals it too — the label
+    // is what a hand reaches for when it does not know the control has a key.
+    // The union carries the slider's `changed`, which is what callers read.
+    tooltip(row | slider, label, shortcut)
 }
 
 pub fn brush_falloff_selector(
@@ -801,8 +971,15 @@ impl Widget for FilledNumericSlider<'_> {
         {
             normalized =
                 ((pointer.x - track_rect.left()) / track_rect.width().max(1.0)).clamp(0.0, 1.0);
-            *value = (min + normalized * span).clamp(min, max);
-            response.mark_changed();
+            // Report a change only when the value actually moved. Held-still drag frames used to
+            // mark_changed() every frame, and each one dispatched a no-op edit that the callers
+            // then had to answer for.
+            let settled = (min + normalized * span).clamp(min, max);
+            if (*value - settled).abs() > f32::EPSILON {
+                *value = settled;
+                response.mark_changed();
+            }
+            normalized = ((*value - min) / span).clamp(0.0, 1.0);
         }
         if track_response.hovered() {
             ui.output_mut(|output| output.cursor_icon = CursorIcon::ResizeHorizontal);
@@ -894,6 +1071,7 @@ pub enum Icon {
     Star,
     StarFilled,
     Refresh,
+    UpdateAvailable,
     Folder,
     Camera,
 
@@ -914,8 +1092,7 @@ pub enum Icon {
     TextureMask,
 
     CloneStamp,
-
-    Healing,
+    DodgeBurn,
 
     TextureSponge,
 
@@ -984,7 +1161,7 @@ impl Icon {
         Self::TexturePin,
         Self::TextureMask,
         Self::CloneStamp,
-        Self::Healing,
+        Self::DodgeBurn,
         Self::TextureSponge,
         Self::Projector,
         Self::BrushMove,
@@ -1121,6 +1298,7 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::Settings => include_str!("../resources/icons/settings.svg"),
         Icon::Star => include_str!("../resources/icons/star.svg"),
         Icon::Refresh => include_str!("../resources/icons/refresh-cw.svg"),
+        Icon::UpdateAvailable => include_str!("../resources/icons/circle-arrow-up.svg"),
         Icon::Folder => include_str!("../resources/icons/folder.svg"),
         Icon::Camera => include_str!("../resources/icons/camera.svg"),
         Icon::HeadTexture => include_str!("../resources/icons/scan-face.svg"),
@@ -1137,11 +1315,11 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::MirrorX => include_str!("../resources/icons/flip-horizontal.svg"),
         Icon::Brush => include_str!("../resources/icons/paintbrush.svg"),
         Icon::TexturePin => include_str!("../resources/icons/map-pin.svg"),
-        Icon::TextureMask => include_str!("../resources/icons/venetian-mask.svg"),
+        Icon::TextureMask => include_str!("../resources/icons/eraser.svg"),
         Icon::CloneStamp => include_str!("../resources/icons/stamp.svg"),
-        Icon::Healing => include_str!("../resources/icons/bandage.svg"),
-        Icon::TextureSponge => include_str!("../resources/icons/blend.svg"),
-        Icon::Projector => include_str!("../resources/icons/projector.svg"),
+        Icon::DodgeBurn => include_str!("../resources/icons/flame.svg"),
+        Icon::TextureSponge => include_str!("../resources/icons/bubbles.svg"),
+        Icon::Projector => include_str!("../resources/icons/brush.svg"),
         Icon::BrushMove => include_str!("../resources/icons/hand.svg"),
         Icon::BrushSmooth => include_str!("../resources/icons/droplet.svg"),
         Icon::BrushRestore => include_str!("../resources/icons/rotate-ccw.svg"),
@@ -1613,6 +1791,7 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
     let mut clicked = None;
     let mut bounds = Rect::NOTHING;
     let mut selected_rect = None;
+    let mut last_chip = None;
 
     let thumb_slot = Some(ui.painter().add(Shape::Noop));
     let layout_rect = ui
@@ -1642,6 +1821,7 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
                 );
                 control_affordances(ui, &response, response.rect, CHIP_HEIGHT * 0.5);
                 bounds = bounds.union(response.rect);
+                last_chip = Some(response.rect);
                 if selected {
                     selected_rect = Some((index, response.rect));
                 }
@@ -1664,7 +1844,25 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
     } else {
         bounds
     };
+    ui.data_mut(|data| match last_chip {
+        Some(last) => {
+            data.insert_temp(id.with(CHIPS_LAST_CHIP), last);
+        }
+        None => data.remove::<Rect>(id.with(CHIPS_LAST_CHIP)),
+    });
     (rect, clicked)
+}
+
+const CHIPS_LAST_CHIP: &str = "chips-last";
+
+/// Where the final chip of a wrapped row ended.
+///
+/// A caller that wants to tuck something into the space a wrapping row leaves
+/// behind needs the last chip's corner, not the block's: the block spans every
+/// row, so its right edge belongs to the widest row rather than the last one.
+/// Recorded by [`chips`] under the same id it was drawn with.
+pub fn chips_last_chip(ui: &Ui, id: Id) -> Option<Rect> {
+    ui.data(|data| data.get_temp::<Rect>(id.with(CHIPS_LAST_CHIP)))
 }
 
 pub fn animated_segmented_group<R>(
@@ -2119,6 +2317,110 @@ fn parse_color_hex(value: &str) -> Option<[u8; 3]> {
 mod tests {
     use super::*;
 
+    fn pin(context: &egui::Context, id: Id, at: Pos2) {
+        context.data_mut(|data| {
+            data.insert_temp(
+                id,
+                crate::sweep_gesture::Sweep {
+                    start_pointer: at,
+                    start_value: 0.0,
+                },
+            );
+        });
+    }
+
+    #[test]
+    fn every_painting_surface_answers_to_both_sweeps() {
+        // The stencil brush spent its life with F working and Shift+F doing
+        // nothing, because size and strength were separate constants wired at
+        // separate call sites and one of them was never written. A surface is
+        // one name now, and asking it for a size id you can always also ask it
+        // for a strength id -- so "has one, missing the other" has nowhere left
+        // to live.
+        let mut seen = std::collections::HashSet::new();
+        for surface in BrushSweeps::ALL {
+            assert_ne!(
+                surface.size(),
+                surface.strength(),
+                "{surface:?} sweeps one value under two names"
+            );
+            assert!(
+                seen.insert(surface.size()) && seen.insert(surface.strength()),
+                "{surface:?} shares an id with another surface, so one sweep                  would end the other"
+            );
+        }
+        assert_eq!(seen.len(), BrushSweeps::ALL.len() * 2);
+    }
+
+    #[test]
+    fn both_sweeps_pin_the_ring_and_only_one_of_them_fills_it() {
+        let context = egui::Context::default();
+        let size = Id::new("test.size");
+        let strength = Id::new("test.strength");
+        let hover = Pos2::new(500.0, 500.0);
+        let anchor = Pos2::new(100.0, 100.0);
+
+        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+            // Nothing running: the ring follows the pointer and stays an
+            // outline, which is what painting looks like.
+            let idle = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
+                .expect("a hovering pointer has a ring");
+            assert_eq!(idle.at, hover);
+            assert_eq!(idle.fill, None);
+
+            // A size sweep pins it. The pointer travels; the ring does not.
+            pin(ui.ctx(), size, anchor);
+            let sizing = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
+                .expect("a size sweep has a ring");
+            assert_eq!(
+                sizing.at, anchor,
+                "the ring must not be dragged by the sweep"
+            );
+            assert_eq!(
+                sizing.fill, None,
+                "a size sweep says how wide, and the ring is already saying it"
+            );
+
+            // A strength sweep pins it the same way, and fills it. This is the
+            // half that was missing: three of the four surfaces had never heard
+            // of this sweep, so holding Shift+F looked like nothing happening.
+            pin(ui.ctx(), strength, anchor);
+            let sweeping = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
+                .expect("a strength sweep has a ring");
+            assert_eq!(sweeping.at, anchor);
+            assert_eq!(sweeping.fill, Some(0.7));
+
+            // A surface with no strength sweep is untouched by any of it.
+            let plain = brush_cursor(ui, Some(hover), Id::new("test.other"), None)
+                .expect("a ring with no sweeps");
+            assert_eq!(plain.at, hover);
+            assert_eq!(plain.fill, None);
+        });
+    }
+
+    #[test]
+    fn the_fill_stays_inside_the_ring_and_never_vanishes() {
+        let context = egui::Context::default();
+        let strength = Id::new("test.strength.range");
+        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+            pin(ui.ctx(), strength, Pos2::ZERO);
+            for (given, expected) in [(-4.0, 0.0), (0.0, 0.0), (0.5, 0.5), (1.0, 1.0), (9.0, 1.0)] {
+                let cursor = brush_cursor(
+                    ui,
+                    None,
+                    Id::new("test.size.range"),
+                    Some((strength, given)),
+                )
+                .expect("a pinned sweep has a ring even with no pointer");
+                assert_eq!(
+                    cursor.fill,
+                    Some(expected),
+                    "{given} has to land inside the ring"
+                );
+            }
+        });
+    }
+
     fn icon_button_size_for_test() -> f32 {
         let context = egui::Context::default();
         let mut size = 0.0;
@@ -2438,6 +2740,7 @@ mod tests {
                 Icon::Star => {}
                 Icon::StarFilled => {}
                 Icon::Refresh => {}
+                Icon::UpdateAvailable => {}
                 Icon::Folder => {}
                 Icon::Camera => {}
                 Icon::HeadTexture => {}
@@ -2456,7 +2759,7 @@ mod tests {
                 Icon::TexturePin => {}
                 Icon::TextureMask => {}
                 Icon::CloneStamp => {}
-                Icon::Healing => {}
+                Icon::DodgeBurn => {}
                 Icon::TextureSponge => {}
                 Icon::Projector => {}
                 Icon::BrushMove => {}

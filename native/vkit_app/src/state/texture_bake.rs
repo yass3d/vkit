@@ -76,6 +76,11 @@ impl AppState {
             }
             TextureBakeQuality::Export => self.texture_project.resolution,
         };
+        let boundary_feather_pixels = u16::try_from(
+            u32::from(self.texture_project.boundary_feather_pixels).saturating_mul(resolution)
+                / self.texture_project.resolution.max(1),
+        )
+        .unwrap_or(u16::MAX);
         let face_mirror = self.face_mirror_map(&mapping);
         self.expected_texture_bake_request = Some((request_id, project_revision, resolution));
         self.texture_project.bake_loading = true;
@@ -95,13 +100,9 @@ impl AppState {
                     hide_skin_preview: self.texture_project.hide_vam_skin_preview,
                     neutral_base_rgb: self.g2_solid_color_rgb,
                     resolution,
-                    boundary_feather_pixels: self.texture_project.boundary_feather_pixels,
-                    cached_layer_rasters: self
-                        .texture_project
-                        .baked
-                        .as_ref()
-                        .map(|baked| baked.layer_rasters.clone())
-                        .unwrap_or_default(),
+                    boundary_feather_pixels,
+                    cached_layer_rasters: self.texture_project.cached_layer_rasters(resolution),
+                    cached_base_face: self.texture_project.cached_base_face(resolution),
                     base_face_source: self.selected_skin_face_diffuse(),
                 },
             )));

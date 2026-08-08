@@ -26,6 +26,33 @@ pub struct VaMEditSource {
     pub kind: VaMEditSourceKind,
 
     pub missing_morphs: u32,
+    pub morph_refs: u32,
+}
+
+impl VaMEditSource {
+    /// Whether picking this look would leave the base face untouched.
+    ///
+    /// A look that is missing *some* of its morphs is not worth marking. All
+    /// that is knowable at scan time is that a `.vmi` path did not resolve;
+    /// what that costs is not knowable at all, because whether the absent file
+    /// carried deltas on head vertices -- the only ones that survive
+    /// `look_head_filter` -- is a property of a file that is not there. An
+    /// alarm nobody can size, painted in the destructive colour across most
+    /// rows of a large collection, is worse than no alarm. The names and the
+    /// resolved/missing ratio go to vkit.log instead.
+    ///
+    /// A look where *nothing* resolves is the one outcome that is certain, and
+    /// worth a word: it opens as the untouched base face.
+    ///
+    /// Note this is the advisory signal, not the authoritative one:
+    /// `morph_ref_available` answers `true` for any uid that is not a `.vmi`
+    /// path, so a look built entirely from bare-name builtin references can
+    /// still load nothing without being marked here. The load-time count in
+    /// `install_direct_edit_output` is the one that saw the real resolution.
+    #[must_use]
+    pub const fn resolves_nothing(&self) -> bool {
+        self.morph_refs > 0 && self.missing_morphs >= self.morph_refs
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -139,6 +166,7 @@ pub fn scan_edit_sources(vam_root: &Path) -> Result<VaMEditSourceCatalog, String
                 let sex = recipe.as_ref().and_then(|recipe| recipe.sex);
                 let mut source = source_from_path(path, sex, VaMEditSourceKind::AppearancePreset);
                 if let Some(recipe) = recipe.as_ref() {
+                    source.morph_refs = recipe.morphs.len() as u32;
                     source.missing_morphs = recipe
                         .morphs
                         .iter()
@@ -154,8 +182,8 @@ pub fn scan_edit_sources(vam_root: &Path) -> Result<VaMEditSourceCatalog, String
     }
 
     catalog.sources.sort_by(|left, right| {
-        (left.missing_morphs > 0)
-            .cmp(&(right.missing_morphs > 0))
+        left.resolves_nothing()
+            .cmp(&right.resolves_nothing())
             .then_with(|| {
                 left.label
                     .to_ascii_lowercase()
@@ -477,6 +505,7 @@ fn source_from_path(path: &Path, sex: Option<SkinSex>, kind: VaMEditSourceKind) 
         sex,
         kind,
         missing_morphs: 0,
+        morph_refs: 0,
     }
 }
 
@@ -675,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn looks_missing_morphs_are_counted_and_sorted_below_ready_ones() {
+    fn only_a_look_that_resolves_nothing_is_marked_and_sunk() {
         let root = test_root("edit-source-availability");
         let _ = fs::remove_dir_all(&root);
         let morphs = root
@@ -701,24 +730,43 @@ mod tests {
         .unwrap();
 
         fs::write(
-            looks.join("Preset_Broken.vap"),
+            looks.join("Preset_Partial.vap"),
             br#"{"storables":[{"id":"geometry","morphs":[{"uid":"Custom/Atom/Person/Morphs/female/Present.vmi","name":"Present","value":"1"},{"uid":"Custom/Atom/Person/Morphs/female/Gone.vmi","name":"Gone","value":"1"}]}]}"#,
         )
         .unwrap();
 
+        fs::write(
+            looks.join("Preset_Empty.vap"),
+            br#"{"storables":[{"id":"geometry","morphs":[{"uid":"Custom/Atom/Person/Morphs/female/Gone.vmi","name":"Gone","value":"1"}]}]}"#,
+        )
+        .unwrap();
+
         let catalog = scan_edit_sources(&root).unwrap();
-        let ready = catalog
-            .sources
-            .iter()
-            .find(|source| source.label == "Ready")
-            .expect("ready look indexed");
-        let broken = catalog
-            .sources
-            .iter()
-            .find(|source| source.label == "Broken")
-            .expect("broken look indexed");
-        assert_eq!(ready.missing_morphs, 0, "present morph resolves loose");
-        assert_eq!(broken.missing_morphs, 1, "only the absent morph is counted");
+        let look = |label: &str| {
+            catalog
+                .sources
+                .iter()
+                .find(|source| source.label == label)
+                .unwrap_or_else(|| panic!("{label} indexed"))
+        };
+        assert_eq!(
+            look("Ready").missing_morphs,
+            0,
+            "present morph resolves loose"
+        );
+        assert_eq!(
+            look("Partial").missing_morphs,
+            1,
+            "only the absent morph is counted"
+        );
+        assert!(
+            !look("Partial").resolves_nothing(),
+            "a look that still carries a face is never marked"
+        );
+        assert!(
+            look("Empty").resolves_nothing(),
+            "a look with nothing left to load is marked"
+        );
 
         let pair = catalog
             .sources
@@ -726,20 +774,21 @@ mod tests {
             .find(|source| source.kind == VaMEditSourceKind::MorphPair)
             .expect("loose pair indexed");
         assert_eq!(pair.missing_morphs, 0);
+        assert!(!pair.resolves_nothing());
 
-        let broken_index = catalog
+        let empty_index = catalog
             .sources
             .iter()
-            .position(|source| source.label == "Broken")
+            .position(|source| source.label == "Empty")
             .unwrap();
-        let last_ready = catalog
+        let last_usable = catalog
             .sources
             .iter()
-            .rposition(|source| source.missing_morphs == 0)
+            .rposition(|source| !source.resolves_nothing())
             .unwrap();
         assert!(
-            broken_index > last_ready,
-            "a look with missing morphs must sink below the ready sources"
+            empty_index > last_usable,
+            "a look that resolves nothing must sink below the usable sources"
         );
         fs::remove_dir_all(root).unwrap();
     }

@@ -52,6 +52,7 @@ mod texture_ui;
 mod theme;
 mod ui;
 mod ui_components;
+mod update_check;
 mod vam_catalog;
 mod vam_edit_sources;
 mod vam_hair;

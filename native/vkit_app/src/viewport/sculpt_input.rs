@@ -13,7 +13,9 @@ pub(super) fn handle_sculpt_interaction(
         let existed = ui.data_mut(|data| {
             let existed = data.get_temp::<SculptViewportStroke>(stroke_id).is_some();
             data.remove::<SculptViewportStroke>(stroke_id);
-            data.remove::<crate::sweep_gesture::Sweep>(Id::new(SCULPT_BRUSH_SIZE_ID));
+            data.remove::<crate::sweep_gesture::Sweep>(
+                crate::ui_components::BrushSweeps::SCULPT.size(),
+            );
             existed
         });
         if existed {
@@ -228,6 +230,39 @@ pub(super) const fn sculpt_input_mode(
     }
 }
 
+/// What the island should name, given what a stroke would actually do right
+/// now. Holding a modifier is not a choice, so the selection underneath is left
+/// alone and only the label follows — release the key and the island is back
+/// where it was, with nothing to undo.
+///
+/// It reads the same `sculpt_input_mode` the stroke reads, so the two cannot
+/// drift into saying different things about the same held key. Modes with no
+/// brush of their own leave the selection showing; there is nothing truer to
+/// put there.
+pub(super) const fn brush_shown_for(mode: SculptInputMode, selected: SculptBrush) -> SculptBrush {
+    match mode {
+        SculptInputMode::Smooth => SculptBrush::Smooth,
+        SculptInputMode::Grab
+        | SculptInputMode::Inflate
+        | SculptInputMode::Restore
+        | SculptInputMode::RestoreFit => selected,
+    }
+}
+
+pub(super) fn displayed_sculpt_brush(ui: &Ui, state: &AppState) -> SculptBrush {
+    // A Shift+F sweep holds Shift for its whole run. That is a reach for the
+    // strength readout, not for the smooth brush, so the island stays put.
+    if crate::sweep_gesture::sweep_active(ui, crate::ui_components::BrushSweeps::SCULPT.strength())
+    {
+        return state.sculpt_brush;
+    }
+    let modifiers = ui.input(|input| input.modifiers);
+    brush_shown_for(
+        sculpt_input_mode(modifiers, state.sculpt_brush),
+        state.sculpt_brush,
+    )
+}
+
 pub(super) fn handle_sculpt_brush_size_gesture(
     ui: &Ui,
     state: &mut AppState,
@@ -235,7 +270,7 @@ pub(super) fn handle_sculpt_brush_size_gesture(
 ) -> bool {
     let update = handle_brush_size_gesture(
         ui,
-        Id::new(SCULPT_BRUSH_SIZE_ID),
+        crate::ui_components::BrushSweeps::SCULPT.size(),
         viewport,
         state.sculpt_brush_radius_points,
         SCULPT_BRUSH_SIZE_SENSITIVITY,
@@ -244,7 +279,23 @@ pub(super) fn handle_sculpt_brush_size_gesture(
     if let Some(radius) = update.radius {
         state.dispatch(Action::SetSculptBrushRadius(radius));
     }
-    update.consumed
+    if update.consumed {
+        return true;
+    }
+
+    // On a 3D brush "how much" means strength, so that is what Shift+F sweeps.
+    let strength = crate::ui_components::handle_brush_strength_gesture(
+        ui,
+        crate::ui_components::BrushSweeps::SCULPT.strength(),
+        viewport,
+        state.sculpt_strength,
+        BRUSH_STRENGTH_SENSITIVITY,
+        0.01..=1.0,
+    );
+    if let Some(value) = strength.strength {
+        state.dispatch(Action::SetSculptStrength(value));
+    }
+    strength.consumed
 }
 
 pub(super) fn make_sculpt_viewport_dab(
@@ -371,32 +422,43 @@ pub(super) fn sculpt_smooth_time_dabs(accumulator_seconds: &mut f64, stable_dt: 
 }
 
 pub(super) fn paint_sculpt_brush_hud(ui: &Ui, state: &AppState, response: &Response) {
-    let sizing = brush_size_gesture_anchor(ui, Id::new(SCULPT_BRUSH_SIZE_ID));
-    let pointer = sizing.or_else(|| {
-        response
-            .hovered()
-            .then(|| ui.input(|input| input.pointer.hover_pos()))
-            .flatten()
-    });
-    if let Some(pointer) = pointer {
-        let modifiers = ui.input(|input| input.modifiers);
-        let color = if sizing.is_some() {
-            COLOR_TEXT
-        } else if modifiers.shift {
-            COLOR_SUCCESS
-        } else if modifiers.ctrl {
-            COLOR_WARNING
-        } else {
-            COLOR_PRIMARY
-        };
-        ui.painter().circle_stroke(
-            pointer,
-            state.sculpt_brush_radius_points,
-            Stroke::new(1.4, color),
-        );
-        ui.painter()
-            .circle_filled(pointer, 2.0, color.gamma_multiply(0.9));
-    }
+    let hover = response
+        .hovered()
+        .then(|| ui.input(|input| input.pointer.hover_pos()))
+        .flatten();
+    let Some(cursor) = crate::ui_components::brush_cursor(
+        ui,
+        hover,
+        crate::ui_components::BrushSweeps::SCULPT.size(),
+        Some((
+            crate::ui_components::BrushSweeps::SCULPT.strength(),
+            state.sculpt_strength,
+        )),
+    ) else {
+        return;
+    };
+    let sizing =
+        brush_size_gesture_anchor(ui, crate::ui_components::BrushSweeps::SCULPT.size()).is_some();
+    let modifiers = ui.input(|input| input.modifiers);
+    // While a sweep runs the ring is a readout, so it drops the modifier
+    // colours -- green for smooth, amber for inflate -- and speaks plainly.
+    let color = if sizing || cursor.fill.is_some() {
+        COLOR_TEXT
+    } else if modifiers.shift {
+        COLOR_SUCCESS
+    } else if modifiers.ctrl {
+        COLOR_WARNING
+    } else {
+        COLOR_PRIMARY
+    };
+    crate::ui_components::paint_brush_cursor(
+        ui.painter(),
+        cursor,
+        state.sculpt_brush_radius_points,
+        color,
+    );
+    ui.painter()
+        .circle_filled(cursor.at, 2.0, color.gamma_multiply(0.9));
 }
 
 pub(super) const fn sculpt_visible_targets(state: &AppState) -> SculptTargets {
@@ -411,5 +473,5 @@ pub fn clear_sculpt_pointer_stroke(context: &egui::Context) {
     context.data_mut(|data| {
         data.remove::<SculptViewportStroke>(Id::new(SCULPT_DRAG_ID));
     });
-    clear_brush_size_gesture(context, Id::new(SCULPT_BRUSH_SIZE_ID));
+    clear_brush_size_gesture(context, crate::ui_components::BrushSweeps::SCULPT.size());
 }

@@ -18,7 +18,7 @@ pub const fn spec_for(intent: DialogIntent) -> DialogSpec {
     match intent {
         DialogIntent::OpenScan => DialogSpec {
             title: TextKey::DialogOpenScan,
-            extensions: &["obj", "glb", "fbx"],
+            extensions: &["obj", "glb", "gltf", "fbx"],
             save: false,
             folder: false,
         },
@@ -151,7 +151,7 @@ mod tests {
     fn every_dialog_intent_has_a_narrow_file_contract() {
         assert_eq!(
             spec_for(DialogIntent::OpenScan).extensions,
-            &["obj", "glb", "fbx"],
+            &["obj", "glb", "gltf", "fbx"],
             "a head can still arrive in any of these; only what Vkit writes is narrowed"
         );
         assert_eq!(spec_for(DialogIntent::ChooseOutput).extensions, &["vmi"]);

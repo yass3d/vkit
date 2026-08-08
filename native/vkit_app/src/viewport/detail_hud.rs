@@ -355,10 +355,13 @@ pub(super) fn detail_hud_numeric_controls(hud: &mut Ui, state: &mut AppState, co
         hud,
         text(state.locale, TextKey::Size),
         &mut radius,
-        8.0..=220.0,
-        0,
-        false,
+        NumericFormat {
+            range: 8.0..=220.0,
+            decimals: 0,
+            percent: false,
+        },
         control_width,
+        Some(crate::shortcuts::BRUSH_SIZE_HINT),
     );
     if radius_changed {
         state.dispatch(Action::SetSculptBrushRadius(radius));
@@ -375,10 +378,13 @@ pub(super) fn detail_hud_numeric_controls(hud: &mut Ui, state: &mut AppState, co
         hud,
         text(state.locale, strength_key),
         &mut strength,
-        0.01..=1.0,
-        0,
-        true,
+        NumericFormat {
+            range: 0.01..=1.0,
+            decimals: 0,
+            percent: true,
+        },
         control_width,
+        Some(crate::shortcuts::BRUSH_STRENGTH_HINT),
     );
     if strength_changed {
         state.dispatch(Action::SetSculptStrength(strength));
@@ -393,7 +399,8 @@ pub(super) fn detail_hud_falloff(hud: &mut Ui, state: &mut AppState, compact: bo
 }
 
 pub(super) fn detail_hud_brush(hud: &mut Ui, state: &mut AppState, compact: bool) {
-    if let Some(brush) = sculpt_brush_selector(hud, state.locale, state.sculpt_brush, compact) {
+    let shown = displayed_sculpt_brush(hud, state);
+    if let Some(brush) = sculpt_brush_selector(hud, state.locale, shown, compact) {
         state.dispatch(Action::SetSculptBrush(brush));
     }
 }
@@ -405,6 +412,7 @@ pub(super) fn detail_hud_toggles(hud: &mut Ui, state: &mut AppState) {
         state.sculpt_x_symmetry,
         text(state.locale, TextKey::SculptXSymmetry),
         text(state.locale, TextKey::SculptXSymmetryTooltip),
+        Some(crate::shortcuts::Shortcut::XSymmetry.label()),
     );
     if x.clicked() {
         state.dispatch(Action::SetSculptXSymmetry(!state.sculpt_x_symmetry));
@@ -416,6 +424,7 @@ pub(super) fn detail_hud_toggles(hud: &mut Ui, state: &mut AppState) {
         backface,
         text(state.locale, TextKey::BackfaceProtection),
         text(state.locale, TextKey::BackfaceProtectionTooltip),
+        None,
     );
     if mask.clicked() {
         state.dispatch(Action::ToggleSculptBackfaceMasking(!backface));
@@ -427,6 +436,7 @@ pub(super) fn detail_hud_toggles(hud: &mut Ui, state: &mut AppState) {
         connected,
         text(state.locale, TextKey::AutoGroup),
         text(state.locale, TextKey::AutoGroupTooltip),
+        None,
     );
     if topology.clicked() {
         state.dispatch(Action::SetSculptConnectedTopologyOnly(!connected));
@@ -439,10 +449,16 @@ pub(super) fn detail_hud_toggle_icon(
     active: bool,
     name: &str,
     explanation: &str,
+    shortcut: Option<&str>,
 ) -> Response {
     let (rect, response) =
         hud.allocate_exact_size(Vec2::splat(DETAIL_HUD_TOGGLE_SIZE), Sense::click());
-    let name = name.to_owned();
+    // The key rides on the name line rather than a third line, so a toggle that
+    // has one reads at a glance as "this has a key" without growing the card.
+    let name = match shortcut {
+        Some(shortcut) => format!("{name}  ({shortcut})"),
+        None => name.to_owned(),
+    };
     let explanation = explanation.to_owned();
     let response = response.on_hover_ui(|ui| {
         ui.set_max_width(crate::ui_components::TOOLTIP_MAX_WIDTH);

@@ -3,7 +3,7 @@
 <p align="center">
   <b>A companion tool for making Virt-A-Mate head morphs.</b><br>
   Fit a face to a scan or a photo, sculpt it, paint it, and write it back to
-  VaM — in one 22 MB Windows executable.
+  VaM — in one 24 MB Windows executable.
 </p>
 
 <p align="center">
@@ -30,10 +30,16 @@ and writes the result back as a VaM morph pair, a texture set, or a `.var`
 package.
 
 One Rust binary — egui and wgpu on Direct3D 12. No Python sidecar, no WebView,
-no redistributables, no installer, no network, and nothing to install beside it.
-Scans are read in-process: OBJ by Vkit's own parser, GLB and FBX through Rust
-crates linked into the binary. Everything VaM reads is written by Vkit's own
-writers.
+no redistributables, no installer, and nothing to install beside it. Scans are
+read in-process: OBJ by Vkit's own parser, glTF and GLB — including Draco and
+meshopt compression — and FBX through Rust crates linked into the binary.
+Everything VaM reads is written by Vkit's own writers.
+
+The one thing it sends over the network is a question about itself: on launch it
+asks GitHub whether a newer release exists, and shows a small badge beside the
+version if there is one. Nothing else leaves the machine, nothing is uploaded,
+and every failure — no connection, a proxy, a rate limit — is silent. Clicking
+the badge opens the release page in your browser; Vkit never updates itself.
 
 > **You need your own Virt-A-Mate installation.** Virt-A-Mate belongs to
 > MeshedVR, and Genesis 2 is DAZ 3D's and follows DAZ's terms. Vkit ships none
@@ -47,7 +53,7 @@ Four stages, left to right along the top of the window.
 
 | | Stage | |
 |---|---|---|
-| **1** | **Create** | Start from a 3D scan (OBJ / GLB / FBX, all read in-process), from a photograph projected onto the surface, or from a look already installed in VaM. Place numbered pin pairs — or let the bundled MediaPipe Face Landmarker place them — then fit: weighted similarity alignment, a Laplacian pin warp, and three-stage dense registration. Eyes, mouth and nostrils are held rigid, and Genesis 2 vertex order survives untouched. |
+| **1** | **Create** | Start from a 3D scan (OBJ / glTF / GLB / FBX, all read in-process), from a photograph projected onto the surface, or from a look already installed in VaM. Place numbered pin pairs — or let the bundled MediaPipe Face Landmarker place them — then fit: weighted similarity alignment, a Laplacian pin warp, and three-stage dense registration. Eyes, mouth and nostrils are held rigid, and Genesis 2 vertex order survives untouched. |
 | **2** | **Sculpt** | Grab, smooth and restore brushes, plus the whole morph library from your install with search, categories and translated names. Sculpt strokes and morph values are kept apart and recomposed, so moving between them never costs you either. |
 | **3** | **Texture** | Layers on the face UV: paint, clone, heal, dodge and burn, stamps, a positionable stencil, projection as its own brush, mirroring, and a bake to a finished texture set. |
 | **4** | **Save** | A VaM morph pair (`.vmi` + `.vmb`) into `Custom/Atom/Person/Morphs/`, the baked texture set, or a self-contained `.var` written by the same code that reads one. A saved morph pair reaches VaM through **Reload Custom Morphs**; a saved `.var` needs VaM restarted, because `AddonPackages` is enumerated once at startup and that button rescans the loose morph folders rather than the mounted packages. Vkit says which of the two you just did, under the button. |
@@ -140,9 +146,10 @@ to learn twice.
 | Pan | Shift + middle-mouse drag |
 | Zoom | Wheel (anchored on the point under the cursor), or Ctrl + middle-drag |
 | Snap orbit to 45° | Alt + middle-mouse drag |
-| Standard views | Numpad 1 / 3 / 7 / 9 — back, right, top, bottom |
+| Standard views | Numpad 4 / 6 — left, right; 8 / 2 — top, bottom |
+| Front diagonals | Numpad 7 / 9 — upper left, upper right; 1 / 3 — lower left, lower right |
 | Perspective ↔ orthographic | Numpad 5 |
-| Reset the camera | Home, or Numpad `.` |
+| Reset the camera | Home, Numpad 0, or Numpad `.` |
 | Frame the head | `F` |
 | Free rotate and roll | `R`, then drag; `R` or a click to leave |
 | Rotate the light | Shift + right-drag |

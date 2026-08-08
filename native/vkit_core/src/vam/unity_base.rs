@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -60,6 +61,13 @@ pub struct NeutralBaseCacheReceipt {
     pub sex: String,
     pub bundle_path: String,
     pub bundle_bytes: u64,
+    /// Nanoseconds since the Unix epoch, as decimal text, of the bundle this receipt was written
+    /// against. Together with `bundle_path` and `bundle_bytes` it lets a load decide the file is
+    /// unchanged without reading and hashing all of it. Absent on receipts written before the
+    /// stamp existed, and on platforms that cannot report a modification time; both fall back to
+    /// the digest comparison.
+    #[serde(default)]
+    pub bundle_modified_ns: Option<String>,
     pub bundle_sha256: String,
     pub object_path_id: i64,
     pub geometry_id: String,
@@ -141,12 +149,34 @@ pub fn load_or_extract_neutral_base(
     cache_dir: Option<&Path>,
 ) -> Result<NeutralBaseHandle> {
     let bundle_path = root.neutral_base_bundle_path(sex);
+
+    // A cache hit must not cost a read plus a SHA-256 of the whole bundle — these are several
+    // megabytes each and this runs on the caller's thread. The stamp (path, length, modification
+    // time) settles whether this is the same file the receipt was written against; everything the
+    // digest guards is still guarded, because the receipt records the digest and the cached blob
+    // must still agree with it, and any stamp that does not match falls through to the full read
+    // and hash below. What the stamp cannot see is a different bundle of the same byte length
+    // written within one filesystem timestamp tick of the one we cached.
+    let stamp = bundle_stamp(&bundle_path);
+    if let Some(dir) = cache_dir
+        && let Some(stamp) = stamp
+        && let Some(base) = try_load_cached_base_by_stamp(dir, sex, &bundle_path, stamp)
+    {
+        return Ok(NeutralBaseHandle {
+            base,
+            from_cache: true,
+        });
+    }
+
     let bundle = fs::read(&bundle_path).map_err(|error| io_error(&bundle_path, error))?;
     let bundle_sha256: [u8; 32] = Sha256::digest(&bundle).into();
 
     if let Some(dir) = cache_dir
         && let Some(base) = try_load_cached_base(dir, sex, &bundle_path, bundle_sha256)
     {
+        // Same bytes under a stamp the receipt did not carry — a receipt from before the stamp
+        // existed, or a file that was copied or touched. Re-stamp it so the next load is cheap.
+        let _ = write_receipt(dir, sex, &build_receipt(&base, bundle.len() as u64, stamp));
         return Ok(NeutralBaseHandle {
             base,
             from_cache: true,
@@ -155,7 +185,7 @@ pub fn load_or_extract_neutral_base(
 
     let base = extract_neutral_base_from_bundle(&bundle, &bundle_path, sex)?;
     if let Some(dir) = cache_dir {
-        let _ = write_cached_base(dir, &base, bundle.len() as u64);
+        let _ = write_cached_base(dir, &base, bundle.len() as u64, stamp);
     }
     Ok(NeutralBaseHandle {
         base,
@@ -191,6 +221,52 @@ fn cache_receipt_path(cache_dir: &Path, sex: GeometrySex) -> PathBuf {
         .join(format!("{}-receipt.json", cache_file_stem(sex)))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BundleStamp {
+    bytes: u64,
+    modified_ns: u128,
+}
+
+fn bundle_stamp(bundle_path: &Path) -> Option<BundleStamp> {
+    let metadata = fs::metadata(bundle_path).ok()?;
+    let modified_ns = metadata
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some(BundleStamp {
+        bytes: metadata.len(),
+        modified_ns,
+    })
+}
+
+fn receipt_matches_stamp(
+    receipt: &NeutralBaseCacheReceipt,
+    bundle_path: &Path,
+    stamp: BundleStamp,
+) -> bool {
+    receipt.bundle_bytes == stamp.bytes
+        && receipt.bundle_modified_ns.as_deref() == Some(stamp.modified_ns.to_string().as_str())
+        && receipt.bundle_path == bundle_path.to_string_lossy()
+}
+
+fn try_load_cached_base_by_stamp(
+    cache_dir: &Path,
+    sex: GeometrySex,
+    bundle_path: &Path,
+    stamp: BundleStamp,
+) -> Option<NeutralBaseMesh> {
+    let receipt = read_neutral_base_receipt(cache_dir, sex)?;
+    if !receipt_matches_stamp(&receipt, bundle_path, stamp) {
+        return None;
+    }
+    // The digest the receipt recorded stands in for one taken over the file again: the stamp said
+    // the file is the one that was hashed. The cached blob is still held to it.
+    let recorded = decode_hex32(&receipt.bundle_sha256)?;
+    cached_base_from_receipt(&receipt, cache_dir, sex, bundle_path, recorded)
+}
+
 fn try_load_cached_base(
     cache_dir: &Path,
     sex: GeometrySex,
@@ -198,6 +274,16 @@ fn try_load_cached_base(
     bundle_sha256: [u8; 32],
 ) -> Option<NeutralBaseMesh> {
     let receipt = read_neutral_base_receipt(cache_dir, sex)?;
+    cached_base_from_receipt(&receipt, cache_dir, sex, bundle_path, bundle_sha256)
+}
+
+fn cached_base_from_receipt(
+    receipt: &NeutralBaseCacheReceipt,
+    cache_dir: &Path,
+    sex: GeometrySex,
+    bundle_path: &Path,
+    bundle_sha256: [u8; 32],
+) -> Option<NeutralBaseMesh> {
     if receipt.schema_version != CACHE_SCHEMA_VERSION
         || receipt.bundle_sha256 != hex(&bundle_sha256)
         || receipt.vertex_count != G2F_VERTEX_COUNT
@@ -217,10 +303,12 @@ fn try_load_cached_base(
     Some(base)
 }
 
-fn write_cached_base(cache_dir: &Path, base: &NeutralBaseMesh, bundle_bytes: u64) -> Result<()> {
-    let directory = cache_dir.join(CACHE_DIRECTORY);
-    fs::create_dir_all(&directory).map_err(|error| io_error(&directory, error))?;
-    let receipt = NeutralBaseCacheReceipt {
+fn build_receipt(
+    base: &NeutralBaseMesh,
+    bundle_bytes: u64,
+    stamp: Option<BundleStamp>,
+) -> NeutralBaseCacheReceipt {
+    NeutralBaseCacheReceipt {
         schema_version: CACHE_SCHEMA_VERSION,
         sex: match base.sex {
             GeometrySex::Female => "female".to_owned(),
@@ -228,6 +316,9 @@ fn write_cached_base(cache_dir: &Path, base: &NeutralBaseMesh, bundle_bytes: u64
         },
         bundle_path: base.bundle_path.to_string_lossy().into_owned(),
         bundle_bytes,
+        bundle_modified_ns: stamp
+            .filter(|stamp| stamp.bytes == bundle_bytes)
+            .map(|stamp| stamp.modified_ns.to_string()),
         bundle_sha256: hex(&base.bundle_sha256),
         object_path_id: base.object_path_id,
         geometry_id: base.geometry_id.clone(),
@@ -236,14 +327,35 @@ fn write_cached_base(cache_dir: &Path, base: &NeutralBaseMesh, bundle_bytes: u64
         polygon_count: base.mesh.faces.len(),
         topology_sha256: hex(&base.topology_sha256),
         vertex_stream_sha256: hex(&vam_vertex_fingerprint(&base.mesh.vertices)),
-    };
-    let receipt_text = serde_json::to_string_pretty(&receipt)
+    }
+}
+
+fn write_receipt(
+    cache_dir: &Path,
+    sex: GeometrySex,
+    receipt: &NeutralBaseCacheReceipt,
+) -> Result<()> {
+    let directory = cache_dir.join(CACHE_DIRECTORY);
+    fs::create_dir_all(&directory).map_err(|error| io_error(&directory, error))?;
+    let receipt_text = serde_json::to_string_pretty(receipt)
         .map_err(|error| bundle_error(format!("cache receipt serialization failed: {error}")))?;
+    write_replacing(&cache_receipt_path(cache_dir, sex), receipt_text.as_bytes())
+}
+
+fn write_cached_base(
+    cache_dir: &Path,
+    base: &NeutralBaseMesh,
+    bundle_bytes: u64,
+    stamp: Option<BundleStamp>,
+) -> Result<()> {
     let blob = encode_cache_blob(base)?;
+    let directory = cache_dir.join(CACHE_DIRECTORY);
+    fs::create_dir_all(&directory).map_err(|error| io_error(&directory, error))?;
     write_replacing(&cache_blob_path(cache_dir, base.sex), &blob)?;
-    write_replacing(
-        &cache_receipt_path(cache_dir, base.sex),
-        receipt_text.as_bytes(),
+    write_receipt(
+        cache_dir,
+        base.sex,
+        &build_receipt(base, bundle_bytes, stamp),
     )
 }
 
@@ -258,6 +370,17 @@ fn write_replacing(path: &Path, bytes: &[u8]) -> Result<()> {
 
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn decode_hex32(text: &str) -> Option<[u8; 32]> {
+    if text.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0_u8; 32];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(text.get(index * 2..index * 2 + 2)?, 16).ok()?;
+    }
+    Some(bytes)
 }
 
 pub(crate) fn neutral_cache_directory(cache_dir: &Path) -> PathBuf {
@@ -2000,6 +2123,69 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("integrity"), "{error}");
+    }
+
+    #[test]
+    fn the_cheap_cache_key_is_the_path_the_length_and_the_modification_time() {
+        let path = Path::new("m_1");
+        let stamp = BundleStamp {
+            bytes: 4_351_915,
+            modified_ns: 1_700_000_000_123_456_789,
+        };
+        let receipt = NeutralBaseCacheReceipt {
+            schema_version: CACHE_SCHEMA_VERSION,
+            sex: "male".to_owned(),
+            bundle_path: path.to_string_lossy().into_owned(),
+            bundle_bytes: stamp.bytes,
+            bundle_modified_ns: Some(stamp.modified_ns.to_string()),
+            bundle_sha256: hex(&[7; 32]),
+            object_path_id: -42,
+            geometry_id: "Genesis2Male".to_owned(),
+            scene_node_id: "Genesis2Male".to_owned(),
+            vertex_count: G2F_VERTEX_COUNT,
+            polygon_count: G2F_POLYGON_COUNT,
+            topology_sha256: hex(&G2F_TOPOLOGY_SHA256),
+            vertex_stream_sha256: hex(&[9; 32]),
+        };
+        assert!(receipt_matches_stamp(&receipt, path, stamp));
+        assert!(!receipt_matches_stamp(
+            &receipt,
+            path,
+            BundleStamp {
+                bytes: stamp.bytes + 1,
+                ..stamp
+            }
+        ));
+        assert!(!receipt_matches_stamp(
+            &receipt,
+            path,
+            BundleStamp {
+                modified_ns: stamp.modified_ns + 1,
+                ..stamp
+            }
+        ));
+        assert!(!receipt_matches_stamp(&receipt, Path::new("f_1"), stamp));
+
+        // A receipt written before the stamp existed cannot answer the cheap question. It must
+        // still parse, and it must send the caller back to reading and hashing the bundle.
+        let mut stored = serde_json::to_value(&receipt).unwrap();
+        stored
+            .as_object_mut()
+            .unwrap()
+            .remove("bundle_modified_ns")
+            .unwrap();
+        let legacy: NeutralBaseCacheReceipt = serde_json::from_value(stored).unwrap();
+        assert_eq!(legacy.bundle_modified_ns, None);
+        assert!(!receipt_matches_stamp(&legacy, path, stamp));
+
+        // The recorded digest is what the stamped path hands to the blob check, so it has to
+        // survive the round trip through text.
+        assert_eq!(
+            decode_hex32(&hex(&G2F_TOPOLOGY_SHA256)),
+            Some(G2F_TOPOLOGY_SHA256)
+        );
+        assert_eq!(decode_hex32(&hex(&[7; 32])), Some([7; 32]));
+        assert_eq!(decode_hex32("not a digest"), None);
     }
 
     #[test]

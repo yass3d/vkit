@@ -11,6 +11,7 @@ impl AppState {
         self.vam_uv_mapping = None;
         self.face_uv_rows = None;
         self.vam_uv_mapping_warning = None;
+        self.texture_project.forget_layer_rasters();
 
         self.skin_preview_lru.clear();
         self.clear_skin_preview_selection();
@@ -154,6 +155,13 @@ impl AppState {
                 self.vam_morph_regions = payload.morph_regions;
                 self.vam_uv_mapping = payload.uv_mapping;
                 self.rebuild_face_uv_rows();
+
+                // A freshly indexed catalog can hand over a different G2 UV map (a template or
+                // sex swap does exactly that), and every cached layer raster was drawn into the
+                // old one. The scan is expensive and rare, so pay one cold re-warp rather than
+                // guess: the mapping arrives in a brand new Arc every time, so pointer identity
+                // cannot tell a same-file rescan from a real swap.
+                self.texture_project.forget_layer_rasters();
 
                 self.vam_uv_mapping_warning = if self.vam_uv_mapping.is_none() {
                     payload

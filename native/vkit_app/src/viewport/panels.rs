@@ -442,13 +442,16 @@ pub(super) fn draw_viewport_camera_panel(ui: &mut Ui, state: &mut AppState) {
     }
 
     ui.add_space(SPACE_3);
-    let reset = ui
-        .add_sized(
-            [ui.available_width().max(0.0), crate::theme::CONTROL_H_DENSE],
-            egui::Button::new(text(state.locale, TextKey::ResetCamera))
-                .corner_radius(crate::theme::CONTROL_H_DENSE * 0.5),
-        )
-        .on_hover_text("Home / Numpad .");
+    let reset = ui.add_sized(
+        [ui.available_width().max(0.0), crate::theme::CONTROL_H_DENSE],
+        egui::Button::new(text(state.locale, TextKey::ResetCamera))
+            .corner_radius(crate::theme::CONTROL_H_DENSE * 0.5),
+    );
+    let reset = crate::ui_components::tooltip(
+        reset,
+        text(state.locale, TextKey::ResetCamera),
+        Some("Home / Numpad 0 / Numpad ."),
+    );
     if reset.clicked() {
         state.dispatch(Action::ResetCamera);
     }
@@ -558,15 +561,20 @@ pub(super) fn draw_viewport_lighting_panel(ui: &mut Ui, state: &mut AppState) {
             ui.spacing_mut().item_spacing.x = 4.0;
             let (icon_rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
             paint_icon(ui.painter(), icon_rect, Icon::LightRotation, COLOR_TEXT);
-            rotation_changed |= ui
-                .add(
-                    FilledNumericSlider::new(&mut target_degrees, 0.0..=360.0)
-                        .decimals(0)
-                        .degrees()
-                        .min_width(120.0),
-                )
-                .on_hover_text(text(state.locale, TextKey::LightRotation))
-                .changed();
+            let slider = ui.add(
+                FilledNumericSlider::new(&mut target_degrees, 0.0..=360.0)
+                    .decimals(0)
+                    .degrees()
+                    .min_width(120.0),
+            );
+            rotation_changed |= slider.changed();
+            // The same rotation is a drag in the viewport, which is how most
+            // hands will actually reach it — so the slider says where it lives.
+            crate::ui_components::tooltip(
+                slider,
+                text(state.locale, TextKey::LightRotation),
+                Some(text(state.locale, TextKey::LightRotationGesture)),
+            );
         },
     );
     if rotation_changed {

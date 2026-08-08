@@ -47,6 +47,9 @@ panic = "abort"
 inherits = "release"
 opt-level = "z"
 
+[profile.release-small.package.vkit-app]
+opt-level = 3
+
 [profile.release-small.package.vkit-core]
 opt-level = 3
 
@@ -56,23 +59,20 @@ opt-level = 3
 [profile.release-small.package.vkit-semantic]
 opt-level = 3
 
-[profile.release-small.package.tract-core]
-opt-level = 3
-
-[profile.release-small.package.tract-data]
-opt-level = 3
-
-[profile.release-small.package.tract-linalg]
-opt-level = 3
-
-[profile.release-small.package.tract-tflite]
-opt-level = 3
+# The tract crates stay at the profile's own `opt-level = "z"`.
+#
+# Lifting them to 3 costs 5.39 MiB of .text and buys 28 ms per detection. Two
+# detections run per fit, inside a job that already spends seconds on alignment,
+# a Laplacian warp, and three-stage dense registration -- so the whole purchase
+# is 57 ms nobody can feel, against a third of the size budget. Measured with
+# `cargo run --profile release-small -p vkit-semantic --example inference_cost`;
+# re-measure before changing this back.
 
 [profile.dev.package."*"]
 opt-level = 3
 
 [profile.dev.package.vkit-app]
-opt-level = 1
+opt-level = 2
 [profile.dev.package.vkit-core]
 opt-level = 3
 

@@ -128,6 +128,111 @@ const TOP_TABS: [(Tab, TextKey); 4] = [
     (Tab::Result, TextKey::Save),
 ];
 
+/// How long the reset button keeps offering to take itself back.
+///
+/// Long enough to notice what just happened and reach for the mouse, short
+/// enough that the button is not lying about what it does the next time it is
+/// glanced at.
+const MORPH_RESET_UNDO_SECONDS: f64 = 3.0;
+
+fn offer_morph_reset_undo(ui: &Ui, id: Id) {
+    let now = ui.input(|input| input.time);
+    ui.data_mut(|data| data.insert_temp(id.with("undo-until"), now + MORPH_RESET_UNDO_SECONDS));
+}
+
+fn forget_morph_reset_undo(ui: &Ui, id: Id) {
+    ui.data_mut(|data| data.remove::<f64>(id.with("undo-until")));
+}
+
+/// Is the reset still within its take-it-back window?
+///
+/// Someone who hits this by accident and does not know Ctrl+Z has no other way
+/// back, so the button offers itself as the way back — and names the shortcut
+/// underneath, which is how the shortcut gets learned.
+fn morph_reset_undo_is_offered(ui: &Ui, id: Id) -> bool {
+    let until = ui.data(|data| data.get_temp::<f64>(id.with("undo-until")));
+    let Some(until) = until else {
+        return false;
+    };
+    let now = ui.input(|input| input.time);
+    if now >= until {
+        forget_morph_reset_undo(ui, id);
+        return false;
+    }
+    // Without this the label would sit on "undo" until some other event happened
+    // to repaint, which could be long after the offer has actually lapsed.
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_secs_f64((until - now).max(0.05)));
+    true
+}
+
+/// A small shortcut caption directly under a control.
+fn paint_shortcut_hint_below(ui: &Ui, control: Rect, shortcut: &str) {
+    ui.painter().text(
+        pos2(control.center().x, control.bottom() + crate::theme::SPACE_1),
+        Align2::CENTER_TOP,
+        shortcut,
+        FontId::proportional(FONT_XS),
+        COLOR_MUTED,
+    );
+}
+
+/// Whether a top tab can be entered right now.
+///
+/// Two of the four stand for a pair of inner tabs, so this cannot simply ask
+/// `tab_available`. It is shared by the click path and the number keys because a
+/// key that could enter a tab the button refuses would be a second, quieter set
+/// of rules.
+pub(crate) fn top_tab_available(state: &AppState, tab: Tab) -> bool {
+    // Every stage past the fit can start from the G2 template when no scan has
+    // been opened. The button has to say so, or the tab is reachable in state
+    // and unclickable in the interface.
+    let base = match tab {
+        Tab::Edit => state.tab_available(Tab::Alignment) || state.tab_available(Tab::Edit),
+        Tab::Morph | Tab::Texture | Tab::Result => {
+            state.tab_available(tab) || state.can_enter_detail_from_template()
+        }
+        other => state.tab_available(other),
+    };
+    base && (!state.busy() || visible_tab_is_active(state, tab))
+}
+
+/// Where a top tab actually lands, which is not always the tab itself.
+fn top_tab_target(state: &AppState, tab: Tab) -> Tab {
+    if tab == Tab::Edit && !state.tab_available(Tab::Edit) {
+        Tab::Alignment
+    } else {
+        tab
+    }
+}
+
+/// Number keys 1..4 pick the top tabs, in the order they are drawn.
+///
+/// Ignored while a text field has the keyboard, or the digits would be swallowed
+/// out of every search box and name field in the program.
+fn handle_top_tab_keys(ui: &Ui, state: &mut AppState) {
+    if ui.ctx().egui_wants_keyboard_input() {
+        return;
+    }
+    const DIGITS: [egui::Key; 4] = [
+        egui::Key::Num1,
+        egui::Key::Num2,
+        egui::Key::Num3,
+        egui::Key::Num4,
+    ];
+    let pressed = ui.input(|input| {
+        DIGITS
+            .iter()
+            .position(|key| input.key_pressed(*key) && input.modifiers.is_none())
+    });
+    if let Some(index) = pressed {
+        let (tab, _) = TOP_TABS[index];
+        if top_tab_available(state, tab) {
+            state.dispatch(Action::RequestTab(top_tab_target(state, tab)));
+        }
+    }
+}
+
 fn visible_tab_is_active(state: &AppState, tab: Tab) -> bool {
     match tab {
         Tab::Edit => matches!(state.active_tab, Tab::Alignment | Tab::Edit),
@@ -441,58 +546,26 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
         .frame(Frame::new().fill(COLOR_TOPBAR).stroke(Stroke::NONE))
         .show(root, |ui| {
             let rect = ui.max_rect();
-            let controls_width = TITLE_WINDOW_BUTTON_WIDTH * 3.0;
-            let controls_rect = Rect::from_min_max(
-                pos2(rect.right() - controls_width, rect.top() + 6.0),
-                rect.max,
+            // One layout, worked out once, then read from. Recomputing any of
+            // these rects here — or rebuilding the struct to hand onward — is
+            // how the capsule and the cell that makes room for it would come to
+            // disagree about where the title bar puts them.
+            let caption = caption_layout(
+                rect,
+                title_locale_width(ui),
+                title_update_width(ui, state.locale),
             );
-
-            let settings_rect = Rect::from_min_size(
-                pos2(
-                    controls_rect.left() - crate::theme::TITLE_SETTINGS_SIZE - 8.0,
-                    rect.top() + 8.0,
-                ),
-                Vec2::splat(crate::theme::TITLE_SETTINGS_SIZE),
-            );
-
-            let locale_width = title_locale_width(ui);
-            let locale_rect = Rect::from_min_size(
-                pos2(settings_rect.left() - locale_width - 8.0, rect.top() + 8.0),
-                vec2(locale_width, TITLE_LOCALE_HEIGHT),
-            );
-            let brand_rect = Rect::from_min_size(
-                pos2(rect.left() + 10.0, rect.top() + 6.0),
-                vec2(TITLE_BRAND_WIDTH, TOP_TAB_HEIGHT),
-            );
-
-            let vam_rect = Rect::from_min_size(
-                pos2(brand_rect.right() + 8.0, rect.top() + 6.0),
-                vec2(TITLE_VAM_FIELD_WIDTH, TOP_TAB_HEIGHT),
-            );
-            let tabs_area = Rect::from_min_max(
-                pos2(
-                    vam_rect.right() + crate::theme::TITLE_VAM_TAB_GAP,
-                    rect.top(),
-                ),
-                pos2(
-                    (locale_rect.left() - 8.0)
-                        .max(vam_rect.right() + crate::theme::TITLE_VAM_TAB_GAP),
-                    rect.bottom(),
-                ),
-            );
-            let tab_count = TOP_TABS.len() as f32;
-            let total_gap = TOP_TAB_GAP * (tab_count - 1.0);
-            let tab_width = ((tabs_area.width() - total_gap) / tab_count).clamp(0.0, TOP_TAB_WIDTH);
-            let group_size = vec2(top_tab_strip_width(tab_width), TOP_TAB_HEIGHT);
-
-            let half = group_size.x * 0.5;
-            let lower = tabs_area.left() + half;
-            let center_x = rect
-                .center()
-                .x
-                .clamp(lower, (tabs_area.right() - half).max(lower));
-            let tabs_rect =
-                Rect::from_center_size(pos2(center_x, tabs_area.center().y), group_size);
+            let CaptionLayout {
+                bar_rect: _,
+                brand_rect,
+                vam_rect,
+                tabs_rect,
+                tab_width,
+                locale_rect,
+                settings_rect,
+                controls_rect,
+                update_rect,
+            } = caption;
             let active_tab_index = TOP_TABS
                 .iter()
                 .position(|(tab, _)| visible_tab_is_active(state, *tab))
@@ -510,17 +583,7 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                 let cell = top_tab_cell(tabs_rect, tab_width, index);
                 let active = visible_tab_is_active(state, tab);
 
-                let base_available = match tab {
-                    Tab::Edit => {
-                        state.tab_available(Tab::Alignment) || state.tab_available(Tab::Edit)
-                    }
-                    Tab::Morph => {
-                        state.tab_available(Tab::Morph) || state.can_enter_detail_from_template()
-                    }
-                    _ => state.tab_available(tab),
-                };
-
-                let available = base_available && (!state.busy() || active);
+                let available = top_tab_available(state, tab);
                 let response = ui.interact(
                     cell,
                     Id::new(("vkit.top-tabs", index)),
@@ -541,6 +604,10 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                     COLOR_MUTED
                 };
 
+                // Just the name. The digit used to sit in front of it to make
+                // the binding visible, but four numbers across the top of the
+                // window is a lot of furniture for a shortcut, and the tooltip
+                // says it just as well to anyone who goes looking.
                 let fitted = crate::ui_components::ellipsize_to_width(
                     ui,
                     label,
@@ -561,23 +628,29 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                 if available {
                     control_affordances(ui, &response, cell, cell.height() * 0.5);
                 }
-                let response = if fitted != label {
-                    tooltip(response, label, None)
-                } else {
-                    response
-                };
+                let shortcut = (index + 1).to_string();
+                let response = tooltip(response, label, Some(&shortcut));
                 if available && response.clicked() {
-                    let target = if tab == Tab::Edit && !state.tab_available(Tab::Edit) {
-                        Tab::Alignment
-                    } else {
-                        tab
-                    };
-                    state.dispatch(Action::RequestTab(target));
+                    state.dispatch(Action::RequestTab(top_tab_target(state, tab)));
                 }
             }
+            handle_top_tab_keys(ui, state);
 
             paint_title_brand(ui, brand_rect);
-            title_drag_region(ui, brand_rect, "brand");
+            match update_rect {
+                Some(update_rect) => {
+                    title_drag_region(
+                        ui,
+                        Rect::from_min_max(
+                            brand_rect.min,
+                            pos2(update_rect.left(), brand_rect.bottom()),
+                        ),
+                        "brand",
+                    );
+                    draw_title_update_capsule(ui, state, update_rect);
+                }
+                None => title_drag_region(ui, brand_rect, "brand"),
+            }
             draw_title_vam_field(ui, state, vam_rect);
             if tabs_rect.left() > vam_rect.right() {
                 title_drag_region(
@@ -631,18 +704,7 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                 state.dispatch(Action::SetLocale(selected_locale));
             }
             crate::settings::draw_settings_button(ui, state, settings_rect);
-            publish_non_client_layout(
-                ui,
-                CaptionLayout {
-                    bar_rect: rect,
-                    vam_rect,
-                    tabs_rect,
-                    tab_width,
-                    locale_rect,
-                    settings_rect,
-                    controls_rect,
-                },
-            );
+            publish_non_client_layout(ui, caption);
             draw_window_buttons(ui, state, controls_rect);
         });
 }
@@ -1368,16 +1430,16 @@ fn draw_alignment_inspector(ui: &mut Ui, state: &mut AppState) {
     );
 }
 
-fn guide_glow(ui: &Ui, rect: Rect, radius: u8) {
+fn guide_glow_under(ui: &Ui, rect: Rect, radius: u8) {
     let time = ui.input(|input| input.time);
-    crate::guidance::glow(ui.painter(), rect, radius, COLOR_PRIMARY, time);
+    crate::guidance::glow_under(ui.painter(), rect, radius, time);
 
     ui.ctx().request_repaint();
 }
 
 fn guide_glow_over(ui: &Ui, rect: Rect, radius: u8) {
     let time = ui.input(|input| input.time);
-    crate::guidance::glow_over(ui.painter(), rect, radius, COLOR_PRIMARY, time);
+    crate::guidance::glow_over(ui.painter(), rect, radius, time);
     ui.ctx().request_repaint();
 }
 
@@ -1425,7 +1487,7 @@ fn draw_edit_inspector(ui: &mut Ui, state: &mut AppState) {
                 let leading = guiding(state, crate::guidance::NextStep::PlaceHead)
                     || (!has_scan && guiding(state, crate::guidance::NextStep::LoadScan));
                 if leading {
-                    guide_glow(ui, go_rect, PLACE_HEAD_RADIUS);
+                    guide_glow_under(ui, go_rect, PLACE_HEAD_RADIUS);
                 }
                 let go = ui
                     .scope(|ui| {
@@ -1477,16 +1539,19 @@ fn draw_edit_inspector(ui: &mut Ui, state: &mut AppState) {
                     .corner_radius(capsule_radius_for(buttons.generate)),
                 )
             } else {
-                if crate::guidance::next_step(state) == Some(crate::guidance::NextStep::Generate) {
-                    guide_glow(ui, buttons.generate, capsule_radius_for(buttons.generate));
-                }
-
                 let step = if state.scan_path.is_some() {
                     TextKey::Generate
                 } else {
                     TextKey::ContinueStep
                 };
                 let button = next_step_button(ui, buttons.generate, text(state.locale, step), true);
+                // Over, not under. This button fills its whole rect opaquely, so
+                // a glow laid down first was covered the instant it painted —
+                // the step that most wants pointing at was the one step that
+                // never pulsed.
+                if crate::guidance::next_step(state) == Some(crate::guidance::NextStep::Generate) {
+                    guide_glow_over(ui, buttons.generate, capsule_radius_for(buttons.generate));
+                }
                 if step == TextKey::ContinueStep {
                     button.on_hover_text(text(state.locale, TextKey::ContinueStepTooltip))
                 } else {
@@ -1640,7 +1705,7 @@ fn draw_vam_edit_source_picker(
                             &source.label,
                             selected_row,
                             &source.path.to_string_lossy(),
-                            source.missing_morphs,
+                            source.resolves_nothing(),
                         );
                         if response.clicked() {
                             selected = Some(source.stable_id.clone());
@@ -1717,7 +1782,7 @@ fn vam_edit_source_row(
     label: &str,
     selected: bool,
     tooltip: &str,
-    missing_morphs: u32,
+    resolves_nothing: bool,
 ) -> Response {
     let (rect, response) = ui.allocate_exact_size(
         vec2(ui.available_width().max(0.0), CONTROL_HEIGHT),
@@ -1725,16 +1790,21 @@ fn vam_edit_source_row(
     );
     paint_list_row_highlight(ui, rect, selected, response.hovered());
 
-    let available = missing_morphs == 0;
-    let label_ink = if available {
-        COLOR_TEXT
+    // A look with a few unresolved morph references is drawn like any other.
+    // We know one of its files is gone; we cannot know what that file would
+    // have contributed to the face, so there is nothing here to warn about
+    // that would not be guesswork -- and guesswork in the destructive colour,
+    // on row after row, buries the file path that the tooltip is for. The
+    // detail is in vkit.log. Only a look where nothing resolves is dimmed:
+    // that one certainly opens as the untouched base face.
+    let label_ink = if resolves_nothing {
+        COLOR_MUTED
     } else {
-        COLOR_DESTRUCTIVE
+        COLOR_TEXT
     };
-    let label_right = if available { 8.0 } else { 20.0 };
     let label_rect = Rect::from_min_max(
         pos2(rect.left() + 10.0, rect.top()),
-        pos2(rect.right() - label_right, rect.bottom()),
+        pos2(rect.right() - 8.0, rect.bottom()),
     );
     ui.painter().with_clip_rect(label_rect).text(
         pos2(label_rect.left(), label_rect.center().y),
@@ -1743,25 +1813,15 @@ fn vam_edit_source_row(
         FontId::proportional(FONT_SM),
         label_ink,
     );
-    if !available {
-        ui.painter().text(
-            pos2(rect.right() - SPACE_3, rect.center().y),
-            Align2::RIGHT_CENTER,
-            "!",
-            FontId::proportional(FONT_SM),
-            COLOR_DESTRUCTIVE,
-        );
-    }
     response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, label));
     control_affordances(ui, &response, rect, CONTROL_RADIUS as f32);
-    if available {
-        response.on_hover_text(tooltip)
-    } else {
+    if resolves_nothing {
         response.on_hover_text(format!(
-            "{}: {}",
-            text(locale, TextKey::SourceMorphMissing),
-            missing_morphs
+            "{}\n{tooltip}",
+            text(locale, TextKey::SourceMorphMissing)
         ))
+    } else {
+        response.on_hover_text(tooltip)
     }
 }
 
@@ -2110,6 +2170,7 @@ fn edit_view_section(ui: &mut Ui, state: &mut AppState) {
         &mut numbers,
         text(state.locale, TextKey::Numbers),
         text(state.locale, TextKey::NumbersTooltip),
+        None,
     ) {
         state.dispatch(Action::TogglePinNumbers(numbers));
     }
@@ -2124,6 +2185,7 @@ fn edit_pins_section(ui: &mut Ui, state: &mut AppState) {
         &mut mirror,
         text(state.locale, TextKey::XMirror),
         text(state.locale, TextKey::XMirrorTooltip),
+        Some(crate::shortcuts::Shortcut::XSymmetry.label()),
     ) {
         state.dispatch(Action::ToggleXMirror(mirror));
     }
@@ -2264,6 +2326,7 @@ fn draw_vam_export_metadata(ui: &mut Ui, state: &mut AppState) {
             &mut pose_control,
             text(state.locale, TextKey::VaMMetadataPoseMorph),
             text(state.locale, TextKey::VaMMetadataPoseMorphTooltip),
+            None,
         ) {
             state.dispatch(Action::SetVaMExportIsPoseControl(pose_control));
         }
@@ -2273,6 +2336,7 @@ fn draw_vam_export_metadata(ui: &mut Ui, state: &mut AppState) {
             &mut bone_correction,
             text(state.locale, TextKey::VaMMetadataBoneCorrection),
             text(state.locale, TextKey::VaMMetadataBoneCorrectionTooltip),
+            None,
         ) {
             state.dispatch(Action::SetVaMExportBoneCorrection(bone_correction));
         }
@@ -2519,11 +2583,17 @@ fn capsule_metadata_edit_sized(
     (changed, rect)
 }
 
-pub(crate) fn toggle_option_row(ui: &mut Ui, on: &mut bool, label: &str, tooltip: &str) -> bool {
+pub(crate) fn toggle_option_row(
+    ui: &mut Ui,
+    on: &mut bool,
+    label: &str,
+    tooltip: &str,
+    shortcut: Option<&str>,
+) -> bool {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width().max(0.0), CONTROL_HEIGHT),
         Layout::left_to_right(Align::Center),
-        |ui| switch_row(ui, on, label).on_hover_text(tooltip).changed(),
+        |ui| crate::ui_components::tooltip(switch_row(ui, on, label), tooltip, shortcut).changed(),
     )
     .inner
 }
@@ -2980,22 +3050,45 @@ fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
                     )
                 })
                 .inner;
+            let undo = crate::ui_components::tooltip(
+                undo,
+                text(state.locale, TextKey::Undo),
+                Some(crate::shortcuts::Shortcut::Undo.label()),
+            );
             if undo.clicked() {
                 state.dispatch(Action::Undo);
             }
+            let reset_id = Id::new("vkit.morph.reset-all");
+            let offer_undo = morph_reset_undo_is_offered(ui, reset_id);
             let reset_response = ui.interact(
                 buttons.reset,
-                Id::new("vkit.morph.reset-all"),
+                reset_id,
                 if busy { Sense::hover() } else { Sense::click() },
             );
             let reset = paint_reset_capsule_button(
                 ui,
                 reset_response,
-                text(state.locale, TextKey::ResetMorphs),
+                text(
+                    state.locale,
+                    if offer_undo {
+                        TextKey::UndoMorphReset
+                    } else {
+                        TextKey::ResetMorphs
+                    },
+                ),
                 !busy,
             );
+            if offer_undo {
+                paint_shortcut_hint_below(ui, buttons.reset, "Ctrl+Z");
+            }
             if reset.clicked() {
-                state.dispatch(Action::ResetMorphs);
+                if offer_undo {
+                    state.dispatch(Action::Undo);
+                    forget_morph_reset_undo(ui, reset_id);
+                } else {
+                    state.dispatch(Action::ResetMorphs);
+                    offer_morph_reset_undo(ui, reset_id);
+                }
             }
 
             if state.morph_look_find_open {
@@ -3686,24 +3779,12 @@ const fn status_color(tone: StatusTone) -> Color32 {
 
 const fn progress_stage_text(locale: Locale, stage: JobStage) -> &'static str {
     match (locale, stage) {
-        (Locale::Korean, JobStage::Import) => "스캔용 헤드 최적화",
-        (Locale::Japanese, JobStage::Import) => "カスタムヘッド最適化",
-        (_, JobStage::Import) => "Optimize custom head",
-        (Locale::Korean, JobStage::Prepare) => "입력 준비",
-        (Locale::Japanese, JobStage::Prepare) => "入力準備",
-        (_, JobStage::Prepare) => "Prepare input",
-        (Locale::Korean, JobStage::Align) => "스캔 정렬",
-        (Locale::Japanese, JobStage::Align) => "スキャン位置合わせ",
-        (_, JobStage::Align) => "Align scan",
-        (Locale::Korean, JobStage::Fit) => "G2 형태 피팅",
-        (Locale::Japanese, JobStage::Fit) => "G2 形状フィッティング",
-        (_, JobStage::Fit) => "Fit G2 shape",
-        (Locale::Korean, JobStage::Validate) => "구조 검증",
-        (Locale::Japanese, JobStage::Validate) => "構造検証",
-        (_, JobStage::Validate) => "Validate structure",
-        (Locale::Korean, JobStage::Export) => "결과 준비",
-        (Locale::Japanese, JobStage::Export) => "結果準備",
-        (_, JobStage::Export) => "Prepare result",
+        (_, JobStage::Import) => text(locale, TextKey::StageOptimizeHead),
+        (_, JobStage::Prepare) => text(locale, TextKey::StagePrepareInput),
+        (_, JobStage::Align) => text(locale, TextKey::StageAlignScan),
+        (_, JobStage::Fit) => text(locale, TextKey::StageFitShape),
+        (_, JobStage::Validate) => text(locale, TextKey::StageValidate),
+        (_, JobStage::Export) => text(locale, TextKey::StagePrepareResult),
     }
 }
 
@@ -3714,65 +3795,44 @@ fn draw_package_contents(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
     let row = ui.available_width().max(0.0);
 
-    let mut from_head = state.package_from_this_head;
-    if crate::ui_components::switch_row(
+    // Two routes, one choice. They used to be an independent switch beside an
+    // always-visible file list, so a package could ask for the current head
+    // *and* carry attachments -- and when the head had not been touched the
+    // export refused the whole thing with "identical to the loaded G2
+    // template". Picking one now means not the other, and the failure has
+    // nowhere left to come from.
+    let from_head = state.package_from_this_head;
+    let choice = crate::ui_components::animated_segmented_group(
         ui,
-        &mut from_head,
-        text(locale, TextKey::PackageFromThisHead),
-    )
-    .changed()
-    {
-        state.dispatch(Action::SetPackageFromThisHead(from_head));
+        "vkit.package.source",
+        2,
+        usize::from(!from_head),
+        |ui, segment_width| {
+            let head = segment_button(
+                ui,
+                segment_width,
+                text(locale, TextKey::PackageFromThisHead),
+                from_head,
+            );
+            let files = segment_button(
+                ui,
+                segment_width,
+                text(locale, TextKey::PackageFromFiles),
+                !from_head,
+            );
+            (head.clicked(), files.clicked())
+        },
+    );
+    if choice.0 && !from_head {
+        state.dispatch(Action::SetPackageFromThisHead(true));
+    } else if choice.1 && from_head {
+        state.dispatch(Action::SetPackageFromThisHead(false));
     }
 
-    ui.add_space(SPACE_2);
-    let spacing = ui.spacing().item_spacing.x;
-    let half = ((row - spacing) * 0.5).max(0.0);
-    let mut picked = None;
-    ui.horizontal(|ui| {
-        for (slot, key) in [
-            (PackageSlot::Morph, TextKey::PackageAddMorphs),
-            (PackageSlot::Texture, TextKey::PackageAddTextures),
-        ] {
-            if capsule_action(ui, half, text(locale, key), true).clicked() {
-                picked = Some(slot);
-            }
-        }
-    });
-    if let Some(slot) = picked
-        && let Some(paths) = crate::dialogs::pick_package_files(state, slot)
-        && !paths.is_empty()
-    {
-        state.dispatch(Action::AddPackageFiles(slot, paths));
+    if !state.package_from_this_head {
+        ui.add_space(SPACE_3);
+        draw_package_file_lists(ui, state, row);
     }
-
-    let mut removed = None;
-    for (slot, files) in [
-        (PackageSlot::Morph, state.package_morphs.clone()),
-        (PackageSlot::Texture, state.package_textures.clone()),
-    ] {
-        for (index, file) in files.iter().enumerate() {
-            if draw_package_row(ui, row, &file.label, slot, index) {
-                removed = Some((slot, index));
-            }
-        }
-    }
-    if let Some((slot, index)) = removed {
-        state.dispatch(Action::RemovePackageFile(slot, index));
-    }
-
-    if !state.package_from_this_head
-        && state.package_morphs.is_empty()
-        && state.package_textures.is_empty()
-    {
-        ui.add_space(SPACE_2);
-        ui.label(
-            RichText::new(text(locale, TextKey::PackageNothingToPack))
-                .size(FONT_XS)
-                .color(COLOR_WARNING),
-        );
-    }
-
     ui.add_space(SPACE_3);
     ui.label(
         RichText::new(text(locale, TextKey::PackageSaveTo))
@@ -3791,6 +3851,87 @@ fn draw_package_contents(ui: &mut Ui, state: &mut AppState) {
         state.dispatch(Action::SetPackageDirectory(
             (!trimmed.is_empty()).then(|| PathBuf::from(trimmed)),
         ));
+    }
+}
+
+/// The attachments, as two lists that look like lists.
+///
+/// A bare run of rows under a button reads as "some rows happened"; a titled
+/// card with a count, a rule, and its own empty line reads as a place things
+/// were put. Same rows, but you can tell whether the file went in.
+fn draw_package_file_lists(ui: &mut Ui, state: &mut AppState, row: f32) {
+    let locale = state.locale;
+    let mut picked = None;
+    let mut removed = None;
+    for (slot, title, add) in [
+        (
+            PackageSlot::Morph,
+            TextKey::PackageMorphFiles,
+            TextKey::PackageAddMorphs,
+        ),
+        (
+            PackageSlot::Texture,
+            TextKey::PackageTextureFiles,
+            TextKey::PackageAddTextures,
+        ),
+    ] {
+        let files = match slot {
+            PackageSlot::Morph => state.package_morphs.clone(),
+            PackageSlot::Texture => state.package_textures.clone(),
+        };
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(text(locale, title))
+                    .size(FONT_XS)
+                    .color(COLOR_MUTED),
+            );
+            if !files.is_empty() {
+                ui.label(
+                    RichText::new(format!("{}", files.len()))
+                        .size(FONT_XS)
+                        .color(COLOR_TEXT),
+                );
+            }
+        });
+        ui.add_space(crate::theme::SPACE_1);
+
+        if files.is_empty() {
+            ui.label(
+                RichText::new(text(locale, TextKey::PackageListEmpty))
+                    .size(FONT_XS)
+                    .color(crate::theme::disabled(COLOR_MUTED)),
+            );
+        } else {
+            for (index, file) in files.iter().enumerate() {
+                if draw_package_row(ui, row, &file.label, slot, index) {
+                    removed = Some((slot, index));
+                }
+            }
+        }
+        ui.add_space(SPACE_2);
+        if capsule_action(ui, row, text(locale, add), true).clicked() {
+            picked = Some(slot);
+        }
+        ui.add_space(SPACE_3);
+    }
+
+    if let Some(slot) = picked
+        && let Some(paths) = crate::dialogs::pick_package_files(state, slot)
+        && !paths.is_empty()
+    {
+        state.dispatch(Action::AddPackageFiles(slot, paths));
+    }
+    if let Some((slot, index)) = removed {
+        state.dispatch(Action::RemovePackageFile(slot, index));
+    }
+
+    if state.package_morphs.is_empty() && state.package_textures.is_empty() {
+        ui.label(
+            RichText::new(text(locale, TextKey::PackageNothingToPack))
+                .size(FONT_XS)
+                .color(COLOR_WARNING),
+        );
+        ui.add_space(SPACE_2);
     }
 }
 

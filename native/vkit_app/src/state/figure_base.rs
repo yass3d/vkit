@@ -19,9 +19,16 @@ impl AppState {
     }
 
     pub(super) fn provider_discovery_context(&self) -> ProviderDiscoveryContext {
+        let explicit_base = self.vam_geometry_base_path.clone();
         ProviderDiscoveryContext {
             vam_root: self.vam_root.clone(),
-            explicit_base: self.vam_geometry_base_path.clone(),
+            // The path and the provider are always installed together, so a loaded provider tells
+            // us which figure the path holds.
+            explicit_base_sex: explicit_base
+                .as_ref()
+                .and(self.vam_geometry_provider.as_deref())
+                .map(VaMGeometryProvider::sex),
+            explicit_base,
             locale: self.locale,
         }
     }

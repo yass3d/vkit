@@ -16,7 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureNamePlaceholder => Some("Saisissez un nom de texture"),
         TextKey::TextureOverwriteTitle => Some("Cela remplace les textures du même nom"),
         TextKey::OpenScan => Some("Scan"),
-        TextKey::SourceMorphMissing => Some("Morphs manquants"),
+        TextKey::SourceMorphMissing => Some("Aucun morph de ce look n'est installé"),
         TextKey::EditDetails => Some("Éditer les détails"),
         TextKey::Female => Some("Femme"),
         TextKey::Male => Some("Homme"),
@@ -217,6 +217,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Le détail des cheveux diffère du rendu réel."),
         TextKey::NoMatchingHair => Some("Aucun préréglage de cheveux correspondant"),
         TextKey::MorphSearch => Some("Rechercher des morphs"),
+        TextKey::MorphOneSidedFilter => Some("Gauche / droite"),
+        TextKey::MorphOneSidedFilterHint => {
+            Some("Afficher les morphs qui ne bougent qu'un côté du visage")
+        }
         TextKey::AppearanceSearch => Some("Rechercher des looks"),
         TextKey::LookFind => Some("Charger un look"),
         TextKey::CameraTrackballArmed => {
@@ -283,6 +287,30 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Expression"),
         TextKey::NoMatchingMorphs => Some("Aucun morph correspondant"),
         TextKey::ResetMorphs => Some("Tout réinitialiser"),
+        TextKey::UndoMorphReset => Some("Annuler la réinitialisation"),
+        TextKey::LightRotationGesture => Some("Shift+Glisser clic droit"),
+        TextKey::UpdateAvailable => Some("Mise à jour"),
+        TextKey::PackageFromFiles => Some("Choisir des fichiers"),
+        TextKey::PackageMorphFiles => Some("Morphs"),
+        TextKey::PackageTextureFiles => Some("Textures"),
+        TextKey::PackageListEmpty => Some("Rien d'ajouté pour l'instant"),
+        TextKey::LightingStudio => Some("Studio"),
+        TextKey::LightingSoft => Some("Doux"),
+        TextKey::LightingDaylight => Some("Lumière du jour"),
+        TextKey::LightingWarm => Some("Chaud"),
+        TextKey::LightingGloss => Some("Contrôle du brillant"),
+        TextKey::LightingPortrait => Some("Portrait"),
+        TextKey::ImportLoadingMesh => Some("Chargement du maillage"),
+        TextKey::ImportSimplifying => Some("Simplification du maillage"),
+        TextKey::StageOptimizeHead => Some("Optimiser la tête"),
+        TextKey::StagePrepareInput => Some("Préparer l'entrée"),
+        TextKey::StageAlignScan => Some("Aligner le scan"),
+        TextKey::StageFitShape => Some("Ajuster la forme G2"),
+        TextKey::StageValidate => Some("Valider la structure"),
+        TextKey::StagePrepareResult => Some("Préparer le résultat"),
+        TextKey::HeavyMeshNote => {
+            Some("environ {count} triangles -- plus il y en a, plus c'est long")
+        }
         TextKey::TransformGroups => Some("Parties"),
         TextKey::CollapseTransformGroups => Some("Réduire les parties"),
         TextKey::ExpandTransformGroups => Some("Développer les parties"),
@@ -318,7 +346,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptFailed => Some("Échec de l'opération de sculpture"),
         TextKey::Ready => Some("Prêt"),
         TextKey::Busy => Some("L'édition est verrouillée pendant la génération"),
-        TextKey::NeedScan => Some("Ouvrez d'abord une tête scannée OBJ, GLB ou FBX"),
+        TextKey::NeedScan => Some(
+            "Ouvrez d'abord une tête scannée OBJ, GLB ou FBX, ou partez d'un look déjà installé dans VaM",
+        ),
+        TextKey::ScanLoadFailed => Some("Impossible de lire ce fichier de tête"),
         TextKey::NeedEyeMorph => Some("Le morph d'yeux intégré n'est pas compatible avec ce G2"),
         TextKey::ReviewEyePins => Some("Vérifiez les repères rouges des paupières"),
         TextKey::ResultUnavailable => Some("Ajustez d'abord le visage"),
@@ -529,7 +560,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("Assombrir"),
         TextKey::BrushSaturate => Some("Saturer"),
         TextKey::BrushDesaturate => Some("Désaturer"),
-        TextKey::ShowBakedTexture => Some("Afficher la texture dans la vue 3D"),
+        TextKey::ShowLayersOnly => Some("Calques seuls"),
         TextKey::BaseWithoutSkin => Some("Calque"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Les calques peints sur la couleur unie, sans le préréglage ; la texture exportée est inchangée",
@@ -552,15 +583,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureToolClone => {
             Some("Tampon de duplication — Alt+clic sur un échantillon, puis peignez pour le copier")
         }
-        TextKey::TextureToolHeal => Some("Correcteur — fond une zone peinte avec son entourage"),
         TextKey::TextureToolDodgeBurn => {
             Some("Éclaircir/assombrir — éclaircit ; maintenez Alt pour assombrir")
         }
         TextKey::TextureToolSponge => {
             Some("Éponge — ajoute de la saturation ; maintenez Alt pour l'enlever")
-        }
-        TextKey::TextureNavigationTooltip => {
-            Some("Molette : zoom · glisser bouton du milieu ou Espace + glisser : panoramique")
         }
         TextKey::SelectTextureLayer => Some("Sélectionnez un calque de texture."),
         TextKey::LoadingTextureImage => Some("Chargement de l'image…"),

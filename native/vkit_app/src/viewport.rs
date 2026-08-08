@@ -45,9 +45,9 @@ use crate::{
     ui::paint_reset_capsule_button,
     ui_components::{
         BRUSH_FALLOFF_COMPACT_WIDTH, BRUSH_FALLOFF_FIELD_HEIGHT, BRUSH_FALLOFF_FIELD_WIDTH,
-        FilledNumericSlider, Icon, MINI_HELP_CONTENT_INSET_X, MINI_HELP_CONTENT_INSET_Y,
-        MINI_POPUP_CONTENT_INSET_X, MINI_POPUP_CONTENT_INSET_Y, animate_rect,
-        animated_segmented_group, brush_falloff_selector, brush_size_gesture_anchor,
+        BRUSH_STRENGTH_SENSITIVITY, FilledNumericSlider, Icon, MINI_HELP_CONTENT_INSET_X,
+        MINI_HELP_CONTENT_INSET_Y, MINI_POPUP_CONTENT_INSET_X, MINI_POPUP_CONTENT_INSET_Y,
+        animate_rect, animated_segmented_group, brush_falloff_selector, brush_size_gesture_anchor,
         clear_brush_size_gesture, compact_color_picker, control_affordances, ease_in_out_cubic,
         handle_brush_size_gesture, paint_icon, paint_list_row_highlight, paint_texture_pin,
         segment_button, switch, transform_group_editability_icon,
@@ -150,8 +150,8 @@ const DETAIL_GROUP_ITEM_GAP: f32 = 4.0;
 const SCULPT_BRUSH_FIELD_WIDTH: f32 = 104.0;
 const GIZMO_DRAG_ID: &str = "vkit.viewport.alignment.gizmo.drag";
 const SCULPT_DRAG_ID: &str = "vkit.viewport.sculpt.stroke";
-const SCULPT_BRUSH_SIZE_ID: &str = "vkit.viewport.sculpt.brush_size";
-const TEXTURE_TARGET_BRUSH_SIZE_ID: &str = "vkit.viewport.texture.brush_size";
+/// The last measured screen-point span of one G2 UV unit under the texture brush.
+const TEXTURE_BRUSH_UV_SCALE_ID: &str = "vkit.viewport.texture.points_per_uv";
 const SCULPT_BRUSH_SIZE_SENSITIVITY: f32 = 0.75;
 const TEXTURE_BRUSH_SIZE_SENSITIVITY: f32 = 0.0008;
 const SCULPT_DAB_SPACING_RADIUS_FRACTION: f32 = 0.2;
@@ -1520,7 +1520,12 @@ fn draw_pin_island(ui: &mut Ui, state: &mut AppState, workspace: Rect, split_x: 
         pos2(undo_rect.right() + PIN_ISLAND_INSET, content.top()),
         vec2(reset_width, content.height()),
     );
-    if crate::ui::island_capsule_button(ui, undo_rect, undo_label, false).clicked() {
+    let undo = crate::ui_components::tooltip(
+        crate::ui::island_capsule_button(ui, undo_rect, undo_label, false),
+        undo_label,
+        Some(crate::shortcuts::Shortcut::Undo.label()),
+    );
+    if undo.clicked() {
         state.dispatch(Action::Undo);
     }
 
@@ -1711,7 +1716,10 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
     };
 
     if !texture_paint_mode(state) && !projection_stencil_mode(state) {
-        clear_brush_size_gesture(ui.ctx(), Id::new(TEXTURE_TARGET_BRUSH_SIZE_ID));
+        clear_brush_size_gesture(
+            ui.ctx(),
+            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
+        );
     }
     clear_stale_detail_pointer_state(ui, state);
 
@@ -1796,7 +1804,8 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
         paint_texture_target_pins(ui, state, rect, camera);
     }
     if texture_paint_mode(state) {
-        paint_texture_brush_cursor(ui, state, &response, rect);
+        paint_texture_brush_cursor(ui, state, &response, rect, camera);
+        paint_clone_anchor_on_surface(ui, state, rect, camera);
     }
     paint_viewport_chrome(ui, state, rect, camera);
     if state.active_tab == Tab::Result {
@@ -2272,7 +2281,11 @@ fn sculpt_brush_selector(
         Sense::click(),
     );
 
-    let response = response.on_hover_text(text(locale, sculpt_brush_tooltip_key(current)));
+    let response = crate::ui_components::tooltip(
+        response,
+        text(locale, sculpt_brush_tooltip_key(current)),
+        Some(sculpt_brush_hint(current)),
+    );
     let fill = if open || response.hovered() {
         crate::theme::hover_fill(crate::theme::COLOR_FIELD)
     } else {

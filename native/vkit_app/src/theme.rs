@@ -24,6 +24,12 @@ pub const COLOR_WARNING: Color32 = Color32::from_rgb(0xe6, 0xb7, 0x45);
 
 pub const COLOR_WARNING_ACTIVE_BG: Color32 = Color32::from_rgb(0x8a, 0x72, 0x2a);
 
+/// The one colour the guidance pulse breathes in. Everything else in the
+/// interface is grey, so hue is the only channel a pulse can use that will not
+/// be mistaken for a hover or a selection — which is why this is the only
+/// saturated colour a background is allowed to take.
+pub const COLOR_EMPHASIS: Color32 = Color32::from_rgb(0xf5, 0xb3, 0x0a);
+
 pub const COLOR_TEXTURE_PIN: Color32 = Color32::from_rgb(42, 60, 78);
 pub const COLOR_DESTRUCTIVE: Color32 = Color32::from_rgb(0xde, 0x5c, 0x63);
 
@@ -468,6 +474,36 @@ fn vkit_visuals() -> Visuals {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_emphasis_colour_carries_a_hue_no_surface_can_imitate() {
+        // The pulse used to breathe in near-white, and against surfaces that
+        // are themselves grey it read as a hover rather than as a summons —
+        // which is how it came to be missed. Its whole job now rests on being
+        // the one saturated thing on screen, so a slide back toward grey has
+        // to fail here rather than in front of someone using the app.
+        let chroma_of = |color: Color32| {
+            let [red, green, blue, _] = color.to_array().map(i16::from);
+            red.max(green).max(blue) - red.min(green).min(blue)
+        };
+        let chroma = chroma_of(COLOR_EMPHASIS);
+        assert!(
+            chroma >= 0x60,
+            "the emphasis pulse is only {chroma} away from grey; it has to be unmistakable"
+        );
+
+        for surface in [
+            COLOR_PRIMARY,
+            COLOR_SURFACE,
+            COLOR_SURFACE_RAISED,
+            COLOR_SURFACE_HOVER,
+        ] {
+            assert!(
+                chroma_of(surface) <= 0x08,
+                "a surface grew a hue, so the pulse no longer stands alone against it"
+            );
+        }
+    }
 
     #[test]
     fn native_chrome_uses_the_borderless_token_contract() {

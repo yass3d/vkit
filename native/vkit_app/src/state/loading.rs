@@ -34,8 +34,17 @@ impl AppState {
         let prepared = match outcome {
             Ok(prepared) => prepared,
             Err(error) => {
-                self.status =
-                    StatusMessage::with_detail(TextKey::NeedScan, StatusTone::Error, error);
+                let _ = crate::diagnostics::record(
+                    crate::diagnostics::Severity::Error,
+                    "state",
+                    "scan_import_failed",
+                    &format!("{}: {error}", path.display()),
+                );
+                self.status = StatusMessage::with_detail(
+                    TextKey::ScanLoadFailed,
+                    StatusTone::Error,
+                    import_failure_reason(&error),
+                );
                 return;
             }
         };
@@ -197,6 +206,7 @@ impl AppState {
                     Arc::new(prepared.output),
                     prepared.overwrite_source.as_deref(),
                     prepared.missing_morphs,
+                    prepared.resolved_morphs,
                 ) {
                     self.status = StatusMessage::with_detail(
                         TextKey::GenerationFailed,
@@ -961,6 +971,7 @@ impl AppState {
                 None
             }
         };
+        let resolved_morphs = library.controls().len();
         let mut output = library
             .compose_onto(&base)
             .map_err(|error| error.to_string())?;
@@ -971,8 +982,33 @@ impl AppState {
             output,
             overwrite_source,
             missing_morphs,
+            resolved_morphs,
         })
     }
+}
+
+/// Each importer layer wraps the layer beneath it in its own "…failed" sentence, so the sentence
+/// that names what the file actually did wrong sits behind restatements of the headline the status
+/// line already shows, and the one clipped line runs out before reaching it. Only the exact
+/// prefixes this app writes are peeled; an unrecognised chain is passed through whole rather than
+/// cut at a guess. The unpeeled chain stays in the diagnostics log the status line opens.
+const IMPORT_FAILURE_RESTATEMENTS: &[&str] = &[
+    "failed to import mesh container: ",
+    "failed to read mesh data: ",
+    "native mesh import failed: ",
+    "mesh could not be parsed: ",
+];
+
+fn import_failure_reason(error: &str) -> &str {
+    let full = error.trim();
+    let mut reason = full;
+    while let Some(rest) = IMPORT_FAILURE_RESTATEMENTS
+        .iter()
+        .find_map(|prefix| reason.strip_prefix(prefix))
+    {
+        reason = rest.trim_start();
+    }
+    if reason.is_empty() { full } else { reason }
 }
 
 struct LiveBuiltinMorphs<'a> {
@@ -1044,5 +1080,44 @@ impl<'a> LiveBuiltinMorphs<'a> {
             ),
             unsupported_formula_count: resolved.receipt.unsupported_formulas.len(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_rejected_head_file_is_not_told_to_load_a_head_file() {
+        let path = PathBuf::from("gltfpack-output.glb");
+        let mut state = AppState::default();
+        state.dispatch(Action::LoadScan(path.clone()));
+        state.dispatch(Action::FinishScanImport {
+            path,
+            outcome: Err(
+                "failed to import mesh container: native mesh import failed: invalid GLB: invalid glTF: extensionsRequired[0] = \"KHR_mesh_quantization\": Unsupported extension"
+                    .to_owned(),
+            ),
+        });
+
+        assert_eq!(state.status.key, TextKey::ScanLoadFailed);
+        assert_eq!(state.status.tone, StatusTone::Error);
+        assert_eq!(
+            state.status.detail.as_deref(),
+            Some(
+                "invalid GLB: invalid glTF: extensionsRequired[0] = \"KHR_mesh_quantization\": Unsupported extension"
+            )
+        );
+        assert!(state.scan_path.is_none());
+    }
+
+    #[test]
+    fn an_unfamiliar_failure_reaches_the_status_line_whole() {
+        for reason in [
+            "the file ends before the header does",
+            "failed to import mesh container: ",
+        ] {
+            assert_eq!(import_failure_reason(reason), reason.trim());
+        }
     }
 }

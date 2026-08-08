@@ -15,7 +15,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureNamePlaceholder => Some("テクスチャ名を入力"),
         TextKey::TextureOverwriteTitle => Some("同名のテクスチャを上書きします"),
         TextKey::OpenScan => Some("スキャンヘッド"),
-        TextKey::SourceMorphMissing => Some("欠落モーフ"),
+        TextKey::SourceMorphMissing => Some("このルックのモーフが一つもインストールされていません"),
         TextKey::EditDetails => Some("詳細を編集"),
         TextKey::Female => Some("女性"),
         TextKey::Male => Some("男性"),
@@ -214,6 +214,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("ヘアの細部は実際とは異なります。"),
         TextKey::NoMatchingHair => Some("一致するヘアプリセットはありません"),
         TextKey::MorphSearch => Some("モーフを検索"),
+        TextKey::MorphOneSidedFilter => Some("左右モーフ"),
+        TextKey::MorphOneSidedFilterHint => Some("顔の片側だけを動かすモーフを一覧に表示します"),
         TextKey::AppearanceSearch => Some("外見を検索"),
         TextKey::LookFind => Some("外見を読み込む"),
         TextKey::CameraTrackballArmed => {
@@ -280,6 +282,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("表情"),
         TextKey::NoMatchingMorphs => Some("一致するモーフがありません"),
         TextKey::ResetMorphs => Some("すべてリセット"),
+        TextKey::UndoMorphReset => Some("リセットを取り消す"),
+        TextKey::LightRotationGesture => Some("Shift+右ドラッグ"),
+        TextKey::UpdateAvailable => Some("更新"),
+        TextKey::PackageFromFiles => Some("ファイルを選ぶ"),
+        TextKey::PackageMorphFiles => Some("モーフ"),
+        TextKey::PackageTextureFiles => Some("テクスチャ"),
+        TextKey::PackageListEmpty => Some("まだ追加されていません"),
+        TextKey::LightingStudio => Some("スタジオ"),
+        TextKey::LightingSoft => Some("ソフト"),
+        TextKey::LightingDaylight => Some("昼光"),
+        TextKey::LightingWarm => Some("ウォーム"),
+        TextKey::LightingGloss => Some("光沢チェック"),
+        TextKey::LightingPortrait => Some("ポートレート"),
+        TextKey::ImportLoadingMesh => Some("メッシュを読み込み中"),
+        TextKey::ImportSimplifying => Some("メッシュを単純化中"),
+        TextKey::StageOptimizeHead => Some("カスタムヘッド最適化"),
+        TextKey::StagePrepareInput => Some("入力準備"),
+        TextKey::StageAlignScan => Some("スキャン位置合わせ"),
+        TextKey::StageFitShape => Some("G2 形状フィッティング"),
+        TextKey::StageValidate => Some("構造検証"),
+        TextKey::StagePrepareResult => Some("結果準備"),
+        TextKey::HeavyMeshNote => Some("約 {count} ポリゴン -- 多いほど時間がかかります"),
         TextKey::TransformGroups => Some("変形パーツ"),
         TextKey::CollapseTransformGroups => Some("パーツを折りたたむ"),
         TextKey::ExpandTransformGroups => Some("パーツを展開"),
@@ -313,7 +337,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptFailed => Some("スカルプト操作に失敗しました"),
         TextKey::Ready => Some("準備完了"),
         TextKey::Busy => Some("生成中は編集できません"),
-        TextKey::NeedScan => Some("先にスキャンヘッドの OBJ/GLB/FBX を読み込んでください"),
+        TextKey::NeedScan => Some(
+            "先にスキャンヘッドの OBJ/GLB/FBX を読み込むか、VaM にあるルックから始めてください",
+        ),
+        TextKey::ScanLoadFailed => Some("このヘッドファイルを読み込めませんでした"),
         TextKey::NeedEyeMorph => Some("内蔵の目モーフは現在の G2 と互換性がありません"),
         TextKey::ReviewEyePins => Some("赤いまぶたピンを確認してください"),
         TextKey::ResultUnavailable => Some("先に顔フィッティングを行ってください"),
@@ -502,7 +529,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushBurn => Some("焼き込み"),
         TextKey::BrushSaturate => Some("彩度を上げる"),
         TextKey::BrushDesaturate => Some("彩度を下げる"),
-        TextKey::ShowBakedTexture => Some("3Dビューでテクスチャ表示"),
+        TextKey::ShowLayersOnly => Some("レイヤーのみ表示"),
         TextKey::BaseWithoutSkin => Some("レイヤー"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "プリセットなしで、描いたレイヤーだけをソリッドの上に表示します。書き出すテクスチャは変わりません",
@@ -521,12 +548,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::TextureToolClone => {
             Some("コピースタンプ — Alt クリックで複製元を選び、描画してコピー")
         }
-        TextKey::TextureToolHeal => Some("修復 — 描画領域を周囲のテクスチャとなじませる"),
         TextKey::TextureToolDodgeBurn => Some("覆い焼き/焼き込み — 明るくし、Alt を押すと暗くする"),
         TextKey::TextureToolSponge => Some("スポンジ — 彩度を上げ、Alt を押すと下げる"),
-        TextKey::TextureNavigationTooltip => {
-            Some("ホイール：ズーム・中ボタンドラッグまたは Space＋ドラッグ：パン")
-        }
         TextKey::SelectTextureLayer => Some("テクスチャレイヤーを選択してください。"),
         TextKey::LoadingTextureImage => Some("画像を読み込み中…"),
         TextKey::ScanTextureAlignment => {

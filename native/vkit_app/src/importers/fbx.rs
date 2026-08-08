@@ -1248,14 +1248,18 @@ fn write_material_library(
         .collect::<Vec<_>>();
     material_names.push(DEFAULT_MATERIAL.to_owned());
 
-    fs::create_dir_all(destination_root.join("textures"))
-        .map_err(|error| format!("failed to create FBX appearance workspace: {error}"))?;
-    let canonical_source_root = source_root.canonicalize().map_err(|error| {
-        format!(
-            "failed to resolve the FBX appearance directory {}: {error}",
+    let mut dropped = Vec::new();
+    if let Err(error) = fs::create_dir_all(destination_root.join("textures")) {
+        dropped.push(format!("no textures folder could be created: {error}"));
+    }
+    let canonical_source_root = source_root.canonicalize().ok();
+    if canonical_source_root.is_none() {
+        dropped.push(format!(
+            "the folder holding the FBX, {}, could not be resolved, so no sidecar texture can be \
+             proven to live inside it",
             source_root.display()
-        )
-    })?;
+        ));
+    }
     let mut copied = HashMap::<PathBuf, PathBuf>::new();
     let mut mtl = String::from("# Vkit native FBX material bridge\n");
     for material in &materials {
@@ -1266,69 +1270,94 @@ fn write_material_library(
             material.diffuse[0], material.diffuse[1], material.diffuse[2], material.opacity
         )
         .unwrap();
-        if let Some(texture) = diffuse_texture(material.id, objects_by_id, connections)
-            && let Some(source) = resolve_texture_path(texture, &canonical_source_root)
-        {
-            let bytes = source
-                .metadata()
-                .map_err(|error| {
-                    format!(
-                        "failed to inspect FBX texture {}: {error}",
-                        source.display()
-                    )
-                })?
-                .len();
-            if bytes > MAX_TEXTURE_BYTES {
-                return Err(format!(
-                    "FBX texture {} is {bytes} bytes; the native texture limit is {MAX_TEXTURE_BYTES} bytes",
-                    source.display()
-                ));
-            }
-            let relative = if let Some(relative) = copied.get(&source) {
-                relative.clone()
-            } else {
-                let extension = source
-                    .extension()
-                    .and_then(|value| value.to_str())
-                    .filter(|value| value.chars().all(|ch| ch.is_ascii_alphanumeric()))
-                    .unwrap_or("bin");
-                let relative = PathBuf::from(format!(
-                    "textures/fbx_{}_{}.{}",
-                    material.id,
-                    safe_label(
-                        source
-                            .file_stem()
-                            .and_then(|value| value.to_str())
-                            .unwrap_or("texture"),
-                        "texture"
-                    ),
-                    extension.to_ascii_lowercase()
-                ));
-                fs::copy(&source, destination_root.join(&relative)).map_err(|error| {
-                    format!(
-                        "failed to preserve FBX texture {}: {error}",
-                        source.display()
-                    )
-                })?;
-                copied.insert(source, relative.clone());
-                relative
-            };
-            writeln!(
-                mtl,
-                "map_Kd {}",
-                relative.to_string_lossy().replace('\\', "/")
-            )
-            .unwrap();
-        }
+        let Some(root) = canonical_source_root.as_deref() else {
+            continue;
+        };
+        let Some(source) = diffuse_texture(material.id, objects_by_id, connections)
+            .and_then(|texture| resolve_texture_path(texture, root))
+        else {
+            continue;
+        };
+        let relative = match copied.get(&source) {
+            Some(relative) => relative.clone(),
+            None => match copy_diffuse_texture(&source, material.id, destination_root) {
+                Ok(relative) => {
+                    copied.insert(source, relative.clone());
+                    relative
+                }
+                Err(reason) => {
+                    dropped.push(format!("{}: {reason}", source.display()));
+                    continue;
+                }
+            },
+        };
+        writeln!(
+            mtl,
+            "map_Kd {}",
+            relative.to_string_lossy().replace('\\', "/")
+        )
+        .unwrap();
     }
     writeln!(mtl, "newmtl {DEFAULT_MATERIAL}\nKd 1 1 1\nd 1").unwrap();
-    fs::write(destination_root.join("vkit-import.mtl"), mtl)
-        .map_err(|error| format!("failed to write FBX material library: {error}"))?;
+    if let Err(error) = fs::write(destination_root.join("vkit-import.mtl"), mtl) {
+        dropped.push(format!(
+            "the material library could not be written: {error}"
+        ));
+    }
+    if !dropped.is_empty() {
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Warning,
+            "importers",
+            "fbx_appearance_dropped",
+            &format!("dropped={}; {}", dropped.len(), dropped.join("; ")),
+        );
+    }
 
     Ok(Appearance {
         material_names,
         names_by_id,
     })
+}
+
+/// Copies one diffuse texture into the import workspace, or says why it could not.
+///
+/// Every failure in here used to refuse the whole FBX, which is the same violation the glTF reader
+/// carried: a texture that is unreadable, permission-denied, or larger than the workspace ceiling
+/// costs the material its map and nothing else. The mesh was already parsed by the time this runs.
+fn copy_diffuse_texture(
+    source: &Path,
+    material_id: u64,
+    destination_root: &Path,
+) -> Result<PathBuf, String> {
+    let bytes = source
+        .metadata()
+        .map_err(|error| format!("could not be inspected: {error}"))?
+        .len();
+    if bytes > MAX_TEXTURE_BYTES {
+        return Err(format!(
+            "is {bytes} bytes, past the {MAX_TEXTURE_BYTES} byte workspace ceiling"
+        ));
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| value.chars().all(|ch| ch.is_ascii_alphanumeric()))
+        .unwrap_or("bin");
+    let relative = PathBuf::from(format!(
+        "textures/fbx_{}_{}.{}",
+        material_id,
+        safe_label(
+            source
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("texture"),
+            "texture"
+        ),
+        extension.to_ascii_lowercase()
+    ));
+    fs::copy(source, destination_root.join(&relative))
+        .map_err(|error| format!("could not be preserved: {error}"))?;
+    Ok(relative)
 }
 
 fn material_info(object: &OwnedObject) -> MaterialInfo {

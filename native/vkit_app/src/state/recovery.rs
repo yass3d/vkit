@@ -174,6 +174,7 @@ fn layer_record(layer: &TextureLayer) -> TextureLayerRecord {
         raster_revision: _,
 
         edited_regions: _,
+        painted_regions: _,
 
         painted: _,
 
