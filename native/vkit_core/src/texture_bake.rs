@@ -1040,6 +1040,32 @@ pub fn resize_direct_uv(
     })
 }
 
+/// Where highlights stop rising in step and start easing towards white.
+const HIGHLIGHT_KNEE: f32 = 0.8;
+
+/// Bends the top of the range so brightening cannot flatten a face to white.
+///
+/// A skin tone sits around 0.7, so multiplying it by anything much over 1.4
+/// used to put a channel past 1.0, where it was cut off. Red goes first, then
+/// green, and the picture loses its colour on the way to white — which is what
+/// half a stop of exposure did to a face over a plain base, where there is no
+/// texture left to disguise it.
+///
+/// Below the knee this is the identity, so an adjustment someone dialled in by
+/// eye, and the tone match that solves for one, both behave as they did. Above
+/// it the remaining headroom is eased into rather than spent, and the curve
+/// meets the straight part with the same slope so there is no visible corner.
+fn shoulder(value: f32) -> f32 {
+    if !value.is_finite() {
+        return 0.0;
+    }
+    if value <= HIGHLIGHT_KNEE {
+        return value.max(0.0);
+    }
+    let headroom = 1.0 - HIGHLIGHT_KNEE;
+    headroom.mul_add(-(-(value - HIGHLIGHT_KNEE) / headroom).exp(), 1.0)
+}
+
 pub fn apply_color_adjustments(rgba8: &mut [u8], adjustments: TextureColorAdjustments) {
     let exposure = if adjustments.exposure.is_finite() {
         2.0_f32.powf(adjustments.exposure.clamp(-5.0, 5.0))
@@ -1068,6 +1094,13 @@ pub fn apply_color_adjustments(rgba8: &mut [u8], adjustments: TextureColorAdjust
     };
     let (hue_sin, hue_cos) = hue.sin_cos();
     for pixel in rgba8.chunks_exact_mut(4) {
+        if pixel[3] == 0 {
+            // Nothing is there. Adjusting the colour of a hole gives it one,
+            // and anything downstream that reads colour before alpha then has
+            // a tint to leak. Lowering contrast alone used to lift a clear
+            // pixel to mid grey.
+            continue;
+        }
         let mut rgb = [
             f32::from(pixel[0]) / 255.0,
             f32::from(pixel[1]) / 255.0,
@@ -1093,7 +1126,8 @@ pub fn apply_color_adjustments(rgba8: &mut [u8], adjustments: TextureColorAdjust
             }
         }
         for (target, value) in pixel[..3].iter_mut().zip(rgb) {
-            let adjusted = ((value * exposure - 0.5) * contrast + 0.5).clamp(0.0, 1.0);
+            let lifted = shoulder(value * exposure);
+            let adjusted = ((lifted - 0.5) * contrast + 0.5).clamp(0.0, 1.0);
             *target = (adjusted * 255.0).round() as u8;
         }
     }
@@ -1973,6 +2007,80 @@ mod tests {
             1.0,
             "no spread means nothing to ease from"
         );
+    }
+
+    #[test]
+    fn brightening_a_face_keeps_it_a_face() {
+        // Over a plain base there is no texture to hide a blown highlight, so
+        // the whole head went white and lost its colour on the way. A skin tone
+        // sits near 0.7 of the range, which used to clip at half a stop.
+        // A full stop. Half a stop was enough to pin red against the ceiling
+        // before, so this is the headroom that was won; past a stop and a half
+        // eight bits genuinely run out, and a picture is meant to go white
+        // eventually.
+        let skin = [180_u8, 140, 120, 255];
+        for stops in [0.25_f32, 0.5, 0.75, 1.0] {
+            let mut pixels = skin.to_vec();
+            apply_color_adjustments(
+                &mut pixels,
+                TextureColorAdjustments {
+                    exposure: stops,
+                    ..TextureColorAdjustments::default()
+                },
+            );
+            assert!(
+                pixels[..3].iter().all(|channel| *channel < 255),
+                "{stops} stops flattened a channel against the ceiling: {pixels:?}"
+            );
+            assert!(
+                pixels[0] > pixels[1] && pixels[1] > pixels[2],
+                "{stops} stops lost the order of the channels, so the tone changed: {pixels:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn brightening_never_stops_making_a_difference() {
+        // A hard ceiling does not only look wrong, it destroys detail: two
+        // different tones come out the same. The shoulder has to stay strictly
+        // increasing so what was lighter stays lighter.
+        // Over the range a slider can reach with a real tone in it. Far beyond
+        // this the curve does land on 1.0, because a float near one has no room
+        // left to be under it — but nothing gets there without being asked.
+        let mut previous = -1.0;
+        for step in 0..=20_u8 {
+            let value = f32::from(step) * 0.1;
+            let lifted = shoulder(value);
+            assert!(
+                lifted > previous,
+                "the curve stopped rising at {value}, so two tones now read alike"
+            );
+            assert!(lifted < 1.0, "the curve reached the ceiling at {value}");
+            previous = lifted;
+        }
+        // And below the knee it is the identity, so a dialled-in adjustment and
+        // the tone match that solves for one both behave as they did.
+        for value in [0.0_f32, 0.25, 0.5, 0.7, HIGHLIGHT_KNEE] {
+            assert!((shoulder(value) - value).abs() < 1.0e-6, "moved {value}");
+        }
+    }
+
+    #[test]
+    fn adjusting_an_empty_pixel_leaves_it_empty() {
+        // Lowering contrast used to lift a fully clear pixel to mid grey. The
+        // alpha stayed zero, so it depended entirely on nothing downstream ever
+        // reading colour before alpha.
+        let mut clear = vec![0_u8, 0, 0, 0];
+        apply_color_adjustments(
+            &mut clear,
+            TextureColorAdjustments {
+                contrast: -0.5,
+                exposure: 1.0,
+                temperature: 0.8,
+                ..TextureColorAdjustments::default()
+            },
+        );
+        assert_eq!(clear, vec![0, 0, 0, 0]);
     }
 
     #[test]
