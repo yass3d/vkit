@@ -14,7 +14,11 @@ struct Outline {
     closed: bool,
 
     width: Option<f32>,
-    filled: bool,
+    /// The triangles covering this outline, for a shape that is painted solid.
+    ///
+    /// Worked out once here rather than on every frame, and empty for an
+    /// outline that is only stroked.
+    fill: Vec<[u32; 3]>,
 }
 
 const CURVE_SEGMENTS: usize = 16;
@@ -47,8 +51,15 @@ impl SvgIcon {
             .iter()
             .map(|outline| {
                 let points: Vec<Pos2> = outline.points.iter().copied().map(place).collect();
-                if outline.filled {
-                    Shape::Path(PathShape::convex_polygon(points, color, Stroke::NONE))
+                if !outline.fill.is_empty() {
+                    let mut mesh = egui::epaint::Mesh::default();
+                    for point in &points {
+                        mesh.colored_vertex(*point, color);
+                    }
+                    for [a, b, c] in outline.fill.iter().copied() {
+                        mesh.add_triangle(a, b, c);
+                    }
+                    Shape::mesh(mesh)
                 } else {
                     let width = outline.width.unwrap_or(0.06) * scale;
                     let stroke = Stroke::new(width, color);
@@ -61,6 +72,92 @@ impl SvgIcon {
             })
             .collect()
     }
+}
+
+/// Covers a closed outline with triangles, concave corners and all.
+///
+/// Icons are not all made of stroked lines: an author who fills a silhouette
+/// gives us a shape whose corners turn both ways, and painting that as though
+/// it were convex fills in every notch — an L-shaped bracket comes out a solid
+/// square. Ear clipping handles either kind, and runs once when the icon is
+/// parsed rather than on every frame.
+///
+/// Ear clipping assumes the outline does not cross itself. It cannot detect
+/// one that does, and will cover it with something arbitrary rather than
+/// refuse — what is guaranteed here is only that it stops.
+fn triangulate(points: &[Pos2]) -> Vec<[u32; 3]> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    // Ear clipping wants one winding; work anticlockwise and flip if need be.
+    let mut remaining: Vec<u32> = (0..points.len() as u32).collect();
+    if signed_area(points) < 0.0 {
+        remaining.reverse();
+    }
+    let mut triangles = Vec::with_capacity(points.len().saturating_sub(2));
+    let mut without_progress = 0usize;
+    while remaining.len() > 3 {
+        if without_progress > remaining.len() {
+            // Every corner has been tried and none can be cut. That is not a
+            // shape we can cover, and rotating further would spin forever.
+            return Vec::new();
+        }
+        let count = remaining.len();
+        let mut clipped = false;
+        for position in 0..count {
+            let ear = [
+                remaining[(position + count - 1) % count],
+                remaining[position],
+                remaining[(position + 1) % count],
+            ];
+            if !is_ear(points, &remaining, ear) {
+                continue;
+            }
+            triangles.push(ear);
+            remaining.remove(position);
+            clipped = true;
+            without_progress = 0;
+            break;
+        }
+        if !clipped {
+            without_progress += 1;
+            remaining.rotate_left(1);
+        }
+    }
+    triangles.push([remaining[0], remaining[1], remaining[2]]);
+    triangles
+}
+
+/// Twice the signed area — positive anticlockwise in a y-down space.
+fn signed_area(points: &[Pos2]) -> f32 {
+    let mut total = 0.0;
+    for index in 0..points.len() {
+        let a = points[index];
+        let b = points[(index + 1) % points.len()];
+        total += a.x * b.y - b.x * a.y;
+    }
+    total
+}
+
+/// Whether the corner at `ear[1]` can be cut off without eating anything else.
+fn is_ear(points: &[Pos2], remaining: &[u32], ear: [u32; 3]) -> bool {
+    let [a, b, c] = ear.map(|index| points[index as usize]);
+    if cross(a, b, c) <= 0.0 {
+        // A reflex corner, or three points in a line: not a corner to cut.
+        return false;
+    }
+    !remaining
+        .iter()
+        .filter(|index| !ear.contains(index))
+        .any(|&index| inside(points[index as usize], a, b, c))
+}
+
+fn cross(a: Pos2, b: Pos2, c: Pos2) -> f32 {
+    (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+}
+
+fn inside(point: Pos2, a: Pos2, b: Pos2, c: Pos2) -> bool {
+    cross(a, b, point) >= 0.0 && cross(b, c, point) >= 0.0 && cross(c, a, point) >= 0.0
 }
 
 fn collect(group: &usvg::Group, span: f32, outlines: &mut Vec<Outline>) {
@@ -85,11 +182,17 @@ fn flatten(path: &usvg::Path, span: f32, outlines: &mut Vec<Outline>) {
     let mut cursor = Pos2::ZERO;
     let mut flush = |points: &mut Vec<Pos2>, closed: &mut bool| {
         if points.len() >= 2 {
+            let points = std::mem::take(points);
+            let fill = if filled {
+                triangulate(&points)
+            } else {
+                Vec::new()
+            };
             outlines.push(Outline {
-                points: std::mem::take(points),
+                points,
                 closed: *closed,
                 width,
-                filled,
+                fill,
             });
         } else {
             points.clear();
@@ -191,13 +294,71 @@ mod tests {
         fill="none" stroke="currentColor" stroke-width="2">
         <rect x="4" y="4" width="16" height="16"/></svg>"#;
 
+    /// An L, drawn anticlockwise in a y-down space, with the notch top-right.
+    const BRACKET: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <polygon fill="black" points="2,2 8,2 8,18 22,18 22,22 2,22"/></svg>"#;
+
+    #[test]
+    fn a_filled_corner_bracket_keeps_its_notch() {
+        let icon = SvgIcon::parse(BRACKET).expect("the fixture parses");
+        let outline = &icon.outlines[0];
+        assert_eq!(
+            outline.fill.len(),
+            4,
+            "six corners make four triangles, not a square"
+        );
+
+        let covered = |x: f32, y: f32| {
+            let point = Pos2::new(x / 24.0, y / 24.0);
+            outline.fill.iter().any(|&[a, b, c]| {
+                inside(
+                    point,
+                    outline.points[a as usize],
+                    outline.points[b as usize],
+                    outline.points[c as usize],
+                )
+            })
+        };
+        assert!(covered(5.0, 20.0), "the corner of the L must be filled");
+        assert!(covered(18.0, 20.0), "the foot of the L must be filled");
+        assert!(covered(5.0, 5.0), "the upright of the L must be filled");
+        assert!(
+            !covered(18.0, 5.0),
+            "the notch must stay empty — this is what a convex fill got wrong"
+        );
+    }
+
+    #[test]
+    fn a_shape_it_cannot_read_still_returns() {
+        // Ear clipping does not detect a crossing outline and is not asked to.
+        // What must hold is that it terminates and stays inside its own point
+        // list, whatever it is handed.
+        let bowtie = [
+            Pos2::new(0.0, 0.0),
+            Pos2::new(1.0, 1.0),
+            Pos2::new(1.0, 0.0),
+            Pos2::new(0.0, 1.0),
+        ];
+        let triangles = triangulate(&bowtie);
+        assert!(triangles.len() <= bowtie.len() - 2);
+        for index in triangles.iter().flatten() {
+            assert!((*index as usize) < bowtie.len(), "index out of the outline");
+        }
+
+        assert!(
+            triangulate(&bowtie[..2]).is_empty(),
+            "two points are no shape"
+        );
+        assert!(triangulate(&[]).is_empty());
+    }
+
     #[test]
     fn a_stroked_shape_becomes_a_closed_outline_in_the_unit_square() {
         let icon = SvgIcon::parse(SQUARE).expect("the fixture parses");
         assert_eq!(icon.outlines.len(), 1);
         let outline = &icon.outlines[0];
         assert!(outline.closed, "a rect is closed");
-        assert!(!outline.filled, "fill=none is not a fill");
+        assert!(outline.fill.is_empty(), "fill=none is not a fill");
 
         let width = outline.width.expect("a stroke width");
         assert!((width - 2.0 / 24.0).abs() < 1.0e-6, "{width}");

@@ -3,7 +3,7 @@
 <p align="center">
   <b>A companion tool for making Virt-A-Mate head morphs.</b><br>
   Fit a face to a scan or a photo, sculpt it, paint it, and write it back to
-  VaM — in one 24 MB Windows executable.
+  VaM — from a single Windows executable, with no installer.
 </p>
 
 <p align="center">

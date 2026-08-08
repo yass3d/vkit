@@ -1319,7 +1319,7 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::CloneStamp => include_str!("../resources/icons/stamp.svg"),
         Icon::DodgeBurn => include_str!("../resources/icons/cloud-sun.svg"),
         Icon::TextureSponge => include_str!("../resources/icons/contrast.svg"),
-        Icon::Projector => include_str!("../resources/icons/scan-face.svg"),
+        Icon::Projector => include_str!("../resources/icons/face.svg"),
         Icon::BrushMove => include_str!("../resources/icons/hand.svg"),
         Icon::BrushSmooth => include_str!("../resources/icons/droplet.svg"),
         Icon::BrushRestore => include_str!("../resources/icons/rotate-ccw.svg"),
