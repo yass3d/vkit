@@ -384,7 +384,7 @@ pub enum MorphListFilter {
     Active,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MorphLibrary {
     controls: Vec<MorphControl>,
     pub query: String,
@@ -393,21 +393,10 @@ pub struct MorphLibrary {
 
     /// Whether morphs that move one side of the face alone stay in the list.
     ///
-    /// Unlike the category capsules this one outlives a category change: it is a
-    /// property of the whole library, not a selection within one part of it.
+    /// Off to begin with, and unlike the category capsules it outlives a
+    /// category change: it is a property of the whole library rather than a
+    /// selection within one part of it.
     pub show_one_sided: bool,
-}
-
-impl Default for MorphLibrary {
-    fn default() -> Self {
-        Self {
-            controls: Vec::new(),
-            query: String::new(),
-            category_filter: MorphCategoryFilter::default(),
-            list_filter: MorphListFilter::default(),
-            show_one_sided: true,
-        }
-    }
 }
 
 /// Does this morph name say it moves one side of the face by itself?
@@ -1810,17 +1799,19 @@ mod tests {
         };
 
         assert!(
-            library.show_one_sided,
-            "shown by default on a fresh library"
+            !library.show_one_sided,
+            "a fresh library leaves the one-sided morphs out"
         );
-        assert_eq!(library.visible_indices().len(), 3);
-
-        library.show_one_sided = false;
         assert_eq!(
             library.visible_indices(),
             vec![1],
-            "only the centre-line morph survives"
+            "only the centre-line morph is listed until they are asked for"
         );
+
+        library.show_one_sided = true;
+        assert_eq!(library.visible_indices().len(), 3);
+
+        library.show_one_sided = false;
 
         // A category capsule narrows within a part; this one is a property of the
         // whole library and must still hold after switching parts.

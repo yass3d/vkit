@@ -1886,3 +1886,26 @@ fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
     assert!((dragged.x - 300.0).abs() < f32::EPSILON);
     assert!((dragged.y - centre.y).abs() < f32::EPSILON);
 }
+
+#[test]
+fn the_help_card_names_the_brush_gestures_nobody_finds_alone() {
+    // Size and strength are on every brush in both tabs and are the two people
+    // report not knowing about. If they are not in the card, they are nowhere.
+    let rows = crate::viewport::detail_help_rows();
+    for wanted in [TextKey::HelpBrushSize, TextKey::HelpBrushStrength] {
+        assert!(
+            rows.iter().any(|(function, _)| *function == wanted),
+            "{wanted:?} is missing from the sculpt and texture help"
+        );
+    }
+    let shortcuts: Vec<TextKey> = rows.iter().map(|(_, shortcut)| *shortcut).collect();
+    assert!(shortcuts.contains(&TextKey::ShortcutBrushSize));
+    assert!(shortcuts.contains(&TextKey::ShortcutBrushStrength));
+    for locale in Locale::ALL {
+        let strength = text(locale, TextKey::ShortcutBrushStrength);
+        assert!(
+            strength.contains('F'),
+            "{locale:?} does not name the F key: {strength}"
+        );
+    }
+}

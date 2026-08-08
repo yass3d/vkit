@@ -111,8 +111,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutProjectionRotate => Some("Umschalt + rechts ziehen"),
         TextKey::HelpProjectionZoom => Some("Bild skalieren"),
         TextKey::ShortcutProjectionZoom => Some("Mausrad"),
-        TextKey::HelpProjectionBrushSize => Some("Pinselgröße"),
-        TextKey::ShortcutProjectionBrushSize => Some("F ziehen · [ ]"),
+        TextKey::HelpBrushSize => Some("Pinselgröße"),
+        TextKey::ShortcutBrushSize => Some("F ziehen · [ ]"),
+        TextKey::HelpBrushStrength => Some("Pinselstärke"),
+        TextKey::ShortcutBrushStrength => Some("Shift+F ziehen"),
         TextKey::HelpProjectionDone => Some("Projektion beenden"),
         TextKey::ShortcutProjectionDone => Some("Fertig · Esc"),
         TextKey::ProjectDone => Some("Fertig"),
@@ -229,10 +231,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Haardetails weichen vom Original ab."),
         TextKey::NoMatchingHair => Some("Keine passenden Haar-Presets"),
         TextKey::MorphSearch => Some("Morphs suchen"),
-        TextKey::MorphOneSidedFilter => Some("Links / rechts"),
-        TextKey::MorphOneSidedFilterHint => {
-            Some("Morphs anzeigen, die nur eine Gesichtshälfte bewegen")
-        }
+        TextKey::MorphOneSidedFilter => Some("L/R"),
+        TextKey::MorphOneSidedFilterShow => Some("Morphs zeigen, die nur eine Seite bewegen"),
+        TextKey::MorphOneSidedFilterHide => Some("Morphs ausblenden, die nur eine Seite bewegen"),
         TextKey::AppearanceSearch => Some("Looks suchen"),
         TextKey::LookFind => Some("Look laden"),
         TextKey::CameraTrackballArmed => {

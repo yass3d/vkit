@@ -105,8 +105,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutProjectionRotate => Some("Shift + тянуть ПКМ"),
         TextKey::HelpProjectionZoom => Some("Масштаб изображения"),
         TextKey::ShortcutProjectionZoom => Some("Колесо"),
-        TextKey::HelpProjectionBrushSize => Some("Размер кисти"),
-        TextKey::ShortcutProjectionBrushSize => Some("F + тянуть · [ ]"),
+        TextKey::HelpBrushSize => Some("Размер кисти"),
+        TextKey::ShortcutBrushSize => Some("F + тянуть · [ ]"),
+        TextKey::HelpBrushStrength => Some("Сила кисти"),
+        TextKey::ShortcutBrushStrength => Some("Shift+F перетаскивание"),
         TextKey::HelpProjectionDone => Some("Завершить проекцию"),
         TextKey::ShortcutProjectionDone => Some("Готово · Esc"),
         TextKey::ProjectDone => Some("Готово"),
@@ -223,10 +225,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Детализация волос отличается от настоящей."),
         TextKey::NoMatchingHair => Some("Подходящих пресетов волос нет"),
         TextKey::MorphSearch => Some("Поиск морфов"),
-        TextKey::MorphOneSidedFilter => Some("Лево / право"),
-        TextKey::MorphOneSidedFilterHint => {
-            Some("Показывать морфы, изменяющие только одну половину лица")
-        }
+        TextKey::MorphOneSidedFilter => Some("Л/П"),
+        TextKey::MorphOneSidedFilterShow => Some("Показать морфы, двигающие одну сторону"),
+        TextKey::MorphOneSidedFilterHide => Some("Скрыть морфы, двигающие одну сторону"),
         TextKey::AppearanceSearch => Some("Поиск образов"),
         TextKey::LookFind => Some("Загрузить образ"),
         TextKey::CameraTrackballArmed => {

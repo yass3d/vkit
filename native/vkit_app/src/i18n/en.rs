@@ -99,8 +99,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutProjectionRotate => "Shift+right-drag",
         TextKey::HelpProjectionZoom => "Scale image",
         TextKey::ShortcutProjectionZoom => "Wheel",
-        TextKey::HelpProjectionBrushSize => "Brush size",
-        TextKey::ShortcutProjectionBrushSize => "F drag · [ ]",
+        TextKey::HelpBrushSize => "Brush size",
+        TextKey::ShortcutBrushSize => "F drag · [ ]",
+        TextKey::HelpBrushStrength => "Brush strength",
+        TextKey::ShortcutBrushStrength => "Shift+F drag",
         TextKey::HelpProjectionDone => "Finish projecting",
         TextKey::ShortcutProjectionDone => "Done · Esc",
         TextKey::ProjectDone => "Done",
@@ -207,10 +209,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairPreviewCaveat => "Hair detail differs from the real thing.",
         TextKey::NoMatchingHair => "No matching hair presets",
         TextKey::MorphSearch => "Search Morphs",
-        TextKey::MorphOneSidedFilter => "Left / right",
-        TextKey::MorphOneSidedFilterHint => {
-            "Show morphs that move one side of the face on their own"
-        }
+        TextKey::MorphOneSidedFilter => "L/R",
+        TextKey::MorphOneSidedFilterShow => "Show morphs that move one side only",
+        TextKey::MorphOneSidedFilterHide => "Hide morphs that move one side only",
         TextKey::AppearanceSearch => "Search Looks",
         TextKey::LookFind => "Load Look",
         TextKey::CameraTrackballArmed => {

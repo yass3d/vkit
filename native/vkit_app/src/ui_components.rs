@@ -1804,7 +1804,6 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
     let mut clicked = None;
     let mut bounds = Rect::NOTHING;
     let mut selected_rect = None;
-    let mut last_chip = None;
 
     let thumb_slot = Some(ui.painter().add(Shape::Noop));
     let layout_rect = ui
@@ -1834,7 +1833,6 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
                 );
                 control_affordances(ui, &response, response.rect, CHIP_HEIGHT * 0.5);
                 bounds = bounds.union(response.rect);
-                last_chip = Some(response.rect);
                 if selected {
                     selected_rect = Some((index, response.rect));
                 }
@@ -1857,25 +1855,36 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
     } else {
         bounds
     };
-    ui.data_mut(|data| match last_chip {
-        Some(last) => {
-            data.insert_temp(id.with(CHIPS_LAST_CHIP), last);
-        }
-        None => data.remove::<Rect>(id.with(CHIPS_LAST_CHIP)),
-    });
     (rect, clicked)
 }
 
-const CHIPS_LAST_CHIP: &str = "chips-last";
-
-/// Where the final chip of a wrapped row ended.
+/// One chip that turns on and off, wearing what [`chips`] wears.
 ///
-/// A caller that wants to tuck something into the space a wrapping row leaves
-/// behind needs the last chip's corner, not the block's: the block spans every
-/// row, so its right edge belongs to the widest row rather than the last one.
-/// Recorded by [`chips`] under the same id it was drawn with.
-pub fn chips_last_chip(ui: &Ui, id: Id) -> Option<Rect> {
-    ui.data(|data| data.get_temp::<Rect>(id.with(CHIPS_LAST_CHIP)))
+/// Kept beside them so the two cannot drift: a filter that reads as a chip but
+/// is coloured by hand ends up the one control on the panel that looks like it
+/// came from somewhere else, which is what the left/right filter looked like.
+pub fn toggle_chip(ui: &mut Ui, id: Id, label: &str, on: bool, width: f32) -> Response {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CHIP_HEIGHT), Sense::hover());
+    let (ink, fill) = if on {
+        (crate::theme::COLOR_BG, crate::theme::COLOR_TEXT)
+    } else {
+        (
+            crate::theme::COLOR_MUTED,
+            crate::theme::COLOR_SURFACE_RAISED,
+        )
+    };
+    ui.painter()
+        .rect_filled(rect, crate::theme::CAPSULE_RADIUS, fill);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(crate::theme::FONT_SM),
+        ink,
+    );
+    let response = ui.interact(rect, id, Sense::click());
+    control_affordances(ui, &response, rect, CHIP_HEIGHT * 0.5);
+    response
 }
 
 pub fn animated_segmented_group<R>(

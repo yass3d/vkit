@@ -105,8 +105,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutProjectionRotate => Some("Shift+seret kanan"),
         TextKey::HelpProjectionZoom => Some("Skala gambar"),
         TextKey::ShortcutProjectionZoom => Some("Roda"),
-        TextKey::HelpProjectionBrushSize => Some("Ukuran kuas"),
-        TextKey::ShortcutProjectionBrushSize => Some("Seret F · [ ]"),
+        TextKey::HelpBrushSize => Some("Ukuran kuas"),
+        TextKey::ShortcutBrushSize => Some("Seret F · [ ]"),
+        TextKey::HelpBrushStrength => Some("Kekuatan kuas"),
+        TextKey::ShortcutBrushStrength => Some("Shift+F seret"),
         TextKey::HelpProjectionDone => Some("Selesaikan proyeksi"),
         TextKey::ShortcutProjectionDone => Some("Selesai · Esc"),
         TextKey::ProjectDone => Some("Selesai"),
@@ -217,9 +219,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Detail rambut berbeda dari aslinya."),
         TextKey::NoMatchingHair => Some("Tidak ada preset rambut yang cocok"),
         TextKey::MorphSearch => Some("Cari Morph"),
-        TextKey::MorphOneSidedFilter => Some("Kiri / kanan"),
-        TextKey::MorphOneSidedFilterHint => {
-            Some("Tampilkan morph yang hanya menggerakkan satu sisi wajah")
+        TextKey::MorphOneSidedFilter => Some("K/Ka"),
+        TextKey::MorphOneSidedFilterShow => {
+            Some("Tampilkan morph yang menggerakkan satu sisi saja")
+        }
+        TextKey::MorphOneSidedFilterHide => {
+            Some("Sembunyikan morph yang menggerakkan satu sisi saja")
         }
         TextKey::AppearanceSearch => Some("Cari Look"),
         TextKey::LookFind => Some("Muat Look"),

@@ -1,67 +1,5 @@
 use super::*;
 
-/// Sit the one-sided toggle in the gap the wrapping category capsules leave.
-///
-/// The capsules wrap, so the last row usually ends short of the edge, and that
-/// gap is dead space directly above the search field. Putting the toggle there
-/// costs no vertical room. When the last row happens to fill out, it takes a row
-/// of its own rather than overlapping a capsule.
-fn draw_one_sided_toggle(ui: &mut Ui, state: &mut AppState, categories: Id, categories_rect: Rect) {
-    let label = text(state.locale, TextKey::MorphOneSidedFilter);
-    let width = ui
-        .painter()
-        .layout_no_wrap(
-            label.to_owned(),
-            FontId::proportional(FONT_SM),
-            crate::theme::COLOR_TEXT,
-        )
-        .size()
-        .x
-        + SPACE_3 * 2.0;
-
-    let last_chip = crate::ui_components::chips_last_chip(ui, categories);
-    let row_top = last_chip.map_or(categories_rect.top(), |chip| chip.top());
-    let used_right = last_chip.map_or(categories_rect.left(), |chip| chip.right());
-    let fits_beside = ui.max_rect().right() - used_right - SPACE_2 >= width;
-
-    let rect = if fits_beside {
-        Rect::from_min_size(
-            pos2(ui.max_rect().right() - width, row_top),
-            vec2(width, CONTROL_H_DENSE),
-        )
-    } else {
-        ui.add_space(SPACE_2);
-        let (rect, _) =
-            ui.allocate_exact_size(vec2(ui.available_width(), CONTROL_H_DENSE), Sense::hover());
-        Rect::from_min_size(
-            pos2(rect.right() - width, rect.top()),
-            vec2(width, CONTROL_H_DENSE),
-        )
-    };
-
-    let shown = state.morph_library.show_one_sided;
-    let response = ui.interact(rect, categories.with("one-sided"), Sense::click());
-    let (fill, ink) = if shown {
-        (crate::theme::COLOR_SURFACE_RAISED, crate::theme::COLOR_TEXT)
-    } else {
-        (crate::theme::COLOR_SURFACE, crate::theme::COLOR_MUTED)
-    };
-    ui.painter()
-        .rect_filled(rect, crate::theme::CONTROL_RADIUS, fill);
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(FONT_SM),
-        ink,
-    );
-    control_affordances(ui, &response, rect, f32::from(crate::theme::CONTROL_RADIUS));
-    if response.clicked() {
-        state.dispatch(Action::SetShowOneSidedMorphs(!shown));
-    }
-    response.on_hover_text(text(state.locale, TextKey::MorphOneSidedFilterHint));
-}
-
 pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilterLayout {
     set_capsule_widget_radius(ui);
 
@@ -82,7 +20,6 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
         .position(|(filter, _)| state.morph_library.category_filter == *filter);
     let categories_id = Id::new("vkit.morph.categories");
     let (category_rect, clicked) = chips(ui, categories_id, active, &labels);
-    draw_one_sided_toggle(ui, state, categories_id, category_rect);
     let selected = clicked.map(|index| filters[index].0);
     let scroll_to_top =
         selected.is_some_and(|filter| filter != state.morph_library.category_filter);
@@ -97,8 +34,23 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
             ui.spacing_mut().item_spacing.x = SPACE_2;
             let spacing = ui.spacing().item_spacing.x;
 
-            let toggle_width = MORPH_FILTER_CAPSULE_WIDTH.min(ui.available_width());
-            let search_width = (ui.available_width() - toggle_width - spacing).max(0.0);
+            let pile_width = MORPH_FILTER_CAPSULE_WIDTH.min(ui.available_width());
+            // The side filter is two glyphs and a slash, so it asks for what it
+            // needs rather than a share of the row. The search field gives up
+            // the difference; it had length to spare.
+            let side_label = text(state.locale, TextKey::MorphOneSidedFilter);
+            let side_width = ui
+                .painter()
+                .layout_no_wrap(
+                    side_label.to_owned(),
+                    FontId::proportional(FONT_SM),
+                    crate::theme::COLOR_TEXT,
+                )
+                .size()
+                .x
+                + SPACE_3 * 2.0;
+            let search_width =
+                (ui.available_width() - pile_width - side_width - spacing * 2.0).max(0.0);
             let rect = ui
                 .allocate_ui_with_layout(
                     vec2(search_width, CONTROL_HEIGHT),
@@ -119,13 +71,13 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
             let current = state.morph_library.list_filter();
             let picked = ui
                 .allocate_ui_with_layout(
-                    vec2(toggle_width, CONTROL_HEIGHT),
+                    vec2(pile_width, CONTROL_HEIGHT),
                     Layout::left_to_right(Align::Center),
                     |ui| {
                         crate::ui_components::fit_combo(
                             ui,
                             "vkit.morph.list-filter",
-                            toggle_width,
+                            pile_width,
                             text(state.locale, morph_list_filter_key(current)),
                             |ui| {
                                 let mut picked = current;
@@ -147,6 +99,30 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
             {
                 state.dispatch(Action::SetMorphListFilter(picked));
             }
+
+            let shown = state.morph_library.show_one_sided;
+            let side = crate::ui_components::toggle_chip(
+                ui,
+                Id::new("vkit.morph.one-sided"),
+                side_label,
+                shown,
+                side_width,
+            );
+            if side.clicked() {
+                state.dispatch(Action::SetShowOneSidedMorphs(!shown));
+            }
+            crate::ui_components::tooltip(
+                side,
+                text(
+                    state.locale,
+                    if shown {
+                        TextKey::MorphOneSidedFilterHide
+                    } else {
+                        TextKey::MorphOneSidedFilterShow
+                    },
+                ),
+                None,
+            );
 
             rect.union(ui.min_rect())
         })

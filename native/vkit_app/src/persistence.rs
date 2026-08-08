@@ -370,9 +370,13 @@ const fn default_tooltips_enabled() -> bool {
     true
 }
 
-/// A first run shows everything; hiding is the deliberate act.
+/// A first run leaves the one-sided morphs out.
+///
+/// Almost nobody reaches for a morph that moves half a face, and a list twice
+/// as long makes the ones people do want harder to find. Showing them is the
+/// deliberate act.
 const fn default_show_one_sided_morphs() -> bool {
-    true
+    false
 }
 
 const fn default_wireframe_opacity() -> f32 {

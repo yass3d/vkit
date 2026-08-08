@@ -109,8 +109,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutProjectionRotate => Some("Shift + arrastar dir."),
         TextKey::HelpProjectionZoom => Some("Escalar imagem"),
         TextKey::ShortcutProjectionZoom => Some("Roda"),
-        TextKey::HelpProjectionBrushSize => Some("Tamanho do pincel"),
-        TextKey::ShortcutProjectionBrushSize => Some("Arrastar F · [ ]"),
+        TextKey::HelpBrushSize => Some("Tamanho do pincel"),
+        TextKey::ShortcutBrushSize => Some("Arrastar F · [ ]"),
+        TextKey::HelpBrushStrength => Some("Intensidade do pincel"),
+        TextKey::ShortcutBrushStrength => Some("Shift+F arrastar"),
         TextKey::HelpProjectionDone => Some("Concluir projeção"),
         TextKey::ShortcutProjectionDone => Some("Concluir · Esc"),
         TextKey::ProjectDone => Some("Concluir"),
@@ -233,10 +235,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("O detalhe do cabelo difere do real."),
         TextKey::NoMatchingHair => Some("Nenhum preset de cabelo correspondente"),
         TextKey::MorphSearch => Some("Buscar morphs"),
-        TextKey::MorphOneSidedFilter => Some("Esquerda / direita"),
-        TextKey::MorphOneSidedFilterHint => {
-            Some("Mostrar morphs que movem apenas um lado do rosto")
-        }
+        TextKey::MorphOneSidedFilter => Some("E/D"),
+        TextKey::MorphOneSidedFilterShow => Some("Mostrar morphs que movem apenas um lado"),
+        TextKey::MorphOneSidedFilterHide => Some("Ocultar morphs que movem apenas um lado"),
         TextKey::AppearanceSearch => Some("Buscar looks"),
         TextKey::LookFind => Some("Carregar look"),
         TextKey::CameraTrackballArmed => {

@@ -105,8 +105,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutProjectionRotate => Some("Maj + glisser droit"),
         TextKey::HelpProjectionZoom => Some("Redimensionner l'image"),
         TextKey::ShortcutProjectionZoom => Some("Molette"),
-        TextKey::HelpProjectionBrushSize => Some("Taille de la brosse"),
-        TextKey::ShortcutProjectionBrushSize => Some("Glisser F · [ ]"),
+        TextKey::HelpBrushSize => Some("Taille de la brosse"),
+        TextKey::ShortcutBrushSize => Some("Glisser F · [ ]"),
+        TextKey::HelpBrushStrength => Some("Intensité du pinceau"),
+        TextKey::ShortcutBrushStrength => Some("Shift+F glisser"),
         TextKey::HelpProjectionDone => Some("Terminer la projection"),
         TextKey::ShortcutProjectionDone => Some("Terminer · Échap"),
         TextKey::ProjectDone => Some("Terminer"),
@@ -221,10 +223,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPreviewCaveat => Some("Le détail des cheveux diffère du rendu réel."),
         TextKey::NoMatchingHair => Some("Aucun préréglage de cheveux correspondant"),
         TextKey::MorphSearch => Some("Rechercher des morphs"),
-        TextKey::MorphOneSidedFilter => Some("Gauche / droite"),
-        TextKey::MorphOneSidedFilterHint => {
-            Some("Afficher les morphs qui ne bougent qu'un côté du visage")
-        }
+        TextKey::MorphOneSidedFilter => Some("G/D"),
+        TextKey::MorphOneSidedFilterShow => Some("Afficher les morphs qui ne bougent qu'un côté"),
+        TextKey::MorphOneSidedFilterHide => Some("Masquer les morphs qui ne bougent qu'un côté"),
         TextKey::AppearanceSearch => Some("Rechercher des looks"),
         TextKey::LookFind => Some("Charger un look"),
         TextKey::CameraTrackballArmed => {

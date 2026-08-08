@@ -191,8 +191,12 @@ const ALIGN_HELP_ROWS: [(TextKey, TextKey); 10] = [
     (TextKey::HelpLight, TextKey::ShortcutLight),
     (TextKey::HelpUndo, TextKey::ShortcutUndo),
 ];
-const DETAIL_HELP_ROWS: [(TextKey, TextKey); 12] = [
+const DETAIL_HELP_ROWS: [(TextKey, TextKey); 14] = [
     (TextKey::SculptGrab, TextKey::ShortcutSculptGrab),
+    // Near the top because nobody finds these on their own, and every brush
+    // in both tabs has them.
+    (TextKey::HelpBrushSize, TextKey::ShortcutBrushSize),
+    (TextKey::HelpBrushStrength, TextKey::ShortcutBrushStrength),
     (TextKey::SculptSmooth, TextKey::ShortcutSculptSmooth),
     (TextKey::SculptPushPull, TextKey::ShortcutSculptPushPull),
     (TextKey::SculptXSymmetry, TextKey::ShortcutXSymmetry),
@@ -216,10 +220,7 @@ const PROJECTION_HELP_ROWS: [(TextKey, TextKey); 6] = [
         TextKey::ShortcutProjectionRotate,
     ),
     (TextKey::HelpProjectionZoom, TextKey::ShortcutProjectionZoom),
-    (
-        TextKey::HelpProjectionBrushSize,
-        TextKey::ShortcutProjectionBrushSize,
-    ),
+    (TextKey::HelpBrushSize, TextKey::ShortcutBrushSize),
     (TextKey::HelpProjectionDone, TextKey::ShortcutProjectionDone),
 ];
 const SAVE_HELP_ROWS: [(TextKey, TextKey); 8] = [
@@ -4147,6 +4148,12 @@ fn help_scope(state: &AppState) -> HelpScope {
         return HelpScope::Projection;
     }
     HelpScope::Tab(state.active_tab)
+}
+
+/// The card the sculpt and texture tabs share.
+#[cfg(test)]
+pub(crate) const fn detail_help_rows() -> &'static [(TextKey, TextKey)] {
+    &DETAIL_HELP_ROWS
 }
 
 fn viewport_help_rows(scope: HelpScope) -> &'static [(TextKey, TextKey)] {
