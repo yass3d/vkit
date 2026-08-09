@@ -322,6 +322,103 @@ fn edit_cameras_remain_linked_even_if_legacy_flag_is_false() {
 }
 
 #[test]
+fn a_roll_sweep_keeps_writing_the_pane_it_started_over() {
+    assert_eq!(
+        roll_sweep_side(true, Some(MeshSide::Scan), MeshSide::Template),
+        MeshSide::Scan,
+        "crossing the divider mid-sweep must not switch panes"
+    );
+    assert_eq!(
+        roll_sweep_side(true, None, MeshSide::Template),
+        MeshSide::Template
+    );
+    assert_eq!(
+        roll_sweep_side(false, Some(MeshSide::Scan), MeshSide::Template),
+        MeshSide::Template,
+        "a stale pin without a sweep means nothing"
+    );
+}
+
+#[test]
+fn a_roll_sweep_write_back_carries_the_linked_pane_along() {
+    let mut state = AppState::default();
+    let mut swept = state.workspace.scan_camera;
+    swept.roll = 0.5;
+    commit_swept_edit_camera(&mut state, MeshSide::Scan, swept, true);
+    assert_eq!(state.workspace.scan_camera.roll, 0.5);
+    assert_eq!(state.workspace.template_camera, state.workspace.scan_camera);
+
+    let mut state = AppState::default();
+    let template_before = state.workspace.template_camera;
+    let idle = state.workspace.scan_camera;
+    commit_swept_edit_camera(&mut state, MeshSide::Scan, idle, false);
+    assert_eq!(state.workspace.template_camera, template_before);
+}
+
+#[test]
+fn the_press_that_exits_trackball_mode_is_spent_until_its_click_passes() {
+    assert!(
+        !camera_exit_spends_press(true, false),
+        "finishing with the key involves no press"
+    );
+    assert!(camera_exit_spends_press(true, true));
+    assert!(!camera_exit_spends_press(false, true));
+
+    // Press finishes the sweep, the button is held, and egui reports the
+    // click on the release frame — the flag must survive exactly that long.
+    let mut spent = true;
+    for (down, clicked, still_spent) in [
+        (true, false, true),
+        (true, false, true),
+        (false, true, true),
+        (false, false, false),
+    ] {
+        if camera_exit_press_settled(down, clicked) {
+            spent = false;
+        }
+        assert_eq!(spent, still_spent, "down={down} clicked={clicked}");
+    }
+}
+
+#[test]
+fn the_click_that_dismisses_the_help_card_reaches_no_scene_handler() {
+    use super::panels::help_card_spends_pointer;
+    assert!(help_card_spends_pointer(true, true, false));
+    assert!(
+        help_card_spends_pointer(true, false, true),
+        "the press frame already lands a paint-style dab, so it is spent too"
+    );
+    assert!(
+        !help_card_spends_pointer(true, false, false),
+        "a bare hover keeps the camera live under an open card"
+    );
+    assert!(!help_card_spends_pointer(false, true, true));
+
+    let context = egui::Context::default();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+    let mut state = AppState::default();
+    state.help_visible = true;
+    let _ = context.run_ui(
+        egui::RawInput {
+            screen_rect: Some(viewport),
+            ..Default::default()
+        },
+        |root| {
+            let over_scene = viewport.center();
+            assert!(super::panels::viewport_tools_should_block_pointer(
+                root, &state, viewport, over_scene, true, false
+            ));
+            assert!(super::panels::viewport_tools_should_block_pointer(
+                root, &state, viewport, over_scene, false, true
+            ));
+            assert!(!super::panels::viewport_tools_should_block_pointer(
+                root, &state, viewport, over_scene, false, false
+            ));
+        },
+    );
+}
+
+#[test]
 fn wheel_zoom_anchor_pick_returns_the_nearest_layer_point() {
     let near = plane_mesh();
     let far = plane_mesh();

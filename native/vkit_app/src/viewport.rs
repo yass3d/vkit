@@ -14,10 +14,7 @@ use vkit_core::{
 
 use crate::{
     camera::{CameraDelta, ProjectionMode, TurntableCamera},
-    camera_control::{
-        CameraGesture, ControlMode, DragSample, MiddleDragBinding, interpret_drag,
-        middle_drag_gesture,
-    },
+    camera_control::{CameraGesture, ControlMode, MiddleDragBinding, middle_drag_gesture},
     hair_renderer::{HairPaintCallback, ScalpPaintCallback},
     i18n::{Locale, TextKey, text},
     lighting::{LightingPreset, MAX_LIGHT_BRIGHTNESS, MIN_LIGHT_BRIGHTNESS, ViewportGrading},
@@ -626,10 +623,11 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
     );
     let mut swept = state.workspace.template_camera;
     let roll_owns_pointer = handle_camera_control_shortcuts(ui, state, rect, &mut swept);
-    state.workspace.template_camera = swept;
+    commit_swept_edit_camera(state, MeshSide::Template, swept, roll_owns_pointer);
     let input_blocked = state.import_progress.is_some()
         || roll_owns_pointer
         || camera_mode_owns_pointer(state)
+        || camera_exit_press_spent(ui)
         || viewport_tools_pointer_blocked(ui, state, rect);
     let camera = state.workspace.template_camera;
     let gizmo_captured = !input_blocked && handle_alignment_gizmo(ui, state, rect, camera);
@@ -656,15 +654,7 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                 ],
             )
         };
-        if let Some(moved) = viewport_camera_motion(
-            ui,
-            &response,
-            rect,
-            camera,
-            state.camera_control,
-            &pick,
-            false,
-        ) {
+        if let Some(moved) = viewport_camera_motion(ui, &response, rect, camera, &pick, false) {
             state.workspace.template_camera = moved;
             state
                 .workspace
@@ -1634,7 +1624,7 @@ fn paint_pin_count(ui: &Ui, state: &AppState, pane: Rect) {
 pub fn draw_edit(ui: &mut Ui, state: &mut AppState, scan_rect: Rect, template_rect: Rect) {
     let workspace_rect = scan_rect.union(template_rect);
 
-    let side = if ui
+    let hovered = if ui
         .input(|input| input.pointer.interact_pos())
         .is_some_and(|pointer| template_rect.contains(pointer))
     {
@@ -1642,14 +1632,21 @@ pub fn draw_edit(ui: &mut Ui, state: &mut AppState, scan_rect: Rect, template_re
     } else {
         MeshSide::Scan
     };
+    let side = roll_sweep_side(
+        crate::sweep_gesture::sweep_active(ui, Id::new(ROLL_SWEEP_ID)),
+        ui.data(|data| data.get_temp::<MeshSide>(Id::new(ROLL_SWEEP_SIDE_ID))),
+        hovered,
+    );
     let mut swept = match side {
         MeshSide::Scan => state.workspace.scan_camera,
         MeshSide::Template => state.workspace.template_camera,
     };
     let roll_owns_pointer = handle_camera_control_shortcuts(ui, state, workspace_rect, &mut swept);
-    match side {
-        MeshSide::Scan => state.workspace.scan_camera = swept,
-        MeshSide::Template => state.workspace.template_camera = swept,
+    commit_swept_edit_camera(state, side, swept, roll_owns_pointer);
+    if crate::sweep_gesture::sweep_active(ui, Id::new(ROLL_SWEEP_ID)) {
+        ui.data_mut(|data| data.insert_temp(Id::new(ROLL_SWEEP_SIDE_ID), side));
+    } else {
+        ui.data_mut(|data| data.remove::<MeshSide>(Id::new(ROLL_SWEEP_SIDE_ID)));
     }
     draw_edit_side(
         ui,
@@ -1742,6 +1739,7 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
     let input_blocked = state.import_progress.is_some()
         || roll_owns_pointer
         || camera_mode_owns_pointer(state)
+        || camera_exit_press_spent(ui)
         || viewport_tools_pointer_blocked(ui, state, rect);
     if !input_blocked {
         let result = state.workspace.result.clone();
@@ -1762,7 +1760,6 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, _title: &str) 
             &response,
             rect,
             state.workspace.result_camera,
-            state.camera_control,
             &pick,
             projection_stencil_mode(state),
         ) {
@@ -1921,6 +1918,7 @@ fn draw_edit_side(
     let input_blocked = state.import_progress.is_some()
         || roll_owns_pointer
         || camera_mode_owns_pointer(state)
+        || camera_exit_press_spent(ui)
         || viewport_tools_pointer_blocked(ui, state, workspace_rect);
     if !input_blocked {
         let side_mesh = match side {
@@ -1937,15 +1935,8 @@ fn draw_edit_side(
         };
         let pick =
             move |ray: Ray3| nearest_visible_world_hit(ray, &[(side_mesh.as_deref(), side_pose)]);
-        if let Some(moved) = viewport_camera_motion(
-            ui,
-            &response,
-            rect,
-            side_camera,
-            state.camera_control,
-            &pick,
-            false,
-        ) {
+        if let Some(moved) = viewport_camera_motion(ui, &response, rect, side_camera, &pick, false)
+        {
             set_edit_camera(state, side, moved);
             ui.ctx().request_repaint();
         }
@@ -2116,17 +2107,51 @@ impl ViewportCameraInput {
             CameraGesture::Orbit(points) => self.delta.orbit_points = points,
             CameraGesture::Pan(points) => self.delta.pan_points = points,
             CameraGesture::Dolly(points) => self.delta.scroll_points = points,
-            CameraGesture::Trackball { orbit, roll } => {
-                self.delta.orbit_points += orbit;
-                self.delta.roll_radians += roll;
-            }
         }
     }
 }
 
 const ROLL_SWEEP_ID: &str = "vkit.viewport.roll-sweep";
 
+const ROLL_SWEEP_SIDE_ID: &str = "vkit.viewport.roll-sweep.side";
+
 const ROLL_RADIANS_PER_POINT: f32 = 0.004;
+
+const CAMERA_EXIT_PRESS_ID: &str = "vkit.viewport.camera-exit-press";
+
+/// A primary press finishes the roll sweep, and the mode reverts in that same
+/// frame — but egui reports the click only on the release frame, when nothing
+/// blocks input any more, so the click would fall through and plant a pin.
+/// Finishing with the key involves no press and spends nothing.
+const fn camera_exit_spends_press(finished: bool, primary_pressed: bool) -> bool {
+    finished && primary_pressed
+}
+
+/// The spent press has to be held past its own release frame: that frame still
+/// carries the click the press produced. Only a frame with the button up and
+/// no click left to absorb lets go of it.
+const fn camera_exit_press_settled(primary_down: bool, clicked: bool) -> bool {
+    !primary_down && !clicked
+}
+
+fn camera_exit_press_spent(ui: &Ui) -> bool {
+    ui.data(|data| data.get_temp::<bool>(Id::new(CAMERA_EXIT_PRESS_ID)))
+        .unwrap_or(false)
+}
+
+/// The roll sweep is absolute from the value it started with, so it must keep
+/// writing the pane it started over; following the hover across the divider
+/// mid-sweep would graft one pane's starting roll onto the other.
+const fn roll_sweep_side(
+    sweep_active: bool,
+    pinned: Option<MeshSide>,
+    hovered: MeshSide,
+) -> MeshSide {
+    match (sweep_active, pinned) {
+        (true, Some(side)) => side,
+        _ => hovered,
+    }
+}
 
 fn handle_camera_control_shortcuts(
     ui: &Ui,
@@ -2147,6 +2172,18 @@ fn handle_camera_control_shortcuts(
         && roll.is_finite()
     {
         camera.roll = roll.rem_euclid(std::f32::consts::TAU);
+    }
+    let (primary_pressed, primary_down, clicked) = ui.input(|input| {
+        (
+            input.pointer.button_pressed(PointerButton::Primary),
+            input.pointer.button_down(PointerButton::Primary),
+            input.pointer.any_click(),
+        )
+    });
+    if camera_exit_spends_press(update.finished, primary_pressed) {
+        ui.data_mut(|data| data.insert_temp(Id::new(CAMERA_EXIT_PRESS_ID), true));
+    } else if camera_exit_press_spent(ui) && camera_exit_press_settled(primary_down, clicked) {
+        ui.data_mut(|data| data.remove::<bool>(Id::new(CAMERA_EXIT_PRESS_ID)));
     }
     let armed = crate::sweep_gesture::sweep_active(ui, Id::new(ROLL_SWEEP_ID));
     let mode = if armed {
@@ -2169,7 +2206,6 @@ fn viewport_camera_input(
     ui: &Ui,
     response: &Response,
     rect: Rect,
-    mode: ControlMode,
     roll: f32,
 ) -> ViewportCameraInput {
     let modifiers = ui.input(|input| input.modifiers);
@@ -2184,25 +2220,6 @@ fn viewport_camera_input(
         snap_orbit: false,
     };
 
-    if mode != ControlMode::Orbit
-        && response.dragged_by(PointerButton::Primary)
-        && let Some(origin) = response.interact_pointer_pos()
-    {
-        let to = origin;
-        let from = to - pointer_delta;
-        if let Some(gesture) = interpret_drag(
-            mode,
-            DragSample {
-                from,
-                to,
-                pivot: rect.center(),
-                radius: rect.width().min(rect.height()) * 0.5,
-            },
-            roll,
-        ) {
-            camera_input.apply(gesture);
-        }
-    }
     if response.dragged_by(PointerButton::Middle) {
         let binding = middle_drag_gesture(modifiers.shift, modifiers.ctrl);
         if let Some(gesture) = binding.gesture(pointer_delta, roll) {
@@ -2221,11 +2238,10 @@ fn viewport_camera_motion(
     response: &Response,
     rect: Rect,
     mut camera: TurntableCamera,
-    mode: ControlMode,
     pick_world_point: &dyn Fn(Ray3) -> Option<glam::Vec3>,
     wheel_claimed: bool,
 ) -> Option<TurntableCamera> {
-    let mut camera_input = viewport_camera_input(ui, response, rect, mode, camera.roll);
+    let mut camera_input = viewport_camera_input(ui, response, rect, camera.roll);
 
     if wheel_claimed {
         camera_input.wheel_points = 0.0;
@@ -2522,6 +2538,26 @@ fn set_edit_camera(state: &mut AppState, side: MeshSide, camera: TurntableCamera
         MeshSide::Template => state.workspace.template_camera = camera,
     }
     state.workspace.reconcile_linked_edit_cameras(side);
+}
+
+/// Write-back for the roll sweep. The edit cameras are contractually linked —
+/// every other write funnels through `set_edit_camera`, which reconciles — so
+/// a sweep that touched one pane must carry the other along. The idle
+/// write-back is a no-op copy, and reconciling on it would only paper over a
+/// link broken somewhere else.
+fn commit_swept_edit_camera(
+    state: &mut AppState,
+    side: MeshSide,
+    swept: TurntableCamera,
+    sweep_owns_camera: bool,
+) {
+    match side {
+        MeshSide::Scan => state.workspace.scan_camera = swept,
+        MeshSide::Template => state.workspace.template_camera = swept,
+    }
+    if sweep_owns_camera {
+        state.workspace.reconcile_linked_edit_cameras(side);
+    }
 }
 
 #[cfg(test)]

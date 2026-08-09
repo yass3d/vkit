@@ -759,10 +759,15 @@ pub(super) fn viewport_tools_contains(
 }
 
 pub(super) fn viewport_tools_pointer_blocked(ui: &Ui, state: &AppState, viewport: Rect) -> bool {
-    let (pointer, clicked) =
-        ui.input(|input| (input.pointer.hover_pos(), input.pointer.any_click()));
+    let (pointer, clicked, primary_down) = ui.input(|input| {
+        (
+            input.pointer.hover_pos(),
+            input.pointer.any_click(),
+            input.pointer.button_down(PointerButton::Primary),
+        )
+    });
     pointer.is_some_and(|pointer| {
-        viewport_tools_should_block_pointer(ui, state, viewport, pointer, clicked)
+        viewport_tools_should_block_pointer(ui, state, viewport, pointer, clicked, primary_down)
     })
 }
 
@@ -772,12 +777,27 @@ pub(super) fn viewport_tools_should_block_pointer(
     viewport: Rect,
     pointer: Pos2,
     clicked: bool,
+    primary_down: bool,
 ) -> bool {
     viewport_tools_contains(ui, state, viewport, pointer)
         || detail_viewport_controls_contains(state, viewport, pointer)
         || eye_gaze_popup_should_block_pointer(ui, pointer, clicked)
         || crate::viewport::viewport_chrome_covers(ui, pointer)
         || (state.viewport_tool_panel.is_some() && clicked)
+        || help_card_spends_pointer(state.help_visible, clicked, primary_down)
+}
+
+/// The open help card dismisses on the next click anywhere, but egui reports
+/// that click on the release frame, after the press frame has already landed a
+/// pin or a paint-style dab. The whole primary gesture is the dismissal, so
+/// all of it is spent: the press, the frames it is held, and the click itself.
+/// A hover with no button involved stays live so the camera keeps working.
+pub(super) const fn help_card_spends_pointer(
+    help_visible: bool,
+    clicked: bool,
+    primary_down: bool,
+) -> bool {
+    help_visible && (clicked || primary_down)
 }
 
 pub(super) fn eye_gaze_popup_should_block_pointer(ui: &Ui, pointer: Pos2, clicked: bool) -> bool {
