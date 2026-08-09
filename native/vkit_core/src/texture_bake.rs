@@ -1232,6 +1232,13 @@ fn composite_rgba_pixel(
                 }
             }
         };
+        // A blend mode reads the backdrop, and where the backdrop is
+        // transparent there is nothing to read — its stored channels are
+        // arbitrary, and here they are black. Fading the blend toward plain
+        // source paint by how much backdrop actually exists is what every
+        // layer editor does; without it, Multiply over an empty base is a
+        // multiplication by zero.
+        let blended = source + (blended - source) * destination_alpha;
         let premultiplied =
             blended * source_alpha + backdrop * destination_alpha * (1.0 - source_alpha);
         base[channel] = if output_alpha > 0.0 {
@@ -1742,6 +1749,34 @@ mod tests {
         assert!((24..=26).contains(&base[1]));
         assert!((12..=13).contains(&base[2]));
         assert_eq!(base[3], 255);
+    }
+
+    #[test]
+    fn a_blend_mode_over_a_transparent_base_degrades_to_normal_instead_of_black() {
+        let colour = [200_u8, 100, 50, 255];
+        for mode in [
+            TextureBlendMode::Multiply,
+            TextureBlendMode::Screen,
+            TextureBlendMode::Overlay,
+        ] {
+            let mut blended = solid(1, 1, [0, 0, 0, 0]);
+            composite_rgba(&mut blended, &colour, 1.0, mode).unwrap();
+            let mut normal = solid(1, 1, [0, 0, 0, 0]);
+            composite_rgba(&mut normal, &colour, 1.0, TextureBlendMode::Normal).unwrap();
+            assert_eq!(
+                blended, normal,
+                "{mode:?} over nothing has no backdrop to blend with"
+            );
+
+            let mut blended = solid(1, 1, [80, 80, 80, 255]);
+            composite_rgba(&mut blended, &colour, 1.0, mode).unwrap();
+            let mut normal = solid(1, 1, [80, 80, 80, 255]);
+            composite_rgba(&mut normal, &colour, 1.0, TextureBlendMode::Normal).unwrap();
+            assert_ne!(
+                blended, normal,
+                "{mode:?} over an opaque backdrop must still blend"
+            );
+        }
     }
 
     #[test]

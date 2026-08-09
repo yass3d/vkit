@@ -348,6 +348,22 @@ impl AppState {
             return;
         };
 
+        // Whatever bake is lying around after an edit is the 1024-pixel
+        // preview, not the chosen export resolution. The texture panel's own
+        // Save refuses to ship it; a package embedding the same snapshot has
+        // to hold the same line, or the .var quietly carries preview pixels.
+        if self.package_from_this_head
+            && self.texture_project.baked.is_some()
+            && self.texture_export_bake_pending()
+        {
+            self.status = StatusMessage::with_detail(
+                TextKey::ExportFailed,
+                StatusTone::Warning,
+                "Bake the textures at export quality before packaging".to_owned(),
+            );
+            return;
+        }
+
         let morph = self
             .package_from_this_head
             .then(|| crate::workflow::export_snapshot_from_state(self).ok())
@@ -455,4 +471,92 @@ fn morph_pair_sex(receipt: &ExportReceipt) -> Option<SkinSex> {
             }
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use super::*;
+
+    fn preview_quality_bake() -> TextureBakedSet {
+        let mapping = vkit_core::vam::G2UvMapping {
+            source_path: PathBuf::new(),
+            coordinate_rms_cm: 0.0,
+            coordinate_max_cm: 0.0,
+            uncovered_triangles: 0,
+            faces: Vec::new(),
+            triangles: vec![vkit_core::vam::G2UvTriangle {
+                canonical_face_index: 0,
+                canonical_triangle_index: 0,
+                material_region: vkit_core::vam::UvMaterialRegion::Face,
+                on_head: true,
+                position_indices: [0, 1, 2],
+                uvs: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            }],
+        };
+        let preview =
+            crate::texture_project::neutral_preview(1, &mapping, [128, 128, 128]).unwrap();
+        TextureBakedSet {
+            request_id: 1,
+            source_revision: 0,
+            images: BTreeMap::from([(
+                TextureChannel::Diffuse,
+                Arc::new(crate::skin_preview::SkinImage::solid(
+                    1,
+                    [200, 160, 140, 255],
+                )),
+            )]),
+            preview: Arc::new(preview),
+            layer_rasters: BTreeMap::new(),
+            base_face: None,
+            scan_atlases: BTreeMap::new(),
+        }
+    }
+
+    fn packageable_state(root: &Path) -> AppState {
+        let mut state = AppState::default();
+        state
+            .texture_project
+            .add_image_layer(PathBuf::from("face.png"), TextureSourceMode::LandmarkPins);
+        state.vam_root = Some(root.to_path_buf());
+        state.var_metadata.creator = "Winter".to_owned();
+        state.var_metadata.package = "Head".to_owned();
+        state.texture_project.baked = Some(preview_quality_bake());
+        state.texture_project.dirty = false;
+        state
+    }
+
+    #[test]
+    fn a_package_from_this_head_refuses_to_ship_the_preview_bake() {
+        let root = tempfile::tempdir().expect("a scratch VaM root");
+        let mut state = packageable_state(root.path());
+        state.texture_project.baked_resolution = PREVIEW_BAKE_RESOLUTION;
+        assert!(state.texture_export_bake_pending());
+
+        state.save_package();
+
+        assert_eq!(state.status.key, TextKey::ExportFailed);
+        assert!(
+            state.last_package_path.is_none() && !root.path().join("AddonPackages").exists(),
+            "refusing means no .var reaches the disk"
+        );
+    }
+
+    #[test]
+    fn a_package_from_this_head_ships_a_bake_at_the_chosen_resolution() {
+        let root = tempfile::tempdir().expect("a scratch VaM root");
+        let mut state = packageable_state(root.path());
+        state.texture_project.baked_resolution = state.texture_project.resolution;
+        assert!(!state.texture_export_bake_pending());
+
+        state.save_package();
+
+        assert!(
+            state.last_package_path.is_some(),
+            "an export-quality bake packages as before: {:?}",
+            state.status
+        );
+    }
 }

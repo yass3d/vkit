@@ -885,14 +885,22 @@ impl TextureProject {
             if layer.source_mode != TextureSourceMode::ScanMesh || layer.image.is_some() {
                 continue;
             }
-            let atlas = unmirrored.get(&layer.id).cloned().or_else(|| {
-                rasters
-                    .get(&layer.id)
-                    .map(|raster| Arc::clone(&raster.image))
-            });
-            if let Some(atlas) = atlas {
-                layer.image = Some(atlas);
+            // The raster carries the revision the layer had when its bake was
+            // requested. A bake still in flight when the scan moved carries
+            // the revision from before the move — its atlas pictures the
+            // previous placement, and adopting it would fill the very slot
+            // the queued rebake checks before offering the correct one.
+            let Some(raster) = rasters.get(&layer.id) else {
+                continue;
+            };
+            if raster.raster_revision != layer.raster_revision {
+                continue;
             }
+            let atlas = unmirrored
+                .get(&layer.id)
+                .cloned()
+                .unwrap_or_else(|| Arc::clone(&raster.image));
+            layer.image = Some(atlas);
         }
     }
 
@@ -1340,6 +1348,20 @@ impl TextureProject {
         let Some(layer) = self.layers.iter_mut().find(|layer| layer.id == layer_id) else {
             return;
         };
+        // A mask keeps the dimensions it was created at across resolution
+        // changes, and the dab indexes the coverage ledger in the mask's own
+        // pixel space — a ledger sized off today's resolution instead silently
+        // swallows every dab whose mask index runs past its end.
+        let coverage_size = layer.mask.as_ref().map_or(
+            RasterSize {
+                width: mask_edge,
+                height: mask_edge,
+            },
+            |mask| RasterSize {
+                width: mask.width,
+                height: mask.height,
+            },
+        );
         let dab = TextureMaskDab {
             uv,
             radius,
@@ -1353,10 +1375,7 @@ impl TextureProject {
             &mut self.stroke,
             layer_id,
             TextureTool::MaskBrush,
-            RasterSize {
-                width: mask_edge,
-                height: mask_edge,
-            },
+            coverage_size,
         );
         if source.is_some() {
             apply_mask_preview_dab(layer, dab, &mut self.preview_stroke);
@@ -1728,6 +1747,11 @@ pub struct TextureLayerBakeInput {
     pub painted: Option<TextureLayerPaint>,
     pub raster_revision: u64,
     pub image: Option<Arc<SkinImage>>,
+
+    /// Whether `image` is the retouched copy rather than the pristine source.
+    /// A scan layer's strokes live only in that copy — the scan itself never
+    /// changes — so a bake that re-projects from the scan would discard them.
+    pub retouched: bool,
 }
 
 impl From<&TextureLayer> for TextureLayerBakeInput {
@@ -1754,6 +1778,7 @@ impl From<&TextureLayer> for TextureLayerBakeInput {
                 .as_ref()
                 .or(layer.image.as_ref())
                 .map(Arc::clone),
+            retouched: layer.edited_image.is_some(),
         }
     }
 }
@@ -3041,9 +3066,29 @@ fn apply_channel_interpretation(
 
 fn rasterize_scan_layer(
     request: &TextureBakeRequest,
-    _layer: &TextureLayerBakeInput,
+    layer: &TextureLayerBakeInput,
     options: TextureBakeOptions,
 ) -> Result<TextureBakeImage, String> {
+    // Retouch strokes land in the adopted atlas, not in the scan source, so
+    // re-projecting from the scan would bake a face the canvas no longer
+    // shows. The adopted atlas is already in G2 UV space at the resolution of
+    // the bake that produced it, and its boundary alpha is already feathered;
+    // resizing it is enough, re-projecting would erase the strokes.
+    if layer.retouched
+        && let Some(image) = layer.image.as_deref()
+    {
+        let rgba8 = if image.width == options.width && image.height == options.height {
+            image.rgba8.as_ref().clone()
+        } else {
+            vkit_core::pixels::resize_rgba_box_premultiplied(
+                RgbaView::new(&image.rgba8, image.width, image.height)?,
+                options.width,
+                options.height,
+            )
+        };
+        return TextureBakeImage::from_rgba8(rgba8, options.width, options.height)
+            .map_err(|error| format!("layer {} retouched atlas is unusable: {error}", layer.name));
+    }
     let scan = request
         .scan
         .as_ref()
@@ -3806,6 +3851,35 @@ mod tests {
     }
 
     #[test]
+    fn a_mask_painted_at_a_higher_resolution_still_takes_dabs_after_the_project_shrinks() {
+        let mut project = TextureProject {
+            resolution: 4096,
+            ..Default::default()
+        };
+        let layer_id =
+            project.add_image_layer(PathBuf::from("face.png"), TextureSourceMode::LandmarkPins);
+        project.mask_brush_falloff = SculptFalloff::Sharp;
+        project.mask_brush_opacity = 1.0;
+        project.add_mask_dab(layer_id, [0.5, 0.9], None, true);
+        project.end_undo_transaction();
+
+        project.resolution = 2048;
+        project.add_mask_dab(layer_id, [0.5, 0.5], None, true);
+
+        let mask = project.layers[0]
+            .mask
+            .as_ref()
+            .expect("the mask keeps the dimensions it was painted at");
+        assert_eq!((mask.width, mask.height), (4096, 4096));
+        let center = mask.height as usize / 2 * mask.width as usize + mask.width as usize / 2;
+        assert!(
+            mask.alpha8[center] < 32,
+            "a dab below the shrunken ledger's reach must still move the mask, got alpha {}",
+            mask.alpha8[center]
+        );
+    }
+
+    #[test]
     fn mask_changes_preserve_the_expensive_target_color_raster_cache() {
         let mut layer = TextureLayer::image(
             1,
@@ -4115,6 +4189,109 @@ mod tests {
         assert_eq!(
             project.layers[0].image.as_ref().map(|image| image.revision),
             Some(12)
+        );
+    }
+
+    #[test]
+    fn an_atlas_projected_before_the_scan_moved_is_never_adopted_after_it() {
+        let mut project = TextureProject::default();
+        project.ensure_scan_layer("Scan".to_owned()).unwrap();
+        let stale_rasters = scan_atlas(&project, 11);
+        let stale_projection = scan_projection(&project, 41);
+
+        project.invalidate_scan_projection();
+        project.adopt_scan_atlases(&stale_rasters, &stale_projection);
+        assert!(
+            project.layers[0].image.is_none(),
+            "a bake in flight across the move pictures the previous placement; once adopted, the \
+             rebake's correct atlas finds the slot taken and can never replace it"
+        );
+
+        project.adopt_scan_atlases(&scan_atlas(&project, 12), &BTreeMap::new());
+        assert_eq!(
+            project.layers[0].image.as_ref().map(|image| image.revision),
+            Some(12),
+            "the rebake that pictured the new placement still lands"
+        );
+    }
+
+    #[test]
+    fn a_retouched_scan_atlas_is_baked_back_instead_of_being_re_projected() {
+        let mut project = TextureProject::default();
+        project.ensure_scan_layer("Scan".to_owned()).unwrap();
+        project.layers[0].image = Some(Arc::new(
+            SkinImage::new(1, 2, 2, [10, 20, 30, 255].repeat(4)).unwrap(),
+        ));
+        project.layers[0].edited_image = Some(Arc::new(
+            SkinImage::new(2, 2, 2, [200, 100, 50, 255].repeat(4)).unwrap(),
+        ));
+        let request = TextureBakeRequest {
+            request_id: 1,
+            project_revision: 0,
+            layers: Vec::new(),
+            target: Arc::new(OrderedObjMesh {
+                vertices: Vec::new(),
+                faces: Vec::new(),
+            }),
+            mapping: Arc::new(G2UvMapping {
+                source_path: PathBuf::new(),
+                coordinate_rms_cm: 0.0,
+                coordinate_max_cm: 0.0,
+                uncovered_triangles: 0,
+                faces: Vec::new(),
+                triangles: Vec::new(),
+            }),
+            face_mirror: None,
+            scan: None,
+            base_preview: None,
+            bake_base: TextureBakeBase::Transparent,
+            hide_skin_preview: false,
+            neutral_base_rgb: [0, 0, 0],
+            resolution: 2,
+            boundary_feather_pixels: 0,
+            cached_layer_rasters: BTreeMap::new(),
+            cached_base_face: None,
+            base_face_source: None,
+        };
+        let options = TextureBakeOptions {
+            width: 2,
+            height: 2,
+            boundary_feather_pixels: 0,
+        };
+
+        let input = TextureLayerBakeInput::from(&project.layers[0]);
+        assert!(input.retouched);
+        let baked = rasterize_scan_layer(&request, &input, options)
+            .expect("the retouched atlas needs no scan source");
+        assert_eq!(
+            baked.rgba8,
+            [200, 100, 50, 255].repeat(4),
+            "the strokes live only in the edited copy, so the bake must read that copy"
+        );
+
+        let upsized = rasterize_scan_layer(
+            &request,
+            &input,
+            TextureBakeOptions {
+                width: 4,
+                height: 4,
+                boundary_feather_pixels: 0,
+            },
+        )
+        .expect("another resolution resizes the atlas");
+        assert_eq!(
+            upsized.rgba8,
+            [200, 100, 50, 255].repeat(16),
+            "an export at another resolution resizes the strokes rather than dropping them"
+        );
+
+        project.layers[0].edited_image = None;
+        let pristine = TextureLayerBakeInput::from(&project.layers[0]);
+        assert!(!pristine.retouched);
+        assert!(
+            rasterize_scan_layer(&request, &pristine, options).is_err(),
+            "an unedited scan layer still re-projects at the bake's own resolution, and this \
+             harness offers no scan to project from"
         );
     }
 
