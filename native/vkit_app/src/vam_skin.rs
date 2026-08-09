@@ -225,8 +225,8 @@ fn build_preview(request: &SkinPreviewRequest) -> Result<SkinPreview, String> {
         .diffuse(SkinRegion::Torso)
         .unwrap_or(face_locator);
 
-    let revision_base = crate::skin_preview::revision_domain::VAM_SKIN
-        | request.request_id.wrapping_mul(128);
+    let revision_base =
+        crate::skin_preview::revision_domain::VAM_SKIN | request.request_id.wrapping_mul(128);
     let jobs = collect_decode_jobs(&request.preset);
     let (decoded, slowest_source_ms, slowest_source) = decode_jobs_parallel(revision_base, &jobs);
     let decode_ms = build_started.elapsed().as_secs_f64() * 1000.0;

@@ -236,7 +236,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Morphs ausblenden, die nur eine Seite bewegen"),
         TextKey::AppearanceSearch => Some("Looks suchen"),
         TextKey::LookFind => Some("Look laden"),
-        TextKey::CameraTrackballArmed => Some("Rollen aktiv · seitwärts ziehen zum Neigen · Klick oder R beendet"),
+        TextKey::CameraTrackballArmed => {
+            Some("Rollen aktiv · seitwärts ziehen zum Neigen · Klick oder R beendet")
+        }
         TextKey::HelpTrackball => Some("Trackball-Drehung"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Die letzte Sitzung wurde unerwartet beendet"),
@@ -247,7 +249,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryDiscard => Some("Neu beginnen"),
         TextKey::RecoveryRestored => Some("Vorherige Sitzung wiederhergestellt."),
         TextKey::RecoveryLookMissing => Some(
-            "Der Look jener Sitzung ist nicht mehr installiert, daher konnte nichts wiederhergestellt werden.",
+            "Der Look dieser Sitzung ist noch nicht gelistet — Texturen wurden wiederhergestellt; die Änderungen greifen, sobald der Look gewählt wird.",
         ),
         TextKey::SettingsOcclusionGroup => Some("Ambient Occlusion"),
         TextKey::SettingsOcclusionIntensity => Some("Stärke"),

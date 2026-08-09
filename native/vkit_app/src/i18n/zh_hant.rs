@@ -222,7 +222,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("還原"),
         TextKey::RecoveryDiscard => Some("重新開始"),
         TextKey::RecoveryRestored => Some("已還原上次的工作階段。"),
-        TextKey::RecoveryLookMissing => Some("該工作階段的外觀已不在安裝清單中，因此無法還原。"),
+        TextKey::RecoveryLookMissing => {
+            Some("該工作階段的外觀尚未在清單中 — 紋理已還原,編輯將在選擇該外觀後套用。")
+        }
         TextKey::SettingsOcclusionGroup => Some("環境光遮蔽"),
         TextKey::SettingsOcclusionIntensity => Some("強度"),
         TextKey::SettingsOcclusionRadius => Some("範圍"),

@@ -234,7 +234,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Ocultar morphs que mueven un solo lado"),
         TextKey::AppearanceSearch => Some("Buscar looks"),
         TextKey::LookFind => Some("Cargar look"),
-        TextKey::CameraTrackballArmed => Some("Balanceo activo · arrastre lateral para inclinar · clic o R para terminar"),
+        TextKey::CameraTrackballArmed => {
+            Some("Balanceo activo · arrastre lateral para inclinar · clic o R para terminar")
+        }
         TextKey::HelpTrackball => Some("Rotación trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("La última sesión terminó de forma inesperada"),
@@ -244,9 +246,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("Restaurar"),
         TextKey::RecoveryDiscard => Some("Empezar de cero"),
         TextKey::RecoveryRestored => Some("Se restauró la sesión anterior."),
-        TextKey::RecoveryLookMissing => {
-            Some("El look de esa sesión ya no está instalado, así que no se pudo restaurar nada.")
-        }
+        TextKey::RecoveryLookMissing => Some(
+            "El look de esa sesión aún no está en la lista — las texturas se restauraron y las ediciones se aplicarán al seleccionarlo.",
+        ),
         TextKey::SettingsOcclusionGroup => Some("Oclusión ambiental"),
         TextKey::SettingsOcclusionIntensity => Some("Fuerza"),
         TextKey::SettingsOcclusionRadius => Some("Alcance"),

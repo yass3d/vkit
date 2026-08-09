@@ -223,7 +223,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("片側だけ動くモーフを隠す"),
         TextKey::AppearanceSearch => Some("外見を検索"),
         TextKey::LookFind => Some("外見を読み込む"),
-        TextKey::CameraTrackballArmed => Some("ロール回転 · 左右ドラッグで傾ける · クリックか R で終了"),
+        TextKey::CameraTrackballArmed => {
+            Some("ロール回転 · 左右ドラッグで傾ける · クリックか R で終了")
+        }
         TextKey::HelpTrackball => Some("トラックボール回転"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("前回のセッションが異常終了しました"),
@@ -233,9 +235,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("復元"),
         TextKey::RecoveryDiscard => Some("新規に開始"),
         TextKey::RecoveryRestored => Some("前回のセッションを復元しました。"),
-        TextKey::RecoveryLookMissing => {
-            Some("そのセッションの外見が見つからないため復元できませんでした。")
-        }
+        TextKey::RecoveryLookMissing => Some(
+            "そのセッションの外見はまだ一覧にありません — テクスチャは復元済みで、編集内容は外見を選ぶと適用されます。",
+        ),
         TextKey::SettingsOcclusionGroup => Some("アンビエントオクルージョン"),
         TextKey::SettingsOcclusionIntensity => Some("強さ"),
         TextKey::SettingsOcclusionRadius => Some("範囲"),

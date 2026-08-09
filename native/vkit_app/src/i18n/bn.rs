@@ -223,7 +223,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("ফিরিয়ে আনুন"),
         TextKey::RecoveryDiscard => Some("নতুন করে শুরু"),
         TextKey::RecoveryRestored => Some("আগের সেশন ফিরিয়ে আনা হয়েছে।"),
-        TextKey::RecoveryLookMissing => Some("সেই সেশনের লুক আর ইনস্টল করা নেই, তাই কিছুই ফেরানো যায়নি।"),
+        TextKey::RecoveryLookMissing => Some(
+            "সেই সেশনের লুক এখনো তালিকায় নেই — টেক্সচার পুনরুদ্ধার হয়েছে, লুক নির্বাচন করলে সম্পাদনাগুলি প্রযোজ্য হবে।",
+        ),
         TextKey::SettingsOcclusionGroup => Some("অ্যাম্বিয়েন্ট অক্লুশন"),
         TextKey::SettingsOcclusionIntensity => Some("শক্তি"),
         TextKey::SettingsOcclusionRadius => Some("বিস্তার"),

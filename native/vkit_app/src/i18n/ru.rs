@@ -230,7 +230,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Скрыть морфы, двигающие одну сторону"),
         TextKey::AppearanceSearch => Some("Поиск образов"),
         TextKey::LookFind => Some("Загрузить образ"),
-        TextKey::CameraTrackballArmed => Some("Крен включён · горизонтальное перетаскивание наклоняет · клик или R — выход"),
+        TextKey::CameraTrackballArmed => {
+            Some("Крен включён · горизонтальное перетаскивание наклоняет · клик или R — выход")
+        }
         TextKey::HelpTrackball => Some("Вращение трекболом"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Прошлый сеанс завершился неожиданно"),
@@ -240,9 +242,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("Восстановить"),
         TextKey::RecoveryDiscard => Some("Начать заново"),
         TextKey::RecoveryRestored => Some("Предыдущий сеанс восстановлен."),
-        TextKey::RecoveryLookMissing => {
-            Some("Образ того сеанса больше не установлен, поэтому восстановить ничего не удалось.")
-        }
+        TextKey::RecoveryLookMissing => Some(
+            "Образ той сессии ещё не в списке — текстуры восстановлены, правки применятся при его выборе.",
+        ),
         TextKey::SettingsOcclusionGroup => Some("Затенение (AO)"),
         TextKey::SettingsOcclusionIntensity => Some("Сила"),
         TextKey::SettingsOcclusionRadius => Some("Охват"),

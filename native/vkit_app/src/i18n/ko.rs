@@ -212,7 +212,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphOneSidedFilterHide => "한쪽만 움직이는 좌우 모프 숨기기",
         TextKey::AppearanceSearch => "외모 검색",
         TextKey::LookFind => "외형 불러오기",
-        TextKey::CameraTrackballArmed => "롤 회전 · 좌우 드래그로 화면 기울이기 · 클릭 또는 R로 종료",
+        TextKey::CameraTrackballArmed => {
+            "롤 회전 · 좌우 드래그로 화면 기울이기 · 클릭 또는 R로 종료"
+        }
         TextKey::HelpTrackball => "트랙볼 회전",
         TextKey::ShortcutTrackball => "R",
         TextKey::RecoveryTitle => "지난 세션이 비정상 종료되었습니다",
@@ -223,7 +225,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryDiscard => "새로 시작",
         TextKey::RecoveryRestored => "이전 세션을 복구했습니다.",
         TextKey::RecoveryLookMissing => {
-            "그 세션의 외형이 더 이상 설치되어 있지 않아 복구하지 못했습니다."
+            "그 세션의 외형이 아직 목록에 없습니다 — 텍스처는 복원됐고, 편집 내용은 외형을 선택하면 적용됩니다."
         }
         TextKey::SettingsOcclusionGroup => "주변광 차폐",
         TextKey::SettingsOcclusionIntensity => "세기",

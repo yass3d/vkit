@@ -221,7 +221,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("กู้คืน"),
         TextKey::RecoveryDiscard => Some("เริ่มใหม่"),
         TextKey::RecoveryRestored => Some("กู้คืนเซสชันก่อนหน้าแล้ว"),
-        TextKey::RecoveryLookMissing => Some("ลุคของเซสชันนั้นไม่ได้ติดตั้งอยู่แล้ว จึงกู้คืนอะไรไม่ได้"),
+        TextKey::RecoveryLookMissing => {
+            Some("ลุคของเซสชันนั้นยังไม่อยู่ในรายการ — พื้นผิวถูกกู้คืนแล้ว และการแก้ไขจะมีผลเมื่อเลือกลุคนั้น")
+        }
         TextKey::SettingsOcclusionGroup => Some("แอมเบียนต์ออคลูชัน"),
         TextKey::SettingsOcclusionIntensity => Some("ความแรง"),
         TextKey::SettingsOcclusionRadius => Some("ระยะ"),

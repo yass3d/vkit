@@ -219,7 +219,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("恢复"),
         TextKey::RecoveryDiscard => Some("重新开始"),
         TextKey::RecoveryRestored => Some("已恢复上次会话。"),
-        TextKey::RecoveryLookMissing => Some("该会话使用的外观已不在安装列表中，无法恢复。"),
+        TextKey::RecoveryLookMissing => {
+            Some("该会话的外观尚未在列表中 — 纹理已恢复,编辑将在选择该外观后应用。")
+        }
         TextKey::SettingsOcclusionGroup => Some("环境光遮蔽"),
         TextKey::SettingsOcclusionIntensity => Some("强度"),
         TextKey::SettingsOcclusionRadius => Some("范围"),

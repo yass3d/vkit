@@ -213,7 +213,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphSearch => Some("मॉर्फ खोजें"),
         TextKey::AppearanceSearch => Some("लुक खोजें"),
         TextKey::LookFind => Some("लुक लोड करें"),
-        TextKey::CameraTrackballArmed => Some("रोल सक्रिय · झुकाने के लिए आड़ा खींचें · समाप्त करने हेतु क्लिक या R"),
+        TextKey::CameraTrackballArmed => {
+            Some("रोल सक्रिय · झुकाने के लिए आड़ा खींचें · समाप्त करने हेतु क्लिक या R")
+        }
         TextKey::HelpTrackball => Some("ट्रैकबॉल घुमाव"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("पिछला सत्र अचानक बंद हो गया था"),
@@ -224,7 +226,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryDiscard => Some("नए सिरे से शुरू"),
         TextKey::RecoveryRestored => Some("पिछला सत्र वापस ले आया गया।"),
         TextKey::RecoveryLookMissing => {
-            Some("उस सत्र का लुक अब इंस्टॉल नहीं है, इसलिए कुछ भी वापस नहीं लाया जा सका।")
+            Some("उस सत्र का लुक अभी सूची में नहीं है — बनावटें बहाल हो गईं, और लुक चुनते ही संपादन लागू होंगे।")
         }
         TextKey::SettingsOcclusionGroup => Some("एम्बिएंट ऑक्लूज़न"),
         TextKey::SettingsOcclusionIntensity => Some("तीव्रता"),

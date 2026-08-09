@@ -214,7 +214,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphOneSidedFilterHide => "Hide morphs that move one side only",
         TextKey::AppearanceSearch => "Search Looks",
         TextKey::LookFind => "Load Look",
-        TextKey::CameraTrackballArmed => "Roll armed · drag sideways to roll · click or R to finish",
+        TextKey::CameraTrackballArmed => {
+            "Roll armed · drag sideways to roll · click or R to finish"
+        }
         TextKey::HelpTrackball => "Trackball rotate",
         TextKey::ShortcutTrackball => "R",
         TextKey::RecoveryTitle => "The last session ended unexpectedly",
@@ -225,7 +227,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryDiscard => "Start fresh",
         TextKey::RecoveryRestored => "Restored the previous session.",
         TextKey::RecoveryLookMissing => {
-            "That session's look is no longer installed, so nothing could be restored."
+            "That session's look is not installed yet — textures were restored, and the edits will apply when the look is selected."
         }
         TextKey::SettingsOcclusionGroup => "Ambient occlusion",
         TextKey::SettingsOcclusionIntensity => "Strength",

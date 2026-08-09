@@ -222,7 +222,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Ẩn morph chỉ tác động một bên"),
         TextKey::AppearanceSearch => Some("Tìm look"),
         TextKey::LookFind => Some("Nạp look"),
-        TextKey::CameraTrackballArmed => Some("Xoay nghiêng · kéo ngang để nghiêng · nhấp hoặc R để kết thúc"),
+        TextKey::CameraTrackballArmed => {
+            Some("Xoay nghiêng · kéo ngang để nghiêng · nhấp hoặc R để kết thúc")
+        }
         TextKey::HelpTrackball => Some("Xoay trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Phiên trước đã kết thúc đột ngột"),
@@ -232,9 +234,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("Khôi phục"),
         TextKey::RecoveryDiscard => Some("Bắt đầu mới"),
         TextKey::RecoveryRestored => Some("Đã khôi phục phiên trước."),
-        TextKey::RecoveryLookMissing => {
-            Some("Look của phiên đó không còn được cài, nên không khôi phục được gì.")
-        }
+        TextKey::RecoveryLookMissing => Some(
+            "Diện mạo của phiên đó chưa có trong danh sách — kết cấu đã khôi phục, chỉnh sửa sẽ áp dụng khi chọn diện mạo.",
+        ),
         TextKey::SettingsOcclusionGroup => Some("Ambient occlusion"),
         TextKey::SettingsOcclusionIntensity => Some("Cường độ"),
         TextKey::SettingsOcclusionRadius => Some("Tầm"),

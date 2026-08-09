@@ -228,7 +228,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::AppearanceSearch => Some("Cari Look"),
         TextKey::LookFind => Some("Muat Look"),
-        TextKey::CameraTrackballArmed => Some("Roll aktif · seret menyamping untuk memiringkan · klik atau R untuk selesai"),
+        TextKey::CameraTrackballArmed => {
+            Some("Roll aktif · seret menyamping untuk memiringkan · klik atau R untuk selesai")
+        }
         TextKey::HelpTrackball => Some("Rotasi trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Sesi terakhir berakhir tak terduga"),
@@ -238,9 +240,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryRestore => Some("Pulihkan"),
         TextKey::RecoveryDiscard => Some("Mulai baru"),
         TextKey::RecoveryRestored => Some("Sesi sebelumnya dipulihkan."),
-        TextKey::RecoveryLookMissing => {
-            Some("Look dari sesi itu sudah tidak terpasang, jadi tidak ada yang bisa dipulihkan.")
-        }
+        TextKey::RecoveryLookMissing => Some(
+            "Look sesi itu belum terdaftar — tekstur dipulihkan, dan suntingan akan diterapkan saat look dipilih.",
+        ),
         TextKey::SettingsOcclusionGroup => Some("Ambient occlusion"),
         TextKey::SettingsOcclusionIntensity => Some("Kekuatan"),
         TextKey::SettingsOcclusionRadius => Some("Jangkauan"),
