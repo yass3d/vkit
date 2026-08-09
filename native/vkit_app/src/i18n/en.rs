@@ -526,6 +526,18 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSaturate => "Saturate",
         TextKey::BrushDesaturate => "Desaturate",
         TextKey::ShowLayersOnly => "Layer images only",
+        TextKey::ShowLayersOnlyTooltip => "Hide the VaM skin and show the layer images alone",
+        TextKey::MatchToneTooltip => {
+            "Set exposure, saturation and temperature to match the layer below"
+        }
+        TextKey::ClearLayerMaskTooltip => "Erase this layer's mask",
+        TextKey::TextureMetalRoughTooltip => "Save maps in the metallic/roughness convention",
+        TextKey::TextureGlossSmoothTooltip => {
+            "Save maps in the glossiness/smoothness convention VaM uses"
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            "Flip the values when the source uses the opposite convention (roughness vs glossiness)"
+        }
         TextKey::BaseWithoutSkin => "Layer",
         TextKey::BaseWithoutSkinTooltip => {
             "The painted layers on the solid colour, without the preset; the exported texture is unchanged"

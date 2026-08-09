@@ -488,6 +488,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("স্যাচুরেট"),
         TextKey::BrushDesaturate => Some("ডিস্যাচুরেট"),
         TextKey::ShowLayersOnly => Some("কেবল লেয়ার ছবি"),
+        TextKey::ShowLayersOnlyTooltip => Some("VaM ত্বক লুকিয়ে কেবল লেয়ার ছবি দেখান"),
+        TextKey::MatchToneTooltip => {
+            Some("নিচের লেয়ারের সাথে মেলাতে এক্সপোজার, স্যাচুরেশন ও তাপমাত্রা ঠিক করুন")
+        }
+        TextKey::ClearLayerMaskTooltip => Some("এই লেয়ারের মাস্ক মুছুন"),
+        TextKey::TextureMetalRoughTooltip => Some("metallic/roughness রীতিতে ম্যাপ সংরক্ষণ করুন"),
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("VaM-এর glossiness/smoothness রীতিতে ম্যাপ সংরক্ষণ করুন")
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            Some("উৎস বিপরীত রীতিতে হলে মান উল্টে দিন (roughness ↔ glossiness)")
+        }
         TextKey::BaseWithoutSkin => Some("লেয়ার"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("প্রিসেট ছাড়া সলিড রঙের উপরে আঁকা লেয়ার; এক্সপোর্ট করা টেক্সচার অপরিবর্তিত")

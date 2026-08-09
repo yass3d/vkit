@@ -572,6 +572,22 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("Sättigen"),
         TextKey::BrushDesaturate => Some("Entsättigen"),
         TextKey::ShowLayersOnly => Some("Nur Ebenenbilder"),
+        TextKey::ShowLayersOnlyTooltip => {
+            Some("Blendet die VaM-Haut aus und zeigt nur die Ebenenbilder")
+        }
+        TextKey::MatchToneTooltip => {
+            Some("Belichtung, Sättigung und Temperatur an die Ebene darunter angleichen")
+        }
+        TextKey::ClearLayerMaskTooltip => Some("Löscht die Maske dieser Ebene"),
+        TextKey::TextureMetalRoughTooltip => {
+            Some("Speichert die Maps in der Metallic/Roughness-Konvention")
+        }
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("Speichert die Maps in der Glossiness/Smoothness-Konvention von VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => Some(
+            "Kehrt die Werte um, wenn die Quelle die Gegenkonvention nutzt (Roughness ↔ Glossiness)",
+        ),
         TextKey::BaseWithoutSkin => Some("Ebene"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Die gemalten Ebenen auf der einfarbigen Fläche, ohne Preset; die exportierte Textur bleibt gleich",

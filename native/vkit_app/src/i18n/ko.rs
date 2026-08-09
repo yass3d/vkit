@@ -513,6 +513,16 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSaturate => "채도 증가",
         TextKey::BrushDesaturate => "채도 감소",
         TextKey::ShowLayersOnly => "레이어 이미지만 보기",
+        TextKey::ShowLayersOnlyTooltip => "VaM 스킨을 잠시 감추고 레이어 이미지만 표시합니다",
+        TextKey::MatchToneTooltip => "아래 레이어의 색감에 맞춰 노출·채도·온도를 자동 조정합니다",
+        TextKey::ClearLayerMaskTooltip => "이 레이어의 마스크를 지웁니다",
+        TextKey::TextureMetalRoughTooltip => "메탈릭/러프니스 규격으로 저장합니다",
+        TextKey::TextureGlossSmoothTooltip => {
+            "VaM이 쓰는 글로시니스/스무스니스 규격으로 저장합니다"
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            "소스가 반대 규격일 때 값을 뒤집습니다 (러프니스 ↔ 글로시니스)"
+        }
         TextKey::BaseWithoutSkin => "레이어",
         TextKey::BaseWithoutSkinTooltip => {
             "프리셋 없이 그린 레이어만 솔리드 위에 표시합니다. 내보내는 텍스처는 그대로입니다"

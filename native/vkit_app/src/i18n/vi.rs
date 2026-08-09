@@ -536,6 +536,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("Tăng bão hòa"),
         TextKey::BrushDesaturate => Some("Giảm bão hòa"),
         TextKey::ShowLayersOnly => Some("Chỉ ảnh lớp"),
+        TextKey::ShowLayersOnlyTooltip => Some("Ẩn da VaM và chỉ hiện ảnh của các lớp"),
+        TextKey::MatchToneTooltip => Some("Chỉnh phơi sáng, bão hòa và nhiệt độ theo lớp bên dưới"),
+        TextKey::ClearLayerMaskTooltip => Some("Xóa mặt nạ của lớp này"),
+        TextKey::TextureMetalRoughTooltip => Some("Lưu bản đồ theo chuẩn metallic/roughness"),
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("Lưu bản đồ theo chuẩn glossiness/smoothness của VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            Some("Đảo giá trị khi nguồn dùng chuẩn ngược lại (roughness ↔ glossiness)")
+        }
         TextKey::BaseWithoutSkin => Some("Lớp"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("Các lớp đã vẽ trên màu đơn sắc, không có preset; texture xuất ra không đổi")

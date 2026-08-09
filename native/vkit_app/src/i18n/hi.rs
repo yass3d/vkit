@@ -500,6 +500,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("सैचुरेट"),
         TextKey::BrushDesaturate => Some("डीसैचुरेट"),
         TextKey::ShowLayersOnly => Some("केवल लेयर छवियाँ"),
+        TextKey::ShowLayersOnlyTooltip => Some("VaM त्वचा छिपाकर केवल लेयर छवियाँ दिखाएँ"),
+        TextKey::MatchToneTooltip => Some("नीचे की लेयर से मेल के लिए एक्सपोज़र, संतृप्ति और तापमान बदलें"),
+        TextKey::ClearLayerMaskTooltip => Some("इस लेयर का मास्क मिटाएँ"),
+        TextKey::TextureMetalRoughTooltip => Some("मैप्स को metallic/roughness परिपाटी में सहेजें"),
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("VaM की glossiness/smoothness परिपाटी में मैप्स सहेजें")
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            Some("यदि स्रोत विपरीत परिपाटी में हो तो मान पलटें (roughness ↔ glossiness)")
+        }
         TextKey::BaseWithoutSkin => Some("लेयर"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("प्रीसेट के बिना, सॉलिड रंग पर सिर्फ़ पेंट की गई लेयर; निर्यात होने वाला टेक्सचर वही रहता है")

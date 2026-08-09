@@ -572,6 +572,22 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("Saturer"),
         TextKey::BrushDesaturate => Some("Désaturer"),
         TextKey::ShowLayersOnly => Some("Images des calques seuls"),
+        TextKey::ShowLayersOnlyTooltip => {
+            Some("Masque la peau VaM et n'affiche que les images des calques")
+        }
+        TextKey::MatchToneTooltip => {
+            Some("Ajuste exposition, saturation et température sur le calque du dessous")
+        }
+        TextKey::ClearLayerMaskTooltip => Some("Efface le masque de ce calque"),
+        TextKey::TextureMetalRoughTooltip => {
+            Some("Enregistre les cartes en convention metallic/roughness")
+        }
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("Enregistre les cartes en convention glossiness/smoothness de VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => Some(
+            "Inverse les valeurs si la source suit la convention opposée (roughness ↔ glossiness)",
+        ),
         TextKey::BaseWithoutSkin => Some("Calque"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Les calques peints sur la couleur unie, sans le préréglage ; la texture exportée est inchangée",

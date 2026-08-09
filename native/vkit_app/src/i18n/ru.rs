@@ -560,6 +560,20 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("Насытить"),
         TextKey::BrushDesaturate => Some("Обесцветить"),
         TextKey::ShowLayersOnly => Some("Только изображения слоёв"),
+        TextKey::ShowLayersOnlyTooltip => {
+            Some("Скрывает кожу VaM и показывает только изображения слоёв")
+        }
+        TextKey::MatchToneTooltip => {
+            Some("Подгоняет экспозицию, насыщенность и температуру под слой ниже")
+        }
+        TextKey::ClearLayerMaskTooltip => Some("Стирает маску этого слоя"),
+        TextKey::TextureMetalRoughTooltip => Some("Сохраняет карты в конвенции metallic/roughness"),
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("Сохраняет карты в конвенции glossiness/smoothness, принятой в VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => Some(
+            "Инвертирует значения, если источник в противоположной конвенции (roughness ↔ glossiness)",
+        ),
         TextKey::BaseWithoutSkin => Some("Слой"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Нарисованные слои на сплошном цвете, без пресета; экспортируемая текстура не меняется",

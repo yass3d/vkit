@@ -537,6 +537,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("彩度を上げる"),
         TextKey::BrushDesaturate => Some("彩度を下げる"),
         TextKey::ShowLayersOnly => Some("レイヤー画像のみ表示"),
+        TextKey::ShowLayersOnlyTooltip => Some("VaMスキンを隠してレイヤー画像のみ表示します"),
+        TextKey::MatchToneTooltip => Some("下のレイヤーに合わせて露出・彩度・色温度を調整します"),
+        TextKey::ClearLayerMaskTooltip => Some("このレイヤーのマスクを消去します"),
+        TextKey::TextureMetalRoughTooltip => Some("メタリック/ラフネス規格で保存します"),
+        TextKey::TextureGlossSmoothTooltip => Some("VaMが使うグロス/スムースネス規格で保存します"),
+        TextKey::TextureInvertScalarTooltip => {
+            Some("ソースが逆の規格のとき値を反転します(ラフネス ↔ グロス)")
+        }
         TextKey::BaseWithoutSkin => Some("レイヤー"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "プリセットなしで、描いたレイヤーだけをソリッドの上に表示します。書き出すテクスチャは変わりません",

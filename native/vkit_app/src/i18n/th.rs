@@ -480,6 +480,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("เพิ่มความอิ่มสี"),
         TextKey::BrushDesaturate => Some("ลดความอิ่มสี"),
         TextKey::ShowLayersOnly => Some("เฉพาะรูปภาพเลเยอร์"),
+        TextKey::ShowLayersOnlyTooltip => Some("ซ่อนผิว VaM และแสดงเฉพาะรูปภาพเลเยอร์"),
+        TextKey::MatchToneTooltip => Some("ปรับค่าแสง ความอิ่มตัว และอุณหภูมิให้เข้ากับเลเยอร์ด้านล่าง"),
+        TextKey::ClearLayerMaskTooltip => Some("ลบมาสก์ของเลเยอร์นี้"),
+        TextKey::TextureMetalRoughTooltip => Some("บันทึกแมปตามแบบแผน metallic/roughness"),
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("บันทึกแมปตามแบบแผน glossiness/smoothness ของ VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => {
+            Some("กลับค่าหากต้นทางใช้แบบแผนตรงข้าม (roughness ↔ glossiness)")
+        }
         TextKey::BaseWithoutSkin => Some("เลเยอร์"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("เลเยอร์ที่วาดบนสีพื้น โดยไม่ใช้พรีเซ็ต เท็กซ์เจอร์ที่ส่งออกไม่เปลี่ยน")

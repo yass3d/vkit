@@ -572,6 +572,22 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("Saturar"),
         TextKey::BrushDesaturate => Some("Desaturar"),
         TextKey::ShowLayersOnly => Some("Solo imágenes de capas"),
+        TextKey::ShowLayersOnlyTooltip => {
+            Some("Oculta la piel de VaM y muestra solo las imágenes de capas")
+        }
+        TextKey::MatchToneTooltip => {
+            Some("Ajusta exposición, saturación y temperatura a la capa inferior")
+        }
+        TextKey::ClearLayerMaskTooltip => Some("Borra la máscara de esta capa"),
+        TextKey::TextureMetalRoughTooltip => {
+            Some("Guarda los mapas en la convención metallic/roughness")
+        }
+        TextKey::TextureGlossSmoothTooltip => {
+            Some("Guarda los mapas en la convención glossiness/smoothness de VaM")
+        }
+        TextKey::TextureInvertScalarTooltip => Some(
+            "Invierte los valores si la fuente usa la convención opuesta (roughness ↔ glossiness)",
+        ),
         TextKey::BaseWithoutSkin => Some("Capa"),
         TextKey::BaseWithoutSkinTooltip => Some(
             "Las capas pintadas sobre el color sólido, sin el preajuste; la textura exportada no cambia",

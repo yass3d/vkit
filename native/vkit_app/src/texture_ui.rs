@@ -284,17 +284,25 @@ pub fn draw_texture_export_section(ui: &mut Ui, state: &mut AppState) {
             2,
             usize::from(gloss),
             |ui, segment_width| {
-                let metal = segment_button(
-                    ui,
-                    segment_width,
-                    text(state.locale, TextKey::TextureMetalRough),
-                    !gloss,
+                let metal = crate::ui_components::tooltip(
+                    segment_button(
+                        ui,
+                        segment_width,
+                        text(state.locale, TextKey::TextureMetalRough),
+                        !gloss,
+                    ),
+                    text(state.locale, TextKey::TextureMetalRoughTooltip),
+                    None,
                 );
-                let glossy = segment_button(
-                    ui,
-                    segment_width,
-                    text(state.locale, TextKey::TextureGlossSmooth),
-                    gloss,
+                let glossy = crate::ui_components::tooltip(
+                    segment_button(
+                        ui,
+                        segment_width,
+                        text(state.locale, TextKey::TextureGlossSmooth),
+                        gloss,
+                    ),
+                    text(state.locale, TextKey::TextureGlossSmoothTooltip),
+                    None,
                 );
                 (metal.clicked(), glossy.clicked())
             },
@@ -366,13 +374,16 @@ fn draw_layer_toolbar(ui: &mut Ui, state: &mut AppState) {
         // the skin settings call the layer state -- and puts it back when
         // switched off, including the bake base it had to move out of the way.
         let mut layers_only = state.texture_project.hide_vam_skin_preview;
-        if switch_row(
-            ui,
-            &mut layers_only,
-            text(state.locale, TextKey::ShowLayersOnly),
-        )
-        .changed()
-        {
+        let response = crate::ui_components::tooltip(
+            switch_row(
+                ui,
+                &mut layers_only,
+                text(state.locale, TextKey::ShowLayersOnly),
+            ),
+            text(state.locale, TextKey::ShowLayersOnlyTooltip),
+            None,
+        );
+        if response.changed() {
             state.dispatch(Action::SetTextureHideVaMSkin(layers_only));
         }
     }
@@ -779,13 +790,16 @@ fn draw_selected_layer_controls(ui: &mut Ui, state: &mut AppState, layer: &Textu
             }
         } else if !layer.channel.is_color() {
             let mut invert = layer.scalar_invert;
-            if switch_row(
-                ui,
-                &mut invert,
-                text(state.locale, TextKey::TextureInvertScalar),
-            )
-            .changed()
-            {
+            let response = crate::ui_components::tooltip(
+                switch_row(
+                    ui,
+                    &mut invert,
+                    text(state.locale, TextKey::TextureInvertScalar),
+                ),
+                text(state.locale, TextKey::TextureInvertScalarTooltip),
+                None,
+            );
+            if response.changed() {
                 state.dispatch(Action::SetTextureLayerScalarInvert {
                     id: layer.id,
                     invert,
@@ -829,16 +843,19 @@ fn draw_selected_layer_controls(ui: &mut Ui, state: &mut AppState, layer: &Textu
             crate::ui::section_heading(ui, text(state.locale, TextKey::ImageAdjustments));
             draw_adjustments(ui, state, layer);
             let has_anchor = state.texture_project.tone_match_anchor(layer.id).is_some();
-            if has_anchor
-                && ui
-                    .add_sized(
+            if has_anchor {
+                let response = crate::ui_components::tooltip(
+                    ui.add_sized(
                         [ui.available_width(), CONTROL_H_DENSE],
                         Button::new(text(state.locale, TextKey::MatchToneToLayerBelow))
                             .corner_radius(CAPSULE_RADIUS),
-                    )
-                    .clicked()
-            {
-                state.dispatch(Action::MatchTextureLayerColor(layer.id));
+                    ),
+                    text(state.locale, TextKey::MatchToneTooltip),
+                    None,
+                );
+                if response.clicked() {
+                    state.dispatch(Action::MatchTextureLayerColor(layer.id));
+                }
             }
         }
         // Exactly what the section can draw something for: a Clear button
@@ -891,16 +908,19 @@ fn draw_adjustments(ui: &mut Ui, state: &mut AppState, layer: &TextureLayer) {
 }
 
 fn draw_mask_brush_controls(ui: &mut Ui, state: &mut AppState, layer: &TextureLayer) {
-    if layer.mask.is_some()
-        && ui
-            .add_sized(
+    if layer.mask.is_some() {
+        let response = crate::ui_components::tooltip(
+            ui.add_sized(
                 [ui.available_width(), CONTROL_H_DENSE],
                 Button::new(text(state.locale, TextKey::ClearLayerMask))
                     .corner_radius(CAPSULE_RADIUS),
-            )
-            .clicked()
-    {
-        state.dispatch(Action::ClearTextureLayerMask(layer.id));
+            ),
+            text(state.locale, TextKey::ClearLayerMaskTooltip),
+            None,
+        );
+        if response.clicked() {
+            state.dispatch(Action::ClearTextureLayerMask(layer.id));
+        }
     }
 
     if state.texture_project.active_tool == TextureTool::CloneStamp

@@ -474,6 +474,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSaturate => Some("加饱和"),
         TextKey::BrushDesaturate => Some("去饱和"),
         TextKey::ShowLayersOnly => Some("仅显示图层图像"),
+        TextKey::ShowLayersOnlyTooltip => Some("暂时隐藏VaM皮肤,仅显示图层图像"),
+        TextKey::MatchToneTooltip => Some("自动调整曝光、饱和度与色温以匹配下方图层"),
+        TextKey::ClearLayerMaskTooltip => Some("清除此图层的蒙版"),
+        TextKey::TextureMetalRoughTooltip => Some("以金属度/粗糙度规范保存贴图"),
+        TextKey::TextureGlossSmoothTooltip => Some("以VaM使用的光泽度/平滑度规范保存贴图"),
+        TextKey::TextureInvertScalarTooltip => {
+            Some("当源图使用相反规范时反转数值(粗糙度 ↔ 光泽度)")
+        }
         TextKey::BaseWithoutSkin => Some("图层"),
         TextKey::BaseWithoutSkinTooltip => {
             Some("不使用预设，仅将绘制的图层显示在纯色之上；导出的贴图不变")
