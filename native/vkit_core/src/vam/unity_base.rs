@@ -1283,6 +1283,126 @@ pub(crate) struct DazScalpProviderMesh {
     pub(crate) uvs: Vec<[f32; 2]>,
 }
 
+/// The figure mesh's own UV mapping, as the bundle stores it.
+///
+/// `base_polygons` and `uv_polygons` run in lockstep — corner c of face i takes
+/// its position from one and its texture coordinate from the other — which is
+/// what makes this an exact mapping onto the canonical mesh rather than a
+/// correspondence anyone has to guess at.
+#[derive(Clone, Debug)]
+pub struct FigureUvMesh {
+    pub material_names: Vec<String>,
+    pub material_indices: Vec<u32>,
+    pub base_polygons: Vec<Vec<u32>>,
+    pub uv_polygons: Vec<Vec<u32>>,
+    pub uvs: Vec<[f32; 2]>,
+}
+
+const DAZ_FIGURE_UV_REQUIRED_FIELDS: &[&str] = &[
+    "m_Script",
+    "sceneNodeId",
+    "geometryId",
+    "_numBaseVertices",
+    "_numBasePolygons",
+    "_numUVVertices",
+    "_materialNames",
+    "_baseVertices",
+    "_basePolyList",
+    "_UVVertices",
+    "_UVPolyList",
+    "_OrigUV",
+];
+
+/// Reads the UV mapping of the figure mesh whose polygon count is canonical.
+///
+/// The stream this returns is the one VaM itself renders with: measured
+/// against the loose `femalecustom.obj` the loader used to require, every
+/// material island agrees to the last bit, including the eye, mouth and lash
+/// atlases. Reading it here means a stock installation no longer needs a file
+/// it was never shipped with.
+pub fn extract_figure_uv(bundle: &[u8]) -> Result<FigureUvMesh> {
+    let (data_area, nodes) = decode_unity_bundle(bundle)?;
+    for node in &nodes {
+        if node.path.ends_with(".resS") || node.path.ends_with(".resource") {
+            continue;
+        }
+        let end = node.offset + node.size;
+        let Some(cab) = data_area.get(node.offset..end) else {
+            continue;
+        };
+        let Ok(asset) = parse_serialized_asset(cab) else {
+            continue;
+        };
+        for object in &asset.objects {
+            let serialized_type = &asset.types[object.type_index];
+            if serialized_type.class_id != 114 {
+                continue;
+            }
+            let Some(tree) = serialized_type.tree.as_ref() else {
+                continue;
+            };
+            if !tree
+                .children
+                .iter()
+                .any(|child| child.name == "_basePolyList")
+            {
+                continue;
+            }
+            let Ok(fields) = decode_record_until(
+                cab,
+                object,
+                tree,
+                asset.endian,
+                DAZ_FIGURE_UV_REQUIRED_FIELDS,
+            ) else {
+                continue;
+            };
+            let record = TreeValue::Record(fields);
+            let Some(base_polygons) = polygon_list(record.field("_basePolyList"), "figure").ok()
+            else {
+                continue;
+            };
+            if base_polygons.len() != crate::G2F_POLYGON_COUNT {
+                continue;
+            }
+            let uv_polygons = polygon_list(record.field("_UVPolyList"), "figure")?;
+            let uvs = vector2_list(record.field("_OrigUV"))
+                .ok_or_else(|| bundle_error("figure mesh has no _OrigUV stream"))?;
+            let material_names = match record.field("_materialNames") {
+                Some(TreeValue::List(values)) => values
+                    .iter()
+                    .filter_map(|value| match value {
+                        TreeValue::Text(text) => Some(text.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let material_indices = match record.field("_basePolyList") {
+                Some(TreeValue::List(polygons)) => polygons
+                    .iter()
+                    .map(|polygon| {
+                        polygon
+                            .field("materialNum")
+                            .and_then(TreeValue::as_signed)
+                            .and_then(|value| u32::try_from(value).ok())
+                            .unwrap_or(0)
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            return Ok(FigureUvMesh {
+                material_names,
+                material_indices,
+                base_polygons,
+                uv_polygons,
+                uvs,
+            });
+        }
+    }
+    Err(bundle_error("no canonical figure mesh in this bundle"))
+}
+
 const DAZ_SCALP_REQUIRED_FIELDS: &[&str] = &[
     "m_GameObject",
     "_numBasePolygons",

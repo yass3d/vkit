@@ -22,7 +22,7 @@ const MAX_TYPES: usize = 4_096;
 const MAX_OBJECTS: usize = 100_000;
 const MAX_TEXTURE_BYTES: usize = 128 * 1024 * 1024;
 const OBJECT_HEADER_WINDOW: usize = 64 * 1024;
-const INDEX_SCHEMA_VERSION: u32 = 2;
+const INDEX_SCHEMA_VERSION: u32 = 3;
 
 const CACHE_MAGIC: [u8; 8] = *b"FMSKTX06";
 const CACHE_DIRECTORY: &str = "builtin-skins";
@@ -603,6 +603,10 @@ pub fn load_builtin_texture_rgba(
         pixels::unswizzle_dxt5nm_in_place(&mut rgba);
     }
 
+    // Unity stores row 0 at the bottom. Flipping here is what lets everything
+    // downstream treat a decoded bundle texture as an ordinary top-down image.
+    // VaM's own Cache/Textures copies keep Unity's order instead, which is why
+    // those carry a different UV orientation and these must not.
     pixels::flip_rows_in_place(&mut rgba, level_width, level_height);
     if level_width > max_edge || level_height > max_edge {
         let scale = f64::from(max_edge) / f64::from(level_width.max(level_height));
@@ -868,6 +872,11 @@ pub fn scan_builtin_skins(
     Ok((presets, warnings))
 }
 
+/// Every texture this tool reads out of a figure's material bundle.
+///
+/// The eye, mouth and lash rows matter beyond their own regions: they are the
+/// stand-ins every look inherits when it names none of its own, and the
+/// bundle is the only place they are guaranteed to exist.
 const CHANNEL_SLOTS: &[(&str, &str, &str)] = &[
     ("face_diffuse", "Face", "_MainTex"),
     ("face_normal", "Face", "_BumpMap"),
@@ -878,12 +887,25 @@ const CHANNEL_SLOTS: &[(&str, &str, &str)] = &[
     ("torso_specular", "Torso", "_SpecTex"),
     ("torso_gloss", "Torso", "_GlossTex"),
     ("sclera_diffuse", "Sclera", "_MainTex"),
+    ("sclera_normal", "Sclera", "_BumpMap"),
+    ("sclera_specular", "Sclera", "_SpecTex"),
+    ("sclera_gloss", "Sclera", "_GlossTex"),
     ("iris_diffuse", "Irises", "_MainTex"),
+    ("iris_normal", "Irises", "_BumpMap"),
+    ("iris_specular", "Irises", "_SpecTex"),
+    ("iris_gloss", "Irises", "_GlossTex"),
     ("lacrimal_diffuse", "Lacrimals", "_MainTex"),
+    ("lacrimal_specular", "Lacrimals", "_SpecTex"),
     ("inner_mouth_diffuse", "InnerMouth", "_MainTex"),
+    ("inner_mouth_specular", "InnerMouth", "_SpecTex"),
     ("teeth_diffuse", "Teeth", "_MainTex"),
+    ("teeth_normal", "Teeth", "_BumpMap"),
+    ("teeth_specular", "Teeth", "_SpecTex"),
     ("gums_diffuse", "Gums", "_MainTex"),
+    ("gums_specular", "Gums", "_SpecTex"),
     ("tongue_diffuse", "Tongue", "_MainTex"),
+    ("tongue_normal", "Tongue", "_BumpMap"),
+    ("tongue_specular", "Tongue", "_SpecTex"),
     ("eyelash_alpha", "Eyelashes", "_AlphaTex"),
 ];
 
@@ -1128,6 +1150,22 @@ fn resolve_cab_bundle(
     Ok(cab_index.get(cab).cloned())
 }
 
+/// The figure the others are variants of: VaM's own default person, and so
+/// the source of the materials a look inherits when it names none.
+pub const fn base_figure(sex: SkinSex) -> &'static str {
+    match sex {
+        SkinSex::Male => "m_1",
+        // An unsexed look is previewed on the female base, as the rest of
+        // this tool is.
+        SkinSex::Female | SkinSex::Unknown => "f_1",
+    }
+}
+
+#[must_use]
+pub fn builtin_stable_id(figure: &str) -> String {
+    format!("vam:skin:builtin:{}", figure.replace('_', "-"))
+}
+
 fn preset_from_entry(
     streaming: &Path,
     figure: &str,
@@ -1148,7 +1186,7 @@ fn preset_from_entry(
         })))
     };
     let mut preset = SkinPreset {
-        stable_id: format!("vam:skin:builtin:{}", figure.replace('_', "-")),
+        stable_id: builtin_stable_id(figure),
         label: format!("{} (VaM)", entry.display_name),
         source: AssetLocator::File(streaming.join(format!("{figure}_mat"))),
         sex,
@@ -1170,20 +1208,28 @@ fn preset_from_entry(
         },
         auxiliary: super::skin::SkinAuxiliary::default(),
     };
-    let auxiliary = |role: &str, material: &mut super::skin::SkinAuxMaterial| {
-        if let Some(diffuse) = locator(role) {
+    let auxiliary = |region: &str, material: &mut super::skin::SkinAuxMaterial| {
+        if let Some(diffuse) = locator(&format!("{region}_diffuse")) {
             material.diffuse = Some(diffuse);
             material.diffuse_source = SkinDiffuseSource::CustomTexture;
         }
+        material.surface.normal = locator(&format!("{region}_normal"));
+        material.surface.specular = locator(&format!("{region}_specular"));
+        material.surface.gloss = locator(&format!("{region}_gloss"));
     };
-    auxiliary("sclera_diffuse", &mut preset.auxiliary.sclera);
-    auxiliary("iris_diffuse", &mut preset.auxiliary.iris);
-    auxiliary("lacrimal_diffuse", &mut preset.auxiliary.lacrimal);
-    auxiliary("inner_mouth_diffuse", &mut preset.auxiliary.inner_mouth);
-    auxiliary("teeth_diffuse", &mut preset.auxiliary.teeth);
-    auxiliary("gums_diffuse", &mut preset.auxiliary.gums);
-    auxiliary("tongue_diffuse", &mut preset.auxiliary.tongue);
-    auxiliary("eyelash_alpha", &mut preset.auxiliary.eyelashes);
+    auxiliary("sclera", &mut preset.auxiliary.sclera);
+    auxiliary("iris", &mut preset.auxiliary.iris);
+    auxiliary("lacrimal", &mut preset.auxiliary.lacrimal);
+    auxiliary("inner_mouth", &mut preset.auxiliary.inner_mouth);
+    auxiliary("teeth", &mut preset.auxiliary.teeth);
+    auxiliary("gums", &mut preset.auxiliary.gums);
+    auxiliary("tongue", &mut preset.auxiliary.tongue);
+    // The lash sheet is an alpha mask rather than a colour map, so it has no
+    // matching surface rows.
+    if let Some(alpha) = locator("eyelash_alpha") {
+        preset.auxiliary.eyelashes.diffuse = Some(alpha);
+        preset.auxiliary.eyelashes.diffuse_source = SkinDiffuseSource::CustomTexture;
+    }
     preset
 }
 

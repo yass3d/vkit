@@ -16,7 +16,7 @@ use vkit_core::vam::{
 
 use crate::skin_preview::{
     SkinChannel, SkinCorner, SkinImage, SkinPreview, SkinPreviewGeometry, SkinSurfaceMap,
-    SkinTriangle,
+    SkinTriangle, SkinUvOrientation,
 };
 
 const MAX_SKIN_IMAGE_BYTES: usize = 128 * 1024 * 1024;
@@ -445,7 +445,12 @@ fn decode_locator(
     if let AssetLocator::BuiltinTexture(reference) = locator {
         let decoded = vkit_core::vam::load_builtin_texture_rgba(reference, max_edge)
             .map_err(|error| error.to_string())?;
-        return SkinImage::new(revision, decoded.width, decoded.height, decoded.rgba8);
+        let mut image = SkinImage::new(revision, decoded.width, decoded.height, decoded.rgba8)?;
+        // Stated rather than inherited from the default: the bundle decoder
+        // has already turned Unity's bottom-up rows the right way up, so this
+        // is an ordinary image, unlike the VaM cache above.
+        image.uv_orientation = SkinUvOrientation::ObjFlipV;
+        return Ok(image);
     }
     let bytes = locator
         .read_bytes(MAX_SKIN_IMAGE_BYTES)

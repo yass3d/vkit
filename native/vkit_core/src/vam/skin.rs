@@ -310,7 +310,8 @@ pub enum SkinDiffuseSource {
 
     BuiltInSelectorUnavailable(String),
 
-    DefaultCache,
+    /// Supplied by this tool because the look named nothing for this region.
+    FigureDefault,
 }
 
 impl SkinDiffuseSource {
@@ -530,36 +531,59 @@ pub fn scan_skin_library_with_report(root: &VaMRoot) -> Result<SkinScanReport> {
         }
     }
 
-    let defaults = discover_default_auxiliary(root)?;
+    // Scanned before the defaults are chosen, because the base figure's own
+    // materials are those defaults.
+    let builtin = match super::unity_textures::scan_builtin_skins(
+        root,
+        default_texture_cache_dir().as_deref(),
+    ) {
+        Ok((builtin, warnings)) => {
+            for warning in warnings {
+                diagnostics.record_warning(warning);
+            }
+            builtin
+        }
+        Err(error) => {
+            diagnostics.record_warning(format!("built-in skin scan failed: {error}"));
+            Vec::new()
+        }
+    };
+
+    let defaults = discover_default_auxiliary(root, &builtin)?;
     for preset in presets.values_mut() {
         let fallback = defaults.for_sex(preset.sex);
-        preset.auxiliary.fill_missing_from(fallback);
-        preset.auxiliary.apply_shared_eye_atlas(fallback);
-        for (region, selector) in preset.auxiliary.unavailable_builtin_selectors() {
-            diagnostics.record_warning(format!(
-                "built-in {region} selector {selector:?} is not exposed in Cache/Textures; using the sex-compatible neutral preview when available"
-            ));
-        }
+        // Spread first so the look's own eye wins the regions it left silent,
+        // then take stand-ins for everything still unnamed, then spread once
+        // more: an iris the stand-in refused would otherwise be the one blank
+        // island in an otherwise complete eye, which reads as a white eye.
+        preset.auxiliary.spread_own_eye_atlas();
+        preset
+            .auxiliary
+            .fill_missing_from(&fallback.auxiliary, fallback.iris_stands_in);
+        preset.auxiliary.spread_own_eye_atlas();
+        // A look that named a built-in eye colour is not warned about. VaM
+        // paints those as an extra layer over the shared eye atlas, and this
+        // tool shows the atlas underneath instead — a whole, ordinary eye,
+        // just not the shade that look's author picked. That is a settled
+        // decision, not a failure, and 160 looks produced twenty warnings a
+        // scan about work that had gone correctly.
+        //
+        // `unavailable_builtin_selectors` is kept for the day that decision
+        // changes: eyes and inner mouth are fixed here today because the tool
+        // reshapes heads and reskins them, but if eye colour ever becomes
+        // something a reader chooses, this is where the gap is visible again.
+        // Resolving the colours themselves would mean reading Cache/Textures,
+        // which is the runtime folder this release stopped depending on.
     }
     let mut result: Vec<_> = presets.into_values().collect();
     result.sort_by(|left, right| {
         (left.label.to_lowercase(), &left.stable_id)
             .cmp(&(right.label.to_lowercase(), &right.stable_id))
     });
+    let mut combined = builtin;
+    combined.extend(result);
+    let result = combined;
 
-    match super::unity_textures::scan_builtin_skins(root, default_texture_cache_dir().as_deref()) {
-        Ok((builtin, warnings)) => {
-            for warning in warnings {
-                diagnostics.record_warning(warning);
-            }
-            let mut combined = builtin;
-            combined.extend(result);
-            result = combined;
-        }
-        Err(error) => {
-            diagnostics.record_warning(format!("built-in skin scan failed: {error}"));
-        }
-    }
     Ok(SkinScanReport {
         presets: result,
         diagnostics,
@@ -592,7 +616,14 @@ impl SkinAuxiliary {
         .collect()
     }
 
-    fn fill_missing_from(&mut self, fallback: &Self) {
+    /// Takes, for every region this look left unnamed, the stand-in's version.
+    ///
+    /// `iris_stands_in` says whether the stand-in iris is the figure's own
+    /// default colour. A look that asked for a built-in colour this
+    /// installation does not have may borrow that one, because it is what VaM
+    /// would have shown underneath — but never some other colour, which would
+    /// be a substitution the reader could only catch by eye.
+    fn fill_missing_from(&mut self, fallback: &Self, iris_stands_in: bool) {
         for (region, target, fallback) in [
             ("sclera", &mut self.sclera, &fallback.sclera),
             ("iris", &mut self.iris, &fallback.iris),
@@ -611,50 +642,72 @@ impl SkinAuxiliary {
                     .diffuse_source
                     .unresolved_builtin_selector()
                     .is_some()
+                    && (region != "iris" || iris_stands_in)
                 {
-                    let valid_fallback = region != "iris"
-                        || fallback.diffuse.as_ref().is_some_and(|locator| {
-                            matches!(
-                                locator,
-                                AssetLocator::File(path)
-                                    if builtin_iris_cache_color_number(path)
-                                        == Some(DEFAULT_BUILTIN_IRIS_COLOR)
-                            )
-                        });
-                    if valid_fallback {
-                        target.diffuse.clone_from(&fallback.diffuse);
-                    }
+                    target.diffuse.clone_from(&fallback.diffuse);
                 }
             }
             target.surface.fill_missing_from(&fallback.surface);
         }
     }
 
-    fn apply_shared_eye_atlas(&mut self, fallback: &Self) {
-        let atlas = fallback
+    /// Puts this look's own eye image across all three eye regions.
+    ///
+    /// VaM paints sclera, iris and lacrimal from one atlas, and a look
+    /// normally names it once — most often as the sclera. Spreading that one
+    /// image over the regions it left silent is what keeps an eye whole:
+    /// filling them from the stand-in instead would set a stranger's iris in
+    /// the look's own eye. Regions the look did name are left alone, and
+    /// regions no one named are left for the stand-in.
+    fn spread_own_eye_atlas(&mut self) {
+        let atlas = self
             .sclera
             .diffuse
             .as_ref()
-            .or(fallback.iris.diffuse.as_ref())
-            .or(fallback.lacrimal.diffuse.as_ref())
+            .or(self.iris.diffuse.as_ref())
+            .or(self.lacrimal.diffuse.as_ref())
             .cloned();
         let Some(atlas) = atlas else {
             return;
         };
         for material in [&mut self.sclera, &mut self.iris, &mut self.lacrimal] {
-            material.diffuse = Some(atlas.clone());
+            material.diffuse.get_or_insert_with(|| atlas.clone());
         }
+    }
+
+    /// Every region a look can name its own texture for.
+    fn materials_mut(&mut self) -> [&mut SkinAuxMaterial; 8] {
+        [
+            &mut self.sclera,
+            &mut self.iris,
+            &mut self.lacrimal,
+            &mut self.inner_mouth,
+            &mut self.teeth,
+            &mut self.gums,
+            &mut self.tongue,
+            &mut self.eyelashes,
+        ]
     }
 }
 
 struct DefaultAuxiliary {
-    female: SkinAuxiliary,
-    male: SkinAuxiliary,
-    unknown: SkinAuxiliary,
+    female: SexDefaults,
+    male: SexDefaults,
+    unknown: SexDefaults,
+}
+
+/// One sex's stand-in eye, mouth and lash materials.
+#[derive(Default)]
+struct SexDefaults {
+    auxiliary: SkinAuxiliary,
+
+    /// Whether `auxiliary.iris` is the figure's own default colour, and so a
+    /// safe stand-in for a look whose named colour is not installed.
+    iris_stands_in: bool,
 }
 
 impl DefaultAuxiliary {
-    fn for_sex(&self, sex: SkinSex) -> &SkinAuxiliary {
+    const fn for_sex(&self, sex: SkinSex) -> &SexDefaults {
         match sex {
             SkinSex::Female => &self.female,
             SkinSex::Male => &self.male,
@@ -663,21 +716,62 @@ impl DefaultAuxiliary {
     }
 }
 
-fn discover_default_auxiliary(root: &VaMRoot) -> Result<DefaultAuxiliary> {
+/// The materials a look inherits for the regions it names nothing for.
+///
+/// They come from the base figure's own material bundle, which is part of
+/// every installation. `Cache/Textures` only fills what the bundle does not
+/// carry: VaM writes that folder as it renders, so on an installation that
+/// has not yet displayed these textures it is empty — and empty is exactly
+/// what leaves eyes and inner mouth white.
+fn discover_default_auxiliary(root: &VaMRoot, builtin: &[SkinPreset]) -> Result<DefaultAuxiliary> {
     let entries = cache_texture_entries(root)?;
-    if entries.is_empty() {
-        return Ok(DefaultAuxiliary {
-            female: SkinAuxiliary::default(),
-            male: SkinAuxiliary::default(),
-            unknown: SkinAuxiliary::default(),
-        });
-    }
+    let for_sex = |sex: SkinSex| -> SexDefaults {
+        let mut auxiliary = base_figure_auxiliary(builtin, sex);
+        if !entries.is_empty() {
+            auxiliary.fill_missing_from(&default_auxiliary_from_cache(&entries, sex), true);
+        }
+        let iris_stands_in = iris_is_the_default_color(auxiliary.iris.diffuse.as_ref());
+        SexDefaults {
+            auxiliary,
+            iris_stands_in,
+        }
+    };
     Ok(DefaultAuxiliary {
-        female: default_auxiliary_from_cache(&entries, SkinSex::Female),
-        male: default_auxiliary_from_cache(&entries, SkinSex::Male),
-
-        unknown: default_auxiliary_from_cache(&entries, SkinSex::Unknown),
+        female: for_sex(SkinSex::Female),
+        male: for_sex(SkinSex::Male),
+        unknown: for_sex(SkinSex::Unknown),
     })
+}
+
+/// Whether an iris image is the figure's own default colour.
+///
+/// Only that one may stand in for a built-in colour this installation does
+/// not have. Anything else — another look's iris, a differently numbered
+/// preset — would be a silent substitution.
+fn iris_is_the_default_color(diffuse: Option<&AssetLocator>) -> bool {
+    match diffuse {
+        // The base figure's own iris is its default colour by construction.
+        Some(AssetLocator::BuiltinTexture(_)) => true,
+        Some(AssetLocator::File(path)) => {
+            builtin_iris_cache_color_number(path) == Some(DEFAULT_BUILTIN_IRIS_COLOR)
+        }
+        _ => false,
+    }
+}
+
+fn base_figure_auxiliary(builtin: &[SkinPreset], sex: SkinSex) -> SkinAuxiliary {
+    let wanted = super::unity_textures::builtin_stable_id(super::unity_textures::base_figure(sex));
+    let mut auxiliary = builtin
+        .iter()
+        .find(|preset| preset.stable_id == wanted)
+        .map(|preset| preset.auxiliary.clone())
+        .unwrap_or_default();
+    for material in auxiliary.materials_mut() {
+        if material.diffuse.is_some() {
+            material.diffuse_source = SkinDiffuseSource::FigureDefault;
+        }
+    }
+    auxiliary
 }
 
 fn cache_texture_entries(root: &VaMRoot) -> Result<Vec<PathBuf>> {
@@ -740,18 +834,9 @@ fn default_auxiliary_from_cache(entries: &[PathBuf], sex: SkinSex) -> SkinAuxili
     auxiliary.inner_mouth.surface.specular = find(MOUTH_SPECULAR_CACHE_PROFILES);
     auxiliary.inner_mouth.surface.gloss = find(MOUTH_GLOSS_CACHE_PROFILES);
     auxiliary.inner_mouth.surface.normal = find(MOUTH_NORMAL_CACHE_PROFILES);
-    for material in [
-        &mut auxiliary.sclera,
-        &mut auxiliary.iris,
-        &mut auxiliary.lacrimal,
-        &mut auxiliary.inner_mouth,
-        &mut auxiliary.teeth,
-        &mut auxiliary.gums,
-        &mut auxiliary.tongue,
-        &mut auxiliary.eyelashes,
-    ] {
+    for material in auxiliary.materials_mut() {
         if material.diffuse.is_some() {
-            material.diffuse_source = SkinDiffuseSource::DefaultCache;
+            material.diffuse_source = SkinDiffuseSource::FigureDefault;
         }
     }
     auxiliary
@@ -1019,7 +1104,7 @@ fn parse_vap_recursive_body(
         } = nested;
 
         skin_textures.fill_missing_from(&nested.textures);
-        auxiliary.fill_missing_from(&nested.auxiliary);
+        auxiliary.fill_missing_from(&nested.auxiliary, false);
         inherited_sex.merge(sex_claims);
     }
     let face_diffuse = skin_textures
@@ -2795,6 +2880,258 @@ mod tests {
         );
     }
 
+    fn bundle_texture(name: &str) -> AssetLocator {
+        AssetLocator::BuiltinTexture(std::sync::Arc::new(
+            super::super::unity_textures::BuiltinTextureRef {
+                bundle_path: PathBuf::from("f_1_mat"),
+                cab_node: "CAB-test".to_owned(),
+                path_id: 1,
+                texture_name: name.to_owned(),
+                normal_map: false,
+                cache_directory: None,
+            },
+        ))
+    }
+
+    /// What someone who has just installed VaM and never run it actually has.
+    ///
+    /// Both defects this guards against looked like quality problems and were
+    /// really availability ones: the UV mapping came from a loose OBJ and the
+    /// eye, mouth and lash textures from `Cache/Textures`, and neither exists
+    /// until VaM has been used. Point `VKIT_FRESH_ROOT` at a directory holding
+    /// nothing but `VaM_Data/StreamingAssets` — hard links to the real ones
+    /// are enough, and cost nothing:
+    ///
+    /// ```text
+    /// Get-ChildItem -File <VaM>\VaM_Data\StreamingAssets | ForEach-Object {
+    ///     New-Item -ItemType HardLink -Path (Join-Path $dst $_.Name) -Target $_.FullName
+    /// }
+    /// ```
+    #[test]
+    #[ignore = "reads a stripped copy of a VaM installation"]
+    fn a_first_run_installation_still_dresses_the_eyes_and_mouth() {
+        let Ok(path) = std::env::var("VKIT_FRESH_ROOT") else {
+            return;
+        };
+        let root = VaMRoot::open(std::path::Path::new(&path)).unwrap();
+        let report = scan_skin_library_with_report(&root).unwrap();
+        println!("presets: {}", report.presets.len());
+        println!("warnings: {:?}", report.diagnostics.warnings);
+
+        for (figure, sex, geometry_sex) in [
+            (
+                "f_1",
+                SkinSex::Female,
+                super::super::geometry::GeometrySex::Female,
+            ),
+            (
+                "m_1",
+                SkinSex::Male,
+                super::super::geometry::GeometrySex::Male,
+            ),
+        ] {
+            let mut base = report
+                .presets
+                .iter()
+                .find(|preset| {
+                    preset.stable_id == super::super::unity_textures::builtin_stable_id(figure)
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("{figure} is not in the skin library"));
+            for material in base.auxiliary.materials_mut() {
+                assert!(material.diffuse.is_some(), "{figure} has a bare region");
+            }
+
+            let discovered = super::super::base_discovery::discover_geometry_base(
+                super::super::base_discovery::GeometryBaseRequest {
+                    root: Some(&root),
+                    sex: geometry_sex,
+                    licensed_anchor: None,
+                    explicit_candidates: &[],
+                    cache_dir: None,
+                },
+            )
+            .unwrap();
+            let mapping = super::super::uv::load_g2_uv_mapping_for_sex(
+                &root,
+                discovered.provider.daz_anchor(),
+                sex,
+            )
+            .unwrap();
+            println!(
+                "{figure}: base {:?} from {} | uv from {} ({} faces, {} uncovered)",
+                discovered.tier,
+                discovered.base_path.display(),
+                mapping.source_path.display(),
+                mapping.faces.len(),
+                mapping.uncovered_triangles
+            );
+            // The whole point: the mapping came out of the figure bundle, not
+            // out of a loose file this installation may not have.
+            assert_eq!(
+                mapping.source_path,
+                root.neutral_base_bundle_path(geometry_sex),
+                "{figure} fell back to a loose mesh"
+            );
+            assert_eq!(mapping.uncovered_triangles, 0);
+
+            // The morphs a face is actually shaped with, from the same kind of
+            // place: a bundle that is part of the installation.
+            let bank =
+                super::super::unity_morph_bank::BuiltinMorphSession::open_for_sex(&root, sex)
+                    .unwrap();
+            println!(
+                "{figure}: {} built-in morphs from {}",
+                bank.morph_count(),
+                bank.bundle_path().display()
+            );
+            // The floor is low on purpose: the point is that the bank decodes
+            // to real morphs out of the installation rather than to an empty
+            // list, not that either figure carries some particular number.
+            assert!(
+                bank.morph_count() > 100,
+                "{figure} decoded {} morphs",
+                bank.morph_count()
+            );
+            assert!(
+                bank.bundle_path()
+                    .starts_with(root.path().join("VaM_Data").join("StreamingAssets")),
+                "{figure} read its morphs from outside the installation: {}",
+                bank.bundle_path().display()
+            );
+        }
+    }
+
+    /// The report behind routing these defaults through the bundle: on a real
+    /// installation every eye, mouth and lash texture is present before VaM has
+    /// ever rendered, which is exactly what `Cache/Textures` cannot promise.
+    #[test]
+    #[ignore = "reads the reader's own VaM installation"]
+    fn every_stand_in_region_resolves_from_the_installation_alone() {
+        let Ok(path) = std::env::var("VKIT_VAM_ROOT") else {
+            return;
+        };
+        let root = VaMRoot::open(std::path::Path::new(&path)).unwrap();
+        let (builtin, _) = super::super::unity_textures::scan_builtin_skins(&root, None).unwrap();
+
+        for sex in [SkinSex::Female, SkinSex::Male] {
+            let mut defaults = base_figure_auxiliary(&builtin, sex);
+            let named = [
+                "sclera",
+                "iris",
+                "lacrimal",
+                "inner mouth",
+                "teeth",
+                "gums",
+                "tongue",
+                "eyelashes",
+            ];
+            for (region, material) in named.iter().zip(defaults.materials_mut()) {
+                assert!(
+                    matches!(material.diffuse, Some(AssetLocator::BuiltinTexture(_))),
+                    "{sex:?} {region} has no bundle texture"
+                );
+            }
+            assert!(
+                iris_is_the_default_color(defaults.iris.diffuse.as_ref()),
+                "{sex:?} iris must be able to stand in"
+            );
+            // Surface maps ride along wherever the figure paints them.
+            assert!(defaults.teeth.surface.specular.is_some());
+            assert!(defaults.inner_mouth.surface.specular.is_some());
+            assert!(defaults.sclera.surface.normal.is_some());
+        }
+    }
+
+    #[test]
+    fn the_base_figure_supplies_the_stand_ins_without_any_texture_cache() {
+        let mut base = SkinPreset {
+            stable_id: super::super::unity_textures::builtin_stable_id("f_1"),
+            label: "base".to_owned(),
+            source: AssetLocator::File(PathBuf::from("f_1_mat")),
+            sex: SkinSex::Female,
+            textures: SkinTextureSet::default(),
+            auxiliary: SkinAuxiliary::default(),
+        };
+        for (index, material) in base.auxiliary.materials_mut().into_iter().enumerate() {
+            material.diffuse = Some(bundle_texture(&format!("region-{index}")));
+            material.diffuse_source = SkinDiffuseSource::CustomTexture;
+        }
+        let others = vec![base];
+
+        let mut defaults = base_figure_auxiliary(&others, SkinSex::Female);
+        for material in defaults.materials_mut() {
+            assert!(
+                material.diffuse.is_some(),
+                "every stand-in region comes from the bundle"
+            );
+            assert_eq!(material.diffuse_source, SkinDiffuseSource::FigureDefault);
+        }
+        // A figure this installation does not carry leaves the stand-ins empty
+        // rather than borrowing another figure's.
+        assert!(
+            base_figure_auxiliary(&others, SkinSex::Male)
+                .materials_mut()
+                .into_iter()
+                .all(|material| material.diffuse.is_none())
+        );
+    }
+
+    #[test]
+    fn a_look_that_names_one_eye_texture_wears_it_in_all_three_eye_regions() {
+        let own = AssetLocator::File(PathBuf::from("this-looks-own-eye.png"));
+        let mut stand_in = SkinAuxiliary::default();
+        stand_in.sclera.diffuse = Some(bundle_texture("base-eye"));
+        stand_in.iris.diffuse = Some(bundle_texture("base-eye"));
+        stand_in.lacrimal.diffuse = Some(bundle_texture("base-eye"));
+        stand_in.teeth.diffuse = Some(bundle_texture("base-teeth"));
+
+        let mut look = SkinAuxiliary::default();
+        look.sclera.diffuse = Some(own.clone());
+        look.sclera.diffuse_source = SkinDiffuseSource::CustomTexture;
+
+        look.spread_own_eye_atlas();
+        look.fill_missing_from(&stand_in, true);
+
+        assert_eq!(look.sclera.diffuse.as_ref(), Some(&own));
+        assert_eq!(
+            look.iris.diffuse.as_ref(),
+            Some(&own),
+            "the iris takes the look's own eye, not the base figure's"
+        );
+        assert_eq!(look.lacrimal.diffuse.as_ref(), Some(&own));
+        // Regions it named nothing for still come from the stand-in.
+        assert_eq!(look.teeth.diffuse, stand_in.teeth.diffuse);
+    }
+
+    #[test]
+    fn a_look_that_names_no_eye_takes_the_base_figures() {
+        let mut stand_in = SkinAuxiliary::default();
+        stand_in.sclera.diffuse = Some(bundle_texture("base-eye"));
+        stand_in.sclera.diffuse_source = SkinDiffuseSource::FigureDefault;
+
+        let mut look = SkinAuxiliary::default();
+        look.spread_own_eye_atlas();
+        look.fill_missing_from(&stand_in, true);
+
+        assert_eq!(look.sclera.diffuse, stand_in.sclera.diffuse);
+    }
+
+    #[test]
+    fn only_the_figures_own_iris_may_stand_in_for_a_missing_color() {
+        assert!(iris_is_the_default_color(Some(&bundle_texture("iris"))));
+        assert!(iris_is_the_default_color(Some(&AssetLocator::File(
+            PathBuf::from("Preset_DualColor01_jpg_38947_132878108620000000_512_512_C.vamcachemeta")
+        ))));
+        assert!(!iris_is_the_default_color(Some(&AssetLocator::File(
+            PathBuf::from("Preset_DualColor07_jpg_38947_132878108620000000_512_512_C.vamcachemeta")
+        ))));
+        assert!(!iris_is_the_default_color(Some(&AssetLocator::File(
+            PathBuf::from("V5BreeEyes8M_jpg.vamcachemeta")
+        ))));
+        assert!(!iris_is_the_default_color(None));
+    }
+
     #[test]
     fn unavailable_selector_uses_neutral_preview_without_losing_its_identity() {
         let mut outer = SkinAuxiliary::default();
@@ -2802,9 +3139,9 @@ mod tests {
             SkinDiffuseSource::BuiltInSelectorUnavailable("Sclera 2".to_owned());
         let mut inherited = SkinAuxiliary::default();
         inherited.sclera.diffuse = Some(AssetLocator::File(PathBuf::from("generic-eye")));
-        inherited.sclera.diffuse_source = SkinDiffuseSource::DefaultCache;
+        inherited.sclera.diffuse_source = SkinDiffuseSource::FigureDefault;
 
-        outer.fill_missing_from(&inherited);
+        outer.fill_missing_from(&inherited, true);
 
         assert_eq!(
             outer.sclera.diffuse,
@@ -2857,10 +3194,19 @@ mod tests {
 
         let root = VaMRoot::open(&temporary).unwrap();
         let report = scan_skin_library_with_report(&root).unwrap();
-        assert!(report.diagnostics.warnings.iter().any(|warning| {
-            warning.contains("built-in eyelashes selector \"Lashes 99\"")
-                && warning.contains("neutral preview")
-        }));
+        // Silent by design: showing the eye underneath is the decision, so a
+        // look that named a colour this installation lacks is not a warning.
+        // The selector is still recorded on the preset, which is what a future
+        // eye-colour feature would read.
+        assert!(
+            !report
+                .diagnostics
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("selector")),
+            "{:?}",
+            report.diagnostics.warnings
+        );
         let preset = report
             .presets
             .iter()
@@ -3067,9 +3413,12 @@ mod tests {
             SkinDiffuseSource::BuiltInSelectorUnavailable("Color 99".to_owned());
         let mut inherited = SkinAuxiliary::default();
         inherited.iris.diffuse = Some(AssetLocator::File(PathBuf::from("generic-eye")));
-        inherited.iris.diffuse_source = SkinDiffuseSource::DefaultCache;
+        inherited.iris.diffuse_source = SkinDiffuseSource::FigureDefault;
 
-        outer.fill_missing_from(&inherited);
+        outer.fill_missing_from(
+            &inherited,
+            iris_is_the_default_color(inherited.iris.diffuse.as_ref()),
+        );
 
         assert!(outer.iris.diffuse.is_none());
         assert_eq!(
@@ -3088,7 +3437,10 @@ mod tests {
         let fallback =
             default_auxiliary_from_cache(std::slice::from_ref(&color_one), SkinSex::Unknown);
 
-        outer.fill_missing_from(&fallback);
+        outer.fill_missing_from(
+            &fallback,
+            iris_is_the_default_color(fallback.iris.diffuse.as_ref()),
+        );
 
         assert_eq!(outer.iris.diffuse, Some(AssetLocator::File(color_one)));
         assert_eq!(

@@ -79,60 +79,84 @@ pub fn discover_geometry_base(
         persist_canonical_head_groups(cache_dir, provider, handle);
     }
 
-    let mut candidates = Vec::new();
+    let mut explicit = Vec::new();
     for path in request.explicit_candidates {
-        push_candidate(&mut candidates, path.clone());
+        push_candidate(&mut explicit, path.clone());
     }
+    let mut scanned = Vec::new();
     if let Some(root) = request.root {
         for path in root.geometry_base_candidates(request.sex) {
-            push_candidate(&mut candidates, path);
-        }
-    }
-
-    for path in &candidates {
-        match enroll_candidate(
-            &request,
-            path,
-            neutral.as_ref(),
-            neutral_provider.as_ref(),
-            &mut notes,
-        ) {
-            Some((provider, tier, neutrality)) => {
-                return Ok(DiscoveredGeometryBase {
-                    provider,
-                    base_path: path.clone(),
-                    tier,
-                    neutrality,
-                    neutral_bundle: neutral
-                        .as_ref()
-                        .map(|handle| handle.base.bundle_path.clone()),
-                    neutral_from_cache: neutral.as_ref().map(|handle| handle.from_cache),
-                    notes,
-                });
+            if !explicit.contains(&path) {
+                push_candidate(&mut scanned, path);
             }
-            None => continue,
         }
     }
 
-    if let (Some(provider), Some(handle)) = (neutral_provider, neutral.as_ref()) {
-        if let Some(anchor) = request.licensed_anchor
-            && !anchor_matches_canonical(anchor, &provider)
-        {
-            push_note(
-                &mut notes,
-                "the loaded template topology is not the canonical Genesis 2 stream, so the Unity-bundle provider cannot back it".to_owned(),
-            );
-        } else {
+    let enroll = |candidates: &[PathBuf],
+                  neutral_provider: Option<&VaMGeometryProvider>,
+                  notes: &mut Vec<String>|
+     -> Option<DiscoveredGeometryBase> {
+        for path in candidates {
+            // A candidate that will not enrol costs itself a note and nothing
+            // more; the ones after it still get their turn.
+            let Some((provider, tier, neutrality)) =
+                enroll_candidate(&request, path, neutral.as_ref(), neutral_provider, notes)
+            else {
+                continue;
+            };
+            return Some(DiscoveredGeometryBase {
+                provider,
+                base_path: path.clone(),
+                tier,
+                neutrality,
+                neutral_bundle: neutral
+                    .as_ref()
+                    .map(|handle| handle.base.bundle_path.clone()),
+                neutral_from_cache: neutral.as_ref().map(|handle| handle.from_cache),
+                notes: std::mem::take(notes),
+            });
+        }
+        None
+    };
+
+    // A mesh the reader named themselves outranks everything: they picked it.
+    if let Some(found) = enroll(&explicit, neutral_provider.as_ref(), &mut notes) {
+        return Ok(found);
+    }
+
+    // Then the figure bundle, before any mesh merely found lying in the
+    // installation folder. The bundle is checked against a pinned topology
+    // digest and a fixed vertex count, so it is either the canonical Genesis 2
+    // stream or nothing; a loose mesh is whatever some earlier session wrote
+    // out, and on this machine that was the genitalia-merged variant — a
+    // different vertex count, and so a different working mesh for anyone who
+    // happened to have the file. Two installations of the same VaM should not
+    // give two answers.
+    if let (Some(provider), Some(handle)) = (neutral_provider.as_ref(), neutral.as_ref()) {
+        let usable = request
+            .licensed_anchor
+            .is_none_or(|anchor| anchor_matches_canonical(anchor, provider));
+        if usable {
             return Ok(DiscoveredGeometryBase {
                 base_path: handle.base.bundle_path.clone(),
                 tier: GeometryBaseTier::UnityBundle,
                 neutrality: None,
                 neutral_bundle: Some(handle.base.bundle_path.clone()),
                 neutral_from_cache: Some(handle.from_cache),
-                notes,
-                provider,
+                notes: std::mem::take(&mut notes),
+                provider: provider.clone(),
             });
         }
+        push_note(
+            &mut notes,
+            "the loaded template topology is not the canonical Genesis 2 stream, so the Unity-bundle provider cannot back it".to_owned(),
+        );
+    }
+
+    // Last: a mesh found in the installation folder. This is what carries an
+    // installation whose bundle this decoder cannot read.
+    if let Some(found) = enroll(&scanned, neutral_provider.as_ref(), &mut notes) {
+        return Ok(found);
     }
 
     if notes.is_empty() {
@@ -387,5 +411,113 @@ mod tests {
                 crate::G2F_POLYGON_COUNT
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod ranking {
+    use super::*;
+
+    /// The bundle is consulted before anything merely found in the folder.
+    ///
+    /// It used to be the other way round, and the two are not the same mesh:
+    /// the bundle carries the canonical Genesis 2 body, 21,556 vertices
+    /// checked against a pinned topology digest, while a mesh the scan picks
+    /// up has to be the genitalia-merged variant — 24,928 vertices for a
+    /// female figure — or it is not recognised at all. So whether a file some
+    /// earlier session happened to write out was present decided how many
+    /// vertices the whole session worked in. Same VaM, two answers.
+    ///
+    /// Observed through the notes: a candidate is only opened if it is
+    /// reached, so a file that cannot be read leaves a note behind exactly
+    /// when it was consulted. Set `VKIT_VAM_ROOT`.
+    #[test]
+    #[ignore = "reads the reader's own VaM installation"]
+    fn nothing_found_in_the_folder_is_opened_while_the_bundle_can_answer() {
+        let Ok(source) = std::env::var("VKIT_VAM_ROOT") else {
+            return;
+        };
+        let source = std::path::Path::new(&source);
+        let staging = std::env::temp_dir().join(format!("vkit-rank-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&staging);
+        let streaming = staging.join("VaM_Data").join("StreamingAssets");
+        std::fs::create_dir_all(&streaming).unwrap();
+        let bundle = source.join("VaM_Data").join("StreamingAssets").join("f_1");
+        std::fs::copy(&bundle, streaming.join("f_1")).unwrap();
+
+        // A file the scan will offer and no reader could load.
+        let loose = staging.join("femalecustom.obj");
+        std::fs::write(&loose, b"not a mesh").unwrap();
+        let root = crate::vam::VaMRoot::open(&staging).unwrap();
+        assert!(
+            root.geometry_base_candidates(GeometrySex::Female)
+                .iter()
+                .any(|path| path.ends_with("femalecustom.obj")),
+            "the scan should offer the file this test just wrote"
+        );
+
+        let request = GeometryBaseRequest {
+            root: Some(&root),
+            sex: GeometrySex::Female,
+            licensed_anchor: None,
+            explicit_candidates: &[],
+            cache_dir: None,
+        };
+        let found = discover_geometry_base(request).unwrap();
+        assert_eq!(found.tier, GeometryBaseTier::UnityBundle);
+        assert_eq!(
+            found.provider.vam_basis().vertices.len(),
+            crate::G2F_VERTEX_COUNT
+        );
+        assert!(
+            !found.notes.iter().any(|note| note.contains("femalecustom")),
+            "the loose mesh was opened before the bundle answered: {:?}",
+            found.notes
+        );
+
+        // Named on purpose it is still tried — and refused on its own merits,
+        // one unusable candidate not costing the ones behind it.
+        let unusable = [loose.clone(), staging.join("absent.obj")];
+        let chosen = discover_geometry_base(GeometryBaseRequest {
+            explicit_candidates: &unusable,
+            ..request
+        })
+        .unwrap();
+        assert_eq!(chosen.tier, GeometryBaseTier::UnityBundle);
+        assert!(
+            chosen
+                .notes
+                .iter()
+                .any(|note| note.contains("femalecustom")),
+            "a candidate named on purpose should be tried and reported on: {:?}",
+            chosen.notes
+        );
+
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+
+    /// What the scan is allowed to pick up is a different mesh from the
+    /// bundle's, by construction rather than by accident.
+    #[test]
+    fn a_mesh_the_scan_accepts_is_never_the_shape_the_bundle_carries() {
+        for (vertices, faces) in [
+            (
+                super::super::geometry::VAM_FEMALE_VERTEX_COUNT,
+                super::super::geometry::VAM_FEMALE_FACE_COUNT,
+            ),
+            (
+                super::super::geometry::VAM_MALE_VERTEX_COUNT,
+                super::super::geometry::VAM_MALE_FACE_COUNT,
+            ),
+        ] {
+            assert!(GeometrySex::shortlist_from_counts(vertices, faces).is_some());
+            assert_ne!(vertices, crate::G2F_VERTEX_COUNT);
+            assert_ne!(faces, crate::G2F_POLYGON_COUNT);
+        }
+        assert!(
+            GeometrySex::shortlist_from_counts(crate::G2F_VERTEX_COUNT, crate::G2F_POLYGON_COUNT)
+                .is_none(),
+            "the canonical body is not what the folder scan is looking for"
+        );
     }
 }

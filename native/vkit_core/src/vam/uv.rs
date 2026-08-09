@@ -124,6 +124,17 @@ pub fn load_g2_uv_mapping_for_sex(
     geometry: &DazGeometry,
     sex: SkinSex,
 ) -> Result<G2UvMapping> {
+    // The figure's own bundle carries this mapping and ships with every
+    // installation. The loose OBJ below does not: it is written out later by
+    // features not everyone uses, so requiring it turned a stock install into
+    // "UV unavailable". It stays as a fallback for anyone whose bundle this
+    // decoder cannot read.
+    match mapping_from_bundle(root, geometry, sex) {
+        Ok(mapping) => return Ok(mapping),
+        Err(error) => {
+            let _ = error;
+        }
+    }
     let (source_path, validate_coordinates) = match sex {
         SkinSex::Female => (find_female_custom_obj(root)?, true),
         SkinSex::Male => (find_male_custom_obj(root)?, false),
@@ -135,6 +146,129 @@ pub fn load_g2_uv_mapping_for_sex(
     };
     let document = load_obj_document(&source_path)?;
     build_mapping(source_path, &document, geometry, true, validate_coordinates)
+}
+
+/// Builds the mapping straight from the figure bundle.
+///
+/// No correspondence to guess and no coordinates to validate: the bundle's
+/// polygon list is the canonical one, and its UV polygon list runs beside it
+/// corner for corner, so face i's texture coordinates are simply face i's.
+fn mapping_from_bundle(
+    root: &VaMRoot,
+    geometry: &DazGeometry,
+    sex: SkinSex,
+) -> Result<G2UvMapping> {
+    let bundle_sex = match sex {
+        SkinSex::Female => super::geometry::GeometrySex::Female,
+        SkinSex::Male => super::geometry::GeometrySex::Male,
+        SkinSex::Unknown => {
+            return Err(VaMError::InvalidUv(
+                "figure sex must be Female or Male".to_owned(),
+            ));
+        }
+    };
+    geometry.validate()?;
+    let bundle_path = root.neutral_base_bundle_path(bundle_sex);
+    let bundle = std::fs::read(&bundle_path)
+        .map_err(|error| VaMError::InvalidUv(format!("{}: {error}", bundle_path.display())))?;
+    let figure = super::unity_base::extract_figure_uv(&bundle)?;
+    // The material list is the cheapest proof that this bundle holds the same
+    // figure the canonical geometry was taken from — a mismatch here means the
+    // face-for-face assumption below is not safe to make.
+    for (face_index, material_index) in figure.material_indices.iter().enumerate() {
+        let Some(bundle_material) = figure.material_names.get(*material_index as usize) else {
+            return Err(VaMError::InvalidUv(format!(
+                "{} face {face_index} names material {material_index}, which it does not list",
+                bundle_path.display()
+            )));
+        };
+        let canonical = canonical_material_name(geometry, face_index)?;
+        if normalized_material_name(bundle_material) != canonical {
+            return Err(VaMError::InvalidUv(format!(
+                "{} calls face {face_index} {bundle_material:?} where this figure calls it                  {canonical:?}",
+                bundle_path.display()
+            )));
+        }
+    }
+    if figure.base_polygons.len() != geometry.faces.len()
+        || figure.uv_polygons.len() != geometry.faces.len()
+    {
+        return Err(VaMError::InvalidUv(format!(
+            "{} holds {} polygons but this figure has {}",
+            bundle_path.display(),
+            figure.base_polygons.len(),
+            geometry.faces.len()
+        )));
+    }
+
+    let mut faces = Vec::new();
+    let mut triangles = Vec::new();
+    let mut uncovered = 0_usize;
+    let mut triangle_cursor = 0_u32;
+    for (face_index, positions) in geometry.faces.iter().enumerate() {
+        let face_triangle_start = triangle_cursor;
+        triangle_cursor = triangle_cursor.saturating_add(positions.len().saturating_sub(2) as u32);
+        let Some(material_region) = material_region(geometry, face_index) else {
+            continue;
+        };
+        let bundle_positions = &figure.base_polygons[face_index];
+        let bundle_uv_corners = &figure.uv_polygons[face_index];
+        if bundle_positions.len() != positions.len() || bundle_uv_corners.len() != positions.len() {
+            uncovered += positions.len().saturating_sub(2);
+            continue;
+        }
+        // The bundle lists the same corners in the same order; anything else
+        // means this is not the figure the canonical geometry came from.
+        if bundle_positions != positions {
+            return Err(VaMError::InvalidUv(format!(
+                "{} disagrees with the canonical geometry at face {face_index}",
+                bundle_path.display()
+            )));
+        }
+        let corner_uv = |corner: usize| -> Result<[f32; 2]> {
+            let uv_index = bundle_uv_corners[corner] as usize;
+            figure.uvs.get(uv_index).copied().ok_or_else(|| {
+                VaMError::InvalidUv(format!(
+                    "{} face {face_index} corner {corner} references missing UV {uv_index}",
+                    bundle_path.display()
+                ))
+            })
+        };
+        let mut corners = Vec::with_capacity(positions.len());
+        for (corner, &position_index) in positions.iter().enumerate() {
+            corners.push(UvCorner {
+                position_index,
+                uv: corner_uv(corner)?,
+            });
+        }
+        let on_head = face_is_on_head(geometry, face_index);
+        for corner in 1..positions.len() - 1 {
+            triangles.push(G2UvTriangle {
+                canonical_face_index: face_index as u32,
+                canonical_triangle_index: face_triangle_start + (corner - 1) as u32,
+                material_region,
+                on_head,
+                position_indices: [positions[0], positions[corner], positions[corner + 1]],
+                uvs: [corner_uv(0)?, corner_uv(corner)?, corner_uv(corner + 1)?],
+            });
+        }
+        faces.push(G2UvFace {
+            canonical_face_index: face_index as u32,
+            material_region,
+            corners,
+        });
+    }
+
+    Ok(G2UvMapping {
+        source_path: bundle_path,
+        // The bundle is the geometry's own source, so there is no second set of
+        // coordinates to have drifted from.
+        coordinate_rms_cm: 0.0,
+        coordinate_max_cm: 0.0,
+        faces,
+        triangles,
+        uncovered_triangles: uncovered,
+    })
 }
 
 fn find_female_custom_obj(root: &VaMRoot) -> Result<PathBuf> {
@@ -917,6 +1051,121 @@ mod head_membership {
                 material_region_from_name(&normalized_material_name(name)),
                 Some(UvMaterialRegion::Torso)
             );
+        }
+    }
+
+    /// Holds the bundle UV path to the file path it replaced.
+    ///
+    /// The loose `femalecustom.obj` is not part of a stock installation — it is
+    /// written out later by features not everyone uses — so requiring it left a
+    /// clean install with no UV mapping at all. The bundle ships with every
+    /// copy and carries the same coordinates; this proves "the same" rather
+    /// than assuming it, and it names the regions whose orientation took the
+    /// longest to get right, because those are the ones a changed source would
+    /// break most quietly.
+    #[test]
+    #[ignore = "requires the user's VaM installation"]
+    fn the_bundle_carries_the_same_uv_islands_as_the_loose_obj() {
+        use std::collections::HashMap;
+        let Some(root) =
+            std::env::var_os("VKIT_VAM_ROOT").and_then(|path| VaMRoot::open(path).ok())
+        else {
+            eprintln!("set VKIT_VAM_ROOT to run this");
+            return;
+        };
+        let Ok(obj_path) = std::env::var("VKIT_UV_REFERENCE_OBJ") else {
+            eprintln!("set VKIT_UV_REFERENCE_OBJ to that installation's femalecustom.obj");
+            return;
+        };
+        let bundle =
+            std::fs::read(root.neutral_base_bundle_path(crate::vam::geometry::GeometrySex::Female))
+                .expect("read the female figure bundle");
+        let figure = crate::vam::unity_base::extract_figure_uv(&bundle).expect("figure uv");
+
+        let mut bundle_islands: HashMap<String, [f64; 4]> = HashMap::new();
+        for (face, uv_corners) in figure.uv_polygons.iter().enumerate() {
+            let Some(material) = figure
+                .material_indices
+                .get(face)
+                .and_then(|index| figure.material_names.get(*index as usize))
+            else {
+                continue;
+            };
+            let island = bundle_islands.entry(material.clone()).or_insert([
+                f64::MAX,
+                f64::MIN,
+                f64::MAX,
+                f64::MIN,
+            ]);
+            for uv_index in uv_corners {
+                let uv = figure.uvs[*uv_index as usize];
+                island[0] = island[0].min(f64::from(uv[0]));
+                island[1] = island[1].max(f64::from(uv[0]));
+                island[2] = island[2].min(f64::from(uv[1]));
+                island[3] = island[3].max(f64::from(uv[1]));
+            }
+        }
+
+        let document = crate::formats::load_obj_document(std::path::Path::new(&obj_path))
+            .expect("read the reference obj");
+        let mut obj_islands: HashMap<String, [f64; 4]> = HashMap::new();
+        for (face, uv_indices) in document
+            .geometry
+            .faces
+            .iter()
+            .zip(&document.appearance.face_texcoord_indices)
+        {
+            let Some(material) = face.material.as_deref() else {
+                continue;
+            };
+            // The exported OBJ suffixes every material with its figure number.
+            let material = material.rsplit_once('-').map_or(material, |(head, _)| head);
+            let island = obj_islands.entry(material.to_owned()).or_insert([
+                f64::MAX,
+                f64::MIN,
+                f64::MAX,
+                f64::MIN,
+            ]);
+            for uv_index in uv_indices.iter().flatten() {
+                let uv = document.appearance.texcoords[*uv_index as usize];
+                island[0] = island[0].min(uv[0]);
+                island[1] = island[1].max(uv[0]);
+                island[2] = island[2].min(uv[1]);
+                island[3] = island[3].max(uv[1]);
+            }
+        }
+
+        for material in [
+            "Sclera",
+            "Irises",
+            "Pupils",
+            "Cornea",
+            "Lacrimals",
+            "Tear",
+            "Eyelashes",
+            "Teeth",
+            "Gums",
+            "Tongue",
+            "InnerMouth",
+            "Face",
+            "Lips",
+            "Head",
+            "Neck",
+            "Ears",
+        ] {
+            let from_bundle = bundle_islands
+                .get(material)
+                .unwrap_or_else(|| panic!("the bundle carries no {material} island"));
+            let from_obj = obj_islands
+                .get(material)
+                .unwrap_or_else(|| panic!("the reference obj carries no {material} island"));
+            for corner in 0..4 {
+                let delta = (from_bundle[corner] - from_obj[corner]).abs();
+                assert!(
+                    delta < 1.0e-6,
+                    "{material} island corner {corner} differs by {delta}:                      bundle {from_bundle:?} against obj {from_obj:?}"
+                );
+            }
         }
     }
 }
