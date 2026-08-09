@@ -211,7 +211,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphSearch => Some("搜索变形"),
         TextKey::AppearanceSearch => Some("搜索外观"),
         TextKey::LookFind => Some("载入外观"),
-        TextKey::CameraTrackballArmed => Some("轨迹球旋转 · 从边缘倾斜 · 点击或按 R 结束"),
+        TextKey::CameraTrackballArmed => Some("滚转已启用 · 左右拖动倾斜视图 · 点击或按 R 结束"),
         TextKey::HelpTrackball => Some("轨迹球旋转"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("上次会话异常结束"),

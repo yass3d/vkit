@@ -223,9 +223,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("片側だけ動くモーフを隠す"),
         TextKey::AppearanceSearch => Some("外見を検索"),
         TextKey::LookFind => Some("外見を読み込む"),
-        TextKey::CameraTrackballArmed => {
-            Some("トラックボール回転・端で傾ける・クリックまたは R で終了")
-        }
+        TextKey::CameraTrackballArmed => Some("ロール回転 · 左右ドラッグで傾ける · クリックか R で終了"),
         TextKey::HelpTrackball => Some("トラックボール回転"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("前回のセッションが異常終了しました"),

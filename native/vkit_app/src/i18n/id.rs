@@ -228,9 +228,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::AppearanceSearch => Some("Cari Look"),
         TextKey::LookFind => Some("Muat Look"),
-        TextKey::CameraTrackballArmed => {
-            Some("Rotasi trackball · miringkan dari tepi · klik atau R untuk selesai")
-        }
+        TextKey::CameraTrackballArmed => Some("Roll aktif · seret menyamping untuk memiringkan · klik atau R untuk selesai"),
         TextKey::HelpTrackball => Some("Rotasi trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Sesi terakhir berakhir tak terduga"),

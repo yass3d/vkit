@@ -212,7 +212,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphOneSidedFilterHide => "한쪽만 움직이는 좌우 모프 숨기기",
         TextKey::AppearanceSearch => "외모 검색",
         TextKey::LookFind => "외형 불러오기",
-        TextKey::CameraTrackballArmed => "트랙볼 회전 · 가장자리에서 기울이기 · 클릭 또는 R로 종료",
+        TextKey::CameraTrackballArmed => "롤 회전 · 좌우 드래그로 화면 기울이기 · 클릭 또는 R로 종료",
         TextKey::HelpTrackball => "트랙볼 회전",
         TextKey::ShortcutTrackball => "R",
         TextKey::RecoveryTitle => "지난 세션이 비정상 종료되었습니다",

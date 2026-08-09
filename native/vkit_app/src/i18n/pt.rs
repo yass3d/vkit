@@ -240,9 +240,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Ocultar morphs que movem apenas um lado"),
         TextKey::AppearanceSearch => Some("Buscar looks"),
         TextKey::LookFind => Some("Carregar look"),
-        TextKey::CameraTrackballArmed => {
-            Some("Rotação trackball · incline pela borda · clique ou R para concluir")
-        }
+        TextKey::CameraTrackballArmed => Some("Rolagem ativa · arraste lateral para inclinar · clique ou R para encerrar"),
         TextKey::HelpTrackball => Some("Rotação trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("A última sessão terminou inesperadamente"),

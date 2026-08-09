@@ -213,9 +213,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphSearch => Some("मॉर्फ खोजें"),
         TextKey::AppearanceSearch => Some("लुक खोजें"),
         TextKey::LookFind => Some("लुक लोड करें"),
-        TextKey::CameraTrackballArmed => {
-            Some("ट्रैकबॉल घुमाव · किनारे से झुकाव · समाप्त करने के लिए क्लिक या R")
-        }
+        TextKey::CameraTrackballArmed => Some("रोल सक्रिय · झुकाने के लिए आड़ा खींचें · समाप्त करने हेतु क्लिक या R"),
         TextKey::HelpTrackball => Some("ट्रैकबॉल घुमाव"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("पिछला सत्र अचानक बंद हो गया था"),

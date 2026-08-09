@@ -214,7 +214,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("隱藏只作用於單側的變形"),
         TextKey::AppearanceSearch => Some("搜尋外觀"),
         TextKey::LookFind => Some("載入外觀"),
-        TextKey::CameraTrackballArmed => Some("軌跡球旋轉 · 從邊緣傾斜 · 點擊或按 R 結束"),
+        TextKey::CameraTrackballArmed => Some("滾轉已啟用 · 左右拖曳傾斜視圖 · 點擊或按 R 結束"),
         TextKey::HelpTrackball => Some("軌跡球旋轉"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("上次的工作階段異常結束"),

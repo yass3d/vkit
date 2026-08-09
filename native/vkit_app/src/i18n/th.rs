@@ -211,7 +211,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphSearch => Some("ค้นหามอร์ฟ"),
         TextKey::AppearanceSearch => Some("ค้นหาลุค"),
         TextKey::LookFind => Some("โหลดลุค"),
-        TextKey::CameraTrackballArmed => Some("หมุนแบบแทร็กบอล · เอียงจากขอบ · คลิกหรือกด R เพื่อจบ"),
+        TextKey::CameraTrackballArmed => Some("โหมดเอียงภาพ · ลากซ้ายขวาเพื่อเอียง · คลิกหรือกด R เพื่อจบ"),
         TextKey::HelpTrackball => Some("หมุนแบบแทร็กบอล"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("เซสชันก่อนหน้าจบลงกะทันหัน"),

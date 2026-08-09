@@ -222,9 +222,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterHide => Some("Ẩn morph chỉ tác động một bên"),
         TextKey::AppearanceSearch => Some("Tìm look"),
         TextKey::LookFind => Some("Nạp look"),
-        TextKey::CameraTrackballArmed => {
-            Some("Xoay trackball · nghiêng từ mép · nhấp hoặc R để kết thúc")
-        }
+        TextKey::CameraTrackballArmed => Some("Xoay nghiêng · kéo ngang để nghiêng · nhấp hoặc R để kết thúc"),
         TextKey::HelpTrackball => Some("Xoay trackball"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("Phiên trước đã kết thúc đột ngột"),

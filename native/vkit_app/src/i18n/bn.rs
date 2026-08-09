@@ -213,7 +213,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphSearch => Some("মর্ফ খুঁজুন"),
         TextKey::AppearanceSearch => Some("লুক খুঁজুন"),
         TextKey::LookFind => Some("লুক লোড"),
-        TextKey::CameraTrackballArmed => Some("ট্র্যাকবল ঘূর্ণন · কিনারা থেকে কাত · শেষ করতে ক্লিক বা R"),
+        TextKey::CameraTrackballArmed => Some("রোল সক্রিয় · কাত করতে পাশাপাশি টানুন · শেষ করতে ক্লিক বা R"),
         TextKey::HelpTrackball => Some("ট্র্যাকবল ঘূর্ণন"),
         TextKey::ShortcutTrackball => Some("R"),
         TextKey::RecoveryTitle => Some("গত সেশন অপ্রত্যাশিতভাবে শেষ হয়েছিল"),
