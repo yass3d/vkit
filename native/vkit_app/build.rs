@@ -71,8 +71,8 @@ fn verify_icon_assets(manifest_dir: &Path) -> Result<(), String> {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=resources/windows.rc");
-    println!("cargo:rerun-if-changed=resources/vkit.manifest");
+    println!("cargo:rerun-if-changed=resources/windows.rc.in");
+    println!("cargo:rerun-if-changed=resources/vkit.manifest.in");
     println!("cargo:rerun-if-changed=resources/vkit.ico");
     println!("cargo:rerun-if-changed=resources/vkit-icon.sha256");
     println!("cargo:rerun-if-changed=../../design/logo.png");
@@ -90,8 +90,73 @@ fn main() {
     }
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
-        embed_resource::compile("resources/windows.rc", embed_resource::NONE)
+        let generated = write_windows_resources(&manifest_dir)
+            .unwrap_or_else(|error| panic!("Vkit Windows resource generation failed: {error}"));
+        embed_resource::compile(generated, embed_resource::NONE)
             .manifest_required()
             .expect("failed to compile Vkit Windows resources");
     }
+}
+
+/// Fills the resource template in from the package version.
+///
+/// The version reaches the file properties dialog the same way it reaches the
+/// update check — from Cargo — so the two can never disagree. Paths are made
+/// absolute because the generated file lives in `OUT_DIR`, nowhere near the
+/// icon and manifest it names.
+fn write_windows_resources(manifest_dir: &Path) -> Result<std::path::PathBuf, String> {
+    let version = std::env::var("CARGO_PKG_VERSION").map_err(|error| error.to_string())?;
+    let mut parts = version.split('.').map(|part| {
+        part.chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+    });
+    let mut field = || parts.next().filter(|part| !part.is_empty());
+    let (Some(major), Some(minor), Some(patch)) = (field(), field(), field()) else {
+        return Err(format!("{version:?} is not a three-part version"));
+    };
+
+    // The resource compiler reads backslashes in a string literal as escapes,
+    // so a Windows path has to arrive with forward slashes.
+    let absolute = |path: &Path| path.to_string_lossy().replace('\\', "/");
+    let out_dir = std::env::var_os("OUT_DIR")
+        .map(std::path::PathBuf::from)
+        .ok_or("OUT_DIR is unavailable")?;
+    let fill =
+        |template_path: &Path, output: &Path, extra: &[(&str, String)]| -> Result<(), String> {
+            let template = fs::read_to_string(template_path)
+                .map_err(|error| format!("{}: {error}", template_path.display()))?;
+            let mut filled = template
+                .replace("@VERSION_COMMA@", &format!("{major},{minor},{patch},0"))
+                .replace("@VERSION_QUAD@", &format!("{major}.{minor}.{patch}.0"))
+                .replace("@VERSION_STRING@", &format!("{major}.{minor}.{patch}"));
+            for (token, value) in extra {
+                filled = filled.replace(token, value);
+            }
+            fs::write(output, filled).map_err(|error| format!("{}: {error}", output.display()))
+        };
+
+    // The manifest is written first, because the resource script has to point
+    // the linker at the generated copy rather than at the template.
+    let manifest = out_dir.join("vkit.manifest");
+    fill(
+        &manifest_dir.join("resources/vkit.manifest.in"),
+        &manifest,
+        &[],
+    )?;
+
+    let generated = out_dir.join("windows.rc");
+    fill(
+        &manifest_dir.join("resources/windows.rc.in"),
+        &generated,
+        &[
+            ("@RESOURCE_DIR@", absolute(&manifest_dir.join("resources"))),
+            ("@MANIFEST_FILE@", absolute(&manifest)),
+            (
+                "@NOTICE_FILE@",
+                absolute(&manifest_dir.join("../../build/windows/THIRD-PARTY-NOTICE.txt")),
+            ),
+        ],
+    )?;
+    Ok(generated)
 }

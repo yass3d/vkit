@@ -1,15 +1,20 @@
+// Template. The build script fills the version tokens in from the package
+// version and writes the result to OUT_DIR, beside the generated manifest.
+// Nothing here may name a version literally: the file properties dialog and
+// the running binary have to agree, and a number typed in two places will not
+// stay agreed.
 #include <windows.h>
 
 #define IDI_VKIT 1
 #define IDR_THIRD_PARTY_NOTICE 101
 
-IDI_VKIT ICON "resources/vkit.ico"
-1 RT_MANIFEST "resources/vkit.manifest"
-IDR_THIRD_PARTY_NOTICE RCDATA "../../build/windows/THIRD-PARTY-NOTICE.txt"
+IDI_VKIT ICON "@RESOURCE_DIR@/vkit.ico"
+1 RT_MANIFEST "@MANIFEST_FILE@"
+IDR_THIRD_PARTY_NOTICE RCDATA "@NOTICE_FILE@"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,1,0
- PRODUCTVERSION 0,0,1,0
+ FILEVERSION @VERSION_COMMA@
+ PRODUCTVERSION @VERSION_COMMA@
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -26,11 +31,11 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Vkit\0"
       VALUE "FileDescription", "Vkit - a side tool for Virt-A-Mate\0"
-      VALUE "FileVersion", "0.0.1\0"
+      VALUE "FileVersion", "@VERSION_STRING@\0"
       VALUE "InternalName", "Vkit\0"
       VALUE "OriginalFilename", "Vkit.exe\0"
       VALUE "ProductName", "Vkit\0"
-      VALUE "ProductVersion", "0.0.1\0"
+      VALUE "ProductVersion", "@VERSION_STRING@\0"
     END
   END
   BLOCK "VarFileInfo"

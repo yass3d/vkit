@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="0.0.1.0" processorArchitecture="*" name="Vkit.Native" type="win32"/>
+  <assemblyIdentity version="@VERSION_QUAD@" processorArchitecture="*" name="Vkit.Native" type="win32"/>
   <description>Vkit native scan-to-G2 editor</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

@@ -1093,6 +1093,56 @@ mod tests {
         }
     }
 
+    /// Nothing this program says about its own version may be typed by hand.
+    ///
+    /// Two of these had gone stale unnoticed — the file properties dialog and
+    /// the assembly manifest both still read 0.0.1 while the binary called
+    /// itself 0.0.2 — because a version written out by hand only looks wrong
+    /// when someone happens to open the one dialog that shows it. The Windows
+    /// resources are templates now, filled from Cargo at build time, and this
+    /// refuses a literal creeping back into them.
+    ///
+    /// `VAM_TARGET_VERSION` is deliberately not covered: it names the version
+    /// of Virt-A-Mate this build was written against, which is a fact about
+    /// someone else's program and has to be stated somewhere.
+    #[test]
+    fn nothing_writes_this_programs_own_version_by_hand() {
+        let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let dotted_number = |text: &str| {
+            text.split(|character: char| !character.is_ascii_digit() && character != '.')
+                .any(|token| token.split('.').filter(|part| !part.is_empty()).count() >= 3)
+        };
+        for relative in ["resources/windows.rc.in", "resources/vkit.manifest.in"] {
+            let path = crate_root.join(relative);
+            let contents = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            for (index, line) in contents.lines().enumerate() {
+                // Schema URLs and the supportedOS GUIDs carry dotted numbers
+                // that have nothing to do with this program's version.
+                if line.contains("http") || line.contains("supportedOS") {
+                    continue;
+                }
+                assert!(
+                    !dotted_number(line),
+                    "{relative}:{} writes a version by hand: {line}",
+                    index + 1
+                );
+            }
+            assert!(
+                contents.contains("@VERSION"),
+                "{relative} should carry a version token"
+            );
+        }
+
+        // The window title is the one place a version is shown without a
+        // dialog, so it is worth naming here as well as at runtime.
+        let main_source = std::fs::read_to_string(crate_root.join("src/main.rs")).unwrap();
+        assert!(
+            main_source.contains(r#"concat!("Vkit V", env!("CARGO_PKG_VERSION"))"#),
+            "the window title should be built from the package version"
+        );
+    }
+
     #[test]
     fn the_issue_tracker_is_the_repository_plus_one_segment() {
         assert_eq!(
