@@ -199,8 +199,13 @@ impl AppState {
         let output_was_automatic = self.output_path_is_automatic_vam_default();
         self.figure_sex = value;
 
+        // Cached previews were warped against the outgoing sex's UV mapping, and a
+        // surviving skin selection keeps apply_default_skin from picking again once the
+        // new sex's catalog lands.
         self.hair_preview_lru.clear();
         self.clear_hair_preview_selection();
+        self.skin_preview_lru.clear();
+        self.clear_skin_preview_selection();
         if output_was_automatic {
             self.output_path.clear();
             self.set_default_vam_output_path_if_empty();
@@ -349,5 +354,85 @@ impl AppState {
             self.load_template(discovered.base_path);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::skin_preview::{
+        SkinChannel, SkinCorner, SkinImage, SkinPreviewGeometry, SkinSurfaceMap, SkinTriangle,
+    };
+
+    fn worn_preview() -> Arc<SkinPreview> {
+        let geometry = SkinPreviewGeometry::new(
+            7,
+            vec![SkinTriangle {
+                source_triangle_id: 0,
+                channel: SkinChannel::Face,
+                corners: [
+                    SkinCorner {
+                        vertex_id: 0,
+                        uv: [0.0, 0.0],
+                    },
+                    SkinCorner {
+                        vertex_id: 1,
+                        uv: [1.0, 0.0],
+                    },
+                    SkinCorner {
+                        vertex_id: 2,
+                        uv: [0.0, 1.0],
+                    },
+                ],
+            }],
+        )
+        .unwrap();
+        let image = Arc::new(SkinImage::solid(7, [128, 96, 64, 255]));
+        Arc::new(SkinPreview {
+            revision: 7,
+            geometry: Arc::new(geometry),
+            face: Arc::clone(&image),
+            torso: Arc::clone(&image),
+            sclera: Arc::clone(&image),
+            iris: Arc::clone(&image),
+            lacrimal: Arc::clone(&image),
+            inner_mouth: Arc::clone(&image),
+            teeth: Arc::clone(&image),
+            gums: Arc::clone(&image),
+            tongue: Arc::clone(&image),
+            eyelashes: image,
+            face_surface: SkinSurfaceMap::neutral(8),
+            torso_surface: SkinSurfaceMap::neutral(9),
+            mouth_surface_atlas: SkinSurfaceMap::neutral_mouth_atlas(10),
+            sclera_surface: SkinSurfaceMap::neutral(11),
+            iris_surface: SkinSurfaceMap::neutral(12),
+            lacrimal_surface: SkinSurfaceMap::neutral(13),
+            auxiliary_colors: [[255; 4]; 8],
+            auxiliary_textured: [true; 8],
+        })
+    }
+
+    #[test]
+    fn a_sex_swap_takes_the_other_sexs_skin_off() {
+        let preview = worn_preview();
+        let mut state = AppState {
+            selected_skin_id: Some("female-skin".to_owned()),
+            skin_preview: Some(Arc::clone(&preview)),
+            skin_preview_lru: VecDeque::from([("female-skin".to_owned(), preview)]),
+            base_view_mode: BaseViewMode::Texture,
+            ..AppState::default()
+        };
+
+        state.dispatch(Action::SetFigureSex(FigureSex::Male));
+
+        // The preview was warped against the outgoing sex's UV map and the id points into
+        // the outgoing sex's catalog; a survivor here also blocks apply_default_skin from
+        // dressing the figure when the new catalog lands, and keeps the stale texture
+        // eligible as a bake base.
+        assert_eq!(state.selected_skin_id, None);
+        assert!(state.skin_preview.is_none());
+        assert!(state.skin_preview_lru.is_empty());
+        assert_eq!(state.base_view_mode, BaseViewMode::Solid);
+        assert!(!state.skin_base_available());
     }
 }

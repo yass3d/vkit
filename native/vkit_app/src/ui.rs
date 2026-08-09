@@ -1052,7 +1052,9 @@ fn simplify_diagnostic_log(raw: &str, locale: Locale) -> String {
 
                 let message = match crate::i18n::log_event_label(locale, event) {
                     Some(label) => {
-                        let is_failure = tag != "INFO ";
+                        // severity_tag has already traded the severity word for its mark,
+                        // and only INFO's mark is empty.
+                        let is_failure = !tag.is_empty();
                         if is_failure && !detail.is_empty() {
                             format!("{label} — {detail}")
                         } else if let Some(name) = diagnostic_detail_file_name(detail) {
@@ -1161,6 +1163,29 @@ mod log_view_tests {
             .expect("the error line is shown");
         assert!(line.contains(" × "), "marked as a failure: {line}");
         assert!(line.contains("no UV"), "the reason is the payload: {line}");
+    }
+
+    #[test]
+    fn an_info_row_keeps_its_label_and_shows_a_path_only_as_its_file_name() {
+        let raw = concat!(
+            "2026-07-29T00:37:21.000\tINFO\truntime\tworkspace_load_starting\t",
+            "kind=Scan; path=C:\\Users\\account\\Desktop\\head.obj\n",
+            "2026-07-29T00:37:22.000\tINFO\tapp\tstartup\tversion=0.3.0; profile=release\n",
+        );
+        let shown = simplify_diagnostic_log(raw, Locale::English);
+        assert!(shown.contains("Loading file — head.obj"), "{shown}");
+        assert!(
+            !shown.contains("C:\\Users"),
+            "the simple view never shows a local path: {shown}"
+        );
+        let startup = shown
+            .lines()
+            .find(|line| line.contains("Application started"))
+            .expect("the labeled startup row is shown");
+        assert!(
+            !startup.contains("version="),
+            "no key=value plumbing on a success row: {startup}"
+        );
     }
 
     #[test]

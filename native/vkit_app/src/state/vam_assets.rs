@@ -250,7 +250,7 @@ impl AppState {
         self.start_pending_direct_edit_source_if_ready();
     }
 
-    fn clear_skin_preview_selection(&mut self) {
+    pub(super) fn clear_skin_preview_selection(&mut self) {
         self.next_skin_request_id = self.next_skin_request_id.saturating_add(1);
         self.expected_skin_request = None;
         self.pending_skin_work = None;
