@@ -185,7 +185,7 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
     if pin_mode && !navigation.panning && !header_blocked {
         handle_source_pins(ui, state, &response, image_rect, &layer);
     }
-    if !texture_paint_tool(state.texture_project.active_tool) {
+    if !state.texture_project.active_tool.is_paint_brush() {
         clear_brush_size_gesture(
             ui.ctx(),
             crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
@@ -195,7 +195,7 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
             crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
         );
     }
-    let brush_size = texture_paint_tool(state.texture_project.active_tool).then(|| {
+    let brush_size = state.texture_project.active_tool.is_paint_brush().then(|| {
         handle_brush_size_gesture(
             ui,
             crate::ui_components::BrushSweeps::TEXTURE_CANVAS.size(),
@@ -210,7 +210,7 @@ pub fn draw_source_workspace(ui: &mut Ui, state: &mut AppState, rect: Rect) {
     }
     // The flat canvas paints with the same brush as the surface does, so it
     // answers to the same two sweeps. It had only ever heard of the first.
-    let brush_strength = texture_paint_tool(state.texture_project.active_tool).then(|| {
+    let brush_strength = state.texture_project.active_tool.is_paint_brush().then(|| {
         crate::ui_components::handle_brush_strength_gesture(
             ui,
             crate::ui_components::BrushSweeps::TEXTURE_CANVAS.strength(),
@@ -828,20 +828,7 @@ fn draw_selected_layer_controls(ui: &mut Ui, state: &mut AppState, layer: &Textu
         if layer.channel.is_color() {
             crate::ui::section_heading(ui, text(state.locale, TextKey::ImageAdjustments));
             draw_adjustments(ui, state, layer);
-            let has_anchor = state
-                .texture_project
-                .layers
-                .iter()
-                .position(|candidate| candidate.id == layer.id)
-                .is_some_and(|index| {
-                    state.texture_project.layers[index + 1..]
-                        .iter()
-                        .any(|candidate| {
-                            candidate.visible
-                                && candidate.channel == TextureChannel::Diffuse
-                                && (candidate.image.is_some() || candidate.edited_image.is_some())
-                        })
-                });
+            let has_anchor = state.texture_project.tone_match_anchor(layer.id).is_some();
             if has_anchor
                 && ui
                     .add_sized(
@@ -854,15 +841,11 @@ fn draw_selected_layer_controls(ui: &mut Ui, state: &mut AppState, layer: &Textu
                 state.dispatch(Action::MatchTextureLayerColor(layer.id));
             }
         }
-        if matches!(
-            state.texture_project.active_tool,
-            TextureTool::MaskBrush
-                | TextureTool::CloneStamp
-                | TextureTool::DodgeBurn
-                | TextureTool::Sponge
-        ) || layer.mask.is_some()
-            || layer.edited_image.is_some()
-        {
+        // Exactly what the section can draw something for: a Clear button
+        // when a mask exists, and the clone hint while a paint brush is in
+        // hand. Admitting an edited image on its own rendered a heading over
+        // nothing.
+        if state.texture_project.active_tool.is_paint_brush() || layer.mask.is_some() {
             draw_mask_brush_controls(ui, state, layer);
         }
     });
@@ -1122,7 +1105,7 @@ pub(crate) fn draw_paint_header_content(ui: &mut Ui, state: &mut AppState, conte
         .map_or(TextureSourceMode::default().available_tools(), |layer| {
             layer.source_mode.available_tools()
         });
-    for (index, tool) in tools.iter().copied().enumerate() {
+    for tool in tools.iter().copied() {
         let (cell, response) =
             row.allocate_exact_size(Vec2::splat(CONTROL_H_DENSE), Sense::click());
         let response = crate::ui_components::tooltip(
@@ -1151,7 +1134,6 @@ pub(crate) fn draw_paint_header_content(ui: &mut Ui, state: &mut AppState, conte
         if response.clicked() {
             state.dispatch(Action::SetTextureTool(tool));
         }
-        let _ = index;
     }
 
     let (sep, _) = row.allocate_exact_size(vec2(SPACE_2 + 1.0, CONTROL_H_DENSE), Sense::hover());
@@ -1384,10 +1366,6 @@ fn texture_hud_toggle_icon(hud: &mut Ui, icon: Icon, active: bool, tooltip: &str
     response
 }
 
-const fn texture_paint_tool(tool: TextureTool) -> bool {
-    tool.is_paint_brush()
-}
-
 fn handle_source_pins(
     ui: &Ui,
     state: &mut AppState,
@@ -1505,6 +1483,17 @@ fn handle_source_texture_tools(
         return Vec::new();
     };
     if !down || !response.hovered() {
+        return Vec::new();
+    }
+    if tool == TextureTool::MaskBrush
+        && layer.source_mode == TextureSourceMode::LandmarkPins
+        && !layer.landmark_warp_ready()
+    {
+        // The mask lives in face UV space, and the warp that carries a canvas
+        // point there does not exist until the pins do. Every dab of this
+        // stroke would be dropped on the floor — and beginning the stroke
+        // anyway used to book an undo checkpoint for nothing. The prompt over
+        // the 3D view says what is missing.
         return Vec::new();
     }
     if !state.texture_project.edit_transaction_active() {
@@ -1849,7 +1838,7 @@ fn paint_stencil_projection_preview(
     canvas: Rect,
     layer: &crate::texture_project::TextureLayer,
 ) -> bool {
-    if !state.texture_project.projection_stencil {
+    if !state.texture_project.projection_stencil() {
         crate::viewport::forget_stencil_projection(ui);
         return false;
     }
@@ -2228,7 +2217,7 @@ fn stencil_quad(texture: egui::TextureId, corners: [Pos2; 4], tint: Color32) -> 
     mesh
 }
 
-pub(crate) fn projection_stencil_corners(state: &AppState, rect: Rect) -> [Pos2; 4] {
+fn projection_stencil_corners(state: &AppState, rect: Rect) -> [Pos2; 4] {
     let placement = state.texture_project.projection_placement;
     let centre = rect.center() + egui::vec2(placement.offset[0], placement.offset[1]);
     let half = egui::vec2(

@@ -1142,7 +1142,7 @@ fn reaching_for_the_projection_stencil_keeps_the_head() {
         "the head vanished when the stencil came up"
     );
     assert!(
-        state.texture_project.projection_stencil,
+        state.texture_project.projection_stencil(),
         "the stencil is up"
     );
 }
@@ -1168,7 +1168,7 @@ fn the_stencil_never_leaves_a_layer_holding_a_tool_it_refuses() {
         "an atlas layer was left holding {tool:?}"
     );
     assert!(
-        !state.texture_project.projection_stencil,
+        !state.texture_project.projection_stencil(),
         "the stencil rose over a layer that cannot take the paint"
     );
 
@@ -1178,7 +1178,7 @@ fn the_stencil_never_leaves_a_layer_holding_a_tool_it_refuses() {
     );
     state.dispatch(Action::SetTextureProjectionStencil(true));
     assert_eq!(state.texture_project.active_tool, TextureTool::Projection);
-    assert!(state.texture_project.projection_stencil);
+    assert!(state.texture_project.projection_stencil());
 }
 
 #[test]
@@ -1192,20 +1192,20 @@ fn the_stencil_goes_down_when_its_owners_move_on() {
         TextureSourceMode::LandmarkPins,
     );
     state.dispatch(Action::SetTextureProjectionStencil(true));
-    assert!(state.texture_project.projection_stencil);
+    assert!(state.texture_project.projection_stencil());
 
     state.dispatch(Action::SetTextureTool(TextureTool::MaskBrush));
     assert!(
-        !state.texture_project.projection_stencil,
+        !state.texture_project.projection_stencil(),
         "the mask brush left the stencil owning the pointer"
     );
 
     state.dispatch(Action::SetTextureProjectionStencil(true));
-    assert!(state.texture_project.projection_stencil);
+    assert!(state.texture_project.projection_stencil());
     state.dispatch(Action::RequestTab(Tab::Morph));
     assert_eq!(state.active_tab, Tab::Morph, "the morph stage is reachable");
     assert!(
-        !state.texture_project.projection_stencil,
+        !state.texture_project.projection_stencil(),
         "the stencil followed the user onto the sculpting stage"
     );
 }
@@ -1220,7 +1220,7 @@ fn a_stencil_raised_over_a_new_image_lands_centred_on_a_framed_head() {
         .texture_project
         .add_image_layer(PathBuf::from("first.png"), TextureSourceMode::LandmarkPins);
     state.dispatch(Action::SetTextureProjectionStencil(true));
-    assert!(state.texture_project.projection_stencil);
+    assert!(state.texture_project.projection_stencil());
 
     let dragged = StencilPlacement::default().panned([420.0, -260.0]);
     state.dispatch(Action::SetTextureProjectionPlacement(dragged));
@@ -5003,14 +5003,24 @@ fn a_look_for_the_other_figure_is_refused_rather_than_switching_figures() {
 }
 
 #[test]
-fn the_mask_overlay_follows_the_mask_brush() {
+fn the_mask_overlay_setting_belongs_to_the_reader_not_the_tool() {
+    // Switching tools used to recompute this flag, which meant the switch in
+    // the panel was decoration: turn the overlay off, change brush, come back,
+    // and it was on again. Whether the overlay is *drawn* outside the mask
+    // brush is the paint gate's business; the flag itself is a choice.
     let mut state = AppState::default();
+    assert!(
+        state.texture_project.mask_preview_enabled,
+        "on by default, so the first mask stroke is visible"
+    );
     state.dispatch(Action::SetTextureTool(TextureTool::MaskBrush));
-    assert!(state.texture_project.mask_preview_enabled);
+    state.dispatch(Action::SetTextureMaskPreviewEnabled(false));
     state.dispatch(Action::SetTextureTool(TextureTool::CloneStamp));
-    assert!(!state.texture_project.mask_preview_enabled);
     state.dispatch(Action::SetTextureTool(TextureTool::MaskBrush));
-    assert!(state.texture_project.mask_preview_enabled);
+    assert!(
+        !state.texture_project.mask_preview_enabled,
+        "a choice made by hand survives a round trip through another tool"
+    );
 }
 
 #[test]
@@ -5108,15 +5118,13 @@ fn the_projection_stencil_takes_over_the_pin_brush_while_it_is_up() {
         .texture_project
         .add_image_layer(PathBuf::from("photo.png"), TextureSourceMode::LandmarkPins);
     state.dispatch(Action::SetTextureTool(TextureTool::MaskBrush));
-    assert!(state.texture_project.mask_preview_enabled);
 
     state.dispatch(Action::SetTextureProjectionStencil(true));
-    assert!(state.texture_project.projection_stencil);
+    assert!(state.texture_project.projection_stencil());
     assert_eq!(state.texture_project.active_tool, TextureTool::Projection);
-    assert!(!state.texture_project.mask_preview_enabled);
 
     state.dispatch(Action::SetTextureProjectionStencil(false));
-    assert!(!state.texture_project.projection_stencil);
+    assert!(!state.texture_project.projection_stencil());
 
     assert_eq!(state.texture_project.active_tool, TextureTool::PinPair);
 }

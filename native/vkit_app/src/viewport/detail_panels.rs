@@ -604,7 +604,7 @@ pub(super) fn texture_target_pin_mode(state: &AppState) -> bool {
 }
 
 pub(super) fn projection_stencil_mode(state: &AppState) -> bool {
-    state.texture_project.projection_stencil
+    state.texture_project.projection_stencil()
         && state.is_texturing()
         && state.texture_project.has_editable_layer()
         && state.texture_project.active_tool == TextureTool::Projection

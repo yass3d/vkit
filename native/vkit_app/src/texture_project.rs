@@ -697,8 +697,6 @@ pub struct TextureProject {
 
     bake_failed_revision: Option<u64>,
 
-    pub projection_stencil: bool,
-
     pub projection_placement: StencilPlacement,
 
     /// The layer `projection_placement` was authored for. A stencil raised over any other layer
@@ -730,7 +728,7 @@ impl Default for TextureProject {
             mask_brush_radius: 0.035,
             mask_brush_falloff: SculptFalloff::Smooth,
             mask_brush_opacity: 0.55,
-            mask_preview_enabled: false,
+            mask_preview_enabled: true,
             pin_opacity: 1.0,
 
             export_subfolder: String::new(),
@@ -751,7 +749,6 @@ impl Default for TextureProject {
             baked_resolution: 0,
             bake_queued: None,
             bake_failed_revision: None,
-            projection_stencil: false,
             projection_placement: StencilPlacement::default(),
             projection_placed_for: None,
             projection_opacity: 0.55,
@@ -971,10 +968,17 @@ impl TextureProject {
                 .and_then(|layer| layer.source_mode.available_tools().first().copied())
                 .unwrap_or_default()
         };
+    }
 
-        self.mask_preview_enabled = self.active_tool == TextureTool::MaskBrush;
-
-        self.projection_stencil = self.active_tool == TextureTool::Projection;
+    /// Whether the projection stencil is the thing being handled.
+    ///
+    /// Derived rather than stored: this used to be a field written in lockstep
+    /// with the tool by the one setter, which is a second copy of a fact with
+    /// nothing keeping it second. The mask overlay flag that lived beside it
+    /// was worse — every tool change overwrote a switch the reader had set by
+    /// hand.
+    pub fn projection_stencil(&self) -> bool {
+        self.active_tool == TextureTool::Projection
     }
 
     /// True while the stencil is standing over an image nobody has placed it against yet.
@@ -1578,15 +1582,32 @@ impl TextureProject {
         self.mark_dirty();
     }
 
+    /// The layer a tone match on `layer_id` would read its target from.
+    ///
+    /// One definition, used by the button and by the action it dispatches. The
+    /// two used to ask slightly different questions — the button did not mind
+    /// an anchor with no picture, the action quietly gave up on one — so an
+    /// enabled button could do nothing when clicked.
+    pub fn tone_match_anchor(&self, layer_id: u64) -> Option<u64> {
+        let index = self.layers.iter().position(|layer| layer.id == layer_id)?;
+        let rasters = self.baked.as_ref().map(|baked| &baked.layer_rasters);
+        self.layers[index + 1..]
+            .iter()
+            .find(|layer| {
+                layer.visible
+                    && layer.channel == TextureChannel::Diffuse
+                    && (layer.image.is_some()
+                        || layer.edited_image.is_some()
+                        || rasters.is_some_and(|rasters| rasters.contains_key(&layer.id)))
+            })
+            .map(|layer| layer.id)
+    }
+
     pub fn match_layer_color_to_previous(&mut self, layer_id: u64) {
         let Some(index) = self.layers.iter().position(|layer| layer.id == layer_id) else {
             return;
         };
-        let Some(under) = self.layers[index + 1..]
-            .iter()
-            .find(|layer| layer.visible && layer.channel == TextureChannel::Diffuse)
-            .map(|layer| layer.id)
-        else {
+        let Some(under) = self.tone_match_anchor(layer_id) else {
             return;
         };
 
@@ -4700,7 +4721,6 @@ mod source_modes {
 
         project.select_layer(decal);
         assert_eq!(project.active_tool, TextureTool::MaskBrush);
-        assert!(project.mask_preview_enabled, "the overlay follows the tool");
 
         project.select_layer(photo);
         project.set_active_tool(TextureTool::CloneStamp);

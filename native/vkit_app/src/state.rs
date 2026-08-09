@@ -2041,7 +2041,7 @@ impl AppState {
     /// with the head framed behind it. Re-raising the stencil over a layer the user has already
     /// dragged leaves both the placement and the camera exactly where they left them.
     fn settle_projection_entry(&mut self) {
-        if !self.texture_project.projection_stencil
+        if !self.texture_project.projection_stencil()
             || !self.texture_project.stencil_needs_fresh_placement()
         {
             return;

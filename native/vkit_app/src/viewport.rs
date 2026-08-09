@@ -1456,16 +1456,30 @@ fn texture_prompt(state: &AppState) -> Option<TextKey> {
         return None;
     }
     let tool = state.texture_project.active_tool;
-    if !matches!(tool, TextureTool::Projection | TextureTool::PinPair) {
+    if !matches!(
+        tool,
+        TextureTool::Projection | TextureTool::PinPair | TextureTool::MaskBrush
+    ) {
         return None;
     }
     let layer = state.texture_project.selected_layer()?;
     if layer.edited_image.is_none() && layer.image.is_none() {
         return Some(TextKey::TextureNeedsImage);
     }
-    // With an image in hand the projection tool is ready to use; only the pin
-    // tool still needs something from the reader.
-    (tool == TextureTool::PinPair && layer.pins.is_empty()).then_some(TextKey::TexturePinPairPrompt)
+    // With an image in hand the projection tool is ready to use. The pin tool
+    // still wants its pins, and the mask brush cannot reach the face until the
+    // warp those pins make exists — a stroke before then lands nowhere, so the
+    // prompt has to say why.
+    match tool {
+        TextureTool::PinPair if layer.pins.is_empty() => Some(TextKey::TexturePinPairPrompt),
+        TextureTool::MaskBrush
+            if layer.source_mode == crate::texture_project::TextureSourceMode::LandmarkPins
+                && !layer.landmark_warp_ready() =>
+        {
+            Some(TextKey::TexturePinPairPrompt)
+        }
+        _ => None,
+    }
 }
 
 /// The floating line that tells you what to do next, with a chevron leaning in
