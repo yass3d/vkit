@@ -18,6 +18,7 @@ pub const PREVIOUS_LOG_FILE_NAME: &str = "vkit.log.1";
 
 static GLOBAL_LOG: OnceLock<DiagnosticLog> = OnceLock::new();
 static PANIC_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
+static CRASH_REPEAT_GATE: Mutex<CrashRepeatGate> = Mutex::new(CrashRepeatGate::new());
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Severity {
@@ -256,13 +257,65 @@ pub fn install_panic_hook() -> io::Result<()> {
                     column: site.column(),
                 }),
             );
-            let _ = log.record(Severity::Error, "runtime", "panic", &message);
-            let _ = log.flush();
-            write_crash_report(&message);
+            // The hook fires for caught panics too, and a deterministic panic
+            // inside the per-frame catch_unwind refires it at frame rate, so
+            // repeats of the same message are collapsed before any capture,
+            // record, or fsync happens.
+            if let Some(occurrences) = admit_crash_report(&message) {
+                let message = if occurrences > 1 {
+                    format!("{message}; occurrences={occurrences}")
+                } else {
+                    message
+                };
+                let _ = log.record(Severity::Error, "runtime", "panic", &message);
+                let _ = log.flush();
+                write_crash_report(&message);
+            }
             previous(information);
         }));
     });
     Ok(())
+}
+
+/// Collapses a panic that refires with the same message -- the per-frame
+/// swallowed UI panic being the archetype -- to a logarithmic number of
+/// reports, each carrying the running occurrence count.
+struct CrashRepeatGate {
+    last_message: Option<String>,
+    occurrences: u64,
+}
+
+impl CrashRepeatGate {
+    const fn new() -> Self {
+        Self {
+            last_message: None,
+            occurrences: 0,
+        }
+    }
+
+    /// `Some(n)` admits this occurrence as the `n`th of its message; `None`
+    /// suppresses it. Doublings stay admitted so the log still shows the
+    /// panic kept firing, at a cost that grows with the logarithm of the
+    /// repeat count rather than with the frame rate.
+    fn admit(&mut self, message: &str) -> Option<u64> {
+        if self.last_message.as_deref() == Some(message) {
+            self.occurrences = self.occurrences.saturating_add(1);
+            self.occurrences
+                .is_power_of_two()
+                .then_some(self.occurrences)
+        } else {
+            self.last_message = Some(message.to_owned());
+            self.occurrences = 1;
+            Some(1)
+        }
+    }
+}
+
+fn admit_crash_report(message: &str) -> Option<u64> {
+    CRASH_REPEAT_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .admit(message)
 }
 
 fn write_crash_report(message: &str) {
@@ -273,18 +326,23 @@ fn write_crash_report(message: &str) {
 }
 
 fn write_crash_report_in(directory: &Path, message: &str) {
-    let backtrace = std::backtrace::Backtrace::force_capture();
-    let report = format!(
-        "{}	{}
+    write_crash_report_bounded(directory, message, MAX_LOG_BYTES);
+}
 
-{backtrace}
-",
-        record_timestamp(),
-        message
-    );
+fn write_crash_report_bounded(directory: &Path, message: &str, maximum_bytes: u64) {
+    let backtrace = std::backtrace::Backtrace::force_capture();
+    let report = format!("{}\t{}\n\n{backtrace}\n", record_timestamp(), message);
     let _ = std::fs::create_dir_all(directory);
 
     let path = directory.join(CRASH_REPORT_FILE_NAME);
+    // Crash reports run on the same budget and generation count as vkit.log;
+    // an unbounded append here fills the disk while the app appears to keep
+    // running.
+    let length = file_length(&path).unwrap_or(0);
+    let report_length = u64::try_from(report.len()).unwrap_or(u64::MAX);
+    if length > 0 && length.saturating_add(report_length) > maximum_bytes {
+        let _ = rotate_files(&path, LOG_GENERATIONS);
+    }
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -509,6 +567,40 @@ mod tests {
         assert!(text.contains("second: and again"), "{text}");
 
         assert!(text.len() > 200, "no backtrace captured: {text}");
+    }
+
+    #[test]
+    fn crash_reports_rotate_on_a_budget_instead_of_growing_without_bound() {
+        let directory = TestDirectory::new();
+        for index in 0..4 {
+            write_crash_report_bounded(&directory.0, &format!("panic-{index}"), 512);
+        }
+
+        let path = directory.0.join(CRASH_REPORT_FILE_NAME);
+        let current = fs::read_to_string(&path).expect("the live crash report exists");
+        assert!(current.contains("panic-3"), "{current}");
+        assert!(
+            !current.contains("panic-0"),
+            "older reports rotate out of the live file: {current}"
+        );
+        assert!(
+            backup_path(&path, 1).exists(),
+            "the previous report generation is retained"
+        );
+        assert!(!backup_path(&path, LOG_GENERATIONS + 1).exists());
+    }
+
+    #[test]
+    fn a_panic_that_refires_every_frame_is_admitted_logarithmically() {
+        let mut gate = CrashRepeatGate::new();
+        let admitted: Vec<_> = (0..16).filter_map(|_| gate.admit("same")).collect();
+        assert_eq!(admitted, vec![1, 2, 4, 8, 16]);
+        assert_eq!(
+            gate.admit("different"),
+            Some(1),
+            "a new message resets the gate"
+        );
+        assert_eq!(gate.admit("same"), Some(1), "alternation is not a repeat");
     }
 
     #[test]

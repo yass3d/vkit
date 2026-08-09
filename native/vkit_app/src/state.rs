@@ -221,6 +221,12 @@ pub struct AppState {
 
     pub inspector_width: f32,
     pub revision: u64,
+
+    /// Advances on every dispatched action. `revision` counts geometry refits
+    /// only, yet the recovery snapshot is mostly things that never refit --
+    /// morph values, sculpt strokes, eye closure -- so autosave needs a pulse
+    /// that moves with those too.
+    edit_seq: u64,
     pub scan_path: Option<PathBuf>,
     pub template_path: Option<PathBuf>,
 
@@ -517,6 +523,7 @@ impl Default for AppState {
             morph_look_find_open: false,
             inspector_width: INSPECTOR_DEFAULT_WIDTH,
             revision: 0,
+            edit_seq: 0,
             scan_path: None,
             template_path: None,
             detected_template_topology: DetectedTemplateTopology::default(),
@@ -751,6 +758,17 @@ impl AppState {
             || self.workspace_load.is_active()
             || self.result.is_running()
             || self.export.is_active()
+    }
+
+    /// Moves whenever anything the recovery snapshot records could have moved:
+    /// geometry refits, dispatched edits, and texture-project mutations that
+    /// reach the project directly rather than through an action.
+    pub const fn autosave_edit_signal(&self) -> (u64, u64, u64) {
+        (
+            self.revision,
+            self.edit_seq,
+            self.texture_project.edit_revision(),
+        )
     }
 
     pub const fn active_job(&self) -> Option<(u64, u64)> {
@@ -1223,6 +1241,10 @@ impl AppState {
         if action.is_mutating() && self.block_mutation_while_busy() {
             return;
         }
+        // Counted before the arms rather than in an epilogue because several
+        // arms return early. An uncounted edit is a crash snapshot that never
+        // gets written; an overcounted one only costs a debounced re-save.
+        self.edit_seq = self.edit_seq.saturating_add(1);
         let texture_undo = action
             .records_texture_undo()
             .then(|| self.texture_project.capture_undo_checkpoint())
@@ -2202,7 +2224,13 @@ impl AppState {
             return;
         }
 
-        self.pending_edit_carry = self.capture_edit_carry();
+        // A carry that is still pending -- a recovered session waiting for its
+        // look to be installed -- holds the only copy of that work. Capturing
+        // "no edits on stage" over it would destroy exactly what it protects,
+        // so an empty capture leaves the pending carry in place.
+        if let Some(carry) = self.capture_edit_carry() {
+            self.pending_edit_carry = Some(carry);
+        }
         self.set_edit_source_mode(EditSourceMode::CustomMorph);
         self.selected_vam_edit_source_id = Some(source.stable_id.clone());
         self.pending_direct_edit_source = Some(source.clone());
@@ -2997,3 +3025,36 @@ pub use jobs::{
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod autosave_signal_tests {
+    use super::*;
+
+    #[test]
+    fn an_edit_that_never_refits_geometry_still_moves_the_autosave_signal() {
+        let mut state = AppState::default();
+        let before = state.autosave_edit_signal();
+        state.dispatch(Action::SetEyeClosure(0.4));
+        assert_eq!(state.revision, 0, "eye closure is not a geometry refit");
+        assert_ne!(
+            before,
+            state.autosave_edit_signal(),
+            "the autosave signal has to move on the edits the snapshot exists to save"
+        );
+    }
+
+    #[test]
+    fn a_texture_edit_made_without_an_action_still_moves_the_autosave_signal() {
+        let mut state = AppState::default();
+        let before = state.autosave_edit_signal();
+        state.texture_project.add_image_layer(
+            PathBuf::from("face.png"),
+            crate::texture_project::TextureSourceMode::LandmarkPins,
+        );
+        assert_ne!(
+            before,
+            state.autosave_edit_signal(),
+            "texture mutations reach the project directly, bypassing dispatch"
+        );
+    }
+}

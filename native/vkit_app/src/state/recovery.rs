@@ -56,6 +56,10 @@ impl AppState {
             eye_closure: snapshot.eye_closure,
         };
 
+        let carry_has_work = !snapshot.morph_values.is_empty()
+            || !snapshot.sculpt.is_empty()
+            || snapshot.eye_closure != 0.0;
+
         match snapshot.look_id.as_deref() {
             Some(id) if self.vam_edit_sources.iter().any(|s| s.stable_id == id) => {
                 self.select_vam_edit_source(id);
@@ -64,10 +68,34 @@ impl AppState {
                 outcome.look = true;
                 outcome.edits = true;
             }
-            Some(_) => outcome.missing_look = true,
+            Some(_) => {
+                // Unresolvable covers two cases that look identical from here:
+                // the look is gone, or the catalog scan has not produced it
+                // yet. Either way the carry is the only copy of the work, so
+                // it stays pending -- selecting the look once it appears (or
+                // entering the base face) installs it.
+                if carry_has_work {
+                    self.pending_edit_carry = Some(carry);
+                }
+                outcome.missing_look = true;
+            }
             None => {
-                outcome.missing_look =
-                    snapshot.sculpt.is_empty() && snapshot.morph_values.is_empty();
+                // No look was ever part of this session -- base-face and
+                // scan-head editing both run with no look selected -- so a
+                // missing-look warning would be false. The carry lands on the
+                // base head: immediately when the template is already in,
+                // otherwise on the next install.
+                if carry_has_work {
+                    self.pending_edit_carry = Some(carry);
+                    outcome.edits = true;
+                    if self.can_enter_detail_from_template()
+                        && !self.busy()
+                        && !self.tab_available(Tab::Morph)
+                    {
+                        self.set_edit_source_mode(EditSourceMode::CustomMorph);
+                        self.enter_direct_edit(Tab::Morph);
+                    }
+                }
             }
         }
         outcome
@@ -101,7 +129,10 @@ impl AppState {
 
     fn restore_texture_layers(&mut self, records: &[TextureLayerRecord]) -> usize {
         let mut restored = 0;
-        for record in records {
+        // Records are stored top-first while add_image_layer stacks each new
+        // layer on top of the previous one, so the walk runs bottom-first to
+        // rebuild the stack the way it composited before the crash.
+        for record in records.iter().rev() {
             let Some(path) = record.source_path.clone() else {
                 continue;
             };
@@ -390,6 +421,100 @@ mod tests {
         assert!(!outcome.look);
         assert!(!outcome.edits);
     }
+
+    #[test]
+    fn a_look_less_session_keeps_its_edits_for_the_next_head_install() {
+        let mut state = AppState::default();
+        let snapshot = SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            look_id: None,
+            morph_values: BTreeMap::from([("brow".to_owned(), 0.5)]),
+            eye_closure: 0.4,
+            sculpt: SparseDisplacement::from_dense(&[[1.0, 0.0, 0.0]]),
+            ..SessionSnapshot::default()
+        };
+        let outcome = state.restore_recovery(&snapshot);
+        assert!(outcome.edits, "the work is carried, not discarded");
+        assert!(
+            !outcome.missing_look,
+            "no look was ever part of this session"
+        );
+        assert!(
+            state.pending_edit_carry.is_some(),
+            "the carry waits for the base head"
+        );
+    }
+
+    #[test]
+    fn a_look_the_catalog_has_not_listed_yet_keeps_the_edits_pending() {
+        let mut state = AppState::default();
+        let snapshot = SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            look_id: Some("var:Author.Look.1:/x.vap".to_owned()),
+            morph_values: BTreeMap::from([("brow".to_owned(), 0.5)]),
+            ..SessionSnapshot::default()
+        };
+        let outcome = state.restore_recovery(&snapshot);
+        assert!(outcome.missing_look);
+        assert!(
+            state.pending_edit_carry.is_some(),
+            "an unresolved look must not cost the morph and sculpt work"
+        );
+    }
+
+    #[test]
+    fn a_texture_only_look_less_session_is_not_reported_as_a_missing_look() {
+        let file = tempfile::Builder::new()
+            .suffix(".png")
+            .tempfile()
+            .expect("a source file");
+        let mut state = AppState::default();
+        let snapshot = SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            look_id: None,
+            texture_layers: vec![TextureLayerRecord {
+                source_path: Some(file.path().to_path_buf()),
+                ..TextureLayerRecord::default()
+            }],
+            ..SessionSnapshot::default()
+        };
+        let outcome = state.restore_recovery(&snapshot);
+        assert_eq!(outcome.texture_layers, 1);
+        assert!(
+            !outcome.missing_look,
+            "the layers restored fine and there was never a look to miss"
+        );
+        assert!(state.pending_edit_carry.is_none());
+    }
+
+    #[test]
+    fn a_pending_recovery_carry_survives_selecting_the_look_once_it_appears() {
+        let mut state = AppState {
+            pending_edit_carry: Some(CarriedEdit {
+                morph_values: MorphLibraryValueSnapshot::from_values(BTreeMap::from([(
+                    "brow".to_owned(),
+                    0.5,
+                )])),
+                sculpt: None,
+                eye_closure: 0.2,
+            }),
+            ..AppState::default()
+        };
+        state.vam_edit_sources.push(VaMEditSource {
+            stable_id: "var:Author.Look.1:/x.vap".to_owned(),
+            label: "Look".to_owned(),
+            path: PathBuf::from("x.vap"),
+            sex: None,
+            kind: VaMEditSourceKind::MorphPair,
+            missing_morphs: 0,
+            morph_refs: 0,
+        });
+        state.select_vam_edit_source("var:Author.Look.1:/x.vap");
+        assert!(
+            state.pending_edit_carry.is_some(),
+            "capturing an empty stage must not destroy the carried session"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -425,6 +550,41 @@ mod recovered_layer_kinds {
             state.texture_project.active_tool,
             TextureTool::MaskBrush,
             "the tool follows the kind the layer came back as"
+        );
+    }
+
+    #[test]
+    fn recovered_layers_come_back_in_the_stacking_order_they_were_saved_in() {
+        let files: Vec<_> = (0..2)
+            .map(|_| {
+                tempfile::Builder::new()
+                    .suffix(".png")
+                    .tempfile()
+                    .expect("a source file")
+            })
+            .collect();
+        let records: Vec<_> = ["Top", "Bottom"]
+            .iter()
+            .zip(&files)
+            .map(|(name, file)| TextureLayerRecord {
+                name: (*name).to_owned(),
+                source_path: Some(file.path().to_path_buf()),
+                ..blank_layer_record()
+            })
+            .collect();
+
+        let mut state = AppState::default();
+        assert_eq!(state.restore_texture_layers(&records), 2);
+        let names: Vec<_> = state
+            .texture_project
+            .layers
+            .iter()
+            .map(|layer| layer.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["Top", "Bottom"],
+            "index 0 is the top layer, exactly as recorded"
         );
     }
 

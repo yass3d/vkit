@@ -1,6 +1,7 @@
-use std::fs;
-use std::io;
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use crate::session_snapshot::SessionSnapshot;
@@ -23,11 +24,51 @@ pub enum LockState {
     Stale,
 }
 
+/// Age-based fallback for when the operating system cannot answer whether the
+/// lock's owner is alive: non-Windows builds, and probe errors that are
+/// neither not-found nor a sharing violation.
 pub const fn classify_lock(age: Option<Duration>) -> LockState {
     match age {
         None => LockState::Free,
         Some(age) if age.as_secs() >= STALE_AFTER.as_secs() => LockState::Stale,
         Some(_) => LockState::Live,
+    }
+}
+
+/// What opening the lock file reveals about who, if anyone, holds it.
+enum HolderProbe {
+    NoLock,
+    Held,
+    Orphaned,
+    Unknown,
+}
+
+#[cfg(windows)]
+fn probe_lock_holder(path: &Path) -> HolderProbe {
+    // A live session holds the lock open with no sharing, so this open is
+    // refused while it runs. A crashed session's handle is revoked by the OS
+    // the moment the process dies, so the open succeeding proves the lock is
+    // orphaned -- regardless of how fresh its mtime is. That distinction is
+    // the whole point: relaunching seconds after a crash must read as a crash.
+    match OpenOptions::new().read(true).open(path) {
+        Ok(_) => HolderProbe::Orphaned,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => HolderProbe::NoLock,
+        Err(error)
+            if error.raw_os_error()
+                == Some(windows_sys::Win32::Foundation::ERROR_SHARING_VIOLATION as i32) =>
+        {
+            HolderProbe::Held
+        }
+        Err(_) => HolderProbe::Unknown,
+    }
+}
+
+#[cfg(not(windows))]
+fn probe_lock_holder(path: &Path) -> HolderProbe {
+    if path.exists() {
+        HolderProbe::Unknown
+    } else {
+        HolderProbe::NoLock
     }
 }
 
@@ -63,9 +104,14 @@ impl AutosaveSchedule {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RecoveryStore {
     directory: PathBuf,
+
+    /// The open handle that proves this session is alive. Held for the whole
+    /// session; the OS revokes it on any kind of process death, which is what
+    /// lets a relaunch tell a crash from a concurrently running instance.
+    held_lock: Mutex<Option<File>>,
 }
 
 impl RecoveryStore {
@@ -73,12 +119,16 @@ impl RecoveryStore {
         let root = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?;
         Some(Self {
             directory: root.join(crate::APP_NAME),
+            held_lock: Mutex::new(None),
         })
     }
 
     #[cfg(test)]
     pub const fn at(directory: PathBuf) -> Self {
-        Self { directory }
+        Self {
+            directory,
+            held_lock: Mutex::new(None),
+        }
     }
 
     fn lock_path(&self) -> PathBuf {
@@ -89,21 +139,56 @@ impl RecoveryStore {
         self.directory.join(SNAPSHOT_NAME)
     }
 
+    fn held(&self) -> MutexGuard<'_, Option<File>> {
+        self.held_lock
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     pub fn inspect(&self, now: SystemTime) -> LockState {
-        let age = fs::metadata(self.lock_path())
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .map(|modified| now.duration_since(modified).unwrap_or_default());
-        classify_lock(age)
+        let path = self.lock_path();
+        match probe_lock_holder(&path) {
+            HolderProbe::NoLock => LockState::Free,
+            HolderProbe::Held => LockState::Live,
+            HolderProbe::Orphaned => LockState::Stale,
+            HolderProbe::Unknown => {
+                let age = fs::metadata(&path)
+                    .and_then(|metadata| metadata.modified())
+                    .ok()
+                    .map(|modified| now.duration_since(modified).unwrap_or_default());
+                classify_lock(age)
+            }
+        }
     }
 
     pub fn claim(&self) -> io::Result<()> {
         fs::create_dir_all(&self.directory)?;
-        fs::write(self.lock_path(), b"vkit")
+        // Any handle this store already holds must close first: the exclusive
+        // share mode refuses even our own second open.
+        self.held().take();
+        let mut options = OpenOptions::new();
+        options.write(true).create(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt as _;
+            options.share_mode(0);
+        }
+        let mut file = options.open(self.lock_path())?;
+        file.set_len(0)?;
+        file.write_all(b"vkit")?;
+        *self.held() = Some(file);
+        Ok(())
     }
 
     pub fn heartbeat(&self) -> io::Result<()> {
-        fs::write(self.lock_path(), b"vkit")
+        let mut guard = self.held();
+        let file = guard
+            .as_mut()
+            .ok_or_else(|| io::Error::other("the session lock is not held"))?;
+        // Liveness rides on the handle; rewriting the bytes only keeps the
+        // mtime moving for the age fallback and for anyone reading the folder.
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(b"vkit")
     }
 
     pub fn save(&self, snapshot: &SessionSnapshot) -> io::Result<()> {
@@ -129,6 +214,9 @@ impl RecoveryStore {
     }
 
     pub fn release(&self) {
+        // The handle has to close before the delete: an exclusively held file
+        // refuses its own removal.
+        self.held().take();
         let _ = fs::remove_file(self.lock_path());
         let _ = fs::remove_file(self.snapshot_path());
     }
@@ -172,22 +260,42 @@ mod tests {
         assert_eq!(classify_lock(Some(STALE_AFTER * 100)), LockState::Stale);
     }
 
+    #[cfg(windows)]
     #[test]
     fn a_running_session_reads_as_live_and_not_as_a_crash() {
-        let store = RecoveryStore::at(scratch("live"));
+        let directory = scratch("live");
+        let store = RecoveryStore::at(directory.clone());
         assert_eq!(store.inspect(SystemTime::now()), LockState::Free);
         store.claim().unwrap();
-        assert_eq!(store.inspect(SystemTime::now()), LockState::Live);
+
+        // The second instance is what actually asks; it must see Live while
+        // the first one's handle is open, and its own claim must be refused.
+        let second = RecoveryStore::at(directory);
+        assert_eq!(second.inspect(SystemTime::now()), LockState::Live);
+        assert!(second.claim().is_err(), "the lock is not shareable");
+
         store.release();
         assert_eq!(store.inspect(SystemTime::now()), LockState::Free);
     }
 
+    #[cfg(windows)]
     #[test]
-    fn a_session_that_never_released_its_lock_reads_as_stale() {
-        let store = RecoveryStore::at(scratch("stale"));
-        store.claim().unwrap();
-        let later = SystemTime::now() + STALE_AFTER + Duration::from_secs(5);
-        assert_eq!(store.inspect(later), LockState::Stale);
+    fn a_crash_reads_as_stale_immediately_rather_than_after_a_cooldown() {
+        let directory = scratch("stale");
+        let crashed = RecoveryStore::at(directory.clone());
+        crashed.claim().unwrap();
+        // A crash releases the handle without releasing the files.
+        drop(crashed);
+
+        let relaunched = RecoveryStore::at(directory);
+        assert_eq!(
+            relaunched.inspect(SystemTime::now()),
+            LockState::Stale,
+            "the lock file is seconds old, but its owner is gone"
+        );
+        relaunched.claim().unwrap();
+        assert_eq!(relaunched.inspect(SystemTime::now()), LockState::Live);
+        relaunched.release();
     }
 
     #[test]

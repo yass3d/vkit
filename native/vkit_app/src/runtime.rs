@@ -996,7 +996,8 @@ struct Runtime {
 
     session_started: Instant,
 
-    snapshotted_revision: u64,
+    /// The edit signal as of the last autosave scheduling decision.
+    snapshotted_edits: (u64, u64, u64),
 
     last_saved_preferences: Option<Preferences>,
 
@@ -1128,15 +1129,21 @@ impl Runtime {
             .then(|| store.load())
             .flatten()
         });
-        if let Some(store) = recovery.as_ref()
-            && let Err(error) = store.claim()
-        {
-            log(
-                Severity::Warning,
-                "recovery_lock_failed",
-                &format!("autosave is off for this session: {error}"),
-            );
-        }
+        // A refused claim means another live instance holds the lock. Keeping
+        // the store anyway would let this session's autosave overwrite -- and
+        // on close delete -- that instance's snapshot, so autosave is
+        // genuinely disabled rather than merely announced as off.
+        let recovery = recovery.filter(|store| match store.claim() {
+            Ok(()) => true,
+            Err(error) => {
+                log(
+                    Severity::Warning,
+                    "recovery_lock_failed",
+                    &format!("autosave is off for this session: {error}"),
+                );
+                false
+            }
+        });
         let font_report = theme::configure_context(&context, startup_locale);
         log_font_report(&font_report, startup_locale);
         if let Some(surface) = startup_surface.as_ref() {
@@ -1216,96 +1223,7 @@ impl Runtime {
         let mut state = AppState::default();
 
         state.dispatch(Action::SetLocale(startup_locale));
-        state.dispatch(Action::SetBaseViewMode(saved.base_view_mode));
-        state.dispatch(Action::SetSurfaceSmoothPasses(saved.surface_smooth_passes));
-        state.dispatch(Action::SetTooltipsEnabled(saved.tooltips_enabled));
-        state.dispatch(Action::SetShowOneSidedMorphs(saved.show_one_sided_morphs));
-
-        state.dispatch(Action::SetDefaultSkin(saved.default_skin_id.clone()));
-        state.dispatch(Action::SetLastSkin(saved.last_skin_id.clone()));
-        for (field, value) in [
-            (VarMetadataField::Creator, saved.package_creator.clone()),
-            (VarMetadataField::Version, saved.package_version.clone()),
-            (VarMetadataField::License, saved.package_license.clone()),
-            (
-                VarMetadataField::PromotionalLink,
-                saved.package_promotional_link.clone(),
-            ),
-        ] {
-            if let Some(value) = value {
-                state.dispatch(Action::SetVarMetadata(field, value));
-            }
-        }
-        state.dispatch(Action::SetViewportBackgroundMode(
-            saved.viewport_background_mode,
-        ));
-        state.dispatch(Action::SetCustomHeadSolidColor(
-            saved.custom_head_solid_color_rgb,
-        ));
-        state.dispatch(Action::SetG2SolidColor(saved.g2_solid_color_rgb));
-        state.dispatch(Action::SetWireframeColor(saved.wireframe_color_rgb));
-        state.dispatch(Action::ToggleWireframe(saved.wireframe_visible));
-        state.dispatch(Action::SetWireframeOpacity(saved.wireframe_opacity));
-        state.dispatch(Action::ToggleXray(saved.xray_visible));
-        state.dispatch(Action::SetXrayOpacity(saved.xray_opacity));
-        state.dispatch(Action::ToggleScanOverlay(saved.scan_overlay));
-        state.dispatch(Action::SetOverlayOpacity(saved.overlay_opacity));
-        state.dispatch(Action::ToggleResultTearLacrimals(
-            saved.show_result_tear_lacrimals,
-        ));
-        state.dispatch(Action::ToggleResultEyelashes(saved.show_result_eyelashes));
-        state.dispatch(Action::SetAlignmentOpacity(saved.alignment_opacity));
-        state.ensure_visible_alignment_opacity();
-        state.dispatch(Action::SetAlignmentG2Opacity(saved.alignment_g2_opacity));
-        state.dispatch(Action::SetLightYaw(saved.light_yaw_radians));
-        state.dispatch(Action::SetLightingPreset(saved.lighting_preset));
-        state.dispatch(Action::SetLightBrightness(saved.light_brightness));
-        state.dispatch(Action::SetToneMapping(
-            crate::shader_color::ToneMapping::from_id(saved.tone_mapping),
-        ));
-        state.dispatch(Action::SetAmbientOcclusion(
-            crate::ambient_occlusion::AmbientOcclusionSettings {
-                enabled: saved.occlusion_enabled,
-                intensity: saved.occlusion_intensity,
-                radius: saved.occlusion_radius,
-            },
-        ));
-        state.dispatch(Action::SetBloom(crate::post_process::BloomSettings {
-            enabled: saved.bloom_enabled,
-            intensity: saved.bloom_intensity,
-            threshold: saved.bloom_threshold,
-            soft_knee: saved.bloom_soft_knee,
-            radius: saved.bloom_radius,
-        }));
-        state.dispatch(Action::SetVignette(crate::post_process::VignetteSettings {
-            enabled: saved.vignette_enabled,
-            intensity: saved.vignette_intensity,
-            smoothness: saved.vignette_smoothness,
-            roundness: saved.vignette_roundness,
-        }));
-
-        if let Some(value) = saved.vam_export_display_name {
-            state.dispatch(Action::SetVaMExportDisplayName(value));
-        }
-        if let Some(value) = saved.vam_export_group {
-            state.dispatch(Action::SetVaMExportGroup(value));
-        }
-        if let Some(value) = saved.vam_export_region {
-            state.dispatch(Action::SetVaMExportRegion(value));
-        }
-        if let Some(value) = saved.vam_export_is_pose_control {
-            state.dispatch(Action::SetVaMExportIsPoseControl(value));
-        }
-        if let Some(value) = saved.vam_export_bone_correction {
-            state.dispatch(Action::SetVaMExportBoneCorrection(value));
-        }
-        if let Some(width) = saved.inspector_width {
-            state.inspector_width = theme::clamp_inspector_width(f32::from(width));
-        }
-
-        if let Some(value) = saved.figure_sex {
-            state.dispatch(Action::SetFigureSex(value));
-        }
+        apply_saved_preferences(&mut state, &saved);
         let startup = parse_startup_paths(std::env::args_os());
         if let Some(path) = startup
             .output
@@ -1372,6 +1290,9 @@ impl Runtime {
             "ready",
             "DX12 renderer and native UI initialized",
         );
+        // Taken from the state as built, so the startup dispatches above do
+        // not read as edits worth a snapshot.
+        let snapshotted_edits = state.autosave_edit_signal();
         Ok(Self {
             logged_status: None,
             window,
@@ -1404,7 +1325,7 @@ impl Runtime {
             recovery,
             autosave: crate::recovery::AutosaveSchedule::default(),
             session_started: Instant::now(),
-            snapshotted_revision: 0,
+            snapshotted_edits,
             last_saved_preferences: None,
             preferences_checked: std::time::Duration::ZERO,
         })
@@ -1677,11 +1598,15 @@ impl Runtime {
         };
         let now = self.session_started.elapsed();
 
-        if self.state.revision != self.snapshotted_revision {
-            self.snapshotted_revision = self.state.revision;
+        let edits = self.state.autosave_edit_signal();
+        if edits != self.snapshotted_edits {
+            self.snapshotted_edits = edits;
             self.autosave.mark_dirty(now);
         }
-        if self.autosave.should_write(now) {
+        // While the recovery offer is still on screen, the snapshot on disk is
+        // the only copy of the crashed session; a write now would overwrite or
+        // release it before the user has answered. The heartbeat still runs.
+        if self.state.pending_recovery.is_none() && self.autosave.should_write(now) {
             let snapshot = self.state.recovery_snapshot();
             let result = if snapshot.has_work() {
                 store.save(&snapshot)
@@ -2567,62 +2492,7 @@ impl Runtime {
             }
             return;
         }
-        let preferences = Preferences {
-            locale: Some(self.state.locale),
-            morph_name_display: self.state.morph_name_display,
-            inspector_width: Some(
-                theme::clamp_inspector_width(self.state.inspector_width).round() as u16,
-            ),
-            vam_root: self.state.vam_root.clone(),
-            vam_geometry_base_path: self.state.vam_geometry_base_path.clone(),
-            figure_sex: Some(self.state.figure_sex),
-            vam_export_display_name: Some(self.state.vam_export_display_name.clone()),
-            vam_export_group: Some(self.state.vam_export_group.clone()),
-            vam_export_region: Some(self.state.vam_export_region.clone()),
-            vam_export_is_pose_control: Some(self.state.vam_export_is_pose_control),
-            vam_export_bone_correction: Some(self.state.vam_export_bone_correction),
-            custom_head_solid_color_rgb: self.state.custom_head_solid_color_rgb,
-            g2_solid_color_rgb: self.state.g2_solid_color_rgb,
-            wireframe_color_rgb: self.state.wireframe_color_rgb,
-            base_view_mode: self.state.base_view_mode,
-            surface_smooth_passes: self.state.surface_smooth_passes,
-            tooltips_enabled: self.state.tooltips_enabled,
-            show_one_sided_morphs: self.state.morph_library.show_one_sided,
-
-            last_skin_id: self.state.selected_skin_id.clone(),
-            default_skin_id: self.state.default_skin_id.clone(),
-            package_creator: Some(self.state.var_metadata.creator.clone()),
-            package_version: Some(self.state.var_version_text.clone()),
-            package_license: Some(self.state.var_metadata.license.clone()),
-            package_promotional_link: Some(self.state.var_metadata.promotional_link.clone()),
-            viewport_background_mode: self.state.viewport_background_mode,
-            wireframe_visible: self.state.wireframe_visible,
-            wireframe_opacity: self.state.wireframe_opacity,
-            xray_visible: self.state.xray_visible,
-            xray_opacity: self.state.xray_opacity,
-            scan_overlay: self.state.scan_overlay,
-            overlay_opacity: self.state.overlay_opacity,
-            show_result_tear_lacrimals: self.state.show_result_tear_lacrimals,
-            show_result_eyelashes: self.state.show_result_eyelashes,
-            alignment_opacity: self.state.alignment_opacity,
-            alignment_g2_opacity: self.state.alignment_g2_opacity,
-            light_yaw_radians: self.state.light_yaw_radians,
-            lighting_preset: self.state.lighting_preset,
-            light_brightness: self.state.light_brightness,
-            tone_mapping: self.state.tone_mapping.id(),
-            vignette_enabled: self.state.vignette.enabled,
-            vignette_intensity: self.state.vignette.intensity,
-            vignette_smoothness: self.state.vignette.smoothness,
-            vignette_roundness: self.state.vignette.roundness,
-            bloom_enabled: self.state.bloom.enabled,
-            bloom_intensity: self.state.bloom.intensity,
-            bloom_threshold: self.state.bloom.threshold,
-            bloom_soft_knee: self.state.bloom.soft_knee,
-            bloom_radius: self.state.bloom.radius,
-            occlusion_enabled: self.state.ambient_occlusion.enabled,
-            occlusion_intensity: self.state.ambient_occlusion.intensity,
-            occlusion_radius: self.state.ambient_occlusion.radius,
-        };
+        let preferences = preferences_from_state(&self.state);
         if self.last_saved_preferences.as_ref() == Some(&preferences) {
             return;
         }
@@ -2645,6 +2515,170 @@ struct StartupPaths {
     result: Option<PathBuf>,
     output: Option<PathBuf>,
     vam: Option<PathBuf>,
+}
+
+/// What settings.json remembers about this state.
+fn preferences_from_state(state: &AppState) -> Preferences {
+    Preferences {
+        locale: Some(state.locale),
+        morph_name_display: state.morph_name_display,
+        inspector_width: Some(theme::clamp_inspector_width(state.inspector_width).round() as u16),
+        vam_root: state.vam_root.clone(),
+        vam_geometry_base_path: state.vam_geometry_base_path.clone(),
+        figure_sex: Some(state.figure_sex),
+        vam_export_display_name: Some(state.vam_export_display_name.clone()),
+        vam_export_group: Some(state.vam_export_group.clone()),
+        vam_export_region: Some(state.vam_export_region.clone()),
+        vam_export_is_pose_control: Some(state.vam_export_is_pose_control),
+        vam_export_bone_correction: Some(state.vam_export_bone_correction),
+        custom_head_solid_color_rgb: state.custom_head_solid_color_rgb,
+        g2_solid_color_rgb: state.g2_solid_color_rgb,
+        wireframe_color_rgb: state.wireframe_color_rgb,
+        base_view_mode: state.base_view_mode,
+        surface_smooth_passes: state.surface_smooth_passes,
+        tooltips_enabled: state.tooltips_enabled,
+        show_one_sided_morphs: state.morph_library.show_one_sided,
+
+        // The live selection stays empty until the asynchronous catalog scan
+        // resolves it, and a failed scan clears it again -- neither of which
+        // is the user un-choosing their skin. The remembered value backstops
+        // every save the scan has not caught up with.
+        last_skin_id: state
+            .selected_skin_id
+            .clone()
+            .or_else(|| state.last_skin_id.clone()),
+        default_skin_id: state.default_skin_id.clone(),
+        package_creator: Some(state.var_metadata.creator.clone()),
+        package_version: Some(state.var_version_text.clone()),
+        package_license: Some(state.var_metadata.license.clone()),
+        package_promotional_link: Some(state.var_metadata.promotional_link.clone()),
+        viewport_background_mode: state.viewport_background_mode,
+        wireframe_visible: state.wireframe_visible,
+        wireframe_opacity: state.wireframe_opacity,
+        xray_visible: state.xray_visible,
+        xray_opacity: state.xray_opacity,
+        scan_overlay: state.scan_overlay,
+        overlay_opacity: state.overlay_opacity,
+        show_result_tear_lacrimals: state.show_result_tear_lacrimals,
+        show_result_eyelashes: state.show_result_eyelashes,
+        alignment_opacity: state.alignment_opacity,
+        alignment_g2_opacity: state.alignment_g2_opacity,
+        light_yaw_radians: state.light_yaw_radians,
+        lighting_preset: state.lighting_preset,
+        light_brightness: state.light_brightness,
+        tone_mapping: state.tone_mapping.id(),
+        vignette_enabled: state.vignette.enabled,
+        vignette_intensity: state.vignette.intensity,
+        vignette_smoothness: state.vignette.smoothness,
+        vignette_roundness: state.vignette.roundness,
+        bloom_enabled: state.bloom.enabled,
+        bloom_intensity: state.bloom.intensity,
+        bloom_threshold: state.bloom.threshold,
+        bloom_soft_knee: state.bloom.soft_knee,
+        bloom_radius: state.bloom.radius,
+        occlusion_enabled: state.ambient_occlusion.enabled,
+        occlusion_intensity: state.ambient_occlusion.intensity,
+        occlusion_radius: state.ambient_occlusion.radius,
+    }
+}
+
+/// Everything settings.json remembers lands back on the state here; a field
+/// written by `preferences_from_state` but absent here is a setting that can
+/// never survive a restart.
+fn apply_saved_preferences(state: &mut AppState, saved: &Preferences) {
+    state.dispatch(Action::SetBaseViewMode(saved.base_view_mode));
+    state.dispatch(Action::SetSurfaceSmoothPasses(saved.surface_smooth_passes));
+    state.dispatch(Action::SetTooltipsEnabled(saved.tooltips_enabled));
+    state.dispatch(Action::SetShowOneSidedMorphs(saved.show_one_sided_morphs));
+    // The settings panel writes this field directly, so there is no action to
+    // replay; the restore is the same direct assignment.
+    state.morph_name_display = saved.morph_name_display;
+
+    state.dispatch(Action::SetDefaultSkin(saved.default_skin_id.clone()));
+    state.dispatch(Action::SetLastSkin(saved.last_skin_id.clone()));
+    for (field, value) in [
+        (VarMetadataField::Creator, saved.package_creator.clone()),
+        (VarMetadataField::Version, saved.package_version.clone()),
+        (VarMetadataField::License, saved.package_license.clone()),
+        (
+            VarMetadataField::PromotionalLink,
+            saved.package_promotional_link.clone(),
+        ),
+    ] {
+        if let Some(value) = value {
+            state.dispatch(Action::SetVarMetadata(field, value));
+        }
+    }
+    state.dispatch(Action::SetViewportBackgroundMode(
+        saved.viewport_background_mode,
+    ));
+    state.dispatch(Action::SetCustomHeadSolidColor(
+        saved.custom_head_solid_color_rgb,
+    ));
+    state.dispatch(Action::SetG2SolidColor(saved.g2_solid_color_rgb));
+    state.dispatch(Action::SetWireframeColor(saved.wireframe_color_rgb));
+    state.dispatch(Action::ToggleWireframe(saved.wireframe_visible));
+    state.dispatch(Action::SetWireframeOpacity(saved.wireframe_opacity));
+    state.dispatch(Action::ToggleXray(saved.xray_visible));
+    state.dispatch(Action::SetXrayOpacity(saved.xray_opacity));
+    state.dispatch(Action::ToggleScanOverlay(saved.scan_overlay));
+    state.dispatch(Action::SetOverlayOpacity(saved.overlay_opacity));
+    state.dispatch(Action::ToggleResultTearLacrimals(
+        saved.show_result_tear_lacrimals,
+    ));
+    state.dispatch(Action::ToggleResultEyelashes(saved.show_result_eyelashes));
+    state.dispatch(Action::SetAlignmentOpacity(saved.alignment_opacity));
+    state.ensure_visible_alignment_opacity();
+    state.dispatch(Action::SetAlignmentG2Opacity(saved.alignment_g2_opacity));
+    state.dispatch(Action::SetLightYaw(saved.light_yaw_radians));
+    state.dispatch(Action::SetLightingPreset(saved.lighting_preset));
+    state.dispatch(Action::SetLightBrightness(saved.light_brightness));
+    state.dispatch(Action::SetToneMapping(
+        crate::shader_color::ToneMapping::from_id(saved.tone_mapping),
+    ));
+    state.dispatch(Action::SetAmbientOcclusion(
+        crate::ambient_occlusion::AmbientOcclusionSettings {
+            enabled: saved.occlusion_enabled,
+            intensity: saved.occlusion_intensity,
+            radius: saved.occlusion_radius,
+        },
+    ));
+    state.dispatch(Action::SetBloom(crate::post_process::BloomSettings {
+        enabled: saved.bloom_enabled,
+        intensity: saved.bloom_intensity,
+        threshold: saved.bloom_threshold,
+        soft_knee: saved.bloom_soft_knee,
+        radius: saved.bloom_radius,
+    }));
+    state.dispatch(Action::SetVignette(crate::post_process::VignetteSettings {
+        enabled: saved.vignette_enabled,
+        intensity: saved.vignette_intensity,
+        smoothness: saved.vignette_smoothness,
+        roundness: saved.vignette_roundness,
+    }));
+
+    if let Some(value) = saved.vam_export_display_name.clone() {
+        state.dispatch(Action::SetVaMExportDisplayName(value));
+    }
+    if let Some(value) = saved.vam_export_group.clone() {
+        state.dispatch(Action::SetVaMExportGroup(value));
+    }
+    if let Some(value) = saved.vam_export_region.clone() {
+        state.dispatch(Action::SetVaMExportRegion(value));
+    }
+    if let Some(value) = saved.vam_export_is_pose_control {
+        state.dispatch(Action::SetVaMExportIsPoseControl(value));
+    }
+    if let Some(value) = saved.vam_export_bone_correction {
+        state.dispatch(Action::SetVaMExportBoneCorrection(value));
+    }
+    if let Some(width) = saved.inspector_width {
+        state.inspector_width = theme::clamp_inspector_width(f32::from(width));
+    }
+
+    if let Some(value) = saved.figure_sex {
+        state.dispatch(Action::SetFigureSex(value));
+    }
 }
 
 fn parse_startup_paths(arguments: impl IntoIterator<Item = OsString>) -> StartupPaths {
@@ -2686,6 +2720,39 @@ fn parse_startup_paths(arguments: impl IntoIterator<Item = OsString>) -> Startup
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_morph_name_display_choice_survives_the_settings_round_trip() {
+        let mut state = AppState::default();
+        state.morph_name_display = crate::state::MorphNameDisplay::Original;
+        let saved = preferences_from_state(&state);
+
+        let mut restarted = AppState::default();
+        apply_saved_preferences(&mut restarted, &saved);
+        assert_eq!(
+            restarted.morph_name_display,
+            crate::state::MorphNameDisplay::Original,
+            "the persisted choice has to be applied at startup, not merely written"
+        );
+    }
+
+    #[test]
+    fn a_save_before_the_catalog_resolves_keeps_the_remembered_skin() {
+        let mut state = AppState::default();
+        state.last_skin_id = Some("skin-a".to_owned());
+        assert_eq!(
+            preferences_from_state(&state).last_skin_id.as_deref(),
+            Some("skin-a"),
+            "an unresolved selection must not wipe the remembered skin"
+        );
+
+        state.selected_skin_id = Some("skin-b".to_owned());
+        assert_eq!(
+            preferences_from_state(&state).last_skin_id.as_deref(),
+            Some("skin-b"),
+            "a live selection wins over the remembered one"
+        );
+    }
 
     #[test]
     fn scan_import_progress_keeps_the_receiver_alive_until_the_terminal_event() {
