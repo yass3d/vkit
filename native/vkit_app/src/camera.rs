@@ -32,9 +32,12 @@ pub enum ProjectionMode {
 ///
 /// A face is worked from the front, so the four diagonals are quarter turns off
 /// the front rather than free orbits, and each sits on the numpad key that
-/// already points that way: 7 and 9 above, 1 and 3 below.
+/// already points that way: 7 and 9 above, 1 and 3 below, and the front itself
+/// in the middle of them at 5.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StandardView {
+    Front,
+
     LeftSide,
     RightSide,
 
@@ -371,6 +374,7 @@ impl TurntableCamera {
         // exactly the framing these keys exist to avoid.
         const DIAGONAL_PITCH: f32 = FRAC_PI_4 * 0.65;
         let (yaw, pitch) = match view {
+            StandardView::Front => (0.0, 0.0),
             StandardView::LeftSide => (-FRAC_PI_2, 0.0),
             StandardView::RightSide => (FRAC_PI_2, 0.0),
             StandardView::Top => (0.0, PITCH_LIMIT_RADIANS),
@@ -567,6 +571,7 @@ mod tests {
             let (forward_from_target, _, _) = camera.basis();
             forward_from_target
         };
+        assert!(axis(StandardView::Front).z > 0.99);
         assert!(axis(StandardView::LeftSide).x < -0.99);
         assert!(axis(StandardView::RightSide).x > 0.99);
         assert!(axis(StandardView::Top).y > 0.99);

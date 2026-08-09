@@ -886,14 +886,16 @@ fn runtime_shortcut_for_physical_key(
     }
 
     match physical_key {
-        PhysicalKey::Code(KeyCode::Home | KeyCode::NumpadDecimal | KeyCode::Numpad0) => {
-            Some(RuntimeShortcut::ResetCamera)
-        }
-        PhysicalKey::Code(KeyCode::Numpad5) => Some(RuntimeShortcut::ToggleProjection),
+        PhysicalKey::Code(KeyCode::Home | KeyCode::Numpad0) => Some(RuntimeShortcut::ResetCamera),
+        PhysicalKey::Code(KeyCode::NumpadDecimal) => Some(RuntimeShortcut::ToggleProjection),
 
-        // The numpad is read as the face is seen from the front: the side keys
-        // swing left and right, the column keys go over and under, and the four
-        // corners are the diagonals they already point at.
+        // The numpad is read as the face is seen from the front: 5 in the middle
+        // is the front itself, the side keys swing left and right, the column
+        // keys go over and under, and the four corners are the diagonals they
+        // already point at.
+        PhysicalKey::Code(KeyCode::Numpad5) => Some(RuntimeShortcut::StandardView(
+            crate::camera::StandardView::Front,
+        )),
         PhysicalKey::Code(KeyCode::Numpad4) => Some(RuntimeShortcut::StandardView(
             crate::camera::StandardView::LeftSide,
         )),
@@ -2929,18 +2931,11 @@ mod tests {
             ),
             Some(RuntimeShortcut::ResetCamera)
         );
+        // The decimal point carries the projection toggle; reset keeps Home and
+        // 0. Numpad 5 is a view like every other digit around it.
         assert_eq!(
             runtime_shortcut_for_physical_key(
                 PhysicalKey::Code(KeyCode::NumpadDecimal),
-                ElementState::Pressed,
-                false,
-                false,
-            ),
-            Some(RuntimeShortcut::ResetCamera)
-        );
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Numpad5),
                 ElementState::Pressed,
                 false,
                 false,
@@ -2949,7 +2944,16 @@ mod tests {
         );
         assert_eq!(
             runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Numpad5),
+                PhysicalKey::Code(KeyCode::Numpad0),
+                ElementState::Pressed,
+                false,
+                false,
+            ),
+            Some(RuntimeShortcut::ResetCamera)
+        );
+        assert_eq!(
+            runtime_shortcut_for_physical_key(
+                PhysicalKey::Code(KeyCode::NumpadDecimal),
                 ElementState::Released,
                 false,
                 false,
@@ -2958,9 +2962,10 @@ mod tests {
         );
 
         // Laid out the way the keys sit under a hand, so a wrong pairing reads
-        // as wrong here too: 4 and 6 to the sides, 8 over and 2 under, and the
-        // corners on the diagonals they point at.
+        // as wrong here too: 5 straight ahead, 4 and 6 to the sides, 8 over and
+        // 2 under, and the corners on the diagonals they point at.
         for (code, view) in [
+            (KeyCode::Numpad5, crate::camera::StandardView::Front),
             (KeyCode::Numpad4, crate::camera::StandardView::LeftSide),
             (KeyCode::Numpad6, crate::camera::StandardView::RightSide),
             (KeyCode::Numpad8, crate::camera::StandardView::Top),

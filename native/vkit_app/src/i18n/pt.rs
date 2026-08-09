@@ -442,7 +442,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Encaixar vista"),
         TextKey::ShortcutSnapView => Some("Alt + arrastar com a roda"),
         TextKey::HelpStandardViews => Some("Vistas padrão"),
-        TextKey::ShortcutStandardViews => Some("Numérico 1 3 7 9"),
+        TextKey::HelpCameraProjection => Some("Perspectiva / Ortográfica"),
+        TextKey::ShortcutStandardViews => Some("Numérico 1-9"),
+        TextKey::ShortcutCameraProjection => Some("Numérico ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("Selecione sua pasta do VaM para preparar a base G2 automaticamente")

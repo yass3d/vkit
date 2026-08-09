@@ -1424,7 +1424,7 @@ fn orientation_triad_foreshortens_and_orders_by_depth() {
 
 #[test]
 fn help_tables_are_tab_specific_and_keep_documented_pin_inputs() {
-    assert_eq!(PIN_HELP_ROWS.len(), 14);
+    assert_eq!(PIN_HELP_ROWS.len(), 15);
 
     for rows in [
         ALIGN_HELP_ROWS.as_slice(),
@@ -1434,6 +1434,13 @@ fn help_tables_are_tab_specific_and_keep_documented_pin_inputs() {
     ] {
         assert!(rows.contains(&(TextKey::HelpSnapView, TextKey::ShortcutSnapView)));
         assert!(rows.contains(&(TextKey::HelpStandardViews, TextKey::ShortcutStandardViews)));
+        // The projection toggle travels with the standard views: both are the
+        // numpad, and a card that names one without the other reads as though
+        // the other does not exist.
+        assert!(rows.contains(&(
+            TextKey::HelpCameraProjection,
+            TextKey::ShortcutCameraProjection
+        )));
     }
     assert!(PIN_HELP_ROWS.contains(&(TextKey::HelpFrameView, TextKey::ShortcutFrameView)));
     assert!(ALIGN_HELP_ROWS.contains(&(TextKey::HelpFrameView, TextKey::ShortcutFrameView)));

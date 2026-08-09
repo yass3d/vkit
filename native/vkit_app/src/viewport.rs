@@ -160,7 +160,7 @@ const MAX_SCULPT_SMOOTH_DABS_PER_FRAME: usize = 8;
 const IMPORT_FOCUS_RELEASE_DURATION: Duration = Duration::from_millis(460);
 const EYE_GAZE_GRID_SIZE: f32 = 124.0;
 const EYE_GAZE_POPUP_ID: &str = "vkit.viewport.eye-gaze-popup";
-const PIN_HELP_ROWS: [(TextKey, TextKey); 14] = [
+const PIN_HELP_ROWS: [(TextKey, TextKey); 15] = [
     (TextKey::HelpPlace, TextKey::ShortcutPlace),
     (TextKey::HelpMove, TextKey::ShortcutMove),
     (TextKey::HelpDelete, TextKey::ShortcutDelete),
@@ -173,10 +173,14 @@ const PIN_HELP_ROWS: [(TextKey, TextKey); 14] = [
     (TextKey::HelpFrameView, TextKey::ShortcutFrameView),
     (TextKey::HelpSnapView, TextKey::ShortcutSnapView),
     (TextKey::HelpStandardViews, TextKey::ShortcutStandardViews),
+    (
+        TextKey::HelpCameraProjection,
+        TextKey::ShortcutCameraProjection,
+    ),
     (TextKey::HelpLight, TextKey::ShortcutLight),
     (TextKey::HelpUndo, TextKey::ShortcutUndo),
 ];
-const ALIGN_HELP_ROWS: [(TextKey, TextKey); 10] = [
+const ALIGN_HELP_ROWS: [(TextKey, TextKey); 11] = [
     (TextKey::HelpSnapRotation, TextKey::ShortcutSnapRotation),
     (TextKey::HelpOrbit, TextKey::ShortcutOrbit),
     (TextKey::HelpPan, TextKey::ShortcutPan),
@@ -185,10 +189,14 @@ const ALIGN_HELP_ROWS: [(TextKey, TextKey); 10] = [
     (TextKey::HelpFrameView, TextKey::ShortcutFrameView),
     (TextKey::HelpSnapView, TextKey::ShortcutSnapView),
     (TextKey::HelpStandardViews, TextKey::ShortcutStandardViews),
+    (
+        TextKey::HelpCameraProjection,
+        TextKey::ShortcutCameraProjection,
+    ),
     (TextKey::HelpLight, TextKey::ShortcutLight),
     (TextKey::HelpUndo, TextKey::ShortcutUndo),
 ];
-const DETAIL_HELP_ROWS: [(TextKey, TextKey); 14] = [
+const DETAIL_HELP_ROWS: [(TextKey, TextKey); 15] = [
     (TextKey::SculptGrab, TextKey::ShortcutSculptGrab),
     // Near the top because nobody finds these on their own, and every brush
     // in both tabs has them.
@@ -203,6 +211,10 @@ const DETAIL_HELP_ROWS: [(TextKey, TextKey); 14] = [
     (TextKey::HelpDragZoom, TextKey::ShortcutDragZoom),
     (TextKey::HelpSnapView, TextKey::ShortcutSnapView),
     (TextKey::HelpStandardViews, TextKey::ShortcutStandardViews),
+    (
+        TextKey::HelpCameraProjection,
+        TextKey::ShortcutCameraProjection,
+    ),
     (TextKey::HelpLight, TextKey::ShortcutLight),
     (TextKey::HelpUndo, TextKey::ShortcutUndo),
 ];
@@ -221,7 +233,7 @@ const PROJECTION_HELP_ROWS: [(TextKey, TextKey); 7] = [
     (TextKey::HelpBrushStrength, TextKey::ShortcutBrushStrength),
     (TextKey::HelpProjectionDone, TextKey::ShortcutProjectionDone),
 ];
-const SAVE_HELP_ROWS: [(TextKey, TextKey); 8] = [
+const SAVE_HELP_ROWS: [(TextKey, TextKey); 9] = [
     (TextKey::HelpOrbit, TextKey::ShortcutOrbit),
     (TextKey::HelpPan, TextKey::ShortcutPan),
     (TextKey::HelpZoom, TextKey::ShortcutZoom),
@@ -229,6 +241,10 @@ const SAVE_HELP_ROWS: [(TextKey, TextKey); 8] = [
     (TextKey::HelpFrameView, TextKey::ShortcutFrameView),
     (TextKey::HelpSnapView, TextKey::ShortcutSnapView),
     (TextKey::HelpStandardViews, TextKey::ShortcutStandardViews),
+    (
+        TextKey::HelpCameraProjection,
+        TextKey::ShortcutCameraProjection,
+    ),
     (TextKey::HelpLight, TextKey::ShortcutLight),
 ];
 

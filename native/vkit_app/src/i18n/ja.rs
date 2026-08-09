@@ -419,7 +419,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("スナップビュー"),
         TextKey::ShortcutSnapView => Some("Alt + ホイールドラッグ"),
         TextKey::HelpStandardViews => Some("標準ビュー"),
-        TextKey::ShortcutStandardViews => Some("テンキー 1 3 7 9"),
+        TextKey::HelpCameraProjection => Some("遠近/平行 切替"),
+        TextKey::ShortcutStandardViews => Some("テンキー 1-9"),
+        TextKey::ShortcutCameraProjection => Some("テンキー ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("VaM フォルダーを指定すると G2 ベースが自動的に準備されます")

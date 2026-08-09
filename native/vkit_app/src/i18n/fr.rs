@@ -432,7 +432,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Vue aimantée"),
         TextKey::ShortcutSnapView => Some("Alt + glisser molette"),
         TextKey::HelpStandardViews => Some("Vues standard"),
-        TextKey::ShortcutStandardViews => Some("Pavé num. 1 3 7 9"),
+        TextKey::HelpCameraProjection => Some("Perspective / Orthographique"),
+        TextKey::ShortcutStandardViews => Some("Pavé num. 1-9"),
+        TextKey::ShortcutCameraProjection => Some("Pavé numérique ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("Sélectionnez votre dossier VaM pour préparer la base G2 automatiquement")

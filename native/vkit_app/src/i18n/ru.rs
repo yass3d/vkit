@@ -428,7 +428,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Привязка вида"),
         TextKey::ShortcutSnapView => Some("Alt + тянуть колесом"),
         TextKey::HelpStandardViews => Some("Стандартные виды"),
+        TextKey::HelpCameraProjection => Some("Перспектива / Орто"),
         TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
+        TextKey::ShortcutCameraProjection => Some("Numpad ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("Выберите папку VaM, чтобы база G2 подготовилась автоматически")

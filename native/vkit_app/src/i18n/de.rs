@@ -438,7 +438,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Ansicht einrasten"),
         TextKey::ShortcutSnapView => Some("Alt + Rad ziehen"),
         TextKey::HelpStandardViews => Some("Standardansichten"),
-        TextKey::ShortcutStandardViews => Some("Ziffernblock 1 3 7 9"),
+        TextKey::HelpCameraProjection => Some("Perspektive / Ortho"),
+        TextKey::ShortcutStandardViews => Some("Ziffernblock 1-9"),
+        TextKey::ShortcutCameraProjection => Some("Ziffernblock ."),
         TextKey::ShortcutUndo => Some("Strg+Z"),
         TextKey::TemplatePending => {
             Some("VaM-Ordner wählen, um die G2-Basis automatisch vorzubereiten")

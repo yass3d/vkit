@@ -438,7 +438,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HelpSnapView => Some("Vista imantada"),
         TextKey::ShortcutSnapView => Some("Alt + arrastrar con la rueda"),
         TextKey::HelpStandardViews => Some("Vistas estándar"),
-        TextKey::ShortcutStandardViews => Some("Teclado num. 1 3 7 9"),
+        TextKey::HelpCameraProjection => Some("Perspectiva / Ortográfica"),
+        TextKey::ShortcutStandardViews => Some("Teclado num. 1-9"),
+        TextKey::ShortcutCameraProjection => Some("Teclado numérico ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
         TextKey::TemplatePending => {
             Some("Selecciona tu carpeta de VaM para preparar la base G2 automáticamente")
