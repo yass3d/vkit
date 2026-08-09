@@ -2640,7 +2640,7 @@ fn bake_texture_project(request: &TextureBakeRequest) -> Result<TextureBakedSet,
         request.base_preview.as_deref()
     };
     let preview = Arc::new(build_baked_preview(
-        request.request_id,
+        crate::skin_preview::revision_domain::TEXTURE_BAKE | (request.request_id << 8),
         &request.mapping,
         preview_base,
         // Only the face this bake actually resampled off the preview, and only when the preview

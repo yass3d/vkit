@@ -100,6 +100,21 @@ pub struct SkinImage {
     pub uv_orientation: SkinUvOrientation,
 }
 
+/// Disjoint revision domains, one per producer of preview images.
+///
+/// Every uploaded image is keyed in the GPU cache by its bare revision, and
+/// three producers mint revisions independently: texture bakes count requests,
+/// VaM skin decodes multiply a second counter by 128, and the neutral stand-in
+/// packs its colour. Left on the same number line they collided — a bake whose
+/// id walked into a skin's range bound the skin's decode as its face, and two
+/// stand-in colours one blue-unit apart swapped sub-images. Each producer owns
+/// a tagged band now, with the low byte reserved for its sub-image slots.
+pub mod revision_domain {
+    pub const TEXTURE_BAKE: u64 = 1 << 60;
+    pub const VAM_SKIN: u64 = 2 << 60;
+    pub const NEUTRAL_BASE: u64 = 5 << 60;
+}
+
 impl SkinImage {
     pub fn solid(revision: u64, rgba: [u8; 4]) -> Self {
         Self {
@@ -569,5 +584,39 @@ mod tests {
                 .all(|pixel| pixel == [255, 0, 0, 255])
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod revision_domain_tests {
+    use super::revision_domain::*;
+
+    #[test]
+    fn every_preview_producer_mints_in_its_own_band() {
+        // The counters run independently, so equality of the raw numbers is
+        // ordinary, not exceptional — a bake id will reach a skin id's value
+        // within a session. The bands must keep them apart at any value.
+        for id in [1_u64, 2, 130, 1_000_000, u32::MAX as u64] {
+            let bake = TEXTURE_BAKE | (id << 8);
+            let skin = VAM_SKIN | id.wrapping_mul(128);
+            assert_eq!(bake >> 60, 1, "a bake revision carries the bake tag");
+            assert_eq!(skin >> 60, 2, "a skin revision carries the skin tag");
+        }
+        let neutral = |rgb: [u8; 3]| {
+            NEUTRAL_BASE
+                | u64::from(rgb[0]) << 24
+                | u64::from(rgb[1]) << 16
+                | u64::from(rgb[2]) << 8
+        };
+        assert_eq!(neutral([255, 255, 255]) >> 60, 5);
+
+        // One blue unit must clear the whole slot byte: the stand-in derives
+        // its sub-images at +1..=15 from the base, and packed-adjacent colours
+        // used to hand each other those slots — a nudged colour slider bound
+        // the previous colour's white as the new torso.
+        assert_eq!(neutral([0, 0, 1]) - neutral([0, 0, 0]), 256);
+        // Likewise consecutive bake requests, whose preview derives slots up
+        // to +100 (the face surface map).
+        assert_eq!((TEXTURE_BAKE | (2 << 8)) - (TEXTURE_BAKE | (1 << 8)), 256);
     }
 }

@@ -155,18 +155,20 @@ impl AppState {
     /// waits for a bake.
     ///
     /// The revision is derived from the colour, so the same colour keeps the
-    /// same GPU upload and a changed colour forces one; the salt keeps it out
-    /// of the range bake revisions count through.
+    /// same GPU upload and a changed colour forces one. The colour sits above
+    /// the low byte because the preview derives its sub-images by small
+    /// offsets from this base — packed into the low bits, two colours one
+    /// blue-unit apart handed each other their sub-images.
     pub(crate) fn refresh_neutral_skin_preview(&mut self) {
         let Some(mapping) = self.vam_uv_mapping.as_ref() else {
             self.neutral_skin_preview = None;
             return;
         };
         let [red, green, blue] = self.g2_solid_color_rgb;
-        let revision = 0x5EED_0000_0000_0000_u64
-            | u64::from(red) << 16
-            | u64::from(green) << 8
-            | u64::from(blue);
+        let revision = crate::skin_preview::revision_domain::NEUTRAL_BASE
+            | u64::from(red) << 24
+            | u64::from(green) << 16
+            | u64::from(blue) << 8;
         if self
             .neutral_skin_preview
             .as_ref()
