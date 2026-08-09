@@ -35,6 +35,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("Numérote chaque repère dans son ordre de placement"),
         TextKey::XMirrorRejected => Some("Le miroir X a été désactivé faute de contrepartie sûre"),
         TextKey::ScanFidelity => Some("Fidélité au scan"),
+        TextKey::ScanOptions => Some("Options du scan"),
+        TextKey::RestoreNeckEars => Some("Restaurer cou et oreilles"),
+        TextKey::RestoreNeckEarsTooltip => Some(
+            "Garde oreilles, nuque et arrière du crâne sur la base G2, en fondant l'ajustement seulement vers le visage",
+        ),
+        TextKey::RestoreNeckEarsDeferred => Some(
+            "Des coups de sculpture existent ; le changement s'appliquera à la prochaine génération",
+        ),
         TextKey::ScanFidelityTooltip => Some(
             "Au-delà de 1, l'ajustement suit davantage la forme du scan et conserve moins la douceur de la figure. Jusqu'à 2, c'est tout ce qu'il fait ; au-delà de 2, le bruit du scan — grains, trous, coutures de raccord — ressort aussi sous forme de bosses, ce qui peut valoir le coup sur un scan propre et dense. Les repères ne sont jamais sacrifiés, quel que soit le réglage, et aucune protection n'est relâchée.",
         ),

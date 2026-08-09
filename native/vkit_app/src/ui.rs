@@ -2144,7 +2144,13 @@ fn alignment_geometry_section(ui: &mut Ui, state: &mut AppState) {
     );
     section_end(ui);
 
-    section_heading(ui, text(state.locale, TextKey::ScanFidelity));
+    section_heading(ui, text(state.locale, TextKey::ScanOptions));
+    ui.add_space(crate::theme::SPACE_1);
+    ui.label(
+        RichText::new(text(state.locale, TextKey::ScanFidelity))
+            .size(crate::theme::FONT_SM)
+            .color(crate::theme::COLOR_MUTED),
+    );
     let mut fidelity = state.scan_fidelity;
 
     let changed = ui
@@ -2170,6 +2176,17 @@ fn alignment_geometry_section(ui: &mut Ui, state: &mut AppState) {
         .inner;
     if changed {
         state.dispatch(Action::SetScanFidelity(fidelity));
+    }
+    ui.add_space(SPACE_2);
+    let mut restore = state.restore_neck_ears;
+    if toggle_option_row(
+        ui,
+        &mut restore,
+        text(state.locale, TextKey::RestoreNeckEars),
+        text(state.locale, TextKey::RestoreNeckEarsTooltip),
+        None,
+    ) {
+        state.dispatch(Action::SetRestoreNeckEars(restore));
     }
     section_end(ui);
 }

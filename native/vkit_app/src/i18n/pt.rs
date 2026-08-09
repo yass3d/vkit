@@ -39,6 +39,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("O espelho X foi desativado porque não há contraparte segura")
         }
         TextKey::ScanFidelity => Some("Fidelidade ao scan"),
+        TextKey::ScanOptions => Some("Opções de escaneamento"),
+        TextKey::RestoreNeckEars => Some("Restaurar pescoço e orelhas"),
+        TextKey::RestoreNeckEarsTooltip => Some(
+            "Mantém orelhas, nuca e parte de trás do crânio na base G2, mesclando o ajuste apenas em direção ao rosto",
+        ),
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("Há traços de escultura; a mudança se aplicará na próxima geração")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "Acima de 1 o ajuste segue mais a forma do scan e preserva menos a suavidade da figura. Até 2 é só isso; passando de 2, o ruído do scan — pontinhos, furos, emendas de costura — também começa a aparecer como saliências, o que pode valer a pena em um scan limpo e denso. Os pontos nunca são sacrificados em nenhum valor e nenhuma proteção é afrouxada.",
         ),

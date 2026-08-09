@@ -35,6 +35,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("依放置順序為每個標記點編號"),
         TextKey::XMirrorRejected => Some("找不到安全的對稱點，已關閉 X 鏡像"),
         TextKey::ScanFidelity => Some("掃描保真度"),
+        TextKey::ScanOptions => Some("掃描設定"),
+        TextKey::RestoreNeckEars => Some("還原頸部與耳朵"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("將耳朵、後頸與後腦保持在G2原形,僅向面部方向柔和混入擬合")
+        }
+        TextKey::RestoreNeckEarsDeferred => Some("已有雕刻筆跡,變更將在下次生成時生效"),
         TextKey::ScanFidelityTooltip => Some(
             "大於 1 時，貼合會更貼近掃描的形狀，保留的角色平滑度也會變少。到 2 為止就只有這樣；超過 2 之後，掃描的雜訊——斑點、破洞、接縫——也會化為凹凸浮現出來，若掃描乾淨且密度足夠，推到這個範圍是值得的。任何設定都不會犧牲標記點，也不會放寬任何防護。",
         ),

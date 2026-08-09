@@ -41,6 +41,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("X-Spiegelung deaktiviert: kein sicheres Gegenstück gefunden")
         }
         TextKey::ScanFidelity => Some("Scan-Treue"),
+        TextKey::ScanOptions => Some("Scan-Optionen"),
+        TextKey::RestoreNeckEars => Some("Hals & Ohren wiederherstellen"),
+        TextKey::RestoreNeckEarsTooltip => Some(
+            "Hält Ohren, Nacken und Hinterkopf auf der G2-Basis und blendet die Anpassung nur zum Gesicht hin ein",
+        ),
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("Es gibt Sculpt-Striche; die Änderung greift bei der nächsten Generierung")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "Über 1 folgt die Anpassung stärker der Form des Scans und behält weniger von der Glätte der Figur. Bis 2 ist das alles; ab 2 schlägt auch das Rauschen des Scans -- Sprenkel, Löcher, Nahtstellen -- als Beulen durch, was sich bei einem sauberen, dichten Scan durchaus lohnen kann. Pins werden bei keiner Einstellung geopfert, und keine Schutzgrenze wird gelockert.",
         ),

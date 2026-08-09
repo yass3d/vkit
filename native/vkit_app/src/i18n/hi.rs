@@ -35,6 +35,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("हर पिन को लगाने के क्रम में नंबर दें"),
         TextKey::XMirrorRejected => Some("सुरक्षित जोड़ीदार न मिलने से X मिरर बंद कर दिया गया"),
         TextKey::ScanFidelity => Some("स्कैन सटीकता"),
+        TextKey::ScanOptions => Some("स्कैन विकल्प"),
+        TextKey::RestoreNeckEars => Some("गर्दन और कान बहाल करें"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("कान, गुद्दी और सिर के पिछले हिस्से को G2 आधार पर रखता है, फिट को केवल चेहरे की ओर घोलता है")
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("मूर्तिकला स्ट्रोक मौजूद हैं; बदलाव अगली पीढ़ी पर लागू होगा")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "1 से ऊपर फ़िट स्कैन के आकार का ज़्यादा अनुसरण करता है और आकृति की चिकनाई कम रखता है। 2 तक बस इतना ही होता है; 2 के बाद स्कैन का नॉइज़ -- दाने, छेद, सिलाई के जोड़ -- भी उभार बनकर आने लगता है, जिसमें साफ़ और सघन स्कैन को धकेलना सार्थक हो सकता है। किसी भी सेटिंग पर पिन से समझौता नहीं होता, और कोई सुरक्षा शिथिल नहीं की जाती।",
         ),

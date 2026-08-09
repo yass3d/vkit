@@ -1469,6 +1469,10 @@ pub struct WorkspaceScene {
     pub template_geometry: Option<Arc<DazGeometry>>,
 
     template_ordered: Option<Arc<OrderedObjMesh>>,
+    /// Keep-the-base weights for the neck-and-ears restore, one per template
+    /// vertex. Computed once per template — the Dijkstra pass is a few
+    /// milliseconds nobody should pay on every toggle.
+    neck_ear_weights: Option<Arc<Vec<f64>>>,
 
     template_surfaces: Option<TemplateResultSurfaces>,
     pub eye_morph: Option<Arc<MorphTarget>>,
@@ -1524,6 +1528,22 @@ impl WorkspaceScene {
         self.template_ordered.as_ref().map(Arc::clone)
     }
 
+    /// The neck-and-ears keep weights for the current template, or None when
+    /// the template does not carry the named materials to seed them from.
+    pub fn neck_ear_restore_weights(&mut self) -> Option<Arc<Vec<f64>>> {
+        if let Some(weights) = self.neck_ear_weights.as_ref() {
+            return Some(Arc::clone(weights));
+        }
+        let template = self.template_ordered.as_deref()?;
+        let weights = vkit_core::restore_region::neck_ear_restore_weights(template);
+        if weights.is_empty() {
+            return None;
+        }
+        let weights = Arc::new(weights);
+        self.neck_ear_weights = Some(Arc::clone(&weights));
+        Some(weights)
+    }
+
     fn build_template_surfaces(&self) -> Option<TemplateResultSurfaces> {
         let ordered = self.template_ordered.as_ref()?;
         let surfaces = result_display_surfaces(ordered).ok()?;
@@ -1550,6 +1570,7 @@ impl WorkspaceScene {
         self.template = Some(mesh);
 
         self.template_ordered = geometry.to_ordered_obj(None).ok().map(Arc::new);
+        self.neck_ear_weights = None;
         self.template_geometry = Some(Arc::new(geometry));
         self.template_surfaces = self.build_template_surfaces();
         self.eye_morph = None;

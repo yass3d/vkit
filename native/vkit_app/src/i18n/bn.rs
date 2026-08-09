@@ -35,6 +35,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("পিনগুলো বসানোর ক্রমে নম্বর দেখায়"),
         TextKey::XMirrorRejected => Some("নিরাপদ জোড়া না পাওয়ায় X মিরর বন্ধ করা হয়েছে"),
         TextKey::ScanFidelity => Some("স্ক্যান নির্ভুলতা"),
+        TextKey::ScanOptions => Some("স্ক্যান বিকল্প"),
+        TextKey::RestoreNeckEars => Some("ঘাড় ও কান পুনরুদ্ধার"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("কান, ঘাড়ের পেছন ও মাথার পেছন G2 ভিত্তিতে রাখে, ফিট কেবল মুখের দিকে মিশে যায়")
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("ভাস্কর্যের আঁচড় আছে; পরিবর্তন পরের জেনারেশনে কার্যকর হবে")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "1-এর উপরে ফিট স্ক্যানের আকৃতি বেশি অনুসরণ করে আর ফিগারের মসৃণতা কম ধরে রাখে। 2 পর্যন্ত কেবল এটুকুই হয়; 2 ছাড়ালে স্ক্যানের নয়েজ -- ছিটে দাগ, ফুটো, সেলাইয়ের জোড়া -- ও উঁচু-নিচু হয়ে ফুটে উঠতে শুরু করে, যা পরিষ্কার ঘন স্ক্যানে বাড়িয়ে দেখার মতো। কোনো সেটিংয়েই পিন ছেড়ে দেওয়া হয় না, আর কোনো সুরক্ষা শিথিল হয় না।",
         ),

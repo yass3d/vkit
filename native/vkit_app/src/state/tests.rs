@@ -5253,3 +5253,78 @@ fn the_face_uv_index_answers_what_the_scan_answered() {
     state.rebuild_face_uv_rows();
     assert!(state.face_uv_rows.is_none(), "the index leaves with it");
 }
+
+#[test]
+fn the_neck_ear_restore_choice_defers_rather_than_eating_sculpt_strokes() {
+    let mut state = ready_state();
+    assert!(
+        state.restore_neck_ears,
+        "on by default: the regions it protects are the ones every head needs"
+    );
+
+    // With a clean sculpt session the toggle re-derives the result from the
+    // pristine fit and re-begins sculpting on it, both ways round.
+    state.dispatch(Action::SetRestoreNeckEars(false));
+    assert!(!state.restore_neck_ears);
+    assert!(
+        state.workspace.result_output.is_some(),
+        "the result survives"
+    );
+    state.dispatch(Action::SetRestoreNeckEars(true));
+    assert!(state.restore_neck_ears);
+    assert_eq!(
+        state.sculpt.top_undo_seq(),
+        None,
+        "rebased sessions are clean"
+    );
+
+    // A booked stroke must never be eaten by a rebase: the choice is kept,
+    // the mesh is not touched, and the status says it waits for the next
+    // generation.
+    let center = state
+        .workspace
+        .result_output
+        .as_ref()
+        .expect("ready state has a result")
+        .vertices[0];
+    state.sculpt.begin_stroke().expect("a stroke can start");
+    state
+        .sculpt
+        .dab(crate::sculpt::SculptDab {
+            center_local: center,
+            radius_local: 50.0,
+            strength: 1.0,
+            operation: crate::sculpt::SculptOperation::Grab {
+                translation_local: [0.0, 1.0, 0.0],
+            },
+        })
+        .expect("the dab lands");
+    state.sculpt.end_stroke().expect("the stroke closes");
+    assert!(
+        state.sculpt.top_undo_seq().is_some(),
+        "the stroke is booked"
+    );
+
+    let before = state
+        .workspace
+        .result_output
+        .as_ref()
+        .expect("result")
+        .vertices
+        .clone();
+    state.dispatch(Action::SetRestoreNeckEars(false));
+    assert!(!state.restore_neck_ears, "the choice itself is kept");
+    assert_eq!(
+        state.status.key,
+        TextKey::RestoreNeckEarsDeferred,
+        "and the deferral is said out loud"
+    );
+    let after = &state
+        .workspace
+        .result_output
+        .as_ref()
+        .expect("result")
+        .vertices;
+    assert_eq!(&before, after, "the sculpted mesh is left exactly alone");
+    assert!(state.sculpt.top_undo_seq().is_some(), "the stroke survives");
+}

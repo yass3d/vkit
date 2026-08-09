@@ -35,6 +35,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("Beri nomor setiap pin sesuai urutan pemasangan"),
         TextKey::XMirrorRejected => Some("Cermin X dimatikan karena tidak ada pasangan yang aman"),
         TextKey::ScanFidelity => Some("Ketelitian pindai"),
+        TextKey::ScanOptions => Some("Opsi pindaian"),
+        TextKey::RestoreNeckEars => Some("Pulihkan leher & telinga"),
+        TextKey::RestoreNeckEarsTooltip => Some(
+            "Menjaga telinga, tengkuk, dan belakang kepala pada basis G2, membaurkan hasil fit hanya ke arah wajah",
+        ),
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("Ada goresan pahatan; perubahan berlaku pada generasi berikutnya")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "Di atas 1, hasil fit lebih mengikuti bentuk pindaian dan lebih sedikit mempertahankan kehalusan figur. Sampai 2 hanya itu yang terjadi; lewat 2, derau pindaian -- bintik, lubang, garis jahitan -- ikut muncul sebagai tonjolan, dan pindaian yang bersih serta rapat bisa layak didorong ke sana. Pin tidak pernah dikorbankan pada setelan mana pun, dan tidak ada pengaman yang dilonggarkan.",
         ),

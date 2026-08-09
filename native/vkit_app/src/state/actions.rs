@@ -287,6 +287,7 @@ pub enum Action {
     ToggleHairVisible(bool),
 
     SetScanFidelity(f32),
+    SetRestoreNeckEars(bool),
     OpenSettings,
     CloseSettings,
 
@@ -466,6 +467,7 @@ impl Action {
             | Self::SelectVaMSkin(_)
             | Self::SelectVaMHair(_)
             | Self::ResetMorphs => true,
+            Self::SetRestoreNeckEars(_) => true,
             #[cfg(test)]
             Self::SculptDab(_) => true,
             #[cfg(test)]

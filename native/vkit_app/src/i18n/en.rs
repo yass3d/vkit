@@ -33,6 +33,14 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::NumbersTooltip => "Number each pin in the order it was placed",
         TextKey::XMirrorRejected => "X Mirror was disabled because no safe counterpart was found",
         TextKey::ScanFidelity => "Scan fidelity",
+        TextKey::ScanOptions => "Scan options",
+        TextKey::RestoreNeckEars => "Restore neck & ears",
+        TextKey::RestoreNeckEarsTooltip => {
+            "Keep the ears, nape and back of the skull on the G2 base, blending the fit in only toward the face"
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            "Sculpt strokes exist, so the change applies on the next generation"
+        }
         TextKey::ScanFidelityTooltip => {
             "Above 1 the fit follows the scan's form more and keeps less of the figure's smoothness. Up to 2 that is all it does; past 2 the scan's noise -- speckle, holes, stitching seams -- starts coming through as bumps too, which a clean dense scan can be worth pushing into. Pins are never traded away at any setting, and no guard is relaxed."
         }

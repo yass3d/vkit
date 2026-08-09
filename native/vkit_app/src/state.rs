@@ -456,6 +456,9 @@ pub struct AppState {
     pub hair_settle_seconds: f32,
 
     pub scan_fidelity: f32,
+    /// Whether a finished fit hands over with the ears, nape and back of the
+    /// skull held at the G2 base, blended toward the face.
+    pub restore_neck_ears: bool,
     pub settings_open: bool,
     pub settings_section: crate::settings::SettingsSection,
     pub settings_graphics_page: crate::settings::GraphicsPage,
@@ -669,6 +672,7 @@ impl Default for AppState {
             texture_project: TextureProject::default(),
             hair_settle_seconds: 0.0,
             scan_fidelity: 1.0,
+            restore_neck_ears: true,
             settings_open: false,
             settings_section: crate::settings::SettingsSection::default(),
             settings_graphics_page: crate::settings::GraphicsPage::default(),
@@ -1936,6 +1940,50 @@ impl AppState {
                     *vkit_core::fit::SCAN_FIDELITY_RANGE.end() as f32,
                 );
             }
+            Action::SetRestoreNeckEars(value) => {
+                if self.restore_neck_ears == value {
+                    return;
+                }
+                self.restore_neck_ears = value;
+                if self.workspace.fitted_result.is_none() {
+                    return;
+                }
+                if self.sculpt.top_undo_seq().is_some() {
+                    // Rebasing the sculpt session would discard those strokes;
+                    // the choice is kept and applies on the next generation.
+                    self.status =
+                        StatusMessage::new(TextKey::RestoreNeckEarsDeferred, StatusTone::Warning);
+                    return;
+                }
+                match self.apply_neck_ear_restore_to_result() {
+                    Ok(()) => {
+                        if let Err(detail) = self.begin_sculpt_stage() {
+                            self.status = StatusMessage::with_detail(
+                                TextKey::GenerationFailed,
+                                StatusTone::Error,
+                                detail,
+                            );
+                            return;
+                        }
+                        self.morph_preview_dirty = true;
+                        let phase = self.result_preview_phase;
+                        if let Err(detail) = self.compose_current_morphs(phase) {
+                            self.status = StatusMessage::with_detail(
+                                TextKey::MorphPreviewUpdated,
+                                StatusTone::Warning,
+                                detail,
+                            );
+                        }
+                    }
+                    Err(detail) => {
+                        self.status = StatusMessage::with_detail(
+                            TextKey::GenerationFailed,
+                            StatusTone::Warning,
+                            detail,
+                        );
+                    }
+                }
+            }
             Action::OpenSettings => self.settings_open = true,
             Action::CloseSettings => self.settings_open = false,
             Action::SpendHairSettle(elapsed) => {
@@ -2692,6 +2740,40 @@ impl AppState {
         Ok(())
     }
 
+    /// Re-derives the result from the pristine fit, holding the neck-and-ears
+    /// regions at the G2 base when the option is on.
+    ///
+    /// The fit itself is never modified — `fitted_result` stays the solver's
+    /// own answer — so the option can be turned either way without re-solving.
+    fn apply_neck_ear_restore_to_result(&mut self) -> Result<(), String> {
+        let Some(fit) = self.workspace.fitted_result.clone() else {
+            return Ok(());
+        };
+        let vertices = if self.restore_neck_ears {
+            let Some(weights) = self.workspace.neck_ear_restore_weights() else {
+                // A template without the named materials cannot seed the mask;
+                // declining beats guessing at anatomy.
+                return Ok(());
+            };
+            let Some(template) = self.workspace.template_ordered_obj() else {
+                return Ok(());
+            };
+            if template.vertices.len() != fit.vertices.len() {
+                return Err("template and fit vertex counts disagree".to_owned());
+            }
+            vkit_core::restore_region::blend_toward_base(
+                &template.vertices,
+                &fit.vertices,
+                &weights,
+            )
+        } else {
+            fit.vertices.clone()
+        };
+        self.workspace
+            .update_result_preview_vertices(vertices)
+            .map_err(|error| error.to_string())
+    }
+
     fn compose_current_morphs(&mut self, phase: ResultPreviewPhase) -> Result<(), String> {
         let morph_available = matches!(
             self.result,
@@ -2826,6 +2908,17 @@ impl AppState {
                 fit_reference_value,
             } => match self.workspace.install_result(Arc::new(output)) {
                 Ok(()) => {
+                    if self.restore_neck_ears
+                        && let Err(detail) = self.apply_neck_ear_restore_to_result()
+                    {
+                        // The fit stands on its own; losing the restore is a
+                        // warning, not a failed generation.
+                        self.status = StatusMessage::with_detail(
+                            TextKey::RestoreNeckEarsDeferred,
+                            StatusTone::Warning,
+                            detail,
+                        );
+                    }
                     let carry = self.pending_edit_carry.take();
                     self.clear_morph_reset_undo();
                     self.morph_value_history.clear();

@@ -34,6 +34,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("ピンに順番を表示します"),
         TextKey::XMirrorRejected => Some("対称点を作成できないため X ミラーを無効にしました"),
         TextKey::ScanFidelity => Some("スキャン再現度"),
+        TextKey::ScanOptions => Some("スキャン設定"),
+        TextKey::RestoreNeckEars => Some("首と耳を復元"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("耳・うなじ・後頭部をG2の原形に保ち、顔側にだけ変形をなじませます")
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("スカルプトの手が入っているため、次の生成時に適用されます")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "1 より上げるとスキャンの形をより追い、下げると G2 本来の滑らかさを保ちます。2 までは形だけですが、それを超えるとスキャンのノイズ(斑点・穴・継ぎ目)まで再現され始めます。ピンはどの値でも無視されず、判定基準も変わりません。",
         ),

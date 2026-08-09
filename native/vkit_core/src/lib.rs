@@ -6,6 +6,7 @@ pub mod math;
 pub mod pipeline;
 pub mod pixels;
 pub mod quality;
+pub mod restore_region;
 #[cfg(feature = "rig")]
 pub mod rig;
 pub mod sculpt;

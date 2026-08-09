@@ -33,6 +33,14 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::NumbersTooltip => "핀마다 찍힌 순번을 표시합니다",
         TextKey::XMirrorRejected => "대칭점을 만들 수 없어 X 미러를 껐습니다",
         TextKey::ScanFidelity => "스캔 적용 강도",
+        TextKey::ScanOptions => "스캔 설정",
+        TextKey::RestoreNeckEars => "목과 귀 복원",
+        TextKey::RestoreNeckEarsTooltip => {
+            "귀·뒷목·뒤통수를 G2 원본으로 유지하고, 얼굴 쪽으로만 부드럽게 변형을 섞습니다"
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            "조형 획이 있어 지금은 적용하지 않았습니다 — 다시 생성하면 적용됩니다"
+        }
         TextKey::ScanFidelityTooltip => {
             "1보다 높이면 스캔의 형태를 더 따라가고, 낮추면 G2 본래의 매끈함을 더 지킵니다. 2까지는 형태만 더 살아나고, 그 위로는 스캔의 잡티·구멍·이음매까지 같이 재현되기 시작합니다(깨끗한 고밀도 스캔이면 시도해볼 만합니다). 찍은 핀은 어느 값에서도 무시되지 않으며, 검사 기준도 그대로입니다."
         }

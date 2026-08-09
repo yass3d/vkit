@@ -37,6 +37,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("Đã tắt Đối xứng X vì không tìm được điểm đối ứng an toàn")
         }
         TextKey::ScanFidelity => Some("Độ bám bản quét"),
+        TextKey::ScanOptions => Some("Tùy chọn quét"),
+        TextKey::RestoreNeckEars => Some("Khôi phục cổ và tai"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("Giữ tai, gáy và sau gáy theo gốc G2, chỉ hòa phần khớp về phía khuôn mặt")
+        }
+        TextKey::RestoreNeckEarsDeferred => {
+            Some("Đã có nét điêu khắc; thay đổi sẽ áp dụng ở lần tạo sau")
+        }
         TextKey::ScanFidelityTooltip => Some(
             "Trên mức 1, kết quả bám theo hình dạng bản quét nhiều hơn và giữ lại ít độ mượt của nhân vật hơn. Đến mức 2 thì chỉ có vậy; vượt quá 2, nhiễu của bản quét -- lốm đốm, lỗ thủng, đường ghép -- cũng bắt đầu hiện lên thành các cục gồ, điều đáng để đẩy lên với một bản quét sạch và dày. Pin không bao giờ bị đánh đổi ở bất kỳ mức nào, và không ràng buộc nào được nới lỏng.",
         ),

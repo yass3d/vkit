@@ -35,6 +35,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NumbersTooltip => Some("按放置顺序为每个标记点编号"),
         TextKey::XMirrorRejected => Some("未找到安全的对称点，已关闭 X 镜像"),
         TextKey::ScanFidelity => Some("扫描保真度"),
+        TextKey::ScanOptions => Some("扫描设置"),
+        TextKey::RestoreNeckEars => Some("恢复颈部与耳朵"),
+        TextKey::RestoreNeckEarsTooltip => {
+            Some("将耳朵、后颈与后脑保持在G2原形,仅向面部方向柔和混入拟合")
+        }
+        TextKey::RestoreNeckEarsDeferred => Some("已有雕刻笔迹,更改将在下次生成时生效"),
         TextKey::ScanFidelityTooltip => Some(
             "大于 1 时，拟合会更贴近扫描的形态，保留的角色平滑度更少。到 2 之前只有这一个变化；超过 2 后，扫描的噪点——斑点、孔洞、拼接缝——也会以凹凸的形式显现出来，对于干净的高密度扫描，推到这个区间是值得的。任何档位都不会牺牲标记点，也不会放宽任何保护。",
         ),
