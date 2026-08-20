@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("メッシュスムーズ"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -10,6 +10,113 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::FaceMatch => Some("生成"),
         TextKey::ResultPreview | TextKey::Save => Some("保存"),
         TextKey::TextureStage => Some("テクスチャ"),
+        TextKey::HairStage => Some("ヘア"),
+        TextKey::HairUnavailable => Some("ヘアを編集するには、まずスカルプト結果が必要です"),
+        TextKey::HairPartsPanel => Some("ヘアパーツ"),
+        TextKey::AddHairPart => Some("ヘアパーツを追加"),
+        TextKey::HairScalpMissing => {
+            Some("スカルプメッシュがありません。VaMルートを開いて再スキャンしてください")
+        }
+        TextKey::HairShowPoints => Some("ポイント表示"),
+        TextKey::HairShowPointsHint => Some(
+            "頭皮の植え込みポイントを表示します。髪だけを見たいときはオフに。ブラシはどちらでも動作します。",
+        ),
+        TextKey::HairPartTint => Some("パートの色分け"),
+        TextKey::HairPartTintHint => Some(
+            "パートごとに異なるティントを付け、統合スタイルでどの毛束がどのパートか見分けられます。表示のみで、書き出しには影響しません。",
+        ),
+        TextKey::HairSettingsPanel => Some("ヘア設定"),
+        TextKey::HairCreateFirst => Some("ヘアを作成してください。"),
+        TextKey::HairHideStrands => Some("髪を隠す"),
+        TextKey::HairHideStrandsHint => {
+            Some("生えた髪を外してストリームだけを見ます。オンにするとストリーム表示も入ります。")
+        }
+        TextKey::HairShowStreams => Some("ヘアストリーム表示"),
+        TextKey::HairShowStreamsHint => {
+            Some("実際に編集する毛束を、そこから生えた髪の上に描きます。")
+        }
+        TextKey::HairViewportPhysics => Some("ビューポート物理"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("画面上で物理をプレビューします。エクスポートとは関係ありません。")
+        }
+        TextKey::HairMirrorEdit => Some("ミラー編集"),
+        TextKey::HairMirrorEditHint => Some("ブラシが左右対称に両側を同時に編集します。"),
+        TextKey::HairAutoPart => Some("パーツ自動編集"),
+        TextKey::HairAutoPartHint => {
+            Some("アクティブレイヤーの代わりに、カーソル下で認識したパーツのみ編集します。")
+        }
+        TextKey::HairExportSection => Some("ヘアを保存"),
+        TextKey::HairExportBothSexes => Some("共用"),
+        TextKey::HairExportRescanNotice => {
+            Some("VaM - Hair - Rescan Files を押すとヘアリストに反映されます")
+        }
+        TextKey::HairExportOverwroteNotice => {
+            Some("上書きしたサムネイルは Hard Reset か VaM 再起動後に反映されます")
+        }
+        TextKey::HairSimToggleHint => Some("ビューポートとゲームの両方でヘア物理を実行します。"),
+        TextKey::HairCollisionToggleHint => {
+            Some("シミュレーション中に髪が頭や体を貫通しないようにします。")
+        }
+        TextKey::HairStyleJoints => Some("スタイルジョイント"),
+        TextKey::HairStyleJointsHint => Some(
+            "近い毛束同士をバネで結び、ゲーム内で形を保ちます。密着(Cling)が調整する対象です。長髪・結んだ髪向けで、短髪ではオフ推奨。",
+        ),
+        TextKey::HairThumbnailPrompt => Some("アングルを合わせてクリックで撮影"),
+        TextKey::HairThumbnailShoot => Some("撮影"),
+        TextKey::HairThumbnailSkip => Some("スキップ"),
+        TextKey::HairThumbnailSaved => Some("サムネイルを保存しました"),
+        TextKey::HairThumbnailFailed => Some("サムネイルの保存に失敗しました"),
+        TextKey::HairGameOnly => Some(
+            "物理設定:ビューポートはシミュレーションを行わないため、VaM内でのみ反映されます。スタイルにはそのまま書き出されます。",
+        ),
+        TextKey::HairPartVisible => Some("このヘアパーツの表示/非表示"),
+        TextKey::RemoveHairPart => Some("ヘアパーツを削除"),
+        TextKey::HairRenamePart => Some("クリックで名前を変更"),
+        TextKey::HairToolPlant => Some("植毛"),
+        TextKey::HairToolErase => Some("消去"),
+        TextKey::HairToolGrow => Some("伸ばす (Altで縮める)"),
+        TextKey::HairToolComb => Some("とかす"),
+        TextKey::HairToolPlantHint => Some("ブラシ下の頭皮頂点に毛を植えます"),
+        TextKey::HairToolGrowHint => Some("ブラシ下の毛束を伸ばします。Altで縮みます"),
+        TextKey::HairToolEraseHint => Some("ブラシ下の毛束を消します"),
+        TextKey::HairToolCombHint => Some("ブラシ下の毛束を梳きます。根元は固定されます"),
+        TextKey::HairToolPinch => Some("まとめる"),
+        TextKey::HairToolPinchHint => Some("ブラシ下の毛束をまとめます。Altで広げます"),
+        TextKey::HairToolCut => Some("カット"),
+        TextKey::HairToolCutHint => Some("ブラシで引いた位置で毛先を切りそろえます"),
+        TextKey::HairToolPuff => Some("ふくらませる"),
+        TextKey::HairToolPuffHint => Some("ブラシ下の毛を肌から立てます。Altで寝かせます"),
+        TextKey::HairCopySettings => Some("すべてコピー"),
+        TextKey::HairPasteSettings => Some("すべて貼り付け"),
+        TextKey::HairGroupPerformance => Some("パフォーマンス"),
+        TextKey::HairGroupPhysics => Some("物理"),
+        TextKey::HairGroupStiffness => Some("剛性"),
+        TextKey::HairGroupShape => Some("形状"),
+        TextKey::HairGroupCurl => Some("カール"),
+        TextKey::HairGroupLook => Some("見た目"),
+        TextKey::HairColorScalp => Some("頭皮"),
+        TextKey::HairColorRoot => Some("根元"),
+        TextKey::HairColorTip => Some("毛先"),
+        TextKey::HairColorSpecular => Some("光沢"),
+        TextKey::HairScalpMask => Some("頭皮テクスチャ"),
+        TextKey::HairScalpMaskBuiltIn => Some("内蔵"),
+        TextKey::HairScalpMaskCustom => Some("ファイルから..."),
+        TextKey::HairExport => Some("VaMへ書き出し"),
+        TextKey::HairExportName => Some("アイテム名"),
+        TextKey::HairExportCreator => Some("作成者"),
+        TextKey::HairExportNeedsMetadata => Some("書き出す前にアイテム名と作者を入力してください"),
+        TextKey::HairOverwriteTitle => Some("このスタイルを置き換えますか"),
+        TextKey::HairOverwriteBody => Some(
+            "同じ名前と作者のスタイルが既にあります。書き出すとファイルを置き換えます。VaMは再起動まで読み込み済みのものを使い続けます。",
+        ),
+        TextKey::HairOverwriteProceed => Some("置き換える"),
+        TextKey::HairExportDone => Some("ヘアアイテムを保存しました"),
+        TextKey::HairExportFailed => Some("ヘアの書き出しに失敗"),
+        TextKey::HairExportNeedsPart => Some("先にストランドのあるヘアパーツを選択してください"),
+        TextKey::HairExportNeedsVaMRoot => Some("書き出す前にVaMルートを設定してください"),
+        TextKey::HairMirrorPart => Some("パーツを反対側へ反転"),
+        TextKey::HairDuplicatePart => Some("パーツを複製"),
+        TextKey::HairSegmentsShort => Some("セグ"),
         TextKey::DetailCorrection => Some("編集"),
         TextKey::MorphCategoryBody => Some("体"),
         TextKey::TextureNamePlaceholder => Some("テクスチャ名を入力"),
@@ -67,6 +174,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("元に戻す"),
         TextKey::ResetAllPins => Some("全ピンをリセット"),
+        TextKey::ResetAll => Some("すべて初期化"),
         TextKey::MorphSave => Some("モーフを保存"),
         TextKey::TextureSaveSection => Some("テクスチャを保存"),
         TextKey::Generate => Some("顔フィッティング"),
@@ -88,7 +196,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("ワイヤーフレームの表示と調整"),
         TextKey::ViewportXrayTooltip => Some("X-ray オーバーレイの表示と調整"),
         TextKey::ViewportSkinTooltip => Some("VaM スキンテクスチャを選択"),
-        TextKey::ViewportHairTooltip => Some("VaM ヘアプリセットを選択"),
         TextKey::FalloffTooltip => Some("ブラシの減衰カーブを選択します"),
         TextKey::FalloffSmooth => Some("スムーズ"),
         TextKey::FalloffSmoother => Some("よりスムーズ"),
@@ -131,6 +238,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("それぞれにピンを置くか、ピンなしで進めます"),
         TextKey::TextureNeedsImage => Some("サイドパネルから画像を追加してください"),
         TextKey::TexturePinPairPrompt => Some("左右に対応するピンを打って合わせます"),
+        TextKey::TextureToolNeedsPins => Some("先にピンを配置すると使えます"),
         TextKey::SymmetrySuggestion => Some("きれいに合わせるため左右対称をおすすめします"),
         TextKey::SymmetryChangeTitle => Some("ピンがリセットされます"),
         TextKey::SymmetryChangeConfirm => Some("確認"),
@@ -168,10 +276,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("スキンの読み込みに失敗しました"),
         TextKey::SkinUvUnavailable => Some("スキン UV を使用できません"),
         TextKey::NoMatchingSkins => Some("一致するスキンがありません"),
-        TextKey::Hair => Some("ヘア"),
-        TextKey::HairNone => Some("なし"),
         TextKey::HairSearch => Some("ヘアを検索"),
-        TextKey::HairLoading => Some("ヘアを読み込み中"),
         TextKey::HairReady => Some("ヘアプレビューの準備完了"),
         TextKey::HairLoadFailed => Some("ヘアの読み込みに失敗しました"),
         TextKey::HairPartsSkipped => Some("一部のパーツを除いて表示"),
@@ -182,6 +287,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("ビューポート"),
         TextKey::SettingsGeneral => Some("一般"),
         TextKey::SettingsAbout => Some("情報"),
+        TextKey::SettingsShortcuts => Some("ショートカット"),
+        TextKey::ShortcutsCapturing => Some("押してください…"),
+        TextKey::ShortcutsResetAll => Some("すべてのショートカットをリセット"),
+        TextKey::ShortcutsExport => Some("キーマップをファイルに保存"),
+        TextKey::ShortcutsImport => Some("キーマップファイルを読み込む"),
+        TextKey::ShortcutsTaken => Some("他の操作が既に使っています"),
         TextKey::SettingsAboutBuild => Some("ビルド"),
         TextKey::SettingsAboutLicense => Some("ライセンス"),
         TextKey::SettingsAboutDiagnostics => Some("診断"),
@@ -221,21 +332,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("表示言語"),
         TextKey::SettingsFoldersGroup => Some("フォルダー"),
         TextKey::SettingsVaMRoot => Some("VaM インストールパス"),
-        TextKey::HairVisible => Some("ヘアを表示"),
         TextKey::HairNeedsFinishedHead => Some("ヘアは完成したヘッドに着けます。"),
-        TextKey::HairPreviewCaveat => Some("ヘアの細部は実際とは異なります。"),
         TextKey::NoMatchingHair => Some("一致するヘアプリセットはありません"),
         TextKey::MorphSearch => Some("モーフを検索"),
         TextKey::MorphOneSidedFilter => Some("左/右"),
         TextKey::MorphOneSidedFilterShow => Some("片側だけ動くモーフを表示"),
         TextKey::MorphOneSidedFilterHide => Some("片側だけ動くモーフを隠す"),
         TextKey::AppearanceSearch => Some("外見を検索"),
+        TextKey::AppearanceLayers => Some("外見レイヤー"),
+        TextKey::AddAppearanceLayer => Some("選択した外見を追加"),
+        TextKey::AppearanceLayersEmpty => Some("レイヤーなし"),
+        TextKey::AppearanceLayerRaise => Some("上へ"),
+        TextKey::AppearanceLayerLower => Some("下へ"),
         TextKey::LookFind => Some("外見を読み込む"),
         TextKey::CameraTrackballArmed => {
-            Some("ロール回転 · 左右ドラッグで傾ける · クリックか R で終了")
+            Some("トラックボール · ドラッグで自由回転 · クリックまたは R で終了")
         }
         TextKey::HelpTrackball => Some("トラックボール回転"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("2 つの角度から見る — ビューを分割"),
+        TextKey::SplitModelViewName => Some("分割ビュー"),
+        TextKey::HelpLevelRoll => Some("傾き（ロール）をリセット"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("前回のセッションが異常終了しました"),
         TextKey::RecoveryBody => Some(
             "終了直前のモーフ・スカルプト・テクスチャレイヤーが保存されています。復元するか選んでください。",
@@ -246,9 +364,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "そのセッションの外見はまだ一覧にありません — テクスチャは復元済みで、編集内容は外見を選ぶと適用されます。",
         ),
-        TextKey::SettingsOcclusionGroup => Some("アンビエントオクルージョン"),
-        TextKey::SettingsOcclusionIntensity => Some("強さ"),
-        TextKey::SettingsOcclusionRadius => Some("範囲"),
         TextKey::SettingsBloomGroup => Some("ブルーム"),
         TextKey::SettingsBloomIntensity => Some("強さ"),
         TextKey::SettingsBloomThreshold => Some("しきい値"),
@@ -261,7 +376,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("スカルプトはこの外見へ引き継げませんでした"),
         TextKey::SettingsToneCurve => Some("トーンカーブ"),
         TextKey::SettingsToneCurveTooltip => Some("影とハイライトを調整します"),
-        TextKey::SettingsOcclusionTooltip => Some("面が接する部分に陰を落とします"),
         TextKey::SettingsVignetteTooltip => Some("画面の縁を暗くします"),
         TextKey::SettingsEffectEnabled => Some("有効"),
         TextKey::SettingsInterfaceGroup => Some("インターフェース"),
@@ -366,6 +480,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("スキャンヘッドを読み込み、VaM フォルダーを指定してください")
         }
         TextKey::ScanLoaded => Some("スキャンヘッドの OBJ/GLB/FBX を読み込みました"),
+        TextKey::ScanUnloaded => Some("ヘッドファイルを外しました。G2 ベースを編集できます"),
+        TextKey::PinPairsMismatched => Some("ピンの数が一致しません。相手のないピン番号"),
+        TextKey::UnloadScanTooltip => Some("このヘッドファイルを外す"),
         TextKey::TemplateLoaded => Some("G2 を読み込みました"),
         TextKey::PinsReset => Some("すべてのピンをリセットしました"),
         TextKey::ResultStale => Some("変更があるため結果を再生成してください"),
@@ -423,6 +540,39 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("テンキー 1-9"),
         TextKey::ShortcutCameraProjection => Some("テンキー ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("やり直す"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("ヘアプリセット"),
+        TextKey::HairPresetLoad => Some("読み込む"),
+        TextKey::HairToolPick => Some("レイヤーを選ぶ"),
+        TextKey::HairToolPickHint => Some(
+            "ビューポートで毛束をクリックすると、そのレイヤーが有効になります。ブラシは次のクリックから動きます。",
+        ),
+        TextKey::HelpHairPick => Some("カーソル下のレイヤーを選ぶ"),
+        TextKey::ShortcutHairPick => Some("V、またはどのブラシでも Ctrl + クリック"),
+        TextKey::HelpHairSmooth => Some("とかす代わりにならす"),
+        TextKey::ShortcutHairSmooth => Some("とかしながら Shift"),
+        TextKey::HairGroupScalp => Some("頭皮"),
+        TextKey::HairScalpAlpha => Some("頭皮マスク"),
+        TextKey::HairScalpPanel => Some("頭皮"),
+        TextKey::HairScalpMesh => Some("頭皮メッシュ"),
+        TextKey::HairScalpCreate => Some("頭皮を作成"),
+        TextKey::HairScalpAbsent => Some("このスタイルにはまだ頭皮レイヤーがありません。"),
+        TextKey::HistoryBranchTitle => Some("この先の作業履歴が失われます"),
+        TextKey::HistoryBranchProceed => Some("続ける"),
+        TextKey::DoNotShowAgain => Some("今後表示しない"),
+        TextKey::SurfaceBaseUnblended => {
+            Some("一部の PBR マップを VaM スキンと合成できませんでした")
+        }
+        TextKey::DetailEditRedone => Some("取り消した編集を再適用しました"),
+        TextKey::ShortcutBrushSmaller => Some("ブラシを小さく"),
+        TextKey::ShortcutBrushLarger => Some("ブラシを大きく"),
+        TextKey::ShortcutBrushSizeDrag => Some("ブラシサイズ調整 (押しながら左右)"),
+        TextKey::ShortcutBrushStrengthDrag => Some("ブラシ強度調整 (押しながら左右)"),
+        TextKey::ShortcutStencilCancel => Some("ステンシル配置を取り消す"),
+        TextKey::ShortcutViewOrbit => Some("ビューを軌道回転 (ドラッグ)"),
+        TextKey::ShortcutViewPan => Some("ビューを平行移動 (ドラッグ)"),
+        TextKey::ShortcutViewDolly => Some("ビューをドリー (ドラッグ)"),
         TextKey::TemplatePending => {
             Some("VaM フォルダーを指定すると G2 ベースが自動的に準備されます")
         }
@@ -458,6 +608,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("表面の凹凸をなめらかにします"),
         TextKey::SculptBrushRestoreTooltip => Some("ベース形状に復元します"),
+        TextKey::SculptBrushMask => Some("マスク"),
+        TextKey::SculptBrushMaskTooltip => {
+            Some("選択中の外見レイヤーを削り、下のレイヤーを出します。Altで戻します")
+        }
         TextKey::TextureLayers => Some("テクスチャレイヤー"),
         TextKey::PackageSection => Some("VAR 書き出し"),
         TextKey::PackageCreatorHint => Some("作者"),
@@ -607,6 +761,180 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("テクスチャレイヤーを追加"),
         TextKey::DialogSaveMorphPair => Some("VaM モーフ VMI + VMB を保存"),
         TextKey::DialogChooseVamFolder => Some("Virt-A-Mate フォルダーを選択"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("髪の量"),
+        "curveDensity" => Some("カーブ密度"),
+        "iterations" => Some("反復回数"),
+        "simulationEnabled" => Some("物理"),
+        "collisionEnabled" => Some("衝突"),
+        "weight" => Some("重さ"),
+        "drag" => Some("空気抵抗"),
+        "gravityMultiplier" => Some("重力倍率"),
+        "collisionRadius" => Some("衝突半径"),
+        "collisionRadiusRoot" => Some("衝突半径(根元)"),
+        "friction" => Some("摩擦"),
+        "bendResistance" => Some("曲げ抵抗"),
+        "rootRigidity" => Some("根元の弾性"),
+        "mainRigidity" => Some("中間の弾性"),
+        "tipRigidity" => Some("毛先の弾性"),
+        "jointRigidity" => Some("ジョイント弾性"),
+        "rigidityRolloffPower" => Some("弾性の減衰"),
+        "cling" => Some("スタイル凝集"),
+        "clingRolloff" => Some("凝集の減衰"),
+        "snap" => Some("スナップ"),
+        "usePaintedRigidity" => Some("塗った弾性を使う"),
+        "width" => Some("太さ"),
+        "length1" => Some("長さ 1"),
+        "length2" => Some("長さ 2"),
+        "length3" => Some("長さ 3"),
+        "maxSpread" => Some("最大広がり"),
+        "spreadRoot" => Some("広がり(根元)"),
+        "spreadMid" => Some("広がり(中間)"),
+        "spreadTip" => Some("広がり(毛先)"),
+        "spreadMidpoint" => Some("広がりの中点"),
+        "spreadCurvePower" => Some("広がりカーブ"),
+        "curlScale" => Some("カールの大きさ"),
+        "curlFrequency" => Some("カールの頻度"),
+        "curlScaleRandomness" => Some("カール大きさランダム"),
+        "curlFrequencyRandomness" => Some("カール頻度ランダム"),
+        "curlRoot" => Some("カール(根元)"),
+        "curlMid" => Some("カール(中間)"),
+        "curlTip" => Some("カール(毛先)"),
+        "curlMidpoint" => Some("カールの中点"),
+        "curlCurvePower" => Some("カールカーブ"),
+        "curlX" => Some("カール X"),
+        "curlY" => Some("カール Y"),
+        "curlZ" => Some("カール Z"),
+        "curlNormalAdjust" => Some("カール法線補正"),
+        "curlAllowReverse" => Some("逆巻きを許可"),
+        "curlAllowFlipAxis" => Some("軸反転を許可"),
+        "Alpha Adjust" => Some("頭皮の不透明度"),
+        "Diffuse Color" => Some("頭皮の拡散色"),
+        "Gloss" => Some("頭皮の光沢"),
+        "Specular Intensity" => Some("頭皮の反射"),
+        "Diffuse Texture Offset" => Some("頭皮テクスチャオフセット"),
+        "rootColor" => Some("根元の色"),
+        "tipColor" => Some("毛先の色"),
+        "specularColor" => Some("光沢の色"),
+        "colorRolloff" => Some("根元→毛先の色減衰"),
+        "randomColorPower" => Some("ランダム色の強さ"),
+        "randomColorOffset" => Some("ランダム色のオフセット"),
+        "primarySpecularSharpness" => Some("一次ハイライト"),
+        "secondarySpecularSharpness" => Some("二次ハイライト"),
+        "specularShift" => Some("二次ハイライトのずれ"),
+        "diffuseSoftness" => Some("拡散光の柔らかさ"),
+        "fresnelPower" => Some("フレネル強度"),
+        "fresnelAttenuation" => Some("フレネル減衰"),
+        "IBLFactor" => Some("間接光"),
+        "normalRandomize" => Some("法線ランダム"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => {
+            Some("ガイド三本の間に何本生えるか。髪の印象そのものであり、負荷の大半でもあります。")
+        }
+        "curveDensity" => Some(
+            "毛束一本に打つ点の数。多いほど滑らかで重くなります。形は数が増える前に読み取れます。",
+        ),
+        "iterations" => Some("フレームあたりのソルバー反復。多いほど速い動きでも拘束を保ちます。"),
+        "simulationEnabled" => {
+            Some("このパーツがゲーム内で動くか。ビューポートのスイッチとは無関係です。")
+        }
+        "collisionEnabled" => Some("このパーツの毛束が体の外へ押し出されるか。"),
+        "weight" => Some("毛束がどれだけ重く垂れるか。重力と、動かされにくさを同時に上げます。"),
+        "drag" => Some("空気が毛束をどれだけ引き止めるか。高いと早く収まり、あまり揺れません。"),
+        "gravityMultiplier" => Some("このパーツにかかる重力。シーンの重力に対する倍率です。"),
+        "collisionRadius" => Some("毛束が衝突する太さ。長さ方向の全体に効きます。"),
+        "collisionRadiusRoot" => Some("根元付近の太さ。ほかと変えたいときに使います。"),
+        "friction" => Some("触れたものを滑らずに掴む度合い。"),
+        "bendResistance" => Some("まっすぐな状態から曲げられることへの抵抗。"),
+        "rootRigidity" => Some("根元側がスタイリングされた形をどれだけ保つか。"),
+        "mainRigidity" => Some("中間がスタイリングされた形をどれだけ保つか。"),
+        "tipRigidity" => Some("毛先がスタイリングされた形をどれだけ保つか。"),
+        "jointRigidity" => {
+            Some("スタイルジョイントの硬さ。ポニーテールをポニーテールに保つバネです。")
+        }
+        "rigidityRolloffPower" => {
+            Some("三つの弾性が毛束に沿ってどう混ざるか。高いほど根元の値が先まで届きます。")
+        }
+        "cling" => Some("スタイルジョイントが毛束同士を引き寄せる強さ。"),
+        "clingRolloff" => {
+            Some("凝集が毛束に沿って弱まる距離。高いほど根元寄りに閉じ込められます。")
+        }
+        "snap" => Some("各節が作成時の長さをどれだけ固く保つか。"),
+        "usePaintedRigidity" => Some("三つのスライダーではなく、塗ったマップから弾性を読みます。"),
+        "width" => Some("毛束を描く太さ。VaM のスライダーも 0.1mm で上限です。"),
+        "length1" => Some("三角形の一つ目のガイドに近い毛束の長さ。"),
+        "length2" => Some("三角形の二つ目のガイドに近い毛束の長さ。"),
+        "length3" => Some("三角形の三つ目のガイドに近い毛束の長さ。"),
+        "maxSpread" => Some(
+            "毛束がガイドから離れられる距離の上限で、増幅ではありません。ガイド間隔を超えると、上げても何も変わりません。",
+        ),
+        "spreadRoot" => Some("根元で毛束がどれだけ自由に離れるか。低いとガイドへ寄せ集まります。"),
+        "spreadMid" => Some("中間で毛束がどれだけ自由に離れるか。"),
+        "spreadTip" => Some("毛先で毛束がどれだけ自由に離れるか。"),
+        "spreadMidpoint" => Some("毛束のどこから中間の広がりが効くか。"),
+        "spreadCurvePower" => Some("根元・中間・毛先の間で広がりが切り替わる急峻さ。"),
+        "curlScale" => Some("カールの幅。巻く半径であって長さではありません。"),
+        "curlFrequency" => Some("毛束 1cm あたりの巻き数。"),
+        "curlScaleRandomness" => Some("毛束ごとにカール幅がどれだけばらつくか。"),
+        "curlFrequencyRandomness" => Some("毛束ごとに巻く速さがどれだけばらつくか。"),
+        "curlRoot" => Some("根元にカールがどれだけ届くか。"),
+        "curlMid" => Some("中間にカールがどれだけ届くか。"),
+        "curlTip" => Some("毛先にカールがどれだけ届くか。"),
+        "curlMidpoint" => Some("毛束のどこから中間のカールが効くか。"),
+        "curlCurvePower" => Some("根元・中間・毛先の間でカールが切り替わる急峻さ。"),
+        "curlX" => {
+            Some("カールの X 方向の変位。回転される ベクトルであって、巻く軸ではありません。")
+        }
+        "curlY" => Some("カールの Y 方向の変位。"),
+        "curlZ" => Some("カールの Z 方向の変位。"),
+        "curlNormalAdjust" => Some(
+            "カールのオフセットに法線方向へ加算されます。軸を傾けるのではなく、コイルを頭から浮かせます。",
+        ),
+        "curlAllowReverse" => {
+            Some("一部の毛束を逆巻きにします。巻き髪全体が一本の繰り返しに見えないように。")
+        }
+        "curlAllowFlipAxis" => Some("一部の毛束を反転した軸で巻かせます。理由は同じです。"),
+        "Alpha Adjust" => Some(
+            "頭皮キャップの不透明度。多くのパーツは他人のキャップを被るため最下段に置いて隠し、分け目で頭皮を見せたいときだけ上げます。",
+        ),
+        "Diffuse Color" => Some(
+            "キャップ自体の拡散色。VaM は白で出荷し、そうすることで下のスキンシートが透けます。",
+        ),
+        "Gloss" => Some("頭皮キャップが見える箇所での光沢の強さ。"),
+        "Specular Intensity" => Some("頭皮キャップがハイライトをどれだけ強く受けるか。"),
+        "Diffuse Texture Offset" => {
+            Some("キャップの拡散色に加算される値。名前に反してシート番号ではありません。")
+        }
+        "rootColor" => Some("根元側の色。"),
+        "tipColor" => Some("毛先側の色。"),
+        "specularColor" => Some("ハイライトの色。"),
+        "colorRolloff" => Some("毛束に沿って根元の色が毛先の色へ移る具合。"),
+        "randomColorPower" => Some("毛束どうしで色がどれだけばらつくか。"),
+        "randomColorOffset" => Some("そのばらつきが明るい側か暗い側か。"),
+        "primarySpecularSharpness" => Some("主ハイライトの締まり。高いほど艶やかです。"),
+        "secondarySpecularSharpness" => {
+            Some("二次ハイライトの締まり。髪に沿って動く色付きの方です。")
+        }
+        "specularShift" => Some("二次ハイライトが一次から毛束に沿ってどれだけ離れて座るか。"),
+        "diffuseSoftness" => {
+            Some("光が毛束を回り込む柔らかさ。低いと光の当たる側だけが明るくなります。")
+        }
+        "fresnelPower" => Some("髪が視線から逸れる縁がどれだけ急に明るくなるか。"),
+        "fresnelAttenuation" => Some("その縁の明るさの強さ。"),
+        "IBLFactor" => Some("シーンの環境光を髪がどれだけ受けるか。"),
+        "normalRandomize" => {
+            Some("毛束ごとに陰影法線をどれだけ揺らすか。隣同士が同じに陰らないようにします。")
+        }
         _ => None,
     }
 }

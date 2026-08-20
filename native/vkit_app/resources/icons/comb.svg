@@ -1,0 +1,26 @@
+<!-- Turned half around so the teeth face the stroke.
+      Hand-authored in the lucide style for the Vkit hair comb brush.
+     A rounded body turned 45 degrees with four close teeth ruled across it,
+     which is what reads as a comb at 16 points rather than as a bar chart. -->
+<svg
+  class="lucide lucide-comb"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <g transform="rotate(180 12 12)">
+  <g transform="rotate(-45 12 12)">
+    <rect x="2.5" y="7" width="19" height="10" rx="2.5" />
+    <path d="M7 7v6" />
+    <path d="M10.3 7v6" />
+    <path d="M13.7 7v6" />
+    <path d="M17 7v6" />
+  </g>
+  </g>
+</svg>

@@ -914,7 +914,7 @@ fn scan_symmetry_is_derived_without_destroying_the_loaded_source() {
 }
 
 #[test]
-fn reoriented_scan_symmetry_uses_world_x_and_preserves_stable_ids() {
+fn reoriented_scan_symmetry_mirrors_about_world_x_and_leaves_the_source_alone() {
     let source_mesh = Mesh::new(
         vec![
             [-1.0, -1.0, 0.0],
@@ -947,13 +947,39 @@ fn reoriented_scan_symmetry_uses_world_x_and_preserves_stable_ids() {
         .unwrap();
 
     let displayed = workspace.scan.as_ref().unwrap();
-    assert_eq!(displayed.mesh.vertices.len(), source_vertices.len());
-    assert_eq!(displayed.mesh.triangles, source_triangles);
-    assert!(displayed.mesh.vertices[4][2].abs() < 1.0e-12);
-    assert!(displayed.mesh.vertices[5][2].abs() < 1.0e-12);
+    let world: Vec<[f64; 3]> = displayed
+        .mesh
+        .vertices
+        .iter()
+        .map(|vertex| {
+            transform
+                .point_to_world(glam::DVec3::from_array(*vertex))
+                .to_array()
+        })
+        .collect();
+    let plane = world.iter().map(|vertex| vertex[0]).sum::<f64>() / world.len() as f64;
+    for vertex in &world {
+        let reflected = [2.0 * plane - vertex[0], vertex[1], vertex[2]];
+        assert!(
+            world.iter().any(|candidate| {
+                (0..3).all(|axis| (candidate[axis] - reflected[axis]).abs() < 1.0e-9)
+            }),
+            "{vertex:?} has no counterpart across the world X plane at {plane}"
+        );
+    }
+    let depths: Vec<f64> = world.iter().map(|vertex| vertex[2]).collect();
+    assert!(
+        !(depths.iter().any(|depth| (depth - 0.03).abs() < 1.0e-9)
+            && depths.iter().any(|depth| (depth - 0.02).abs() < 1.0e-9)),
+        "both sides kept their own shape: {depths:?}"
+    );
     assert_eq!(
         workspace.scan_source.as_ref().unwrap().mesh.vertices,
         source_vertices
+    );
+    assert_eq!(
+        workspace.scan_source.as_ref().unwrap().mesh.triangles,
+        source_triangles
     );
 }
 

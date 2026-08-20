@@ -2495,3 +2495,47 @@ fn grafting_an_edit_onto_a_different_base_reproduces_it_exactly() {
             .is_err()
     );
 }
+
+#[test]
+fn the_sculpt_history_walks_both_ways_and_a_new_stroke_closes_the_way_forward() {
+    let source = isolated_targets();
+    let mut session = SculptSession::default();
+    session.set_x_symmetry(false);
+    session.begin(&source).unwrap();
+
+    let drag = |session: &mut SculptSession, along: f64| {
+        session.begin_stroke().unwrap();
+        session
+            .dab(SculptDab {
+                center_local: [0.0, 0.0, 0.0],
+                radius_local: 3.0,
+                strength: 1.0,
+                operation: SculptOperation::Grab {
+                    translation_local: [along, 0.0, 0.0],
+                },
+            })
+            .unwrap();
+        session.end_stroke().unwrap();
+    };
+
+    drag(&mut session, 0.5);
+    let after_first = session.working_mesh().unwrap().vertices[0];
+    drag(&mut session, 0.25);
+    let after_second = session.working_mesh().unwrap().vertices[0];
+    assert_ne!(after_first, after_second);
+    assert_eq!(session.history_position(), (2, 0));
+
+    assert!(session.undo().unwrap());
+    assert_eq!(session.history_position(), (1, 1));
+    assert_eq!(session.working_mesh().unwrap().vertices[0], after_first);
+
+    assert!(session.redo().unwrap());
+    assert_eq!(session.history_position(), (2, 0));
+    assert_eq!(session.working_mesh().unwrap().vertices[0], after_second);
+
+    assert!(session.undo().unwrap());
+    assert!(session.has_forward_history());
+    drag(&mut session, -0.75);
+    assert_eq!(session.history_position(), (2, 0));
+    assert!(!session.redo().unwrap());
+}

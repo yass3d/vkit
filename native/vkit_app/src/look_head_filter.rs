@@ -30,19 +30,46 @@ pub fn filter_appearance_to_head(
         &head_vertices,
     )?;
 
+    let offset = rigid_head_offset(base, composed, &weights);
     let mut filtered = composed.clone();
     for (index, vertex) in filtered.vertices.iter_mut().enumerate() {
         let weight = weights[index];
         let rest = base.vertices[index];
         let source = composed.vertices[index];
         *vertex = [
-            rest[0] + (source[0] - rest[0]) * weight,
-            rest[1] + (source[1] - rest[1]) * weight,
-            rest[2] + (source[2] - rest[2]) * weight,
+            rest[0] + (source[0] - offset[0] - rest[0]) * weight,
+            rest[1] + (source[1] - offset[1] - rest[1]) * weight,
+            rest[2] + (source[2] - offset[2] - rest[2]) * weight,
         ];
     }
     filtered.validate().map_err(|error| error.to_string())?;
     Ok(filtered)
+}
+
+fn rigid_head_offset(
+    base: &OrderedObjMesh,
+    composed: &OrderedObjMesh,
+    weights: &[f64],
+) -> [f64; 3] {
+    let mut total = [0.0_f64; 3];
+    let mut mass = 0.0_f64;
+    for (index, weight) in weights.iter().enumerate() {
+        if *weight < 0.999 {
+            continue;
+        }
+        for ((total, source), rest) in total
+            .iter_mut()
+            .zip(composed.vertices[index])
+            .zip(base.vertices[index])
+        {
+            *total += source - rest;
+        }
+        mass += 1.0;
+    }
+    if mass <= 0.0 {
+        return [0.0; 3];
+    }
+    total.map(|axis| axis / mass)
 }
 
 fn transition_weights(
@@ -132,5 +159,56 @@ mod tests {
         assert!(weights[3] > 0.0);
         assert!(weights[4] > weights[3]);
         assert!(weights[5] > weights[3]);
+    }
+
+    fn mesh(vertices: Vec<[f64; 3]>) -> OrderedObjMesh {
+        OrderedObjMesh {
+            vertices,
+            faces: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_rigid_lift_a_body_morph_gave_the_head_is_what_comes_off() {
+        let base = mesh(vec![
+            [0.0, 10.0, 0.0],
+            [1.0, 11.0, 0.0],
+            [2.0, 12.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ]);
+        let composed = mesh(vec![
+            [0.0, 15.0, 0.0],
+            [1.0, 16.0, 0.0],
+            [4.0, 17.0, 0.0],
+            [0.0, 99.0, 0.0],
+        ]);
+        let weights = [1.0, 1.0, 1.0, 0.0];
+
+        let offset = rigid_head_offset(&base, &composed, &weights);
+        assert!(
+            (offset[1] - 5.0).abs() < 1.0e-9,
+            "the lift is 5cm on every head vertex, got {offset:?}",
+        );
+        assert!(
+            (offset[0] - 2.0 / 3.0).abs() < 1.0e-9,
+            "the one reshaped vertex spreads over the head, not beyond it",
+        );
+        assert!(
+            offset[1] < 90.0,
+            "a vertex outside the head must not reach the measurement",
+        );
+
+        for (index, weight) in weights.iter().enumerate() {
+            if *weight < 0.999 {
+                continue;
+            }
+            let levelled = composed.vertices[index][1] - offset[1];
+            assert!(
+                (levelled - base.vertices[index][1]).abs() < 1.0e-9,
+                "vertex {index} did not come back to the base height",
+            );
+        }
+        let kept = composed.vertices[2][0] - offset[0] - base.vertices[2][0];
+        assert!(kept > 1.0, "levelling flattened the feature to {kept}");
     }
 }

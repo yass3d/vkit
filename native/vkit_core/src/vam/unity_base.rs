@@ -61,11 +61,6 @@ pub struct NeutralBaseCacheReceipt {
     pub sex: String,
     pub bundle_path: String,
     pub bundle_bytes: u64,
-    /// Nanoseconds since the Unix epoch, as decimal text, of the bundle this receipt was written
-    /// against. Together with `bundle_path` and `bundle_bytes` it lets a load decide the file is
-    /// unchanged without reading and hashing all of it. Absent on receipts written before the
-    /// stamp existed, and on platforms that cannot report a modification time; both fall back to
-    /// the digest comparison.
     #[serde(default)]
     pub bundle_modified_ns: Option<String>,
     pub bundle_sha256: String,
@@ -150,13 +145,6 @@ pub fn load_or_extract_neutral_base(
 ) -> Result<NeutralBaseHandle> {
     let bundle_path = root.neutral_base_bundle_path(sex);
 
-    // A cache hit must not cost a read plus a SHA-256 of the whole bundle — these are several
-    // megabytes each and this runs on the caller's thread. The stamp (path, length, modification
-    // time) settles whether this is the same file the receipt was written against; everything the
-    // digest guards is still guarded, because the receipt records the digest and the cached blob
-    // must still agree with it, and any stamp that does not match falls through to the full read
-    // and hash below. What the stamp cannot see is a different bundle of the same byte length
-    // written within one filesystem timestamp tick of the one we cached.
     let stamp = bundle_stamp(&bundle_path);
     if let Some(dir) = cache_dir
         && let Some(stamp) = stamp
@@ -174,8 +162,6 @@ pub fn load_or_extract_neutral_base(
     if let Some(dir) = cache_dir
         && let Some(base) = try_load_cached_base(dir, sex, &bundle_path, bundle_sha256)
     {
-        // Same bytes under a stamp the receipt did not carry — a receipt from before the stamp
-        // existed, or a file that was copied or touched. Re-stamp it so the next load is cheap.
         let _ = write_receipt(dir, sex, &build_receipt(&base, bundle.len() as u64, stamp));
         return Ok(NeutralBaseHandle {
             base,
@@ -261,8 +247,6 @@ fn try_load_cached_base_by_stamp(
     if !receipt_matches_stamp(&receipt, bundle_path, stamp) {
         return None;
     }
-    // The digest the receipt recorded stands in for one taken over the file again: the stamp said
-    // the file is the one that was hashed. The cached blob is still held to it.
     let recorded = decode_hex32(&receipt.bundle_sha256)?;
     cached_base_from_receipt(&receipt, cache_dir, sex, bundle_path, recorded)
 }
@@ -1283,12 +1267,6 @@ pub(crate) struct DazScalpProviderMesh {
     pub(crate) uvs: Vec<[f32; 2]>,
 }
 
-/// The figure mesh's own UV mapping, as the bundle stores it.
-///
-/// `base_polygons` and `uv_polygons` run in lockstep — corner c of face i takes
-/// its position from one and its texture coordinate from the other — which is
-/// what makes this an exact mapping onto the canonical mesh rather than a
-/// correspondence anyone has to guess at.
 #[derive(Clone, Debug)]
 pub struct FigureUvMesh {
     pub material_names: Vec<String>,
@@ -1313,13 +1291,6 @@ const DAZ_FIGURE_UV_REQUIRED_FIELDS: &[&str] = &[
     "_OrigUV",
 ];
 
-/// Reads the UV mapping of the figure mesh whose polygon count is canonical.
-///
-/// The stream this returns is the one VaM itself renders with: measured
-/// against the loose `femalecustom.obj` the loader used to require, every
-/// material island agrees to the last bit, including the eye, mouth and lash
-/// atlases. Reading it here means a stock installation no longer needs a file
-/// it was never shipped with.
 pub fn extract_figure_uv(bundle: &[u8]) -> Result<FigureUvMesh> {
     let (data_area, nodes) = decode_unity_bundle(bundle)?;
     for node in &nodes {
@@ -1766,7 +1737,6 @@ pub fn extract_merged_mesh_from_bundle(bundle: &[u8], sex: GeometrySex) -> Resul
         .collect())
 }
 
-#[cfg(feature = "rig")]
 pub fn merged_figure_parts(
     bundle: &[u8],
     sex: GeometrySex,
@@ -2286,8 +2256,6 @@ mod tests {
         ));
         assert!(!receipt_matches_stamp(&receipt, Path::new("f_1"), stamp));
 
-        // A receipt written before the stamp existed cannot answer the cheap question. It must
-        // still parse, and it must send the caller back to reading and hashing the bundle.
         let mut stored = serde_json::to_value(&receipt).unwrap();
         stored
             .as_object_mut()
@@ -2298,8 +2266,6 @@ mod tests {
         assert_eq!(legacy.bundle_modified_ns, None);
         assert!(!receipt_matches_stamp(&legacy, path, stamp));
 
-        // The recorded digest is what the stamped path hands to the blob check, so it has to
-        // survive the round trip through text.
         assert_eq!(
             decode_hex32(&hex(&G2F_TOPOLOGY_SHA256)),
             Some(G2F_TOPOLOGY_SHA256)

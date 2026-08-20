@@ -12,16 +12,10 @@ pub const PREFERRED_HEIGHT: f64 = 920.0;
 pub const MIN_WIDTH: f64 = 1_040.0;
 pub const MIN_HEIGHT: f64 = 560.0;
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the desktops the minimum is measured against")
-)]
+#[cfg(test)]
 pub const WINDOWS_11_TASKBAR_POINTS: f64 = 48.0;
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the desktops the minimum is measured against")
-)]
+#[cfg(test)]
 pub const WINDOWS_10_TASKBAR_POINTS: f64 = 40.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,10 +28,7 @@ pub struct Desktop {
 }
 
 impl Desktop {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the desktops the minimum is measured against")
-    )]
+    #[cfg(test)]
     #[must_use]
     pub fn from_screen(width: f64, height: f64, scale: f64, taskbar_points: f64) -> Self {
         Self {
@@ -125,10 +116,7 @@ pub enum StartupPhase {
 }
 
 impl StartupPhase {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the boot screen names its phases one by one")
-    )]
+    #[cfg(test)]
     pub const ALL: [Self; 7] = [
         Self::Window,
         Self::Font,
@@ -541,5 +529,30 @@ mod tests {
         let other = std::io::Error::other("the settings directory is read-only");
         let error: &(dyn std::error::Error + 'static) = &other;
         assert!(error.downcast_ref::<GraphicsUnavailable>().is_none());
+    }
+}
+
+#[cfg(test)]
+mod locale_boot {
+    use super::boot_locale;
+    use crate::i18n::Locale;
+
+    #[test]
+    fn the_machine_is_asked_once_and_the_answer_is_kept() {
+        assert_eq!(
+            boot_locale(Some(Locale::Korean)),
+            Locale::Korean,
+            "a language already chosen is never overruled by the machine",
+        );
+        assert_eq!(
+            boot_locale(Some(Locale::English)),
+            Locale::English,
+            "English chosen deliberately must not be mistaken for the fallback",
+        );
+        assert_eq!(
+            boot_locale(None),
+            Locale::system_default(),
+            "only a first run has nothing to go on",
+        );
     }
 }

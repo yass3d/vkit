@@ -603,10 +603,6 @@ pub fn load_builtin_texture_rgba(
         pixels::unswizzle_dxt5nm_in_place(&mut rgba);
     }
 
-    // Unity stores row 0 at the bottom. Flipping here is what lets everything
-    // downstream treat a decoded bundle texture as an ordinary top-down image.
-    // VaM's own Cache/Textures copies keep Unity's order instead, which is why
-    // those carry a different UV orientation and these must not.
     pixels::flip_rows_in_place(&mut rgba, level_width, level_height);
     if level_width > max_edge || level_height > max_edge {
         let scale = f64::from(max_edge) / f64::from(level_width.max(level_height));
@@ -719,6 +715,137 @@ fn write_cached_texture(
         let _ = fs::remove_file(&path);
     }
     fs::rename(&temporary, &path).map_err(|error| io_error(&path, error))
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BuiltinScalpTextureSet {
+    pub provider_name: String,
+    pub diffuse: Option<BuiltinTextureRef>,
+    pub alpha: Option<BuiltinTextureRef>,
+}
+
+const SCALP_TEXTURE_BUNDLES: [(&str, &str); 6] = [
+    ("UdaneScalp", "h_zzz_mat"),
+    ("KrayonScalp", "h_kra_mat"),
+    ("SoleilScalp", "h_sol_mat"),
+    ("LeytonScalp", "h_ley_mat"),
+    ("PantyRegionScalp", "p_gen_mat"),
+    ("OmriScalp", "h_omr_mat"),
+];
+
+const SCALP_SIM_MATERIAL: &str = "scalp-sim3";
+
+pub fn scan_builtin_scalp_textures(
+    root: &VaMRoot,
+    cache_dir: Option<&Path>,
+) -> Vec<BuiltinScalpTextureSet> {
+    let streaming = root.path().join("VaM_Data").join("StreamingAssets");
+    let mut sets = Vec::new();
+    for (provider, bundle_name) in SCALP_TEXTURE_BUNDLES {
+        let bundle_path = streaming.join(bundle_name);
+        let Some(set) = scan_scalp_bundle(provider, &bundle_path, cache_dir) else {
+            continue;
+        };
+        sets.push(set);
+    }
+    sets
+}
+
+fn scan_scalp_bundle(
+    provider: &str,
+    bundle_path: &Path,
+    cache_dir: Option<&Path>,
+) -> Option<BuiltinScalpTextureSet> {
+    let mut reader = BundleReader::open(bundle_path).ok()?;
+    let (node_offset, _size, cab_name) = reader.serialized_nodes().first().cloned()?;
+    let prefix = parse_serialized_prefix(&mut reader, node_offset).ok()?;
+
+    let mut texture_names: BTreeMap<i64, String> = BTreeMap::new();
+    for object in &prefix.objects {
+        if prefix.types[object.type_index].class_id != 28 {
+            continue;
+        }
+        if let Ok(record) =
+            decode_object_fields(&mut reader, node_offset, &prefix, object, &["m_Name"])
+            && let Some(name) = record.field("m_Name").and_then(TreeValue::as_text)
+        {
+            texture_names.insert(object.path_id, name.to_owned());
+        }
+    }
+
+    for object in &prefix.objects {
+        if prefix.types[object.type_index].class_id != 21 {
+            continue;
+        }
+        let record = decode_object_fields(
+            &mut reader,
+            node_offset,
+            &prefix,
+            object,
+            &["m_Name", "m_SavedProperties"],
+        )
+        .ok()?;
+        if !record
+            .field("m_Name")
+            .and_then(TreeValue::as_text)
+            .is_some_and(|name| name.eq_ignore_ascii_case(SCALP_SIM_MATERIAL))
+        {
+            continue;
+        }
+        let Some(TreeValue::List(tex_envs)) = record
+            .field("m_SavedProperties")
+            .and_then(|value| value.field("m_TexEnvs"))
+        else {
+            continue;
+        };
+        let lookup = |wanted: &str| -> Option<BuiltinTextureRef> {
+            for entry in tex_envs {
+                let slot = entry.field("first").and_then(|value| {
+                    value.as_text().map(str::to_owned).or_else(|| {
+                        value
+                            .field("name")
+                            .and_then(TreeValue::as_text)
+                            .map(str::to_owned)
+                    })
+                })?;
+                if slot != wanted {
+                    continue;
+                }
+                let pointer = entry
+                    .field("second")
+                    .and_then(|value| value.field("m_Texture"))?;
+                let file_id = pointer
+                    .field("m_FileID")
+                    .and_then(TreeValue::as_signed)
+                    .unwrap_or(0);
+                let path_id = pointer
+                    .field("m_PathID")
+                    .and_then(TreeValue::as_signed)
+                    .unwrap_or(0);
+                if file_id != 0 || path_id == 0 {
+                    return None;
+                }
+                return Some(BuiltinTextureRef {
+                    bundle_path: bundle_path.to_path_buf(),
+                    cab_node: cab_name.clone(),
+                    path_id,
+                    texture_name: texture_names
+                        .get(&path_id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("texture-{path_id:016x}")),
+                    normal_map: false,
+                    cache_directory: cache_dir.map(Path::to_path_buf),
+                });
+            }
+            None
+        };
+        return Some(BuiltinScalpTextureSet {
+            provider_name: provider.to_owned(),
+            diffuse: lookup("_MainTex"),
+            alpha: lookup("_AlphaTex"),
+        });
+    }
+    None
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -872,11 +999,6 @@ pub fn scan_builtin_skins(
     Ok((presets, warnings))
 }
 
-/// Every texture this tool reads out of a figure's material bundle.
-///
-/// The eye, mouth and lash rows matter beyond their own regions: they are the
-/// stand-ins every look inherits when it names none of its own, and the
-/// bundle is the only place they are guaranteed to exist.
 const CHANNEL_SLOTS: &[(&str, &str, &str)] = &[
     ("face_diffuse", "Face", "_MainTex"),
     ("face_normal", "Face", "_BumpMap"),
@@ -1150,13 +1272,9 @@ fn resolve_cab_bundle(
     Ok(cab_index.get(cab).cloned())
 }
 
-/// The figure the others are variants of: VaM's own default person, and so
-/// the source of the materials a look inherits when it names none.
 pub const fn base_figure(sex: SkinSex) -> &'static str {
     match sex {
         SkinSex::Male => "m_1",
-        // An unsexed look is previewed on the female base, as the rest of
-        // this tool is.
         SkinSex::Female | SkinSex::Unknown => "f_1",
     }
 }
@@ -1224,8 +1342,6 @@ fn preset_from_entry(
     auxiliary("teeth", &mut preset.auxiliary.teeth);
     auxiliary("gums", &mut preset.auxiliary.gums);
     auxiliary("tongue", &mut preset.auxiliary.tongue);
-    // The lash sheet is an alpha mask rather than a colour map, so it has no
-    // matching surface rows.
     if let Some(alpha) = locator("eyelash_alpha") {
         preset.auxiliary.eyelashes.diffuse = Some(alpha);
         preset.auxiliary.eyelashes.diffuse_source = SkinDiffuseSource::CustomTexture;
@@ -1236,6 +1352,40 @@ fn preset_from_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires a real VaM install; see VKIT_VAM_ROOT"]
+    fn builtin_scalp_textures_scan_and_decode_from_a_real_install() {
+        let root =
+            VaMRoot::open(std::env::var_os("VKIT_VAM_ROOT").expect("set VKIT_VAM_ROOT")).unwrap();
+        let sets = scan_builtin_scalp_textures(&root, None);
+        let found: Vec<&str> = sets.iter().map(|set| set.provider_name.as_str()).collect();
+        for wanted in [
+            "UdaneScalp",
+            "KrayonScalp",
+            "SoleilScalp",
+            "LeytonScalp",
+            "OmriScalp",
+        ] {
+            assert!(
+                found.contains(&wanted),
+                "{wanted} ships a scalp-sim3 material and both its sheets, so a blank \
+                 cap means the bundle table or the name match is wrong; found {found:?}",
+            );
+        }
+        for set in &sets {
+            let diffuse = set.diffuse.as_ref().expect("diffuse sheet");
+            let alpha = set.alpha.as_ref().expect("alpha mask");
+            for reference in [diffuse, alpha] {
+                let decoded = load_builtin_texture_rgba(reference, 2048).expect("decode");
+                assert!(decoded.width >= 64 && decoded.height >= 64);
+                assert_eq!(
+                    decoded.rgba8.len(),
+                    decoded.width as usize * decoded.height as usize * 4
+                );
+            }
+        }
+    }
 
     fn push_aligned_string(bytes: &mut Vec<u8>, text: &str) {
         bytes.extend_from_slice(&(text.len() as u32).to_le_bytes());

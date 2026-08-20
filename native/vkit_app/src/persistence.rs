@@ -68,6 +68,9 @@ pub struct Preferences {
 
     #[serde(default)]
     pub morph_name_display: MorphNameDisplay,
+
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub shortcuts: std::collections::BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inspector_width: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,6 +115,10 @@ pub struct Preferences {
     pub surface_smooth_passes: u8,
     #[serde(default = "default_tooltips_enabled")]
     pub tooltips_enabled: bool,
+    #[serde(default = "default_hair_toolbox_columns")]
+    pub hair_toolbox_columns: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hair_toolbox_pos: Option<[f32; 2]>,
     #[serde(default = "default_show_one_sided_morphs")]
     pub show_one_sided_morphs: bool,
 
@@ -181,25 +188,6 @@ pub struct Preferences {
     pub bloom_soft_knee: f32,
     #[serde(default = "default_bloom_radius")]
     pub bloom_radius: f32,
-
-    #[serde(default = "default_occlusion_enabled")]
-    pub occlusion_enabled: bool,
-    #[serde(default = "default_occlusion_intensity")]
-    pub occlusion_intensity: f32,
-    #[serde(default = "default_occlusion_radius")]
-    pub occlusion_radius: f32,
-}
-
-const fn default_occlusion_enabled() -> bool {
-    true
-}
-
-const fn default_occlusion_intensity() -> f32 {
-    crate::ambient_occlusion::DEFAULT_INTENSITY
-}
-
-const fn default_occlusion_radius() -> f32 {
-    crate::ambient_occlusion::DEFAULT_RADIUS
 }
 
 const fn default_bloom_enabled() -> bool {
@@ -238,7 +226,10 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             locale: None,
+            hair_toolbox_columns: default_hair_toolbox_columns(),
+            hair_toolbox_pos: None,
             morph_name_display: MorphNameDisplay::default(),
+            shortcuts: std::collections::BTreeMap::new(),
             package_creator: None,
             package_version: None,
             package_license: None,
@@ -285,9 +276,6 @@ impl Default for Preferences {
             bloom_threshold: default_bloom_threshold(),
             bloom_soft_knee: default_bloom_soft_knee(),
             bloom_radius: default_bloom_radius(),
-            occlusion_enabled: default_occlusion_enabled(),
-            occlusion_intensity: default_occlusion_intensity(),
-            occlusion_radius: default_occlusion_radius(),
         }
     }
 }
@@ -332,16 +320,6 @@ impl Preferences {
             crate::post_process::RADIUS_RANGE,
             default_bloom_radius(),
         );
-        self.occlusion_intensity = sanitize_range(
-            self.occlusion_intensity,
-            crate::ambient_occlusion::INTENSITY_RANGE,
-            default_occlusion_intensity(),
-        );
-        self.occlusion_radius = sanitize_range(
-            self.occlusion_radius,
-            crate::ambient_occlusion::RADIUS_RANGE,
-            default_occlusion_radius(),
-        );
     }
 
     pub fn with_sanitized_display(mut self) -> Self {
@@ -370,11 +348,10 @@ const fn default_tooltips_enabled() -> bool {
     true
 }
 
-/// A first run leaves the one-sided morphs out.
-///
-/// Almost nobody reaches for a morph that moves half a face, and a list twice
-/// as long makes the ones people do want harder to find. Showing them is the
-/// deliberate act.
+const fn default_hair_toolbox_columns() -> u8 {
+    1
+}
+
 const fn default_show_one_sided_morphs() -> bool {
     false
 }
@@ -628,8 +605,21 @@ pub fn write_vam_morph_pair_atomic(
         fs::rename(vmi_path, &backup_vmi)?;
     }
     if had_vmb && let Err(error) = fs::rename(vmb_path, &backup_vmb) {
-        if had_vmi {
-            let _ = fs::rename(&backup_vmi, vmi_path);
+        if had_vmi && let Err(restore_error) = fs::rename(&backup_vmi, vmi_path) {
+            let _ = crate::diagnostics::record(
+                crate::diagnostics::Severity::Error,
+                "persistence",
+                "vam_pair_backup_restore_failed",
+                &format!(
+                    "{} could not be restored from {}: {restore_error}",
+                    vmi_path.display(),
+                    backup_vmi.display()
+                ),
+            );
+            return Err(PersistenceError::InvalidMorphPair(format!(
+                "backup failed ({error}); restoring the prior VMI also failed ({restore_error}); recover it from {}",
+                backup_vmi.display()
+            )));
         }
         return Err(error.into());
     }
@@ -821,12 +811,15 @@ mod tests {
         let root = temp_root("preferences");
         let store = PreferenceStore::at(root.join("settings.json"));
         let expected = Preferences {
+            shortcuts: std::collections::BTreeMap::new(),
             package_creator: Some("Some One".to_owned()),
             package_version: Some("3".to_owned()),
             package_license: Some("CC BY-NC".to_owned()),
             package_promotional_link: Some("https://example.invalid".to_owned()),
             locale: Some(Locale::Japanese),
             morph_name_display: MorphNameDisplay::Original,
+            hair_toolbox_columns: 2,
+            hair_toolbox_pos: Some([120.0, 240.0]),
             inspector_width: Some(512),
             vam_root: Some(PathBuf::from(r"C:\VaM")),
             vam_geometry_base_path: Some(PathBuf::from(r"C:\bases\femalecustom.obj")),
@@ -869,9 +862,6 @@ mod tests {
             bloom_threshold: default_bloom_threshold(),
             bloom_soft_knee: default_bloom_soft_knee(),
             bloom_radius: default_bloom_radius(),
-            occlusion_enabled: default_occlusion_enabled(),
-            occlusion_intensity: default_occlusion_intensity(),
-            occlusion_radius: default_occlusion_radius(),
         };
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);

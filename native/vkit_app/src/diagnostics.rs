@@ -213,6 +213,9 @@ pub fn initialize_global(version: &str) -> io::Result<&'static DiagnosticLog> {
 }
 
 pub fn record(severity: Severity, component: &str, event: &str, message: &str) -> io::Result<()> {
+    if cfg!(test) {
+        return Ok(());
+    }
     global_log()?.record(severity, component, event, message)
 }
 
@@ -257,10 +260,6 @@ pub fn install_panic_hook() -> io::Result<()> {
                     column: site.column(),
                 }),
             );
-            // The hook fires for caught panics too, and a deterministic panic
-            // inside the per-frame catch_unwind refires it at frame rate, so
-            // repeats of the same message are collapsed before any capture,
-            // record, or fsync happens.
             if let Some(occurrences) = admit_crash_report(&message) {
                 let message = if occurrences > 1 {
                     format!("{message}; occurrences={occurrences}")
@@ -277,9 +276,6 @@ pub fn install_panic_hook() -> io::Result<()> {
     Ok(())
 }
 
-/// Collapses a panic that refires with the same message -- the per-frame
-/// swallowed UI panic being the archetype -- to a logarithmic number of
-/// reports, each carrying the running occurrence count.
 struct CrashRepeatGate {
     last_message: Option<String>,
     occurrences: u64,
@@ -293,10 +289,6 @@ impl CrashRepeatGate {
         }
     }
 
-    /// `Some(n)` admits this occurrence as the `n`th of its message; `None`
-    /// suppresses it. Doublings stay admitted so the log still shows the
-    /// panic kept firing, at a cost that grows with the logarithm of the
-    /// repeat count rather than with the frame rate.
     fn admit(&mut self, message: &str) -> Option<u64> {
         if self.last_message.as_deref() == Some(message) {
             self.occurrences = self.occurrences.saturating_add(1);
@@ -335,9 +327,6 @@ fn write_crash_report_bounded(directory: &Path, message: &str, maximum_bytes: u6
     let _ = std::fs::create_dir_all(directory);
 
     let path = directory.join(CRASH_REPORT_FILE_NAME);
-    // Crash reports run on the same budget and generation count as vkit.log;
-    // an unbounded append here fills the disk while the app appears to keep
-    // running.
     let length = file_length(&path).unwrap_or(0);
     let report_length = u64::try_from(report.len()).unwrap_or(u64::MAX);
     if length > 0 && length.saturating_add(report_length) > maximum_bytes {

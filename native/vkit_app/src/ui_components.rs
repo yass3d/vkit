@@ -8,16 +8,22 @@ use vkit_core::sculpt::SculptFalloff;
 
 use crate::i18n::{Locale, TextKey, text};
 
+mod icons;
+
+pub use icons::*;
+
 pub(crate) const TOOLTIP_MAX_WIDTH: f32 = 260.0;
 
 const TOOLTIP_SHORTCUT_GAP: f32 = 10.0;
 
-pub fn tooltip(response: Response, body: &str, shortcut: Option<&str>) -> Response {
+pub const NO_SHORTCUT: Option<&str> = None;
+
+pub fn tooltip(response: Response, body: &str, shortcut: Option<impl Into<String>>) -> Response {
     let Some(shortcut) = shortcut else {
         return response.on_hover_text(body);
     };
     let body = body.to_owned();
-    let shortcut = shortcut.to_owned();
+    let shortcut: String = shortcut.into();
     response.on_hover_ui(|ui| {
         ui.set_max_width(TOOLTIP_MAX_WIDTH);
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -35,9 +41,65 @@ pub fn tooltip(response: Response, body: &str, shortcut: Option<&str>) -> Respon
 const THUMBNAIL_TEXELS: u32 = 96;
 
 #[derive(Clone)]
-struct ThumbnailTextureCache {
-    revision: u64,
+struct StampedTexture<S> {
+    stamp: S,
     handle: egui::TextureHandle,
+}
+
+pub(crate) fn try_stamped_texture<S>(
+    ui: &Ui,
+    namespace: &'static str,
+    key: u64,
+    stamp: S,
+    options: egui::TextureOptions,
+    image: impl FnOnce() -> Option<egui::ColorImage>,
+) -> Option<egui::TextureHandle>
+where
+    S: PartialEq + Clone + Send + Sync + 'static,
+{
+    let id = Id::new((namespace, key));
+    let cached = ui.data(|data| data.get_temp::<StampedTexture<S>>(id));
+    if let Some(cache) = &cached
+        && cache.stamp == stamp
+    {
+        return Some(cache.handle.clone());
+    }
+    let image = image()?;
+    if let Some(mut cache) = cached {
+        cache.handle.set(image, options);
+        cache.stamp = stamp;
+        let handle = cache.handle.clone();
+        ui.data_mut(|data| data.insert_temp(id, cache));
+        return Some(handle);
+    }
+    let handle = ui
+        .ctx()
+        .load_texture(format!("{namespace}-{key}"), image, options);
+    ui.data_mut(|data| {
+        data.insert_temp(
+            id,
+            StampedTexture {
+                stamp,
+                handle: handle.clone(),
+            },
+        );
+    });
+    Some(handle)
+}
+
+pub(crate) fn stamped_texture<S>(
+    ui: &Ui,
+    namespace: &'static str,
+    key: u64,
+    stamp: S,
+    options: egui::TextureOptions,
+    image: impl FnOnce() -> egui::ColorImage,
+) -> egui::TextureHandle
+where
+    S: PartialEq + Clone + Send + Sync + 'static,
+{
+    try_stamped_texture(ui, namespace, key, stamp, options, || Some(image()))
+        .expect("a loader that always builds an image always fills the cache")
 }
 
 pub fn thumbnail_texture(
@@ -46,36 +108,14 @@ pub fn thumbnail_texture(
     layer_id: u64,
     image: &crate::skin_preview::SkinImage,
 ) -> egui::TextureHandle {
-    let id = Id::new((namespace, layer_id));
-    let cached = ui.data(|data| data.get_temp::<ThumbnailTextureCache>(id));
-    if let Some(cache) = &cached
-        && cache.revision == image.revision
-    {
-        return cache.handle.clone();
-    }
-    let thumbnail = thumbnail_color_image(image);
-    if let Some(mut cache) = cached {
-        cache.handle.set(thumbnail, egui::TextureOptions::LINEAR);
-        cache.revision = image.revision;
-        let handle = cache.handle.clone();
-        ui.data_mut(|data| data.insert_temp(id, cache));
-        return handle;
-    }
-    let handle = ui.ctx().load_texture(
-        format!("{namespace}-{layer_id}"),
-        thumbnail,
+    stamped_texture(
+        ui,
+        namespace,
+        layer_id,
+        image.revision,
         egui::TextureOptions::LINEAR,
-    );
-    ui.data_mut(|data| {
-        data.insert_temp(
-            id,
-            ThumbnailTextureCache {
-                revision: image.revision,
-                handle: handle.clone(),
-            },
-        );
-    });
-    handle
+        || thumbnail_color_image(image),
+    )
 }
 
 fn thumbnail_color_image(image: &crate::skin_preview::SkinImage) -> egui::ColorImage {
@@ -212,20 +252,10 @@ pub struct BrushStrengthGestureUpdate {
     pub strength: Option<f32>,
 }
 
-/// How far the pointer travels for a full swing of "how much".
-///
-/// One constant because it is one gesture. It used to sit in the viewport,
-/// where the flat canvas could not reach it -- which is part of why the flat
-/// canvas never had this sweep at all.
 pub const BRUSH_STRENGTH_SENSITIVITY: f32 = 0.004;
 
-/// Shift+F sweeps whatever "how much" means for the tool in hand.
-///
-/// It is the same gesture as the size sweep and deliberately so: one motion to
-/// learn, one modifier to tell the two apart. What it moves is decided by the
-/// caller rather than by this function, because the answer differs by surface —
-/// a 3D brush has a strength, a 2D one has an opacity — and only the call site
-/// knows which field is in front of the user.
+pub const TEXTURE_BRUSH_SIZE_SENSITIVITY: f32 = 0.0008;
+
 pub fn handle_brush_strength_gesture(
     ui: &Ui,
     id: Id,
@@ -344,24 +374,15 @@ pub fn brush_size_gesture_anchor(ui: &Ui, id: Id) -> Option<Pos2> {
     })
 }
 
-/// The crosshair that marks where a clone stamp is reading from.
-///
-/// A ring alone reads as another brush cursor. Crosshair arms crossing an open
-/// centre read as a surveyed point — you can see exactly which pixel it sits
-/// on, which is the whole reason for putting it there: every later stamp is
-/// measured against this spot, so it has to be legible enough to aim by.
 pub fn paint_clone_anchor(painter: &egui::Painter, at: Pos2) {
     const RADIUS: f32 = 5.5;
     const ARM: f32 = 9.0;
-    // Drawn dark first, then light on top. Skin is mid-tone and a single-colour
-    // marker disappears into it on one face or the other.
     for (width, color) in [
         (2.6, Color32::from_black_alpha(150)),
         (1.3, crate::theme::COLOR_PRIMARY),
     ] {
         painter.circle_stroke(at, RADIUS, Stroke::new(width, color));
         for axis in [Vec2::X, Vec2::Y] {
-            // The arms stop short of the ring so the centre stays open.
             painter.line_segment(
                 [at + axis * RADIUS * 1.35, at + axis * ARM],
                 Stroke::new(width, color),
@@ -374,28 +395,24 @@ pub fn paint_clone_anchor(painter: &egui::Painter, at: Pos2) {
     }
 }
 
-/// The pair of sweeps a painting surface answers to.
-///
-/// One name yields both ids, so a surface cannot be given a size sweep and left
-/// without a strength sweep. That is not hypothetical: the stencil brush spent
-/// its whole life with `F` working and `Shift+F` doing nothing, because the two
-/// were separate constants wired at separate call sites and one of them was
-/// simply never written.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BrushSweeps(&'static str);
 
 impl BrushSweeps {
-    /// The 3D brush on the model.
     pub const SCULPT: Self = Self("vkit.viewport.sculpt.brush");
 
-    /// Painting on the textured surface, and the stencil that shares its brush.
     pub const TEXTURE_SURFACE: Self = Self("vkit.viewport.texture.brush");
 
-    /// The flat UV canvas.
     pub const TEXTURE_CANVAS: Self = Self("vkit.texture.source.brush");
 
-    #[cfg(test)]
-    pub const ALL: [Self; 3] = [Self::SCULPT, Self::TEXTURE_SURFACE, Self::TEXTURE_CANVAS];
+    pub const HAIR: Self = Self("vkit.viewport.hair.brush");
+
+    pub const ALL: [Self; 4] = [
+        Self::SCULPT,
+        Self::TEXTURE_SURFACE,
+        Self::TEXTURE_CANVAS,
+        Self::HAIR,
+    ];
 
     #[must_use]
     pub fn size(self) -> Id {
@@ -408,29 +425,13 @@ impl BrushSweeps {
     }
 }
 
-/// What the brush ring should be doing this frame.
-///
-/// Both sweeps pin the ring where the gesture began, so the pointer can travel
-/// without dragging the thing you are reading. Only what the ring *says*
-/// changes: a size sweep grows and shrinks it, a strength sweep fills it.
 #[derive(Clone, Copy, Debug)]
 pub struct BrushCursor {
     pub at: Pos2,
 
-    /// `Some` only while a strength sweep runs, in 0..1. The ring is already
-    /// saying how wide; during a strength sweep it says how much instead, by
-    /// filling. Nothing to fill means the sweep is over and the ring goes back
-    /// to being an outline.
     pub fill: Option<f32>,
 }
 
-/// Where and how to draw the ring, given both sweep ids and where the pointer
-/// is when neither is running.
-///
-/// This exists once because four surfaces paint this ring — sculpt, textured
-/// surface, stencil, and the flat UV canvas — and they were each deciding for
-/// themselves. Three of them had never heard of the strength sweep, which is
-/// why holding Shift+F felt like nothing was happening.
 pub fn brush_cursor(
     ui: &Ui,
     hover: Option<Pos2>,
@@ -449,10 +450,6 @@ pub fn brush_cursor(
     Some(BrushCursor { at, fill: None })
 }
 
-/// Paints the ring, and fills it when a strength sweep says how much.
-///
-/// The fill is a disc rather than an arc or a bar: it reads as "this much
-/// paint" at a glance, at any brush size, without a number to look at.
 pub fn paint_brush_cursor(
     painter: &egui::Painter,
     cursor: BrushCursor,
@@ -460,8 +457,6 @@ pub fn paint_brush_cursor(
     color: Color32,
 ) {
     if let Some(fill) = cursor.fill {
-        // Never fully transparent at zero: an empty ring is indistinguishable
-        // from no sweep at all, and the point is to show that one is running.
         painter.circle_filled(cursor.at, radius, color.gamma_multiply(0.12 + 0.58 * fill));
     }
     painter.circle_stroke(cursor.at, radius, Stroke::new(1.5, color));
@@ -508,9 +503,6 @@ pub fn compact_brush_numeric_control(
             .decimals(decimals)
             .min_width(child.available_width()),
     );
-    // The hint hangs off the union so that the label reveals it too — the label
-    // is what a hand reaches for when it does not know the control has a key.
-    // The union carries the slider's `changed`, which is what callers read.
     tooltip(row | slider, label, shortcut)
 }
 
@@ -654,6 +646,14 @@ pub fn horizontal_resize_handle(ui: &mut Ui, id: Id, rect: Rect) -> Response {
     let response = ui.interact(rect, id, Sense::click_and_drag());
     if response.hovered() || response.dragged() {
         ui.output_mut(|output| output.cursor_icon = CursorIcon::ResizeHorizontal);
+    }
+    response
+}
+
+pub fn vertical_resize_handle(ui: &mut Ui, id: Id, rect: Rect) -> Response {
+    let response = ui.interact(rect, id, Sense::click_and_drag());
+    if response.hovered() || response.dragged() {
+        ui.output_mut(|output| output.cursor_icon = CursorIcon::ResizeVertical);
     }
     response
 }
@@ -853,6 +853,7 @@ pub struct FilledNumericSlider<'a> {
     min_width: f32,
     value_width: f32,
     value_gap: f32,
+    value_align: egui::Align,
 }
 
 impl<'a> FilledNumericSlider<'a> {
@@ -865,6 +866,7 @@ impl<'a> FilledNumericSlider<'a> {
             min_width: 132.0,
             value_width: VALUE_WIDTH,
             value_gap: VALUE_GAP,
+            value_align: egui::Align::LEFT,
         }
     }
 
@@ -917,6 +919,16 @@ impl<'a> FilledNumericSlider<'a> {
         self.value_gap = 0.0;
         self
     }
+
+    pub fn value_lane(mut self, width: f32) -> Self {
+        self.value_width = width;
+        self
+    }
+
+    pub fn right_align_value(mut self) -> Self {
+        self.value_align = egui::Align::RIGHT;
+        self
+    }
 }
 
 impl Widget for FilledNumericSlider<'_> {
@@ -929,6 +941,7 @@ impl Widget for FilledNumericSlider<'_> {
             min_width,
             value_width,
             value_gap,
+            value_align,
         } = self;
         let available = ui.available_width();
 
@@ -971,9 +984,6 @@ impl Widget for FilledNumericSlider<'_> {
         {
             normalized =
                 ((pointer.x - track_rect.left()) / track_rect.width().max(1.0)).clamp(0.0, 1.0);
-            // Report a change only when the value actually moved. Held-still drag frames used to
-            // mark_changed() every frame, and each one dispatched a no-op edit that the callers
-            // then had to answer for.
             let settled = (min + normalized * span).clamp(min, max);
             if (*value - settled).abs() > f32::EPSILON {
                 *value = settled;
@@ -1026,7 +1036,7 @@ impl Widget for FilledNumericSlider<'_> {
             .margin(Vec2::ZERO)
             .font(egui::FontId::proportional(crate::theme::FONT_BODY))
             .desired_width(effective_value_width)
-            .horizontal_align(egui::Align::LEFT)
+            .horizontal_align(value_align)
             .vertical_align(egui::Align::Center);
         let edit_response = ui.put(value_rect, edit);
         if edit_response.changed() {
@@ -1062,381 +1072,6 @@ impl Widget for FilledNumericSlider<'_> {
         });
         response
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Icon {
-    Settings,
-
-    Star,
-    StarFilled,
-    Refresh,
-    UpdateAvailable,
-    Folder,
-    Camera,
-
-    HeadTexture,
-
-    Hair,
-    EyeOpen,
-    EyeClosed,
-    Lock,
-
-    Trash,
-    Chain,
-    MirrorX,
-    Brush,
-
-    TexturePin,
-
-    TextureMask,
-
-    CloneStamp,
-    DodgeBurn,
-
-    TextureSponge,
-
-    Projector,
-
-    BrushMove,
-
-    BrushSmooth,
-
-    BrushRestore,
-    BackfaceProtection,
-    ConnectedTopology,
-    FalloffSmooth,
-    FalloffSmoother,
-    FalloffSharp,
-    FalloffLinear,
-
-    Picture,
-
-    Wireframe,
-
-    Xray,
-
-    LightBulb,
-
-    LightRotation,
-
-    Caution,
-    ChevronDown,
-    ChevronLeft,
-    ChevronRight,
-    Search,
-
-    GitHub,
-
-    Coffee,
-
-    Check,
-
-    Cross,
-
-    WindowMinimize,
-    WindowMaximize,
-    WindowRestore,
-    WindowClose,
-}
-
-impl Icon {
-    #[cfg(test)]
-    pub const ALL: [Self; 48] = [
-        Self::Refresh,
-        Self::Folder,
-        Self::Camera,
-        Self::HeadTexture,
-        Self::Hair,
-        Self::EyeOpen,
-        Self::EyeClosed,
-        Self::Lock,
-        Self::Chain,
-        Self::GitHub,
-        Self::Coffee,
-        Self::Check,
-        Self::Cross,
-        Self::MirrorX,
-        Self::Brush,
-        Self::TexturePin,
-        Self::TextureMask,
-        Self::CloneStamp,
-        Self::DodgeBurn,
-        Self::TextureSponge,
-        Self::Projector,
-        Self::BrushMove,
-        Self::BrushSmooth,
-        Self::BrushRestore,
-        Self::BackfaceProtection,
-        Self::ConnectedTopology,
-        Self::FalloffSmooth,
-        Self::FalloffSmoother,
-        Self::FalloffSharp,
-        Self::FalloffLinear,
-        Self::Picture,
-        Self::Wireframe,
-        Self::Xray,
-        Self::LightBulb,
-        Self::LightRotation,
-        Self::Caution,
-        Self::ChevronDown,
-        Self::ChevronLeft,
-        Self::ChevronRight,
-        Self::Search,
-        Self::WindowMinimize,
-        Self::WindowMaximize,
-        Self::WindowRestore,
-        Self::WindowClose,
-        Self::Settings,
-        Self::Star,
-        Self::StarFilled,
-        Self::Trash,
-    ];
-}
-
-pub const fn transform_group_editability_icon(editable: bool) -> Icon {
-    if editable { Icon::Brush } else { Icon::Lock }
-}
-
-const ICON_STROKE_WEIGHT: f32 = 2.0;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum IconOp {
-    Stroke(&'static [[f32; 2]]),
-
-    Closed(&'static [[f32; 2]]),
-
-    Cubic([[f32; 2]; 4]),
-
-    Fill(&'static [[f32; 2]]),
-
-    RoundRect {
-        min: [f32; 2],
-        max: [f32; 2],
-        radius: f32,
-    },
-}
-
-const STAR_FILLED_OPS: &[IconOp] = &[
-    IconOp::Fill(&[
-        [12.00, 2.40],
-        [14.41, 8.68],
-        [21.13, 9.03],
-        [15.90, 13.27],
-        [17.64, 19.77],
-        [12.00, 16.10],
-        [6.36, 19.77],
-        [8.10, 13.27],
-        [2.87, 9.03],
-        [9.59, 8.68],
-    ]),
-    IconOp::Closed(&[
-        [12.00, 2.40],
-        [14.41, 8.68],
-        [21.13, 9.03],
-        [15.90, 13.27],
-        [17.64, 19.77],
-        [12.00, 16.10],
-        [6.36, 19.77],
-        [8.10, 13.27],
-        [2.87, 9.03],
-        [9.59, 8.68],
-    ]),
-];
-
-const FALLOFF_FRAME: IconOp = IconOp::RoundRect {
-    min: [3.0, 3.0],
-    max: [21.0, 21.0],
-    radius: 1.0,
-};
-
-const FALLOFF_SMOOTH_OPS: &[IconOp] = &[
-    FALLOFF_FRAME,
-    IconOp::Cubic([[4.5, 19.0], [8.0, 18.6], [15.0, 11.8], [19.5, 5.0]]),
-];
-
-const FALLOFF_SMOOTHER_OPS: &[IconOp] = &[
-    FALLOFF_FRAME,
-    IconOp::Cubic([[4.5, 19.0], [11.0, 18.9], [12.7, 5.1], [19.5, 5.0]]),
-];
-
-const FALLOFF_SHARP_OPS: &[IconOp] = &[
-    FALLOFF_FRAME,
-    IconOp::Cubic([[4.5, 19.0], [14.8, 19.0], [17.0, 7.0], [19.5, 5.0]]),
-];
-
-const FALLOFF_LINEAR_OPS: &[IconOp] = &[FALLOFF_FRAME, IconOp::Stroke(&[[4.5, 19.0], [19.5, 5.0]])];
-
-const WINDOW_MINIMIZE_OPS: &[IconOp] = &[IconOp::Stroke(&[[7.4, 12.0], [16.6, 12.0]])];
-
-const WINDOW_MAXIMIZE_OPS: &[IconOp] = &[IconOp::RoundRect {
-    min: [7.0, 7.0],
-    max: [17.0, 17.0],
-    radius: 1.0,
-}];
-
-const WINDOW_RESTORE_OPS: &[IconOp] = &[
-    IconOp::RoundRect {
-        min: [9.0, 7.0],
-        max: [17.0, 15.0],
-        radius: 1.0,
-    },
-    IconOp::RoundRect {
-        min: [7.0, 9.0],
-        max: [15.0, 17.0],
-        radius: 1.0,
-    },
-];
-
-const WINDOW_CLOSE_OPS: &[IconOp] = &[
-    IconOp::Stroke(&[[7.4, 7.4], [16.6, 16.6]]),
-    IconOp::Stroke(&[[16.6, 7.4], [7.4, 16.6]]),
-];
-
-/// The artwork behind an icon, when it is a file rather than drawn in code.
-///
-/// Narrow on purpose: the only caller outside this module measures every icon
-/// to check it was authored on the same grid as the rest, and does not need
-/// the drawn-in-code variant or the shapes inside it.
-#[cfg(test)]
-pub(crate) const fn icon_svg(glyph: Icon) -> Option<&'static str> {
-    match icon_art(glyph) {
-        IconArt::Svg(source) => Some(source),
-        IconArt::Drawn(_) => None,
-    }
-}
-
-const fn icon_art(glyph: Icon) -> IconArt {
-    let source = match glyph {
-        Icon::Settings => include_str!("../resources/icons/settings.svg"),
-        Icon::Star => include_str!("../resources/icons/star.svg"),
-        Icon::Refresh => include_str!("../resources/icons/refresh-cw.svg"),
-        Icon::UpdateAvailable => include_str!("../resources/icons/circle-arrow-up.svg"),
-        Icon::Folder => include_str!("../resources/icons/folder.svg"),
-        Icon::Camera => include_str!("../resources/icons/camera.svg"),
-        Icon::HeadTexture => include_str!("../resources/icons/scan-face.svg"),
-        Icon::Hair => include_str!("../resources/icons/waves-vertical.svg"),
-        Icon::EyeOpen => include_str!("../resources/icons/eye.svg"),
-        Icon::EyeClosed => include_str!("../resources/icons/eye-off.svg"),
-        Icon::Lock => include_str!("../resources/icons/lock.svg"),
-        Icon::Trash => include_str!("../resources/icons/trash-2.svg"),
-        Icon::Chain => include_str!("../resources/icons/link.svg"),
-        Icon::GitHub => include_str!("../resources/icons/github.svg"),
-        Icon::Coffee => include_str!("../resources/icons/coffee.svg"),
-        Icon::Check => include_str!("../resources/icons/check.svg"),
-        Icon::Cross => include_str!("../resources/icons/x.svg"),
-        Icon::MirrorX => include_str!("../resources/icons/flip-horizontal.svg"),
-        Icon::Brush => include_str!("../resources/icons/paintbrush.svg"),
-        Icon::TexturePin => include_str!("../resources/icons/map-pin.svg"),
-        Icon::TextureMask => include_str!("../resources/icons/eraser.svg"),
-        Icon::CloneStamp => include_str!("../resources/icons/stamp.svg"),
-        Icon::DodgeBurn => include_str!("../resources/icons/cloud-sun.svg"),
-        Icon::TextureSponge => include_str!("../resources/icons/contrast.svg"),
-        Icon::Projector => include_str!("../resources/icons/face.svg"),
-        Icon::BrushMove => include_str!("../resources/icons/hand.svg"),
-        Icon::BrushSmooth => include_str!("../resources/icons/droplet.svg"),
-        Icon::BrushRestore => include_str!("../resources/icons/rotate-ccw.svg"),
-        Icon::BackfaceProtection => include_str!("../resources/icons/shield.svg"),
-        Icon::ConnectedTopology => include_str!("../resources/icons/waypoints.svg"),
-        Icon::Picture => include_str!("../resources/icons/image.svg"),
-        Icon::Wireframe => include_str!("../resources/icons/grid-3x3.svg"),
-        Icon::Xray => include_str!("../resources/icons/scan.svg"),
-        Icon::LightBulb => include_str!("../resources/icons/lightbulb.svg"),
-        Icon::LightRotation => include_str!("../resources/icons/rotate-3d.svg"),
-        Icon::Caution => include_str!("../resources/icons/triangle-alert.svg"),
-        Icon::ChevronDown => include_str!("../resources/icons/chevron-down.svg"),
-        Icon::ChevronLeft => include_str!("../resources/icons/chevron-left.svg"),
-        Icon::ChevronRight => include_str!("../resources/icons/chevron-right.svg"),
-        Icon::Search => include_str!("../resources/icons/search.svg"),
-        Icon::StarFilled => return IconArt::Drawn(STAR_FILLED_OPS),
-        Icon::FalloffSmooth => return IconArt::Drawn(FALLOFF_SMOOTH_OPS),
-        Icon::FalloffSmoother => {
-            return IconArt::Drawn(FALLOFF_SMOOTHER_OPS);
-        }
-        Icon::FalloffSharp => return IconArt::Drawn(FALLOFF_SHARP_OPS),
-        Icon::FalloffLinear => return IconArt::Drawn(FALLOFF_LINEAR_OPS),
-        Icon::WindowMinimize => {
-            return IconArt::Drawn(WINDOW_MINIMIZE_OPS);
-        }
-        Icon::WindowMaximize => {
-            return IconArt::Drawn(WINDOW_MAXIMIZE_OPS);
-        }
-        Icon::WindowRestore => return IconArt::Drawn(WINDOW_RESTORE_OPS),
-        Icon::WindowClose => return IconArt::Drawn(WINDOW_CLOSE_OPS),
-    };
-    IconArt::Svg(source)
-}
-
-enum IconArt {
-    Svg(&'static str),
-    Drawn(&'static [IconOp]),
-}
-
-pub fn paint_icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
-    let def = match icon_art(icon) {
-        IconArt::Svg(source) => {
-            if let Some(drawing) = crate::svg_icon::cached(source) {
-                painter.extend(drawing.shapes(rect, color));
-                return;
-            }
-
-            return;
-        }
-        IconArt::Drawn(ops) => ops,
-    };
-    let scale = (rect.width().min(rect.height()) / 24.0).max(0.01);
-    let stroke = Stroke::new((ICON_STROKE_WEIGHT * scale).max(1.0), color);
-    let center = rect.center();
-    let map = move |grid: [f32; 2]| -> Pos2 {
-        center + Vec2::new((grid[0] - 12.0) * scale, (grid[1] - 12.0) * scale)
-    };
-    let cap = |point: Pos2| painter.circle_filled(point, stroke.width * 0.5, color);
-    for op in def {
-        match *op {
-            IconOp::Stroke(points) => {
-                let mapped: Vec<Pos2> = points.iter().copied().map(map).collect();
-                if let (Some(first), Some(last)) = (mapped.first(), mapped.last()) {
-                    cap(*first);
-                    cap(*last);
-                }
-                painter.add(Shape::line(mapped, stroke));
-            }
-            IconOp::Closed(points) => {
-                let mapped: Vec<Pos2> = points.iter().copied().map(map).collect();
-                painter.add(Shape::closed_line(mapped, stroke));
-            }
-            IconOp::Cubic(points) => {
-                let mapped = points.map(map);
-                cap(mapped[0]);
-                cap(mapped[3]);
-                painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
-                    mapped,
-                    false,
-                    Color32::TRANSPARENT,
-                    stroke,
-                ));
-            }
-            IconOp::Fill(points) => {
-                let mapped: Vec<Pos2> = points.iter().copied().map(map).collect();
-                painter.add(Shape::convex_polygon(mapped, color, Stroke::NONE));
-            }
-            IconOp::RoundRect { min, max, radius } => {
-                painter.rect_stroke(
-                    Rect::from_min_max(map(min), map(max)),
-                    radius * scale,
-                    stroke,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-fn icon_grid_point(rect: Rect, x: f32, y: f32) -> Pos2 {
-    let scale = (rect.width().min(rect.height()) / 24.0).max(0.01);
-    let origin = rect.center() - Vec2::splat(12.0 * scale);
-    Pos2::new(origin.x + x * scale, origin.y + y * scale)
 }
 
 pub const MOTION_DURATION_SECS: f64 = 0.22;
@@ -1640,6 +1275,63 @@ pub fn control_affordances(ui: &Ui, response: &Response, ring_rect: Rect, radius
     }
 }
 
+pub struct SliderCell {
+    pub label: Response,
+    pub slider: Response,
+    pub reset_clicked: bool,
+}
+
+pub fn slider_cell(
+    ui: &mut Ui,
+    label: egui::RichText,
+    touched: bool,
+    reset_enabled: bool,
+    reset_tooltip: impl Into<egui::WidgetText>,
+    add_slider: impl FnOnce(&mut Ui) -> Response,
+) -> SliderCell {
+    let mut reset_clicked = false;
+    let mut label_response = None;
+    let mut slider_response = None;
+    egui::Frame::new()
+        .fill(if touched {
+            crate::theme::COLOR_FIELD
+        } else {
+            egui::Color32::TRANSPARENT
+        })
+        .corner_radius(crate::theme::CONTROL_RADIUS)
+        .inner_margin(egui::Margin {
+            left: 8,
+            right: 4,
+            top: 4,
+            bottom: 4,
+        })
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width().max(0.0));
+            ui.spacing_mut().item_spacing.y = 2.0;
+            label_response = Some(ui.label(label));
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let reset_lane = icon_button_size(ui) + ui.spacing().item_spacing.x;
+                let width = (ui.available_width() - reset_lane).max(0.0);
+                slider_response = Some(
+                    ui.scope(|ui| {
+                        ui.set_max_width(width);
+                        add_slider(ui)
+                    })
+                    .inner,
+                );
+                ui.add_enabled_ui(reset_enabled, |ui| {
+                    reset_clicked = icon_button(ui, Icon::BrushRestore, reset_tooltip).clicked();
+                });
+            });
+        });
+    SliderCell {
+        label: label_response.expect("the cell always draws its label"),
+        slider: slider_response.expect("the cell always draws its slider"),
+        reset_clicked,
+    }
+}
+
 pub fn icon_button_size(ui: &Ui) -> f32 {
     ui.spacing().interact_size.y.clamp(22.0, 28.0)
 }
@@ -1716,11 +1408,14 @@ fn switch_impl(
     } else {
         gap + galley.size().x
     };
-    let (rect, mut response) = ui.allocate_exact_size(
-        Vec2::new(
-            justify_width.unwrap_or(SWITCH_TRACK_WIDTH + label_width),
-            crate::theme::CONTROL_H_COMPACT.max(galley.size().y),
-        ),
+    let size = Vec2::new(
+        justify_width.unwrap_or(SWITCH_TRACK_WIDTH + label_width),
+        crate::theme::CONTROL_H_COMPACT.max(galley.size().y),
+    );
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let mut response = ui.interact(
+        rect,
+        Id::new(("vkit.switch-row", galley.text())),
         Sense::click(),
     );
     let keyboard_toggle = response.has_focus()
@@ -1858,11 +1553,6 @@ pub fn chips(ui: &mut Ui, id: Id, active: Option<usize>, labels: &[&str]) -> (Re
     (rect, clicked)
 }
 
-/// One chip that turns on and off, wearing what [`chips`] wears.
-///
-/// Kept beside them so the two cannot drift: a filter that reads as a chip but
-/// is coloured by hand ends up the one control on the panel that looks like it
-/// came from somewhere else, which is what the left/right filter looked like.
 pub fn toggle_chip(ui: &mut Ui, id: Id, label: &str, on: bool, width: f32) -> Response {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CHIP_HEIGHT), Sense::hover());
     let (ink, fill) = if on {
@@ -2353,12 +2043,6 @@ mod tests {
 
     #[test]
     fn every_painting_surface_answers_to_both_sweeps() {
-        // The stencil brush spent its life with F working and Shift+F doing
-        // nothing, because size and strength were separate constants wired at
-        // separate call sites and one of them was never written. A surface is
-        // one name now, and asking it for a size id you can always also ask it
-        // for a strength id -- so "has one, missing the other" has nowhere left
-        // to live.
         let mut seen = std::collections::HashSet::new();
         for surface in BrushSweeps::ALL {
             assert_ne!(
@@ -2383,14 +2067,11 @@ mod tests {
         let anchor = Pos2::new(100.0, 100.0);
 
         let _ = context.run_ui(egui::RawInput::default(), |ui| {
-            // Nothing running: the ring follows the pointer and stays an
-            // outline, which is what painting looks like.
             let idle = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
                 .expect("a hovering pointer has a ring");
             assert_eq!(idle.at, hover);
             assert_eq!(idle.fill, None);
 
-            // A size sweep pins it. The pointer travels; the ring does not.
             pin(ui.ctx(), size, anchor);
             let sizing = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
                 .expect("a size sweep has a ring");
@@ -2403,16 +2084,12 @@ mod tests {
                 "a size sweep says how wide, and the ring is already saying it"
             );
 
-            // A strength sweep pins it the same way, and fills it. This is the
-            // half that was missing: three of the four surfaces had never heard
-            // of this sweep, so holding Shift+F looked like nothing happening.
             pin(ui.ctx(), strength, anchor);
             let sweeping = brush_cursor(ui, Some(hover), size, Some((strength, 0.7)))
                 .expect("a strength sweep has a ring");
             assert_eq!(sweeping.at, anchor);
             assert_eq!(sweeping.fill, Some(0.7));
 
-            // A surface with no strength sweep is untouched by any of it.
             let plain = brush_cursor(ui, Some(hover), Id::new("test.other"), None)
                 .expect("a ring with no sweeps");
             assert_eq!(plain.at, hover);
@@ -2735,200 +2412,6 @@ mod tests {
         assert_eq!(COMPACT_COLOR_SWATCH_RADIUS, 16.0);
         assert_eq!(MINI_POPUP_CONTENT_INSET_X, MINI_HELP_CONTENT_INSET_X);
         assert_eq!(MINI_POPUP_CONTENT_INSET_Y, MINI_HELP_CONTENT_INSET_Y);
-    }
-
-    #[test]
-    fn editable_transform_groups_use_a_brush_and_locked_groups_use_a_lock() {
-        assert_eq!(transform_group_editability_icon(true), Icon::Brush);
-        assert_eq!(transform_group_editability_icon(false), Icon::Lock);
-    }
-
-    #[test]
-    fn supplied_svg_coordinates_keep_the_24_px_grid() {
-        let rect = Rect::from_min_size(Pos2::new(40.0, 50.0), Vec2::splat(48.0));
-        assert_eq!(icon_grid_point(rect, 21.0, 3.0), Pos2::new(82.0, 56.0));
-
-        assert_eq!(
-            icon_grid_point(rect, 17.64225, 19.5),
-            Pos2::new(75.2845, 89.0)
-        );
-    }
-
-    #[test]
-    fn the_icon_list_accounts_for_every_icon() {
-        for glyph in Icon::ALL {
-            match glyph {
-                Icon::Settings => {}
-                Icon::Star => {}
-                Icon::StarFilled => {}
-                Icon::Refresh => {}
-                Icon::UpdateAvailable => {}
-                Icon::Folder => {}
-                Icon::Camera => {}
-                Icon::HeadTexture => {}
-                Icon::Hair => {}
-                Icon::EyeOpen => {}
-                Icon::EyeClosed => {}
-                Icon::Lock => {}
-                Icon::Trash => {}
-                Icon::Chain => {}
-                Icon::GitHub => {}
-                Icon::Coffee => {}
-                Icon::Check => {}
-                Icon::Cross => {}
-                Icon::MirrorX => {}
-                Icon::Brush => {}
-                Icon::TexturePin => {}
-                Icon::TextureMask => {}
-                Icon::CloneStamp => {}
-                Icon::DodgeBurn => {}
-                Icon::TextureSponge => {}
-                Icon::Projector => {}
-                Icon::BrushMove => {}
-                Icon::BrushSmooth => {}
-                Icon::BrushRestore => {}
-                Icon::BackfaceProtection => {}
-                Icon::ConnectedTopology => {}
-                Icon::FalloffSmooth => {}
-                Icon::FalloffSmoother => {}
-                Icon::FalloffSharp => {}
-                Icon::FalloffLinear => {}
-                Icon::Picture => {}
-                Icon::Wireframe => {}
-                Icon::Xray => {}
-                Icon::LightBulb => {}
-                Icon::LightRotation => {}
-                Icon::Caution => {}
-                Icon::ChevronDown => {}
-                Icon::ChevronLeft => {}
-                Icon::ChevronRight => {}
-                Icon::Search => {}
-                Icon::WindowMinimize => {}
-                Icon::WindowMaximize => {}
-                Icon::WindowRestore => {}
-                Icon::WindowClose => {}
-            }
-        }
-        let mut seen: Vec<String> = Icon::ALL.iter().map(|g| format!("{g:?}")).collect();
-        seen.sort_unstable();
-        let count = seen.len();
-        seen.dedup();
-        assert_eq!(seen.len(), count, "an icon is listed twice");
-        assert_eq!(count, 48, "the enum has 48 icons");
-    }
-
-    #[test]
-    fn every_icon_has_artwork_and_every_svg_keeps_its_curves() {
-        let mut from_svg = 0;
-        let mut drawn = 0;
-        for glyph in Icon::ALL {
-            match icon_art(glyph) {
-                IconArt::Svg(source) => {
-                    let drawing = crate::svg_icon::SvgIcon::parse(source)
-                        .unwrap_or_else(|reason| panic!("{glyph:?}: {reason}"));
-                    let shapes = drawing.shapes(
-                        Rect::from_min_size(Pos2::ZERO, Vec2::splat(24.0)),
-                        Color32::WHITE,
-                    );
-                    assert!(!shapes.is_empty(), "{glyph:?} draws nothing");
-
-                    let points: usize = shapes
-                        .iter()
-                        .map(|shape| match shape {
-                            Shape::Path(path) => path.points.len(),
-                            _ => 0,
-                        })
-                        .sum();
-
-                    let straight = matches!(
-                        glyph,
-                        Icon::ChevronDown
-                            | Icon::ChevronLeft
-                            | Icon::ChevronRight
-                            | Icon::Check
-                            | Icon::Cross
-                    );
-                    if straight {
-                        assert!(
-                            (2..=8).contains(&points),
-                            "{glyph:?} is {points} points, not a polyline"
-                        );
-                    } else {
-                        assert!(
-                            points > 64,
-                            "{glyph:?} has only {points} points -- still a polygon?"
-                        );
-                    }
-                    from_svg += 1;
-                }
-                IconArt::Drawn(ops) => {
-                    assert!(!ops.is_empty(), "{glyph:?} draws nothing at all");
-                    drawn += 1;
-                }
-            }
-        }
-
-        assert_eq!(from_svg, 39);
-        assert_eq!(drawn, 9);
-    }
-
-    #[test]
-    fn every_drawn_glyph_stays_inside_the_24_grid() {
-        let on_grid = |value: f32| (0.0..=24.0).contains(&value);
-        for glyph in Icon::ALL {
-            let IconArt::Drawn(ops) = icon_art(glyph) else {
-                continue;
-            };
-            assert!(!ops.is_empty(), "{glyph:?} has no path data");
-            for op in ops {
-                match *op {
-                    IconOp::Stroke(points) | IconOp::Closed(points) => {
-                        assert!(points.len() >= 2, "{glyph:?} has a degenerate path");
-                        assert!(points.iter().flatten().copied().all(on_grid));
-                    }
-                    IconOp::Cubic(points) => {
-                        assert!(points.iter().flatten().copied().all(on_grid));
-                    }
-                    IconOp::Fill(points) => {
-                        assert!(points.len() >= 3, "{glyph:?} fill is not a polygon");
-                        assert!(points.iter().flatten().copied().all(on_grid));
-                    }
-                    IconOp::RoundRect { min, max, radius } => {
-                        assert!(min.iter().chain(&max).copied().all(on_grid));
-                        assert!(min[0] < max[0] && min[1] < max[1] && radius >= 0.0);
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn caption_glyphs_keep_the_native_ten_point_band() {
-        for glyph in [
-            Icon::WindowMinimize,
-            Icon::WindowMaximize,
-            Icon::WindowRestore,
-            Icon::WindowClose,
-        ] {
-            let IconArt::Drawn(ops) = icon_art(glyph) else {
-                panic!("{glyph:?} must stay hand-drawn");
-            };
-            for op in ops {
-                match *op {
-                    IconOp::Stroke(points) => {
-                        for point in points {
-                            assert!((7.0..=17.0).contains(&point[0]));
-                            assert!((7.0..=17.0).contains(&point[1]));
-                        }
-                    }
-                    IconOp::RoundRect { min, max, .. } => {
-                        assert!(min[0] >= 7.0 && min[1] >= 7.0);
-                        assert!(max[0] <= 17.0 && max[1] <= 17.0);
-                    }
-                    other => panic!("caption glyphs stay stroke-only: {other:?}"),
-                }
-            }
-        }
     }
 
     #[test]

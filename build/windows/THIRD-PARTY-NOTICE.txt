@@ -48,7 +48,8 @@ tests are reproduced in Rust.
 Vkit ships no Virt-A-Mate or DAZ data of any kind. It reads morphs, skins,
 hair and looks from the VaM installation the user selects, holds them in
 memory, and writes only what the user asks it to export. Nothing is sent
-anywhere: the binary declares no network dependency and opens no socket.
+anywhere. The one request the binary can make is the update check, which
+asks GitHub for the latest release tag and sends nothing but that request.
 
 Vkit is an independent project and is not affiliated with, endorsed by, or
 supported by Meshed VR or DAZ 3D. Virt-A-Mate is Meshed VR's mark and Genesis
@@ -71,7 +72,7 @@ carries reconstructable geometry from any figure.
 Each of the seven is named after the DAZ built-in it stands in for, because a
 VaM installation looks a morph up by that name. The name is DAZ's; the shape
 is not. Neither resource reaches a VaM installation on its own: installing the
-set over the built-ins is an explicit, opt-in act through the Built-ins tab,
+set over the built-ins is an explicit, opt-in act through the Create stage,
 which keeps a backup of whatever it replaces.
 
 Vkit itself is MIT OR Apache-2.0. The author claims no rights over it and

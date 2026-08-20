@@ -41,7 +41,20 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
-panic = "abort"
+
+# Unwinding, because nine `catch_unwind` sites are load-bearing.
+#
+# Under `abort` every one of them is dead code that reads as a safety net: the
+# per-frame UI draw, five worker lanes, the export writer, the fit job, and the
+# third-party Draco decode. A malformed asset out of somebody's collection
+# would take the whole session down -- unsaved morph and hair work included --
+# where unwinding costs one job or one frame and says so.
+#
+# The panic hook still writes its crash report either way; unwinding only adds
+# survival. The one FFI callback (`nc_subclass_proc`, `extern "system"`) is not
+# a hole: unwinding out of an `extern "system"` fn aborts at that boundary by
+# language rule, so nothing unwinds into Win32.
+panic = "unwind"
 
 [profile.release-small]
 inherits = "release"
@@ -59,14 +72,19 @@ opt-level = 3
 [profile.release-small.package.vkit-semantic]
 opt-level = 3
 
-# The tract crates stay at the profile's own `opt-level = "z"`.
+# The tract crates are optimized like everything else.
 #
-# Lifting them to 3 costs 5.39 MiB of .text and buys 28 ms per detection. Two
-# detections run per fit, inside a job that already spends seconds on alignment,
-# a Laplacian warp, and three-stage dense registration -- so the whole purchase
-# is 57 ms nobody can feel, against a third of the size budget. Measured with
-# `cargo run --profile release-small -p vkit-semantic --example inference_cost`;
-# re-measure before changing this back.
+# They used to sit at the profile's own `opt-level = "z"`, bought with 28 ms
+# per detection to save 5.39 MiB. That trade is off the table: function first,
+# then speed, then size. Size is what a program that is right and quick
+# happens to weigh, not something to spend either of the other two on.
+# Measure with `cargo run --profile release-small -p vkit-semantic --example
+# inference_cost`.
+[profile.release-small.package.tract-core]
+opt-level = 3
+
+[profile.release-small.package.tract-linalg]
+opt-level = 3
 
 [profile.dev.package."*"]
 opt-level = 3

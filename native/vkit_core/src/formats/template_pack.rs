@@ -5,7 +5,7 @@ use std::str;
 
 use sha2::{Digest, Sha256};
 
-use super::{DazGeometry, FormatError, Result};
+use super::{FormatError, Result};
 
 pub const TEMPLATE_PACK_MAGIC: [u8; 8] = *b"FMG2PACK";
 
@@ -91,73 +91,6 @@ impl TemplatePack {
         };
         pack.validate()?;
         Ok(pack)
-    }
-
-    pub fn from_daz_geometry(
-        geometry: &DazGeometry,
-        closed_eye_deltas: &[[f64; 3]],
-    ) -> Result<Self> {
-        geometry.validate()?;
-        if closed_eye_deltas.len() != geometry.vertices.len() {
-            return Err(pack_error(format!(
-                "closed-eye morph has {} vertices; geometry has {}",
-                closed_eye_deltas.len(),
-                geometry.vertices.len()
-            )));
-        }
-
-        let mut vertices = Vec::with_capacity(geometry.vertices.len());
-        for (vertex_id, vertex) in geometry.vertices.iter().enumerate() {
-            vertices.push([
-                narrow_f32(vertex[0], &format!("vertex {vertex_id} x"))?,
-                narrow_f32(vertex[1], &format!("vertex {vertex_id} y"))?,
-                narrow_f32(vertex[2], &format!("vertex {vertex_id} z"))?,
-            ]);
-        }
-
-        let mut polygons = Vec::with_capacity(geometry.faces.len());
-        for (face_id, face) in geometry.faces.iter().enumerate() {
-            polygons.push(match *face.as_slice() {
-                [a, b, c] => TemplatePolygon::Triangle([a, b, c]),
-                [a, b, c, d] => TemplatePolygon::Quad([a, b, c, d]),
-                _ => {
-                    return Err(pack_error(format!(
-                        "polygon {face_id} has {} corners; expected three or four",
-                        face.len()
-                    )));
-                }
-            });
-        }
-
-        let mut sparse = Vec::new();
-        for (vertex_id, delta) in closed_eye_deltas.iter().enumerate() {
-            let delta = [
-                narrow_f32(delta[0], &format!("closed-eye delta {vertex_id} x"))?,
-                narrow_f32(delta[1], &format!("closed-eye delta {vertex_id} y"))?,
-                narrow_f32(delta[2], &format!("closed-eye delta {vertex_id} z"))?,
-            ];
-            if delta.iter().any(|&value| value != 0.0) {
-                sparse.push(SparseMorphDelta {
-                    vertex_id: u32::try_from(vertex_id)
-                        .map_err(|_| pack_error("morph vertex ID exceeds u32"))?,
-                    delta,
-                });
-            }
-        }
-
-        Self::new(
-            vertices,
-            polygons,
-            GroupTable {
-                indices: geometry.polygon_group_indices.clone(),
-                names: geometry.polygon_groups.clone(),
-            },
-            GroupTable {
-                indices: geometry.material_group_indices.clone(),
-                names: geometry.material_groups.clone(),
-            },
-            sparse,
-        )
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -259,58 +192,6 @@ impl TemplatePack {
                 )));
             }
             previous = Some(entry.vertex_id);
-        }
-        Ok(())
-    }
-
-    pub fn validate_canonical_g2(&self) -> Result<()> {
-        self.validate()?;
-        if self.vertices.len() != crate::G2F_VERTEX_COUNT {
-            return Err(pack_error(format!(
-                "canonical G2F requires {} vertices, got {}",
-                crate::G2F_VERTEX_COUNT,
-                self.vertices.len()
-            )));
-        }
-        if self.polygons.len() != crate::G2F_POLYGON_COUNT {
-            return Err(pack_error(format!(
-                "canonical G2F requires {} polygons, got {}",
-                crate::G2F_POLYGON_COUNT,
-                self.polygons.len()
-            )));
-        }
-        if self.closed_eye_deltas.is_empty() {
-            return Err(pack_error(
-                "canonical runtime pack requires a nonempty closed-eye morph",
-            ));
-        }
-
-        let mut minimum = self.vertices[0];
-        let mut maximum = self.vertices[0];
-        for vertex in &self.vertices[1..] {
-            for axis in 0..3 {
-                minimum[axis] = minimum[axis].min(vertex[axis]);
-                maximum[axis] = maximum[axis].max(vertex[axis]);
-            }
-        }
-        let extents = [
-            maximum[0] - minimum[0],
-            maximum[1] - minimum[1],
-            maximum[2] - minimum[2],
-        ];
-        let dominant_axis = (0..3)
-            .max_by(|&left, &right| extents[left].total_cmp(&extents[right]))
-            .expect("three axes are always present");
-        if dominant_axis != 1 {
-            return Err(pack_error(format!(
-                "canonical G2F must be Y-up; bounds extents are {extents:?}"
-            )));
-        }
-        if !(150.0..=220.0).contains(&extents[1]) {
-            return Err(pack_error(format!(
-                "canonical G2F height must be in centimetres near 179; got {}",
-                extents[1]
-            )));
         }
         Ok(())
     }
@@ -612,17 +493,6 @@ fn validate_table(label: &str, table: &[String]) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn narrow_f32(value: f64, label: &str) -> Result<f32> {
-    let narrowed = value as f32;
-    if value.is_finite() && narrowed.is_finite() {
-        Ok(narrowed)
-    } else {
-        Err(pack_error(format!(
-            "{label} cannot be represented as a finite f32"
-        )))
-    }
 }
 
 fn count_u32(count: usize, label: &str) -> Result<u32> {

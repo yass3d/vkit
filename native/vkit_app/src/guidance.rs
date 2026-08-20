@@ -44,9 +44,6 @@ const PERIOD: f64 = 1.7;
 
 const OVERLAY_PEAK_ALPHA: f32 = 0.3;
 
-/// Washed **over** a control that has already painted, so it must stay light
-/// enough to read the label through. Use this whenever the control fills its
-/// own rect.
 pub fn glow_over(painter: &Painter, rect: Rect, radius: u8, time: f64) {
     let breath = pulse(time);
     if breath <= 0.01 {
@@ -70,16 +67,6 @@ pub fn pulse(time: f64) -> f32 {
     (1.0 - (phase * std::f32::consts::TAU).cos()) * 0.5
 }
 
-/// Laid down behind a control **before** it paints, so it can carry more
-/// weight than the wash — nothing is reading through it.
-///
-/// The name says `under` because getting this backwards is silent: paint it
-/// beneath something opaque and it is simply never seen, and the code still
-/// reads as if the control glows. That is exactly how the Generate step went
-/// its whole life without pulsing once.
-///
-/// Neither entry point takes a colour. There is exactly one emphasis, and a
-/// parameter would only let two sites disagree about what it looks like.
 pub fn glow_under(painter: &Painter, rect: Rect, radius: u8, time: f64) {
     let breath = pulse(time);
     if breath <= 0.01 {

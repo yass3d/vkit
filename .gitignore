@@ -65,4 +65,5 @@ target/
 !/native/vkit_core/resources/g2f_eye_closed_sparse.fmeye
 !/native/vkit_app/src/importers/fixtures/*
 !/design/logo.png
+!/native/vkit_app/resources/logo.png
 !/.github/assets/*.png

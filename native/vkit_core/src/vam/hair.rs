@@ -66,6 +66,7 @@ pub struct HairScalpMaterialSettings {
     pub glossiness: f32,
     pub specular_fresnel: f32,
     pub alpha_adjust: f32,
+    pub diffuse_offset: f32,
 }
 
 impl Default for HairScalpMaterialSettings {
@@ -77,6 +78,7 @@ impl Default for HairScalpMaterialSettings {
             glossiness: 3.2,
             specular_fresnel: 0.5,
             alpha_adjust: 0.0,
+            diffuse_offset: 0.0,
         }
     }
 }
@@ -160,6 +162,7 @@ pub struct HairLookPatch {
     pub curl_mid: Option<f32>,
     pub curl_tip: Option<f32>,
     pub curl_midpoint: Option<f32>,
+    pub curl_normal_adjust: Option<f32>,
     pub curl_curve_power: Option<f32>,
 
     pub spread_root: Option<f32>,
@@ -183,6 +186,7 @@ pub struct HairLookPatch {
     pub scalp_glossiness: Option<f32>,
     pub scalp_specular_fresnel: Option<f32>,
     pub scalp_alpha_adjust: Option<f32>,
+    pub scalp_diffuse_offset: Option<f32>,
 }
 
 impl HairLookPatch {
@@ -237,6 +241,7 @@ impl HairLookPatch {
         replace!(scalp_glossiness);
         replace!(scalp_specular_fresnel);
         replace!(scalp_alpha_adjust);
+        replace!(scalp_diffuse_offset);
         if overlay.scalp_diffuse.is_some() {
             self.scalp_diffuse.clone_from(&overlay.scalp_diffuse);
         }
@@ -340,6 +345,10 @@ impl HairLookPatch {
                 .scalp_alpha_adjust
                 .unwrap_or(defaults.alpha_adjust)
                 .clamp(-1.0, 1.0),
+            diffuse_offset: self
+                .scalp_diffuse_offset
+                .unwrap_or(defaults.diffuse_offset)
+                .clamp(-1.0, 3.0),
         }
     }
 
@@ -367,12 +376,12 @@ impl HairLookPatch {
     pub fn waviness_settings(&self) -> HairWavinessSettings {
         let defaults = HairWavinessSettings::default();
         HairWavinessSettings {
-            axis: [
-                self.curl[0].unwrap_or(defaults.axis[0]),
-                self.curl[1].unwrap_or(defaults.axis[1]),
-                self.curl[2].unwrap_or(defaults.axis[2]),
+            vector_m: [
+                self.curl[0].unwrap_or(defaults.vector_m[0]).clamp(0.0, 1.0),
+                self.curl[1].unwrap_or(defaults.vector_m[1]).clamp(0.0, 1.0),
+                self.curl[2].unwrap_or(defaults.vector_m[2]).clamp(0.0, 1.0),
             ],
-            scale_m: self.curl_scale.unwrap_or(defaults.scale_m).clamp(0.0, 1.0),
+            scale: self.curl_scale.unwrap_or(defaults.scale).clamp(0.0, 1.0),
             frequency: self
                 .curl_frequency
                 .unwrap_or(defaults.frequency)
@@ -396,6 +405,10 @@ impl HairLookPatch {
                 .curl_midpoint
                 .unwrap_or(defaults.midpoint)
                 .clamp(0.001, 1.0),
+            normal_adjust: self
+                .curl_normal_adjust
+                .unwrap_or(defaults.normal_adjust)
+                .clamp(-0.5, 0.5),
             curve_power: self
                 .curl_curve_power
                 .unwrap_or(defaults.curve_power)
@@ -444,8 +457,9 @@ impl HairSpreadSettings {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HairWavinessSettings {
-    pub axis: [f32; 3],
-    pub scale_m: f32,
+    pub vector_m: [f32; 3],
+    pub normal_adjust: f32,
+    pub scale: f32,
     pub frequency: f32,
     pub scale_randomness: f32,
     pub frequency_randomness: f32,
@@ -461,8 +475,9 @@ pub struct HairWavinessSettings {
 impl Default for HairWavinessSettings {
     fn default() -> Self {
         Self {
-            axis: [0.1, 0.0, 0.1],
-            scale_m: 0.0,
+            normal_adjust: 0.0,
+            vector_m: [0.1, 0.0, 0.1],
+            scale: 0.0,
             frequency: 0.0,
             scale_randomness: 1.0,
             frequency_randomness: 1.0,
@@ -694,7 +709,7 @@ pub struct HairGuide {
     pub rigidity: Vec<f32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HairScalpGeometry {
     pub materials: Vec<String>,
 
@@ -704,7 +719,7 @@ pub struct HairScalpGeometry {
     pub triangles: Vec<[u32; 3]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuiltinHairScalp {
     pub provider_name: String,
     pub geometry: HairScalpGeometry,
@@ -1197,6 +1212,14 @@ fn find_sim_storable<'a>(storables: &'a [Value], internal_id: &str) -> Option<&'
     })
 }
 
+pub fn hair_look_from_storable(value: &Value) -> HairLookPatch {
+    parse_hair_look(value)
+}
+
+pub fn hair_physics_from_storable(value: &Value) -> HairPhysicsPatch {
+    parse_hair_physics(value)
+}
+
 fn parse_hair_look(value: &Value) -> HairLookPatch {
     HairLookPatch {
         shader_type: value
@@ -1231,6 +1254,7 @@ fn parse_hair_look(value: &Value) -> HairLookPatch {
             json_f32(value.get("curlY")),
             json_f32(value.get("curlZ")),
         ],
+        curl_normal_adjust: json_f32(value.get("curlNormalAdjust")),
         curl_scale: json_f32(value.get("curlScale")),
         curl_frequency: json_f32(value.get("curlFrequency")),
         curl_scale_randomness: json_f32(value.get("curlScaleRandomness")),
@@ -1260,6 +1284,7 @@ fn parse_hair_look(value: &Value) -> HairLookPatch {
         scalp_glossiness: None,
         scalp_specular_fresnel: None,
         scalp_alpha_adjust: None,
+        scalp_diffuse_offset: None,
     }
 }
 
@@ -1298,15 +1323,12 @@ fn parse_hair_physics(value: &Value) -> HairPhysicsPatch {
     }
 }
 
+pub fn hair_scalp_material_from_storables(storables: &[Value], internal_id: &str) -> HairLookPatch {
+    parse_scalp_material(storables, internal_id)
+}
+
 fn parse_scalp_material(storables: &[Value], internal_id: &str) -> HairLookPatch {
-    let material = storables.iter().find(|storable| {
-        storable
-            .get("id")
-            .and_then(Value::as_str)
-            .is_some_and(|id| {
-                id.starts_with(internal_id) && id.to_ascii_lowercase().contains("scalpmaterial")
-            })
-    });
+    let material = hair_scalp_material_storable(storables, internal_id);
     let texture = |material: &Value, key: &str| {
         material
             .get(key)
@@ -1330,6 +1352,7 @@ fn parse_scalp_material(storables: &[Value], internal_id: &str) -> HairLookPatch
         scalp_glossiness: json_f32(material.get("Gloss")),
         scalp_specular_fresnel: json_f32(material.get("Specular Fresnel")),
         scalp_alpha_adjust: json_f32(material.get("Alpha Adjust")),
+        scalp_diffuse_offset: json_f32(material.get("Diffuse Texture Offset")),
         ..Default::default()
     }
 }
@@ -1454,7 +1477,7 @@ fn find_shared_scalp(presets: &[HairPreset]) -> Option<HairPartReference> {
         .find(|part| {
             part.geometry
                 .read_bytes(MAX_SCALP_PROBE_BYTES)
-                .is_ok_and(|bytes| is_mesh_container(&bytes))
+                .is_ok_and(|bytes| is_bare_scalp_container(&bytes))
                 && {
                     let look = load_hair_part_look(part).unwrap_or_default();
                     load_hair_scalp_textures(part, &look).alpha.is_some()
@@ -1463,13 +1486,14 @@ fn find_shared_scalp(presets: &[HairPreset]) -> Option<HairPartReference> {
         .cloned()
 }
 
-fn is_mesh_container(bytes: &[u8]) -> bool {
+fn is_bare_scalp_container(bytes: &[u8]) -> bool {
     let mut reader = HairCursor::new(bytes, "");
-    reader
+    let opens_with_mesh = reader
         .expect_string("DynamicStore", "container type")
         .is_ok()
         && reader.expect_string("1.0", "DynamicStore version").is_ok()
-        && reader.peek_string().is_some_and(|name| name == "DAZMesh")
+        && reader.peek_string().is_some_and(|name| name == "DAZMesh");
+    opens_with_mesh && parse_hair_vab(bytes, "").is_err()
 }
 
 pub fn load_hair_scalp_textures(
@@ -1662,6 +1686,64 @@ pub fn load_hair_part_asset(part: &HairPartReference) -> Result<HairPartAsset> {
     })
 }
 
+pub fn read_hair_storables(locator: &AssetLocator) -> Result<Vec<Value>> {
+    let bytes = locator.read_bytes(MAX_HAIR_PRESET_BYTES)?;
+    let document = crate::vam::simple_json::parse_document(&bytes)
+        .map_err(|error| invalid_preset(locator, error.to_string()))?;
+    Ok(document
+        .get("storables")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+pub fn hair_sim_storable<'a>(storables: &'a [Value], internal_id: &str) -> Option<&'a Value> {
+    find_sim_storable(storables, internal_id).or_else(|| {
+        storables.iter().find(|candidate| {
+            candidate
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id.ends_with("Sim"))
+        })
+    })
+}
+
+pub fn hair_scalp_material_storable<'a>(
+    storables: &'a [Value],
+    internal_id: &str,
+) -> Option<&'a Value> {
+    if internal_id.is_empty() {
+        let mut lone = storables.iter().filter(|storable| {
+            storable
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(is_scalp_material_id)
+        });
+        let first = lone.next();
+        return if lone.next().is_none() { first } else { None };
+    }
+    storables.iter().find(|storable| {
+        storable
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| scalp_material_id_matches(id, internal_id))
+    })
+}
+
+fn is_scalp_material_id(id: &str) -> bool {
+    id.to_ascii_lowercase().contains("scalpmaterial")
+}
+
+fn scalp_material_id_matches(id: &str, internal_id: &str) -> bool {
+    if !is_scalp_material_id(id) {
+        return false;
+    }
+    fn unqualify(value: &str) -> &str {
+        value.split_once(':').map_or(value, |(_, rest)| rest)
+    }
+    id.starts_with(internal_id) || unqualify(id).starts_with(unqualify(internal_id))
+}
+
 pub fn load_hair_part_look(part: &HairPartReference) -> Result<HairLookPatch> {
     load_hair_part_settings(part).map(|(look, _)| look)
 }
@@ -1698,10 +1780,61 @@ pub fn load_hair_part_settings(
     Ok((look, physics.resolve()))
 }
 
-pub fn parse_hair_scalp_vab(bytes: &[u8], locator: &str) -> Result<HairScalpGeometry> {
-    let mut reader = HairCursor::new(bytes, locator);
-    reader.expect_string("DynamicStore", "container type")?;
-    reader.expect_string("1.0", "DynamicStore version")?;
+fn walk_component_blocks(reader: &mut HairCursor<'_>, locator: &str) -> Result<()> {
+    while let Some(name) = reader.peek_string() {
+        match name.as_str() {
+            "DAZMesh" => {
+                read_daz_mesh_block(reader, locator)?;
+            }
+            "DAZSkinWrap" => {
+                skip_daz_skin_wrap_block(reader)?;
+            }
+            "MaterialOptions" => {
+                skip_material_options_block(reader)?;
+            }
+            other => {
+                return Err(unsupported_geometry(
+                    locator,
+                    format!(
+                        "component block {other:?} sits before the item payload and this reader cannot measure it"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn skip_material_options_block(reader: &mut HairCursor<'_>) -> Result<()> {
+    reader.expect_string("MaterialOptions", "container type")?;
+    reader.expect_string("1.0", "MaterialOptions version")?;
+    reader.read_string("material options override id")?;
+    let count = reader.read_count("material slot count", MAX_SCALP_MATERIALS)?;
+    for _ in 0..count {
+        reader.read_i32("material slot")?;
+    }
+    Ok(())
+}
+
+fn skip_daz_skin_wrap_block(reader: &mut HairCursor<'_>) -> Result<()> {
+    reader.expect_string("DAZSkinWrap", "container type")?;
+    reader.expect_string("1.0", "DAZSkinWrap version")?;
+    reader.read_string("skin wrap name")?;
+    reader.expect_string("DAZSkinWrapStore", "skin wrap store type")?;
+    reader.expect_string("1.0", "skin wrap store version")?;
+    let count = reader.read_count("skin wrap vertex count", MAX_SCALP_VERTICES)?;
+    for _ in 0..count {
+        for _ in 0..4 {
+            reader.read_i32("skin wrap binding")?;
+        }
+        for _ in 0..6 {
+            reader.read_f32("skin wrap projection")?;
+        }
+    }
+    Ok(())
+}
+
+fn read_daz_mesh_block(reader: &mut HairCursor<'_>, locator: &str) -> Result<HairScalpGeometry> {
     reader.expect_string("DAZMesh", "container type")?;
     reader.expect_string("1.0", "DAZMesh version")?;
     for index in 0..SCALP_GROUP_NAMES {
@@ -1729,12 +1862,6 @@ pub fn parse_hair_scalp_vab(bytes: &[u8], locator: &str) -> Result<HairScalpGeom
     for _ in 0..face_count {
         let _material = reader.read_i32("scalp face material")?;
         let corners = reader.read_count("scalp face corner count", MAX_SCALP_FACE_CORNERS)?;
-        if corners < 3 {
-            for _ in 0..corners {
-                reader.read_nonnegative_u32("scalp face corner")?;
-            }
-            continue;
-        }
         let mut face = Vec::with_capacity(corners);
         for _ in 0..corners {
             let index = reader.read_nonnegative_u32("scalp face corner")?;
@@ -1746,15 +1873,37 @@ pub fn parse_hair_scalp_vab(bytes: &[u8], locator: &str) -> Result<HairScalpGeom
             }
             face.push(index);
         }
-        for corner in 1..corners - 1 {
+        for corner in 1..corners.saturating_sub(1) {
             triangles.push([face[0], face[corner], face[corner + 1]]);
         }
     }
-    if triangles.is_empty() {
-        return Err(invalid_geometry(locator, "scalp mesh has no faces"));
+    for _ in 0..face_count {
+        reader.read_i32("scalp uv face material")?;
+        let corners = reader.read_count("scalp uv face corner count", MAX_SCALP_FACE_CORNERS)?;
+        for _ in 0..corners {
+            reader.read_nonnegative_u32("scalp uv face corner")?;
+        }
     }
 
-    let uvs = read_scalp_uvs(&mut reader, vertex_count, face_count).unwrap_or_default();
+    let uv_count = reader.read_count("scalp uv count", MAX_SCALP_VERTICES)?;
+    let mut uvs = Vec::with_capacity(uv_count);
+    for _ in 0..uv_count {
+        uvs.push([
+            reader.read_f32("scalp uv u")?,
+            reader.read_f32("scalp uv v")?,
+        ]);
+    }
+    if uvs.len() != vertex_count {
+        uvs.clear();
+    }
+
+    let map_count = reader.read_count("scalp uv vertex map count", MAX_SCALP_VERTICES)?;
+    for _ in 0..map_count {
+        reader.read_i32("uv vertex map from")?;
+        reader.read_i32("uv vertex map to")?;
+        reader.read_i32("uv vertex map poly")?;
+    }
+
     Ok(HairScalpGeometry {
         materials,
         vertices_cm: vertices,
@@ -1763,34 +1912,15 @@ pub fn parse_hair_scalp_vab(bytes: &[u8], locator: &str) -> Result<HairScalpGeom
     })
 }
 
-fn read_scalp_uvs(
-    reader: &mut HairCursor<'_>,
-    vertex_count: usize,
-    face_count: usize,
-) -> Option<Vec<[f32; 2]>> {
-    for _ in 0..face_count {
-        reader.read_i32("scalp uv face material").ok()?;
-        let corners = reader
-            .read_count("scalp uv face corner count", MAX_SCALP_FACE_CORNERS)
-            .ok()?;
-        for _ in 0..corners {
-            reader.read_nonnegative_u32("scalp uv face corner").ok()?;
-        }
+pub fn parse_hair_scalp_vab(bytes: &[u8], locator: &str) -> Result<HairScalpGeometry> {
+    let mut reader = HairCursor::new(bytes, locator);
+    reader.expect_string("DynamicStore", "container type")?;
+    reader.expect_string("1.0", "DynamicStore version")?;
+    let geometry = read_daz_mesh_block(&mut reader, locator)?;
+    if geometry.triangles.is_empty() {
+        return Err(invalid_geometry(locator, "scalp mesh has no faces"));
     }
-    let count = reader
-        .read_count("scalp uv count", MAX_SCALP_VERTICES)
-        .ok()?;
-    if count != vertex_count {
-        return None;
-    }
-    let mut uvs = Vec::with_capacity(count);
-    for _ in 0..count {
-        uvs.push([
-            reader.read_f32("scalp uv u").ok()?,
-            reader.read_f32("scalp uv v").ok()?,
-        ]);
-    }
-    Some(uvs)
+    Ok(geometry)
 }
 
 pub fn parse_hair_vab(bytes: &[u8], locator: &str) -> Result<HairGuideGeometry> {
@@ -1798,12 +1928,7 @@ pub fn parse_hair_vab(bytes: &[u8], locator: &str) -> Result<HairGuideGeometry> 
     reader.expect_string("DynamicStore", "container type")?;
     reader.expect_string("1.0", "DynamicStore version")?;
 
-    if let Some(container) = reader.peek_string() {
-        return Err(unsupported_geometry(
-            locator,
-            format!("{container} hair is mesh geometry, not simulated strands"),
-        ));
-    }
+    walk_component_blocks(&mut reader, locator)?;
     if !reader.read_bool("hair geometry flag")? {
         return Err(invalid_geometry(locator, "VAB contains no hair geometry"));
     }
@@ -2251,6 +2376,95 @@ fn unsupported_geometry(locator: &str, message: impl Into<String>) -> VaMError {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_creator_qualified_scalp_material_still_finds_its_textures() {
+        let storables = serde_json::json!([
+            {"id": "AKKEVE:AKKEVE hair014 01UdaneScalpMaterial",
+             "customTexture_MainTex": "SELF:/Custom/Hair/Female/AKKEVE/Udane scalp/6.jpg",
+             "customTexture_AlphaTex": "./scalp/alpha.png"},
+        ]);
+        let storables = storables.as_array().unwrap();
+
+        let patch = parse_scalp_material(storables, "AKKEVE hair014 01");
+        assert_eq!(
+            patch.scalp_diffuse.as_deref(),
+            Some("SELF:/Custom/Hair/Female/AKKEVE/Udane scalp/6.jpg"),
+        );
+        assert_eq!(patch.scalp_alpha.as_deref(), Some("./scalp/alpha.png"));
+
+        let loose = serde_json::json!([
+            {"id": "MohawkV3UdaneScalpMaterial", "customTexture_MainTex": "./main.png"},
+        ]);
+        let loose = parse_scalp_material(loose.as_array().unwrap(), "MohawkV3");
+        assert_eq!(loose.scalp_diffuse.as_deref(), Some("./main.png"));
+
+        let other = parse_scalp_material(storables, "RenVR Lexi Long");
+        assert!(
+            other.scalp_diffuse.is_none(),
+            "matched a different hair's scalp"
+        );
+    }
+
+    #[test]
+    fn a_preset_hands_each_part_its_own_scalp_material() {
+        let storables = serde_json::json!([
+            {"id": "AKKEVE:AKKEVE hair051 04UdaneScalpMaterial",
+             "customTexture_AlphaTex": "SELF:/Custom/Hair/Female/AKKEVE/Udane scalp/12.jpg"},
+            {"id": "AKKEVE:AKKEVE hair051 05UdaneScalpMaterial",
+             "customTexture_MainTex": "",
+             "customTexture_AlphaTex": "SELF:/Custom/Hair/Female/AKKEVE/Udane scalp/34.jpg",
+             "Alpha Adjust": "-0.09438676"},
+            {"id": "AKKEVE:AKKEVE hair051 06KrayonScalpMaterial",
+             "customTexture_AlphaTex": "SELF:/Custom/Hair/Female/AKKEVE/Krayon scalp/9.jpg"},
+        ]);
+        let storables = storables.as_array().unwrap();
+
+        let patch = parse_scalp_material(storables, "AKKEVE:AKKEVE hair051 05");
+        assert_eq!(
+            patch.scalp_alpha.as_deref(),
+            Some("SELF:/Custom/Hair/Female/AKKEVE/Udane scalp/34.jpg"),
+            "a creator-qualified internalId must find its own part, which is the \
+             only shape VaM writes",
+        );
+        assert!(
+            patch.scalp_diffuse.is_none(),
+            "an empty slot stays empty rather than borrowing a neighbour's sheet",
+        );
+
+        let sibling = parse_scalp_material(storables, "AKKEVE:AKKEVE hair051 06");
+        assert_eq!(
+            sibling.scalp_alpha.as_deref(),
+            Some("SELF:/Custom/Hair/Female/AKKEVE/Krayon scalp/9.jpg"),
+        );
+
+        let stranger = parse_scalp_material(storables, "AKKEVE:AKKEVE hair051 01");
+        assert!(stranger.scalp_alpha.is_none(), "matched a neighbour's cap");
+    }
+
+    #[test]
+    fn a_nameless_part_only_borrows_a_scalp_material_when_there_is_exactly_one() {
+        let lone = serde_json::json!([
+            {"id": "MohawkV3UdaneScalpMaterial", "customTexture_AlphaTex": "./a.png"},
+        ]);
+        assert_eq!(
+            parse_scalp_material(lone.as_array().unwrap(), "")
+                .scalp_alpha
+                .as_deref(),
+            Some("./a.png"),
+        );
+
+        let crowd = serde_json::json!([
+            {"id": "OneUdaneScalpMaterial", "customTexture_AlphaTex": "./a.png"},
+            {"id": "TwoUdaneScalpMaterial", "customTexture_AlphaTex": "./b.png"},
+        ]);
+        assert!(
+            parse_scalp_material(crowd.as_array().unwrap(), "")
+                .scalp_alpha
+                .is_none(),
+            "with no name to go on, guessing between caps is worse than nothing",
+        );
+    }
+
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
@@ -2270,8 +2484,8 @@ mod tests {
         )
         .unwrap();
         let waviness = parse_hair_look(&storable).waviness_settings();
-        assert_eq!(waviness.axis, [0.4, 0.0, 0.8]);
-        assert_eq!(waviness.scale_m, 0.02);
+        assert_eq!(waviness.vector_m, [0.4, 0.0, 0.8]);
+        assert_eq!(waviness.scale, 0.02);
         assert_eq!(waviness.frequency, 6.0);
         assert!(waviness.allow_reverse);
         assert!(!waviness.allow_flip_axis);
@@ -2284,8 +2498,8 @@ mod tests {
 
         let silent = parse_hair_look(&serde_json::from_str::<Value>("{}").unwrap());
         let defaults = silent.waviness_settings();
-        assert_eq!(defaults.scale_m, 0.0);
-        assert_eq!(defaults.axis, [0.1, 0.0, 0.1]);
+        assert_eq!(defaults.scale, 0.0);
+        assert_eq!(defaults.vector_m, [0.1, 0.0, 0.1]);
     }
 
     fn write_string(bytes: &mut Vec<u8>, value: &str) {
@@ -2369,19 +2583,120 @@ mod tests {
         }
     }
 
+    fn daz_mesh_block() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        write_string(&mut bytes, "DAZMesh");
+        write_string(&mut bytes, "1.0");
+        for name in ["untitled", "untitled-2", "untitled-1", "untitled-3"] {
+            write_string(&mut bytes, name);
+        }
+        write_i32(&mut bytes, 4);
+        for point in [
+            [0.0_f32, 1.8, 0.0],
+            [0.1, 1.8, 0.0],
+            [0.1, 1.8, 0.1],
+            [0.0, 1.8, 0.1],
+        ] {
+            for axis in point {
+                write_f32(&mut bytes, axis);
+            }
+        }
+        write_i32(&mut bytes, 1);
+        write_string(&mut bytes, "Material");
+        write_i32(&mut bytes, 1);
+        write_i32(&mut bytes, 0);
+        write_i32(&mut bytes, 4);
+        for corner in [0, 1, 2, 3] {
+            write_i32(&mut bytes, corner);
+        }
+        write_i32(&mut bytes, 0);
+        write_i32(&mut bytes, 4);
+        for corner in [0, 1, 2, 3] {
+            write_i32(&mut bytes, corner);
+        }
+        write_i32(&mut bytes, 4);
+        for uv in [[0.0_f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]] {
+            write_f32(&mut bytes, uv[0]);
+            write_f32(&mut bytes, uv[1]);
+        }
+        write_i32(&mut bytes, 1);
+        for value in [0, 0, 0] {
+            write_i32(&mut bytes, value);
+        }
+        bytes
+    }
+
     #[test]
-    fn mesh_hair_is_reported_as_unsupported_rather_than_corrupt() {
+    fn a_component_block_before_the_hair_is_walked_past_not_refused() {
+        for prefix in [
+            daz_mesh_block(),
+            material_options_block(),
+            skin_wrap_block(),
+        ] {
+            let mut bytes = Vec::new();
+            write_string(&mut bytes, "DynamicStore");
+            write_string(&mut bytes, "1.0");
+            bytes.extend_from_slice(&prefix);
+            let plain = direct_vab("1.0");
+            let header = {
+                let mut header = Vec::new();
+                write_string(&mut header, "DynamicStore");
+                write_string(&mut header, "1.0");
+                header
+            };
+            bytes.extend_from_slice(&plain[header.len()..]);
+
+            let geometry = parse_hair_vab(&bytes, "wrapped.vab").expect("composite container");
+            assert_eq!(geometry.provider_name, "FemaleCustom");
+            assert_eq!(geometry.guides.len(), 2);
+            assert_eq!(geometry.root_map, vec![10, 20]);
+        }
+    }
+
+    fn material_options_block() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        write_string(&mut bytes, "MaterialOptions");
+        write_string(&mut bytes, "1.0");
+        write_string(&mut bytes, "override");
+        write_i32(&mut bytes, 2);
+        write_i32(&mut bytes, 0);
+        write_i32(&mut bytes, 1);
+        bytes
+    }
+
+    fn skin_wrap_block() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        write_string(&mut bytes, "DAZSkinWrap");
+        write_string(&mut bytes, "1.0");
+        write_string(&mut bytes, "wrap");
+        write_string(&mut bytes, "DAZSkinWrapStore");
+        write_string(&mut bytes, "1.0");
+        write_i32(&mut bytes, 1);
+        for value in [7, 1, 2, 3] {
+            write_i32(&mut bytes, value);
+        }
+        for _ in 0..6 {
+            write_f32(&mut bytes, 0.25);
+        }
+        bytes
+    }
+
+    #[test]
+    fn an_unmeasurable_component_block_is_named_rather_than_guessed_at() {
         let mut bytes = Vec::new();
         write_string(&mut bytes, "DynamicStore");
         write_string(&mut bytes, "1.0");
-        write_string(&mut bytes, "DAZMesh");
-        let error = parse_hair_vab(&bytes, "mesh.vab").unwrap_err();
+        write_string(&mut bytes, "SomeFutureComponent");
+        let error = parse_hair_vab(&bytes, "future.vab").unwrap_err();
         assert!(
             matches!(error, VaMError::UnsupportedHairGeometry { .. }),
             "{error}"
         );
-        assert!(error.to_string().contains("DAZMesh"), "{error}");
+        assert!(error.to_string().contains("SomeFutureComponent"), "{error}");
+    }
 
+    #[test]
+    fn a_creator_that_is_not_the_hair_one_is_unsupported_and_a_truncated_one_is_corrupt() {
         let mut other = Vec::new();
         write_string(&mut other, "DynamicStore");
         write_string(&mut other, "1.0");
@@ -2410,61 +2725,17 @@ mod tests {
         let mut bytes = Vec::new();
         write_string(&mut bytes, "DynamicStore");
         write_string(&mut bytes, "1.0");
-        write_string(&mut bytes, "DAZMesh");
-        write_string(&mut bytes, "1.0");
-        for name in ["untitled", "untitled-2", "untitled-1", "untitled-3"] {
-            write_string(&mut bytes, name);
-        }
-        write_i32(&mut bytes, 4);
-        for point in [
-            [0.0_f32, 1.8, 0.0],
-            [0.1, 1.8, 0.0],
-            [0.1, 1.8, 0.1],
-            [0.0, 1.8, 0.1],
-        ] {
-            for axis in point {
-                write_f32(&mut bytes, axis);
-            }
-        }
-        write_i32(&mut bytes, 1);
-        write_string(&mut bytes, "Material");
-        write_i32(&mut bytes, 1);
-        write_i32(&mut bytes, 0);
-        write_i32(&mut bytes, 4);
-        for corner in [0, 1, 2, 3] {
-            write_i32(&mut bytes, corner);
-        }
-
-        let mut with_uvs = bytes.clone();
-        write_i32(&mut with_uvs, 0);
-        write_i32(&mut with_uvs, 4);
-        for corner in [0, 1, 2, 3] {
-            write_i32(&mut with_uvs, corner);
-        }
-        write_i32(&mut with_uvs, 4);
-        for uv in [[0.0_f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]] {
-            write_f32(&mut with_uvs, uv[0]);
-            write_f32(&mut with_uvs, uv[1]);
-        }
-        let textured = parse_hair_scalp_vab(&with_uvs, "cap.vab").unwrap();
-        assert_eq!(
-            textured.uvs,
-            vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-        );
+        bytes.extend_from_slice(&daz_mesh_block());
 
         let scalp = parse_hair_scalp_vab(&bytes, "cap.vab").unwrap();
-        assert!(scalp.uvs.is_empty());
+        assert_eq!(
+            scalp.uvs,
+            vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        );
         assert_eq!(scalp.materials, vec!["Material".to_owned()]);
         assert_eq!(scalp.vertices_cm.len(), 4);
-
         assert_eq!(scalp.triangles, vec![[0, 1, 2], [0, 2, 3]]);
-
         assert_eq!(scalp.vertices_cm[1], [10.0, 180.0, 0.0]);
-
-        let mut broken = bytes.clone();
-        let last = broken.len() - 4;
-        broken[last..].copy_from_slice(&9_i32.to_le_bytes());
-        assert!(parse_hair_scalp_vab(&broken, "cap.vab").is_err());
     }
 
     #[test]

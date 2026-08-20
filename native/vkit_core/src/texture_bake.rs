@@ -292,7 +292,6 @@ pub struct ProjectionBrush {
     pub falloff: crate::sculpt::SculptFalloff,
     pub opacity: f32,
 
-    /// Take the stamped contribution back instead of laying more of it down.
     pub erase: bool,
 }
 
@@ -448,10 +447,6 @@ fn blend_over(target: &mut [u8], width: u32, x: u32, y: u32, source: [u8; 4], co
     slot[3] = (out_alpha * 255.0).round() as u8;
 }
 
-/// The inverse of [`blend_over`]: hold the colour and take the alpha back, so a
-/// soft brush lifts paint with the same profile it laid it down with. Reports
-/// whether anything actually moved, which lets a stroke over already-clear
-/// texels report no work and skip the re-bake.
 fn erase_alpha(target: &mut [u8], width: u32, x: u32, y: u32, coverage: f32) -> bool {
     let index = (y as usize * width as usize + x as usize) * 4;
     let Some(slot) = target.get_mut(index..index + 4) else {
@@ -567,25 +562,11 @@ struct WarpBoundaryEdge {
     triangle: [usize; 3],
 }
 
-/// The single uniform-scale, rotation and translation that best carries the
-/// target pins onto the source pins.
-///
-/// Three pins fix a full affine exactly, and an affine is free to shear, to
-/// scale one axis and not the other, and to turn itself inside out. Fixed
-/// exactly by three points and then extended across a whole face, that is what
-/// made a first placement look mangled. A similarity has four numbers rather
-/// than six and cannot do any of those things: it can only move the picture,
-/// turn it, and make it bigger or smaller as a whole.
 #[derive(Clone, Copy, Debug)]
 struct WarpSimilarity {
-    /// Centre of the target pins, which the map pivots about.
     target_centre: [f32; 2],
-    /// Centre of the source pins, where that pivot lands.
     source_centre: [f32; 2],
-    /// The rotation-and-scale as `[c·cos, c·sin]`.
     turn: [f32; 2],
-    /// How far the pins reach from their centre — the distance over which the
-    /// warp gives way to this.
     spread: f32,
 }
 
@@ -607,8 +588,6 @@ impl WarpSimilarity {
         let target_centre = mean(&|index| target_points[index]);
         let source_centre = mean(&|index| pins[index].source);
 
-        // Least squares over c·cos and c·sin at once: the two normal equations
-        // share the denominator, so one pass over the pins answers both.
         let (mut along, mut across, mut extent) = (0.0f32, 0.0f32, 0.0f32);
         for index in 0..count {
             let target = [
@@ -624,7 +603,6 @@ impl WarpSimilarity {
             extent += target[0].mul_add(target[0], target[1] * target[1]);
         }
         if !extent.is_finite() || extent <= 1.0e-12 {
-            // Every pin in one spot: nothing to take a bearing from.
             return None;
         }
         #[expect(clippy::cast_precision_loss, reason = "a handful of pins")]
@@ -637,7 +615,6 @@ impl WarpSimilarity {
         })
     }
 
-    /// The same map read the other way, for going source-to-target.
     fn inverted(self) -> Option<Self> {
         let scale_squared = self.turn[0].mul_add(self.turn[0], self.turn[1] * self.turn[1]);
         if !scale_squared.is_finite() || scale_squared <= 1.0e-16 {
@@ -647,18 +624,10 @@ impl WarpSimilarity {
             target_centre: self.source_centre,
             source_centre: self.target_centre,
             turn: [self.turn[0] / scale_squared, -self.turn[1] / scale_squared],
-            // Distances are measured among the source pins now, and the map
-            // between the two spaces stretches them by its own scale.
             spread: self.spread * scale_squared.sqrt(),
         })
     }
 
-    /// Eases from what the nearest triangle says to what this says.
-    ///
-    /// One method rather than three copies: the picture, the click that asks
-    /// where on the photo a spot on the face came from, and the click that asks
-    /// the reverse all have to agree, or the image is drawn one way and the
-    /// pointer answers about another.
     fn hand_over(&self, carried_on: [f32; 2], point: [f32; 2], distance: f32) -> [f32; 2] {
         let settled = self.apply(point);
         let handover = warp_handover(distance, self.spread);
@@ -677,11 +646,8 @@ impl WarpSimilarity {
     }
 }
 
-/// How far past the pins the triangles still have the last word, as a multiple
-/// of the pin spread. Beyond that the similarity has it entirely.
 const WARP_HANDOVER_SPREADS: f32 = 0.75;
 
-/// Smooth 0-to-1 over the handover band, so nothing changes abruptly.
 fn warp_handover(distance: f32, spread: f32) -> f32 {
     let reach = spread * WARP_HANDOVER_SPREADS;
     if !reach.is_finite() || reach <= 1.0e-9 {
@@ -762,10 +728,6 @@ fn extrapolate_warp_to_region(
                 barycentric[1].mul_add(source_uvs[1][axis], barycentric[2] * source_uvs[2][axis]),
             )
         });
-        // At the edge of the pins the triangle still decides, so nothing jumps
-        // where the two meet. Further out its opinion is worth less and less —
-        // an affine held that far from the points that fixed it is where the
-        // stretching turns into mangling — until only the similarity is left.
         let source_point = similarity.map_or(carried_on, |similarity| {
             similarity.hand_over(carried_on, point, reach)
         });
@@ -1040,21 +1002,8 @@ pub fn resize_direct_uv(
     })
 }
 
-/// Where highlights stop rising in step and start easing towards white.
 const HIGHLIGHT_KNEE: f32 = 0.8;
 
-/// Bends the top of the range so brightening cannot flatten a face to white.
-///
-/// A skin tone sits around 0.7, so multiplying it by anything much over 1.4
-/// used to put a channel past 1.0, where it was cut off. Red goes first, then
-/// green, and the picture loses its colour on the way to white — which is what
-/// half a stop of exposure did to a face over a plain base, where there is no
-/// texture left to disguise it.
-///
-/// Below the knee this is the identity, so an adjustment someone dialled in by
-/// eye, and the tone match that solves for one, both behave as they did. Above
-/// it the remaining headroom is eased into rather than spent, and the curve
-/// meets the straight part with the same slope so there is no visible corner.
 fn shoulder(value: f32) -> f32 {
     if !value.is_finite() {
         return 0.0;
@@ -1095,10 +1044,6 @@ pub fn apply_color_adjustments(rgba8: &mut [u8], adjustments: TextureColorAdjust
     let (hue_sin, hue_cos) = hue.sin_cos();
     for pixel in rgba8.chunks_exact_mut(4) {
         if pixel[3] == 0 {
-            // Nothing is there. Adjusting the colour of a hole gives it one,
-            // and anything downstream that reads colour before alpha then has
-            // a tint to leak. Lowering contrast alone used to lift a clear
-            // pixel to mid grey.
             continue;
         }
         let mut rgb = [
@@ -1232,12 +1177,6 @@ fn composite_rgba_pixel(
                 }
             }
         };
-        // A blend mode reads the backdrop, and where the backdrop is
-        // transparent there is nothing to read — its stored channels are
-        // arbitrary, and here they are black. Fading the blend toward plain
-        // source paint by how much backdrop actually exists is what every
-        // layer editor does; without it, Multiply over an empty base is a
-        // multiplication by zero.
         let blended = source + (blended - source) * destination_alpha;
         let premultiplied =
             blended * source_alpha + backdrop * destination_alpha * (1.0 - source_alpha);
@@ -1445,17 +1384,9 @@ fn bilinear_sample(source: RgbaView<'_>, uv: [f32; 2]) -> [u8; 4] {
     })
 }
 
-/// Marks the transparent pixels that can be reached from the edge of the image.
-///
-/// A hole punched through the middle of the coverage -- an eye socket, a
-/// nostril, the mouth -- is transparent in exactly the same way as the space
-/// around the face. What separates them is reachability: the outside touches
-/// the border and a hole does not.
 fn transparent_region_touching_the_border(rgba8: &[u8], width: usize, height: usize) -> Vec<bool> {
     let transparent = |index: usize| rgba8[index * 4 + 3] == 0;
     let mut outside = vec![false; width * height];
-    // An explicit stack rather than recursion: an atlas is millions of pixels
-    // and a transparent border would otherwise be millions of frames deep.
     let mut pending = Vec::new();
     let push = |index: usize, outside: &mut Vec<bool>, pending: &mut Vec<usize>| {
         if !outside[index] && transparent(index) {
@@ -1496,14 +1427,6 @@ pub fn feather_coverage_alpha(rgba8: &mut [u8], width: u32, height: u32, radius:
     let width = width as usize;
     let height = height as usize;
     let maximum = u16::MAX / 2;
-    // Seed only from the transparent region that reaches the edge of the atlas.
-    //
-    // Seeding from every transparent pixel is what made the eye sockets, the
-    // nostrils and the mouth bleed: those are holes *inside* the face, and a
-    // distance transform cannot tell them from the space outside it. Both are
-    // alpha zero. The difference is that only the outside touches the border,
-    // so a flood fill from the border says which is which -- and the softness
-    // then does what its name promises, which is soften the face boundary.
     let outside = transparent_region_touching_the_border(rgba8, width, height);
     let mut distance = outside
         .iter()
@@ -1681,12 +1604,6 @@ mod tests {
 
     #[test]
     fn a_hole_in_the_face_is_not_an_edge_of_it() {
-        // A face in UV space is a covered region with holes punched through it
-        // for the eyes, the nostrils and the mouth. Every one of those holes is
-        // transparent in exactly the same way as the space around the face, so
-        // a feather that seeds from "anything transparent" eats outward from
-        // each of them -- which is what made softening look wrong around the
-        // eyes while looking right along the jaw.
         let (width, height) = (24_u32, 24_u32);
         let mut rgba = solid(width, height, [255, 255, 255, 0]);
         let at = |x: usize, y: usize| (y * width as usize + x) * 4 + 3;
@@ -1695,7 +1612,6 @@ mod tests {
                 rgba[at(x, y)] = 255;
             }
         }
-        // The socket: a hole with no path to the border.
         for y in 10..14 {
             for x in 10..14 {
                 rgba[at(x, y)] = 0;
@@ -1711,10 +1627,6 @@ mod tests {
             "the ramp still climbs inward from the outer edge"
         );
 
-        // x 8 and 9 are the discriminating pair: five and six pixels inside the
-        // outer edge, so beyond its radius-4 reach, and one and two pixels from
-        // the socket, so squarely inside a feather the socket would cast. They
-        // read 255 only if the socket is not treated as an edge.
         for x in 8..10 {
             assert_eq!(
                 alpha(x, 12),
@@ -1932,12 +1844,6 @@ mod tests {
         assert_eq!(extrapolated, [1.0, 1.0]);
     }
 
-    /// Three pins the way they actually get placed, and the way that hurts:
-    /// nearly in a line across the photo — two eyes and a nose tip often are —
-    /// against a target triangle with real height. The affine that fixes those
-    /// exactly has to squash one direction almost flat, and it then applies
-    /// that squashing to the whole face. Both triangles clear the readiness
-    /// gate, so this reaches the warp in the ordinary way.
     fn skewed_pins() -> [TextureWarpPin; 3] {
         [
             TextureWarpPin {
@@ -1957,11 +1863,6 @@ mod tests {
 
     #[test]
     fn far_from_the_pins_the_picture_settles_into_an_even_scale() {
-        // The complaint this answers: with three or four pins the image arrived
-        // mangled. An affine fixed by three points and then carried across a
-        // whole face shears without limit; a similarity cannot shear at all.
-        // Measured as the spread of the step taken for the same step on the
-        // face, in two directions — even scaling keeps them equal.
         let pins = skewed_pins();
         let sample = |uv: [f32; 2]| {
             map_g2_point_to_source(&pins, uv)
@@ -1986,7 +1887,6 @@ mod tests {
 
     #[test]
     fn the_pins_themselves_still_land_exactly_where_they_were_put() {
-        // Easing outward must not move what the reader placed by hand.
         let pins = skewed_pins();
         for pin in pins {
             let round_trip = map_g2_point_to_source(&pins, pin.target_uv)
@@ -2004,8 +1904,6 @@ mod tests {
 
     #[test]
     fn the_two_point_mappers_agree_out_where_the_similarity_has_taken_over() {
-        // The picture, and the two directions of asking about a point, all read
-        // the same map. Far outside the pins is where they used to differ.
         let pins = skewed_pins();
         let outside = [0.18, 0.20];
         let source = map_g2_point_to_source(&pins, outside)
@@ -2046,13 +1944,6 @@ mod tests {
 
     #[test]
     fn brightening_a_face_keeps_it_a_face() {
-        // Over a plain base there is no texture to hide a blown highlight, so
-        // the whole head went white and lost its colour on the way. A skin tone
-        // sits near 0.7 of the range, which used to clip at half a stop.
-        // A full stop. Half a stop was enough to pin red against the ceiling
-        // before, so this is the headroom that was won; past a stop and a half
-        // eight bits genuinely run out, and a picture is meant to go white
-        // eventually.
         let skin = [180_u8, 140, 120, 255];
         for stops in [0.25_f32, 0.5, 0.75, 1.0] {
             let mut pixels = skin.to_vec();
@@ -2076,12 +1967,6 @@ mod tests {
 
     #[test]
     fn brightening_never_stops_making_a_difference() {
-        // A hard ceiling does not only look wrong, it destroys detail: two
-        // different tones come out the same. The shoulder has to stay strictly
-        // increasing so what was lighter stays lighter.
-        // Over the range a slider can reach with a real tone in it. Far beyond
-        // this the curve does land on 1.0, because a float near one has no room
-        // left to be under it — but nothing gets there without being asked.
         let mut previous = -1.0;
         for step in 0..=20_u8 {
             let value = f32::from(step) * 0.1;
@@ -2093,8 +1978,6 @@ mod tests {
             assert!(lifted < 1.0, "the curve reached the ceiling at {value}");
             previous = lifted;
         }
-        // And below the knee it is the identity, so a dialled-in adjustment and
-        // the tone match that solves for one both behave as they did.
         for value in [0.0_f32, 0.25, 0.5, 0.7, HIGHLIGHT_KNEE] {
             assert!((shoulder(value) - value).abs() < 1.0e-6, "moved {value}");
         }
@@ -2102,9 +1985,6 @@ mod tests {
 
     #[test]
     fn adjusting_an_empty_pixel_leaves_it_empty() {
-        // Lowering contrast used to lift a fully clear pixel to mid grey. The
-        // alpha stayed zero, so it depended entirely on nothing downstream ever
-        // reading colour before alpha.
         let mut clear = vec![0_u8, 0, 0, 0];
         apply_color_adjustments(
             &mut clear,

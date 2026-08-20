@@ -3,19 +3,17 @@ mod builtin_morph_patch;
 mod catalog;
 mod geometry;
 mod hair;
+pub mod hair_joints;
+pub mod hair_writer;
 mod morph_route;
 mod package_index;
-#[cfg(feature = "rig")]
 mod pose;
 mod rig_transfer;
 mod simple_json;
 
-#[cfg(feature = "rig")]
 mod rig_bake;
-#[cfg(feature = "rig")]
 mod skeleton;
 mod skin;
-#[cfg(feature = "rig")]
 mod skin_binding;
 mod unity_base;
 mod unity_morph_bank;
@@ -49,9 +47,11 @@ pub use hair::{
     HairOpticalSettings, HairPartAsset, HairPartReference, HairPhysicsPatch, HairPhysicsSettings,
     HairPreset, HairPresetScanDiagnostics, HairPresetScanReport, HairScalpGeometry,
     HairScalpMaterialSettings, HairScalpTextureBytes, HairShaderType, HairSpreadSettings,
-    HairWavinessSettings, load_builtin_hair_scalps, load_hair_part_asset, load_hair_part_geometry,
-    load_hair_part_look, load_hair_part_scalp, load_hair_part_settings, load_hair_scalp_textures,
-    parse_hair_scalp_vab, parse_hair_vab, scan_hair_presets, scan_hair_presets_with_report,
+    HairWavinessSettings, hair_look_from_storable, hair_physics_from_storable,
+    hair_scalp_material_from_storables, hair_scalp_material_storable, hair_sim_storable,
+    load_builtin_hair_scalps, load_hair_part_asset, load_hair_part_geometry, load_hair_part_look,
+    load_hair_part_scalp, load_hair_part_settings, load_hair_scalp_textures, parse_hair_scalp_vab,
+    parse_hair_vab, read_hair_storables, scan_hair_presets, scan_hair_presets_with_report,
 };
 pub use morph_route::{VaMMorphRoute, VaMMorphRouteError, classify_vam_morph_route};
 pub use var_package::{
@@ -62,15 +62,12 @@ pub use var_package::{
 pub use package_index::{
     PackageAsset, PackageAssetKind, PackageIndex, PackageIndexProgress, PackageRef,
 };
-#[cfg(feature = "rig")]
 pub use pose::{
     MorphReference, PackageRequest, PoseBone, PoseDocument, PoseMorph, PoseMorphSource,
     PoseResolution, PoseRoot, resolve_pose, resolve_pose_morph,
 };
-#[cfg(feature = "rig")]
 pub use rig_bake::{merge_rig_delta, rig_delta, strip_rig_delta};
 pub use rig_transfer::{RIG_TRANSFER_NEIGHBORS, RIG_TRANSFER_POWER, transfer_rig_point_idw};
-#[cfg(feature = "rig")]
 pub use skeleton::{
     RestBone, RestSkeleton, RotationOrder, extract_rest_skeleton, extract_rest_skeleton_from_bundle,
 };
@@ -80,13 +77,13 @@ pub use skin::{
     SkinTextureSet, filter_skin_presets_by_sex, list_var_entries, read_var_entry_bytes,
     scan_skin_library, scan_skin_library_with_report,
 };
-#[cfg(feature = "rig")]
 pub use skin_binding::{
-    BoneBinding, BoundSkin, LinearSkin, SkinBinding, TriaxWeight, extract_skin_binding,
+    BoneBinding, BoundSkin, SkinBinding, TriaxWeight, extract_skin_binding,
     extract_skin_binding_from_bundle, extract_skin_bindings, extract_skin_bindings_from_bundle,
 };
 pub use unity_textures::{
-    BuiltinTextureRef, DecodedBuiltinTexture, load_builtin_texture_rgba, scan_builtin_skins,
+    BuiltinScalpTextureSet, BuiltinTextureRef, DecodedBuiltinTexture, load_builtin_texture_rgba,
+    scan_builtin_scalp_textures, scan_builtin_skins,
 };
 
 pub use unity_base::{

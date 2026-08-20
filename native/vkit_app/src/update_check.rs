@@ -1,61 +1,39 @@
-//! Asks GitHub once per launch whether a newer release exists.
-//!
-//! Every failure is silence. No internet, a proxy that refuses, a rate limit, a
-//! response that is not what we expected — none of it is the user's problem, and
-//! none of it produces a dialog, a log line at warning level, or a stuck
-//! spinner. The only outcome that reaches the interface is "a newer version
-//! exists", and even that is a capsule the user is free to ignore.
-//!
-//! This is deliberately not a self-updater. The program is one executable and
-//! its caches are already built locally; an in-place updater would be heavier
-//! than the download it replaces, and far more ways to go wrong while the
-//! internals are still moving.
-
 use std::sync::OnceLock;
 
-/// Where the capsule sends someone who clicks it.
-///
-/// `concat!` will not take a constant, so this cannot be built from
-/// `REPOSITORY_URL` at compile time. A test ties the two together instead — the
-/// page the capsule opens, the repository the rest of the program names, and
-/// the path the check asks about all have to be one repository.
 pub const RELEASES_PAGE: &str = "https://github.com/yass3d/vkit/releases";
 
 const HOST: &str = "api.github.com";
 
-/// The release *list*, not `/releases/latest`.
-///
-/// `/releases/latest` excludes pre-releases, and this project publishes
-/// pre-releases — so that endpoint answers 404 and the check would have sat
-/// there reporting nothing, indistinguishable from working correctly, until the
-/// first stable tag. The list returns everything and lets us decide.
+pub const FAKE_UPDATE_VARIABLE: &str = "VKIT_FAKE_UPDATE";
+
 const PATH: &str = "/repos/yass3d/vkit/releases?per_page=20";
 
-/// GitHub rejects a request with no user agent, so this is not decoration.
 const USER_AGENT: &str = concat!("Vkit/", env!("CARGO_PKG_VERSION"));
 
-/// A hostile or broken endpoint should not be able to grow the process. The
-/// real body is a few kilobytes.
 const BODY_CEILING: usize = 64 * 1024;
 
-/// A launch check that no one is waiting for has no business holding a thread
-/// open on a network that never answers.
 const TIMEOUT_MILLIS: i32 = 5_000;
 
-/// The answer, once there is one. Write-once for the life of the process,
-/// which is exactly what a launch check produces — so there is nothing to poll,
-/// nothing to thread through state, and nothing that can be answered twice.
 static NEWER_RELEASE: OnceLock<String> = OnceLock::new();
 
-/// Starts the check on its own thread. Never blocks the caller and never
-/// delays the window appearing.
-///
-/// The context is here only so the frame that learns the answer is actually
-/// drawn: on an idle window nothing else would ask for a repaint, and the
-/// capsule would wait for the next stray mouse move to appear.
+fn summoned_badge() -> Option<String> {
+    #[cfg(debug_assertions)]
+    {
+        let asked = std::env::var(FAKE_UPDATE_VARIABLE).unwrap_or_default();
+        let tag = asked.trim();
+        if !tag.is_empty() && !tag.eq_ignore_ascii_case("off") {
+            return Some(tag.to_owned());
+        }
+    }
+    None
+}
+
 pub fn start(context: &egui::Context) {
+    if let Some(tag) = summoned_badge() {
+        let _ = NEWER_RELEASE.set(tag);
+        return;
+    }
     let context = context.clone();
-    // A thread that will not start is one more thing to say nothing about.
     let _ = std::thread::Builder::new()
         .name("vkit-update-check".to_owned())
         .spawn(move || {
@@ -68,17 +46,10 @@ pub fn start(context: &egui::Context) {
         });
 }
 
-/// The newer version's tag, if the check found one. A plain load — safe to ask
-/// every frame.
 pub fn newer_release() -> Option<&'static str> {
     NEWER_RELEASE.get().map(String::as_str)
 }
 
-/// Compares a release tag against the version this binary was built as.
-///
-/// Only a strictly greater version counts. Equal is not an update, and neither
-/// is older — a repository whose latest release is behind a locally built
-/// binary must not nag its own author.
 pub fn is_newer_than_running(tag: &str) -> bool {
     let Some(theirs) = version_of(tag) else {
         return false;
@@ -89,12 +60,6 @@ pub fn is_newer_than_running(tag: &str) -> bool {
     theirs > ours
 }
 
-/// Reads `v1.2.3`, `1.2.3`, `V1.2`, `1` and stops at the first thing that is
-/// not a number, so `0.0.2-beta` reads as `0.0.2`.
-///
-/// The components are numbers, not text. `0.0.10` is newer than `0.0.9`, which
-/// a string comparison would get backwards — and would keep getting backwards
-/// for exactly one release out of every ten.
 fn version_of(tag: &str) -> Option<[u64; 3]> {
     let digits = tag.trim().trim_start_matches(['v', 'V']);
     let mut version = [0_u64; 3];
@@ -110,15 +75,6 @@ fn version_of(tag: &str) -> Option<[u64; 3]> {
     (seen > 0).then_some(version)
 }
 
-/// The highest version among the published releases, and nothing else.
-///
-/// Drafts are skipped: they are invisible to anyone who would click through, so
-/// announcing one would send a user to a page that does not exist for them.
-/// Pre-releases count, because at this stage they are what actually ships.
-///
-/// Picks the highest version rather than the first entry. GitHub happens to
-/// return these newest-first, but publishing an old tag later would put it at
-/// the front, and a downgrade is not an update.
 fn newest_tag_in(body: &str) -> Option<String> {
     let releases: serde_json::Value = serde_json::from_str(body).ok()?;
     releases
@@ -138,18 +94,9 @@ fn latest_release_tag() -> Option<String> {
 
 #[cfg(not(windows))]
 fn latest_release_tag() -> Option<String> {
-    // The shipping build is Windows only. Elsewhere the check simply never
-    // finds anything, which is the same silence every other failure produces.
     None
 }
 
-/// One HTTPS GET, through the operating system's own stack.
-///
-/// WinHTTP rather than a bundled client: it is already on every machine that
-/// can run this, so it costs the executable nothing, and it brings the system
-/// proxy configuration and the system certificate store with it. A vendored
-/// TLS stack would add megabytes to a binary that is watching its size, and
-/// would then have to be kept current against certificate roots by hand.
 #[cfg(windows)]
 #[allow(
     unsafe_code,
@@ -168,14 +115,10 @@ mod windows_http {
         WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
     };
 
-    /// Closes on the way out of every path, including the early returns that
-    /// make up most of this module.
     struct Handle(*mut c_void);
 
     impl Drop for Handle {
         fn drop(&mut self) {
-            // SAFETY: the handle came from WinHttp and is closed exactly once,
-            // because only Drop closes it and Handle is not Copy or Clone.
             unsafe { WinHttpCloseHandle(self.0) };
         }
     }
@@ -190,10 +133,6 @@ mod windows_http {
         let path_wide = wide(path);
         let method = wide("GET");
 
-        // SAFETY: every pointer below is either null where the API documents
-        // null as meaningful, or a NUL-terminated wide buffer that outlives the
-        // call that reads it. Each handle is checked against null before use and
-        // owned by a Handle, so no path leaks one and none is closed twice.
         unsafe {
             let session = Handle(WinHttpOpen(
                 agent.as_ptr(),
@@ -205,8 +144,6 @@ mod windows_http {
             if session.0.is_null() {
                 return None;
             }
-            // Without these a network that accepts the connection and then goes
-            // quiet would hold this thread for the life of the process.
             WinHttpSetTimeouts(
                 session.0,
                 TIMEOUT_MILLIS,
@@ -245,8 +182,6 @@ mod windows_http {
                 return None;
             }
 
-            // A rate limit answers with a perfectly well formed body that is not
-            // a release, so the status is checked before the body is trusted.
             let mut status: u32 = 0;
             let mut status_size = u32::try_from(size_of::<u32>()).ok()?;
             if WinHttpQueryHeaders(
@@ -301,8 +236,6 @@ mod tests {
         assert_eq!(version_of("1"), Some([1, 0, 0]));
         assert_eq!(version_of("0.0.2-beta.1"), Some([0, 0, 2]));
 
-        // The trap this exists to avoid: as text, "0.0.10" sorts below "0.0.9",
-        // so one release in every ten would go unannounced.
         assert!(version_of("0.0.10") > version_of("0.0.9"));
         assert!(version_of("0.1.0") > version_of("0.0.9"));
         assert!(version_of("1.0.0") > version_of("0.9.9"));
@@ -329,8 +262,6 @@ mod tests {
         assert!(is_newer_than_running(&format!("{major}.{}.0", minor + 1)));
         assert!(is_newer_than_running(&format!("{}.0.0", major + 1)));
 
-        // A repository whose latest release trails a locally built binary must
-        // not nag its own author.
         if patch > 0 {
             assert!(!is_newer_than_running(&format!(
                 "v{major}.{minor}.{}",
@@ -351,8 +282,6 @@ mod tests {
             "a pre-release is what this project actually ships"
         );
 
-        // Newest-first is GitHub's habit, not a promise, and publishing an old
-        // tag later would put it at the front. A downgrade is not an update.
         assert_eq!(
             newest_tag_in(
                 r#"[{"tag_name":"v0.1.0","draft":false},{"tag_name":"v0.2.0","draft":false}]"#
@@ -360,8 +289,6 @@ mod tests {
             Some("v0.2.0".to_owned())
         );
 
-        // A draft is invisible to whoever would click through, so announcing it
-        // would send them to a page that does not exist for them.
         assert_eq!(
             newest_tag_in(
                 r#"[{"tag_name":"v9.9.9","draft":true},{"tag_name":"v0.1.0","draft":false}]"#
@@ -370,8 +297,6 @@ mod tests {
             "a draft must never be announced"
         );
 
-        // What a rate limit, a private repository, and a broken proxy actually
-        // send back. None of them is a release, and none may be read as one.
         for refused in [
             r#"{"message":"API rate limit exceeded","documentation_url":"..."}"#,
             r#"[{"tag_name":null}]"#,
@@ -385,11 +310,18 @@ mod tests {
         }
     }
 
-    /// Reaches the real GitHub, so it is not part of an ordinary run. Everything
-    /// above tests the parsing; only this tests that the request itself works,
-    /// which no amount of compiling will tell you.
-    ///
-    /// `cargo test -p vkit-app --bin Vkit -- --ignored the_request_actually`
+    #[test]
+    fn the_summoned_badge_stays_away_until_it_is_asked_for() {
+        assert!(
+            std::env::var(FAKE_UPDATE_VARIABLE).is_err(),
+            "this test describes the unset case; the variable is set in this environment"
+        );
+        assert!(
+            summoned_badge().is_none(),
+            "a build nobody asked must not claim an update: the badge was a visual              check, and a shipped screenshot of it would be a lie"
+        );
+    }
+
     #[test]
     #[ignore = "hits the network"]
     fn the_request_actually_reaches_github_and_comes_back_with_a_release() {
@@ -406,10 +338,6 @@ mod tests {
 
     #[test]
     fn the_page_the_capsule_opens_is_the_repository_the_check_asked_about() {
-        // Three places name the repository and none of them can derive from the
-        // others at compile time, so a rename would quietly leave the capsule
-        // opening one project while the check reports on another. That is the
-        // kind of break nobody notices until someone clicks.
         let owner_and_repo = PATH
             .strip_prefix("/repos/")
             .and_then(|rest| rest.split_once("/releases"))

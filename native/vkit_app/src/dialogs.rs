@@ -143,6 +143,16 @@ pub(crate) fn normalize_export_extension(mut path: PathBuf) -> PathBuf {
     path
 }
 
+pub fn pick_scalp_mask(state: &AppState) -> Option<PathBuf> {
+    let mut dialog = FileDialog::new()
+        .set_title(text(state.locale, TextKey::HairScalpMask))
+        .add_filter("IMAGE", &crate::hair_export::SCALP_TEXTURE_EXTENSIONS);
+    if let Some(root) = state.vam_root.as_deref() {
+        dialog = dialog.set_directory(root);
+    }
+    dialog.pick_file()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

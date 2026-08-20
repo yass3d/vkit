@@ -4,9 +4,6 @@ use super::*;
 pub(super) struct ProviderDiscoveryContext {
     pub(super) vam_root: Option<PathBuf>,
     pub(super) explicit_base: Option<PathBuf>,
-    /// Which figure the explicit base is already known to be, when it is the base a provider is
-    /// currently built from. Nothing else may fill this in: it is a fact read off a parse that
-    /// already happened, not a guess from the file name.
     pub(super) explicit_base_sex: Option<GeometrySex>,
     pub(super) locale: Locale,
 }
@@ -14,9 +11,6 @@ pub(super) struct ProviderDiscoveryContext {
 impl ProviderDiscoveryContext {
     pub(super) fn explicit_candidates(&self, sex: GeometrySex) -> Vec<PathBuf> {
         let mut candidates = Vec::with_capacity(2);
-        // A base that is known to be the other figure costs a multi-megabyte OBJ parse to reach a
-        // rejection we can already state. Only skip it when the sex is known; an unknown base is
-        // still tried first, because it is the user's own choice.
         if let Some(path) = self
             .explicit_base
             .as_deref()
@@ -233,4 +227,215 @@ pub(super) fn selected_vam_pair_paths(selected: &Path) -> Result<(PathBuf, PathB
         ));
     }
     Ok((vmi, vmb))
+}
+
+impl AppState {
+    pub(super) fn report_progress(
+        &mut self,
+        job_id: u64,
+        source_revision: u64,
+        progress: Progress,
+    ) {
+        if matches!(self.result, ResultState::Running { job_id: active, source_revision: active_revision } if active == job_id && active_revision == source_revision)
+        {
+            let floor = self.progress.map_or(0.0, |current| current.fraction);
+            self.progress = Some(Progress::new(progress.stage, progress.fraction.max(floor)));
+        }
+    }
+
+    pub(super) fn begin_generation(&mut self) {
+        if self.scan_path.is_none() {
+            self.status = StatusMessage::new(TextKey::NeedScan, StatusTone::Error);
+
+            self.flash_attention(AttentionTarget::CustomHeadLoad);
+            return;
+        }
+        if self.workspace.template_geometry.is_none() {
+            self.status = StatusMessage::new(TextKey::TemplatePending, StatusTone::Warning);
+            return;
+        }
+        if self.eye_state == EyeState::Closed && self.workspace.eye_morph.is_none() {
+            self.status = StatusMessage::new(TextKey::NeedEyeMorph, StatusTone::Warning);
+            return;
+        }
+        if self.workspace.pins.review_count() != 0 {
+            self.status = StatusMessage::new(TextKey::ReviewEyePins, StatusTone::Warning);
+            return;
+        }
+        let unmatched: Vec<String> = if self.resolved_automatic_matching() {
+            Vec::new()
+        } else {
+            self.workspace
+                .pins
+                .pairs()
+                .iter()
+                .enumerate()
+                .filter(|(_, pair)| !pair.complete() && !pair.empty())
+                .map(|(index, _)| format!("{:02}", index + 1))
+                .collect()
+        };
+        if !unmatched.is_empty() {
+            self.status = StatusMessage::with_detail(
+                TextKey::PinPairsMismatched,
+                StatusTone::Error,
+                unmatched.join(", "),
+            );
+            return;
+        }
+
+        self.pending_edit_carry = self.capture_edit_carry();
+        let job_id = self.next_job_id;
+        self.next_job_id = self.next_job_id.saturating_add(1);
+        self.clear_morph_reset_undo();
+        self.clear_generated_buffers();
+        self.result = ResultState::Running {
+            job_id,
+            source_revision: self.revision,
+        };
+        self.progress = Some(Progress::new(JobStage::Prepare, 0.0));
+        self.active_tab = Tab::Edit;
+        self.status = StatusMessage::new(TextKey::GenerationStarted, StatusTone::Info);
+    }
+
+    pub(super) fn bake_morph(&mut self) {
+        if self.morph_library.has_loading_controls() {
+            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
+            return;
+        }
+        if !matches!(
+            self.result,
+            ResultState::Ready { source_revision, .. } if source_revision == self.revision
+        ) || self.workspace.result_output.is_none()
+        {
+            self.status = StatusMessage::new(TextKey::ResultUnavailable, StatusTone::Warning);
+            return;
+        }
+        if let Err(detail) = self.commit_save_preview() {
+            self.status =
+                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
+            return;
+        }
+        self.active_tab = Tab::Result;
+        self.status = StatusMessage::new(TextKey::MorphApplied, StatusTone::Success);
+    }
+
+    pub(super) fn finish_generation(
+        &mut self,
+        job_id: u64,
+        reported_revision: u64,
+        outcome: GenerationOutcome,
+        morph_available: bool,
+    ) {
+        let ResultState::Running {
+            job_id: active_job,
+            source_revision,
+        } = self.result
+        else {
+            return;
+        };
+        if active_job != job_id || source_revision != reported_revision {
+            return;
+        }
+        self.progress = None;
+        if source_revision != self.revision {
+            self.clear_generated_buffers();
+            self.result = ResultState::Stale {
+                generated_revision: source_revision,
+            };
+            self.active_tab = Tab::Edit;
+            self.status = StatusMessage::new(TextKey::ResultStale, StatusTone::Warning);
+            return;
+        }
+        match outcome {
+            GenerationOutcome::Success {
+                output,
+                fit_reference_value,
+            } => match self.workspace.install_result(Arc::new(output)) {
+                Ok(()) => {
+                    if self.restore_neck_ears
+                        && let Err(detail) = self.apply_neck_ear_restore_to_result()
+                    {
+                        self.status = StatusMessage::with_detail(
+                            TextKey::RestoreNeckEarsDeferred,
+                            StatusTone::Warning,
+                            detail,
+                        );
+                    }
+                    let carry = self.pending_edit_carry.take();
+                    self.clear_morph_reset_undo();
+                    self.morph_value_history.clear();
+                    self.morph_edit_open = None;
+                    self.morph_library.reset();
+                    if let Some(carry) = carry.as_ref() {
+                        self.morph_library.restore_values(&carry.morph_values);
+                    }
+                    self.fit_reference_value = Some(fit_reference_value);
+                    self.eye_closure = fit_reference_value as f32;
+                    self.result = ResultState::Ready {
+                        source_revision,
+                        morph_available,
+                    };
+                    if let Err(detail) = self.begin_sculpt_stage() {
+                        self.clear_generated_buffers();
+                        self.result = ResultState::Empty;
+                        self.active_tab = Tab::Edit;
+                        self.status = StatusMessage::with_detail(
+                            TextKey::GenerationFailed,
+                            StatusTone::Error,
+                            detail,
+                        );
+                        return;
+                    }
+                    if let Some(delta) = carry.and_then(|carry| carry.sculpt)
+                        && self.sculpt.graft_displacement(&delta).is_err()
+                    {
+                        self.status =
+                            StatusMessage::new(TextKey::SculptNotCarried, StatusTone::Warning);
+                    }
+                    self.morph_preview_dirty = true;
+                    if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
+                        self.clear_generated_buffers();
+                        self.result = ResultState::Empty;
+                        self.active_tab = Tab::Edit;
+                        self.status = StatusMessage::with_detail(
+                            TextKey::GenerationFailed,
+                            StatusTone::Error,
+                            detail,
+                        );
+                        return;
+                    }
+                    self.active_tab = Tab::Morph;
+                    self.ensure_scan_texture_layer();
+                    self.status =
+                        StatusMessage::new(TextKey::GenerationComplete, StatusTone::Success);
+                }
+                Err(error) => {
+                    self.clear_generated_buffers();
+                    self.result = ResultState::Empty;
+                    self.active_tab = Tab::Edit;
+                    self.status = StatusMessage::with_detail(
+                        TextKey::GenerationFailed,
+                        StatusTone::Error,
+                        error.to_string(),
+                    );
+                }
+            },
+            GenerationOutcome::Failed(detail) => {
+                self.clear_generated_buffers();
+                self.result = ResultState::Empty;
+                self.active_tab = Tab::Edit;
+                self.status = StatusMessage::with_detail(
+                    TextKey::GenerationFailed,
+                    StatusTone::Error,
+                    detail,
+                );
+            }
+            GenerationOutcome::Cancelled => {
+                self.clear_generated_buffers();
+                self.result = ResultState::Empty;
+                self.active_tab = Tab::Edit;
+                self.status = StatusMessage::new(TextKey::GenerationCancelled, StatusTone::Info);
+            }
+        }
+    }
 }

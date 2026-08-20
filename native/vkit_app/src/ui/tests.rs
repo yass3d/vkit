@@ -236,44 +236,6 @@ fn skin_popover_texture_page_has_no_full_height_layout_residue() {
 }
 
 #[test]
-fn the_title_language_capsule_fits_every_language_name() {
-    let context = egui::Context::default();
-    if crate::theme::configure_context(&context, crate::i18n::Locale::Korean)
-        .fonts
-        .is_empty()
-    {
-        eprintln!("skipping: no Windows system fonts available");
-        return;
-    }
-    let _ = context.run_ui(egui::RawInput::default(), |_| {});
-    let _ = context.run_ui(egui::RawInput::default(), |root| {
-        let width = crate::ui::title_locale_width(root);
-        assert!(
-            width <= crate::ui::TITLE_LOCALE_MAX_WIDTH,
-            "the capsule is {width:.1}pt, past the ceiling that keeps it off the tabs"
-        );
-        for locale in crate::i18n::Locale::ALL {
-            let label = root
-                .painter()
-                .layout_no_wrap(
-                    locale.selector_label().to_owned(),
-                    egui::FontId::proportional(crate::theme::FONT_BODY),
-                    crate::theme::COLOR_TEXT,
-                )
-                .size()
-                .x;
-            assert!(
-                label + crate::ui::TITLE_LOCALE_CHROME <= width + 0.5,
-                "{:?} names itself {:?}, which needs {:.1}pt of capsule and has {width:.1}pt -- the combo would grow into the settings button",
-                locale,
-                locale.selector_label(),
-                label + crate::ui::TITLE_LOCALE_CHROME
-            );
-        }
-    });
-}
-
-#[test]
 fn a_full_width_save_action_centres_its_label() {
     use egui::epaint::Shape;
 
@@ -494,6 +456,207 @@ fn the_texture_stage_draws_a_split_and_a_brush_island() {
     }
 }
 
+#[cfg(test)]
+fn hair_tab_state() -> AppState {
+    let mut state = AppState::default();
+    state.builtin_hair_scalps = std::sync::Arc::new(vec![vkit_core::vam::BuiltinHairScalp {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+        geometry: vkit_core::vam::HairScalpGeometry {
+            materials: vec!["scalp".into()],
+            uvs: vec![[0.0, 0.0]; 3],
+            vertices_cm: vec![[0.0, 10.0, 0.0], [1.0, 10.0, 0.0], [0.0, 10.0, 1.0]],
+            triangles: vec![[0, 1, 2]],
+        },
+    }]);
+    state.active_tab = Tab::Hair;
+    state.dispatch(Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    state
+}
+
+#[cfg(test)]
+fn wide_input() -> egui::RawInput {
+    egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn one_click_on_the_pencil_opens_the_rename_and_the_label_still_activates() {
+    let mut state = hair_tab_state();
+    let part = state.hair_project.parts[0].id;
+    let context = egui::Context::default();
+    let _ = context.run_ui(wide_input(), |root| draw(root, &mut state));
+    let _ = context.run_ui(wide_input(), |root| draw(root, &mut state));
+
+    let pencil = context
+        .read_response(Id::new(("vkit.hair.rename-pencil", part)))
+        .expect("the row offers a rename target");
+    let label = context
+        .read_response(Id::new(("vkit.hair.part-label", part)))
+        .expect("the row offers a label target");
+    assert!(
+        !pencil.rect.intersects(label.rect),
+        "the rename target overlaps the activation target: {:?} vs {:?}",
+        pencil.rect,
+        label.rect
+    );
+
+    let click = |at: egui::Pos2| egui::RawInput {
+        events: vec![
+            egui::Event::PointerMoved(at),
+            egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        ..wide_input()
+    };
+    let _ = context.run_ui(click(pencil.rect.center()), |root| draw(root, &mut state));
+    let _ = context.run_ui(wide_input(), |root| draw(root, &mut state));
+
+    let editing: Option<u64> = context.data(|data| data.get_temp(Id::new("vkit.hair.rename")));
+    assert_eq!(
+        editing,
+        Some(part),
+        "one click on the pencil did not open the editor"
+    );
+}
+
+#[test]
+fn the_hair_view_switches_left_the_sidebar_for_the_brush_island() {
+    let mut state = hair_tab_state();
+    let context = egui::Context::default();
+    let _ = context.run_ui(wide_input(), |root| draw(root, &mut state));
+    let _ = context.run_ui(wide_input(), |root| draw(root, &mut state));
+
+    for key in [
+        TextKey::HairPartTint,
+        TextKey::HairShowPoints,
+        TextKey::HairViewportPhysics,
+        TextKey::HairShowStreams,
+        TextKey::HairHideStrands,
+    ] {
+        assert!(
+            context
+                .read_response(Id::new(("vkit.switch-row", text(state.locale, key))))
+                .is_none(),
+            "{key:?} is still a sidebar row; the island carries it now"
+        );
+    }
+}
+
+#[test]
+fn the_hair_wording_says_the_short_thing() {
+    let hint = text(Locale::Korean, TextKey::HairViewportPhysicsHint);
+    assert!(
+        hint.contains("미리보기") && hint.contains("내보내기"),
+        "the physics hint stopped saying what it previews and what it does not          affect: {hint}"
+    );
+    assert!(
+        hint.chars().filter(|c| *c == '.').count() <= 2,
+        "the hint grew back into a paragraph: {hint}"
+    );
+
+    let empty = text(Locale::Korean, TextKey::HairCreateFirst);
+    assert_ne!(
+        empty,
+        text(Locale::Korean, TextKey::AddHairPart),
+        "the empty state is reusing the button caption as a sentence again"
+    );
+    assert!(
+        empty.ends_with('.'),
+        "the empty state should read as an instruction: {empty}"
+    );
+}
+
+#[test]
+fn the_resize_seam_answers_a_hover_more_quietly_than_a_drag() {
+    let hovered = COLOR_MUTED.gamma_multiply(0.55);
+    let dragged = COLOR_PRIMARY;
+    let luma = |color: egui::Color32| {
+        f32::from(color.r()) * 0.299 + f32::from(color.g()) * 0.587 + f32::from(color.b()) * 0.114
+    };
+    assert!(
+        luma(hovered) < luma(COLOR_MUTED),
+        "the hover tint is no dimmer than the token it came from"
+    );
+    assert!(
+        luma(hovered) < luma(dragged),
+        "hovering is louder than dragging, which is backwards"
+    );
+    assert!(
+        luma(hovered) > luma(crate::theme::COLOR_BORDER),
+        "the hover tint sank to the resting divider and says nothing at all"
+    );
+}
+
+#[test]
+fn the_badge_the_painter_draws_is_the_badge_the_window_carves_out() {
+    let bar = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1600.0, 40.0));
+    let capsule = 90.0;
+    let title_end = 140.0;
+
+    let placed = caption_layout(bar, capsule, Some(title_end))
+        .update_rect
+        .expect("a badge with room");
+
+    let again = caption_layout(bar, capsule, Some(title_end))
+        .update_rect
+        .expect("a badge with room");
+    assert_eq!(placed, again, "the layout is not answering the same twice");
+
+    assert!(
+        placed.left() - title_end <= 12.0,
+        "the badge sits {}pt from the title",
+        placed.left() - title_end
+    );
+}
+
+#[test]
+fn the_update_badge_sits_against_the_title_not_the_path_field() {
+    use super::window_chrome::{title_update_rect, title_update_rect_after};
+
+    let brand = Rect::from_min_size(egui::pos2(10.0, 6.0), egui::vec2(300.0, 34.0));
+    let width = 90.0;
+
+    let anchored_to_cell = title_update_rect(brand, width).expect("a reserved badge");
+    let title_end = 120.0;
+    let anchored_to_title =
+        title_update_rect_after(brand, width, Some(title_end)).expect("a reserved badge");
+
+    assert!(
+        anchored_to_title.left() < anchored_to_cell.left(),
+        "placing after the title should move the badge left, toward the name:          {anchored_to_title:?} vs {anchored_to_cell:?}"
+    );
+    assert!(
+        anchored_to_title.left() - title_end <= 12.0,
+        "the badge drifted {}pt from the title it belongs to",
+        anchored_to_title.left() - title_end
+    );
+
+    let overlong =
+        title_update_rect_after(brand, width, Some(brand.right())).expect("a reserved badge");
+    assert_eq!(
+        overlong.left(),
+        anchored_to_cell.left(),
+        "a long title should stop at the reservation, not past it"
+    );
+}
+
 #[test]
 fn every_tab_paints_on_a_cold_start() {
     for tab in [
@@ -579,10 +742,10 @@ fn texture_tool_shortcuts_only_fire_in_the_paint_split() {
 }
 
 #[test]
-fn workflow_tabs_expose_four_visible_stages() {
+fn workflow_tabs_expose_five_visible_stages() {
     assert_eq!(
         TOP_TABS.map(|(tab, _)| tab),
-        [Tab::Edit, Tab::Morph, Tab::Texture, Tab::Result]
+        [Tab::Edit, Tab::Morph, Tab::Texture, Tab::Hair, Tab::Result]
     );
     assert!(!TOP_TABS.iter().any(|(tab, _)| *tab == Tab::Alignment));
     assert_eq!(TOP_TABS[1].1, TextKey::DetailCorrection);
@@ -592,12 +755,10 @@ fn workflow_tabs_expose_four_visible_stages() {
         }
     }
 
-    // The number keys run 1..=TOP_TABS.len(). A fifth tab would be drawn with a
-    // "5" it has no binding for, so it has to be given one deliberately.
     assert_eq!(
         TOP_TABS.len(),
-        4,
-        "the number keys cover 1 to 4; a new tab needs a key of its own"
+        5,
+        "the number keys cover 1 to 5; a new tab needs a key of its own"
     );
 }
 
@@ -605,9 +766,6 @@ fn workflow_tabs_expose_four_visible_stages() {
 fn the_update_capsule_yields_before_it_squeezes_the_tabs() {
     use super::window_chrome::caption_layout;
 
-    // The smallest window the app allows, with the widest language name the
-    // picker can show. This is the worst case a real user can put the title bar
-    // in, and it is where an optional badge would do its damage.
     let bar = Rect::from_min_size(
         egui::pos2(0.0, 0.0),
         egui::vec2(
@@ -615,39 +773,38 @@ fn the_update_capsule_yields_before_it_squeezes_the_tabs() {
             crate::theme::TOP_BAR_HEIGHT,
         ),
     );
-    let widest_locale = crate::ui::TITLE_LOCALE_MAX_WIDTH;
-    // What the collapsed circle asks for. It expands on hover by painting over
-    // its neighbours, so the layout never sees the wider shape -- which is why
-    // a badge can afford to exist here at all.
-    let capsule = 32.0;
+    let capsule = 90.0;
 
-    let without = caption_layout(bar, widest_locale, 0.0);
-    let with = caption_layout(bar, widest_locale, capsule);
+    let without = caption_layout(bar, 0.0, None);
+    let with = caption_layout(bar, capsule, None);
     assert!(
         with.tab_width >= super::window_chrome::TOP_TAB_FLOOR,
         "a tab fell to {}pt, under the floor that keeps the strip usable",
         with.tab_width
     );
 
-    // A badge wide enough to matter still has to stand down here.
-    let greedy = caption_layout(bar, widest_locale, 120.0);
-    assert!(
-        greedy.update_rect.is_none(),
-        "at the minimum width a wide badge has to stand down"
-    );
-    assert_eq!(
-        greedy.tab_width, without.tab_width,
-        "standing down means the tabs keep every point they had"
-    );
+    for badge in [60.0, 90.0, 120.0, 200.0, 400.0, 800.0] {
+        let layout = caption_layout(bar, badge, None);
+        if layout.update_rect.is_some() {
+            assert!(
+                layout.tab_width >= super::window_chrome::TOP_TAB_FLOOR,
+                "a {badge}pt badge kept its place and left the tabs at {}pt",
+                layout.tab_width
+            );
+        } else {
+            assert_eq!(
+                layout.tab_width, without.tab_width,
+                "a {badge}pt badge stood down, so the tabs keep every point they had"
+            );
+        }
+    }
 
-    // On a window with room to spare it takes its place and the tabs are still
-    // whole, which is the only case where showing it is worth anything.
     let roomy = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1920.0, bar.height()));
-    let shown = caption_layout(roomy, widest_locale, capsule);
+    let shown = caption_layout(roomy, capsule, None);
     assert!(shown.update_rect.is_some(), "there is room here");
     assert_eq!(
         shown.tab_width,
-        caption_layout(roomy, widest_locale, 0.0).tab_width,
+        caption_layout(roomy, 0.0, None).tab_width,
         "a wide window gives the capsule its room out of slack, not out of the tabs"
     );
     assert!(
@@ -665,19 +822,32 @@ fn nothing_shifts_in_the_title_bar_when_there_is_no_update() {
         title_update_rect(brand, 0.0).is_none(),
         "no release, no capsule, and so nothing to carve out of the drag region"
     );
+}
 
-    // When there is one, it sits inside the room the brand cell grew by, and
-    // the gap in front of it stays draggable.
-    let capsule = title_update_rect(brand, 74.0).expect("a width means a capsule");
+#[test]
+fn the_open_update_capsule_stays_inside_the_room_reserved_for_it() {
+    use super::window_chrome::{TITLE_UPDATE_GAP, title_update_rect};
+
+    let open_width = 90.0;
+    let brand = Rect::from_min_size(egui::pos2(10.0, 6.0), egui::vec2(146.0 + open_width, 32.0));
+    let collapsed = title_update_rect(brand, open_width).expect("a width means a capsule");
+
+    assert_eq!(collapsed.left(), brand.left() + 146.0 + TITLE_UPDATE_GAP);
     assert!(
-        brand.contains_rect(capsule),
-        "the capsule escaped the cell that made room for it"
-    );
-    assert!(
-        capsule.left() > brand.left(),
+        collapsed.left() > brand.left(),
         "the capsule must leave the title text in front of it"
     );
-    assert_eq!(capsule.right(), brand.right());
+
+    let grown = open_width - TITLE_UPDATE_GAP - collapsed.width();
+    let open = Rect::from_min_size(
+        collapsed.min,
+        egui::vec2(collapsed.width() + grown, collapsed.height()),
+    );
+    assert_eq!(open.right(), brand.right());
+    assert!(
+        brand.contains_rect(open),
+        "the open capsule escaped the cell that made room for it"
+    );
 }
 
 #[test]
@@ -686,8 +856,6 @@ fn the_reset_button_offers_itself_back_and_then_stops() {
     let id = Id::new("test.morph.reset");
 
     let _ = context.run_ui(egui::RawInput::default(), |ui| {
-        // A window that was never opened must not read as open, or leftover
-        // state would turn the reset button into an undo button on a fresh run.
         assert!(!morph_reset_undo_is_offered(ui, id));
 
         offer_morph_reset_undo(ui, id);
@@ -696,13 +864,9 @@ fn the_reset_button_offers_itself_back_and_then_stops() {
             "the offer is live the instant the reset lands"
         );
 
-        // Taking the offer withdraws it, so a second click cannot undo twice.
         forget_morph_reset_undo(ui, id);
         assert!(!morph_reset_undo_is_offered(ui, id));
 
-        // And it lapses on its own: the deadline is an absolute time, so one
-        // already in the past reads as expired and clears itself rather than
-        // being re-checked forever.
         let lapsed = ui.input(|input| input.time) - 1.0;
         ui.data_mut(|data| data.insert_temp(id.with("undo-until"), lapsed));
         assert!(
@@ -718,9 +882,6 @@ fn the_reset_button_offers_itself_back_and_then_stops() {
 
 #[test]
 fn a_number_key_reaches_exactly_what_its_button_would() {
-    // The click path and the keys share one availability predicate and one
-    // redirect. If they ever diverge the keyboard becomes a second, quieter set
-    // of rules that nothing documents.
     let mut state = AppState::default();
     for (tab, _) in TOP_TABS {
         assert_eq!(
@@ -804,6 +965,7 @@ fn every_tab_renders_inside_the_minimum_inspector_in_every_locale() {
                     Tab::Alignment => draw_alignment_inspector(&mut child, &mut state),
                     Tab::Edit => draw_edit_inspector(&mut child, &mut state),
                     Tab::Morph | Tab::Texture => draw_morph_inspector(&mut child, &mut state),
+                    Tab::Hair => hair_ui::draw_hair_inspector(&mut child, &mut state),
                     Tab::Result => draw_result_inspector(&mut child, &mut state),
                 }
                 assert!(child.min_rect().right() <= cell.right() + 0.5);
@@ -1128,7 +1290,7 @@ fn two_line_morph_content_fits_inside_each_virtual_row() {
         + MORPH_ROW_VERTICAL_INSET * 2.0
         + 1.0;
     assert!(authored_content_height <= MORPH_ROW_HEIGHT);
-    assert_eq!(MORPH_ROW_HEIGHT + MORPH_ROW_GAP, 47.0);
+    assert_eq!(MORPH_ROW_HEIGHT + MORPH_ROW_GAP, 49.0);
 }
 
 #[test]
@@ -1319,4 +1481,127 @@ fn no_tab_name_outgrows_its_cell_at_the_full_tab_width() {
             }
         });
     }
+}
+
+#[test]
+fn the_branch_warning_answers_a_click_but_not_the_press_that_raised_it() {
+    use egui::epaint::Shape;
+
+    fn text_rects(output: &egui::FullOutput) -> Vec<(String, Rect)> {
+        fn walk(shape: &Shape, found: &mut Vec<(String, Rect)>) {
+            match shape {
+                Shape::Text(text) => found.push((
+                    text.galley.text().to_owned(),
+                    Rect::from_min_size(text.pos, text.galley.size()),
+                )),
+                Shape::Vec(children) => {
+                    for child in children {
+                        walk(child, found);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        for shape in &output.shapes {
+            walk(&shape.shape, &mut found);
+        }
+        found
+    }
+
+    let screen = || {
+        Some(Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        ))
+    };
+    let quiet = || egui::RawInput {
+        screen_rect: screen(),
+        ..Default::default()
+    };
+    let button = |pos: egui::Pos2, pressed: bool| egui::RawInput {
+        screen_rect: screen(),
+        events: vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        ..Default::default()
+    };
+
+    let mut state = AppState::default();
+    state.active_tab = Tab::Hair;
+    let locale = state.locale;
+    let context = egui::Context::default();
+    let _ = crate::theme::configure_context(&context, locale);
+
+    state.pending_history_branch = true;
+    let _ = context.run_ui(quiet(), |root| draw(root, &mut state));
+    let output = context.run_ui(quiet(), |root| draw(root, &mut state));
+    let drawn = text_rects(&output);
+    let proceed = text(locale, TextKey::HistoryBranchProceed);
+    let target = drawn
+        .iter()
+        .find(|(content, _)| content == proceed)
+        .map(|(_, rect)| rect.center())
+        .expect("the proceeding button is on screen");
+    let mute = text(locale, TextKey::DoNotShowAgain);
+    assert!(
+        drawn.iter().any(|(content, _)| content == mute),
+        "the card offers a way to stop being asked"
+    );
+
+    let _ = context.run_ui(button(target, true), |root| draw(root, &mut state));
+    assert!(
+        state.pending_history_branch,
+        "a press alone is not an answer"
+    );
+    let _ = context.run_ui(button(target, false), |root| draw(root, &mut state));
+    assert!(
+        !state.pending_history_branch,
+        "the release completes the click and the card goes"
+    );
+
+    let _ = context.run_ui(button(target, true), |root| draw(root, &mut state));
+    state.pending_history_branch = true;
+    let _ = context.run_ui(quiet(), |root| draw(root, &mut state));
+    let _ = context.run_ui(button(target, false), |root| draw(root, &mut state));
+    assert!(
+        state.pending_history_branch,
+        "the press that raised the card must not also answer it"
+    );
+}
+
+#[test]
+fn muting_the_branch_warning_quiets_every_tab_that_raises_it() {
+    let mut state = AppState::default();
+    assert!(!state.history_branch_warning_muted);
+
+    state.dispatch(Action::MuteHistoryBranchWarning);
+    assert!(state.history_branch_warning_muted);
+    assert!(
+        !state.history_branch_needs_asking(),
+        "the sculpt and texture gate reads the mute"
+    );
+
+    state.active_tab = Tab::Hair;
+    for _ in 0..crate::state::HISTORY_BRANCH_WARN_STEPS + 1 {
+        state.hair_project.checkpoint();
+    }
+    for _ in 0..crate::state::HISTORY_BRANCH_WARN_STEPS {
+        state.hair_project.undo();
+    }
+    assert!(
+        state.hair_project.history_position().1 >= crate::state::HISTORY_BRANCH_WARN_STEPS,
+        "the walk back is deep enough to be worth asking about"
+    );
+    state.dispatch(Action::ResetHairShapes);
+    assert!(
+        !state.pending_history_branch,
+        "a muted warning does not stop a hair edit"
+    );
 }

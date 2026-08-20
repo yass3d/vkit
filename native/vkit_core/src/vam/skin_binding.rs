@@ -46,14 +46,6 @@ pub struct SkinBinding {
 
 impl SkinBinding {
     #[must_use]
-    pub fn to_linear_skin(&self) -> LinearSkin {
-        LinearSkin {
-            bone_ids: self.bones.iter().map(|bone| bone.id.clone()).collect(),
-            per_vertex: self.linear(),
-        }
-    }
-
-    #[must_use]
     pub fn linear(&self) -> BTreeMap<u32, Vec<(u32, f32)>> {
         let mut per_vertex: BTreeMap<u32, Vec<(u32, f32)>> = BTreeMap::new();
         for (index, bone) in self.bones.iter().enumerate() {
@@ -164,20 +156,6 @@ impl SkinBinding {
     #[must_use]
     pub fn bone(&self, id: &str) -> Option<&BoneBinding> {
         self.bones.iter().find(|bone| bone.id == id)
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct LinearSkin {
-    pub bone_ids: Vec<String>,
-
-    pub per_vertex: BTreeMap<u32, Vec<(u32, f32)>>,
-}
-
-impl LinearSkin {
-    #[must_use]
-    pub fn bound_vertex_count(&self) -> usize {
-        self.per_vertex.len()
     }
 }
 

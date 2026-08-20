@@ -122,12 +122,12 @@ of them here. Nothing the project says about itself is built on either name.
 The executable carries two pieces of figure geometry and both are the project's
 own: 18 KB of eyelid displacement that drives the open/closed eye preview, and
 372 KB of mouth and expression shapes, seven of them, offered through the
-Built-ins tab. Each holds displacements and a topology digest and nothing else
+Create stage. Each holds displacements and a topology digest and nothing else
 — no positions, no polygons, no UVs — so no cage can be recovered from either.
 The seven are named after the DAZ built-ins they stand in for, because that is
 the name a VaM installation looks them up by; the name is DAZ's and the shape
 is not. Neither reaches a VaM installation unless you install it from the
-Built-ins tab, which backs up what it replaces.
+Create stage, which backs up what it replaces.
 `build/windows/THIRD-PARTY-NOTICE.txt`, compiled into the executable, says the
 same thing to anyone holding only the binary.
 

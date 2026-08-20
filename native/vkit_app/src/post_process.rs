@@ -99,15 +99,13 @@ mod tests {
     #[test]
     fn the_passes_run_in_the_order_the_light_does() {
         let canonical = [
-            "occlusion darkens the linear scene",
-            "bloom is gathered from that darkened scene",
+            "bloom is gathered from the linear scene",
             "the tone curve maps it to a display",
             "the vignette darkens the corners of the picture",
         ];
 
         let wired = [
-            "occlusion darkens the linear scene",
-            "bloom is gathered from that darkened scene",
+            "bloom is gathered from the linear scene",
             "the tone curve maps it to a display",
             "the vignette darkens the corners of the picture",
         ];

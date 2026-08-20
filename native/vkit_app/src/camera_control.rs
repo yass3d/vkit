@@ -14,9 +14,6 @@ pub enum ControlMode {
     #[default]
     Orbit,
 
-    /// Armed only while the R roll sweep runs, and the sweep owns the pointer
-    /// for its whole life, so this mode carries no drag interpretation of its
-    /// own: it exists to put the exit badge up and keep scene edits blocked.
     Trackball,
 }
 
@@ -35,16 +32,6 @@ pub fn unroll_drag(drag: Vec2, roll: f32) -> Vec2 {
     }
     let (sin, cos) = (-roll).sin_cos();
     Vec2::new(drag.x * cos - drag.y * sin, drag.x * sin + drag.y * cos)
-}
-
-pub const fn middle_drag_gesture(shift_down: bool, ctrl_down: bool) -> MiddleDragBinding {
-    if ctrl_down {
-        MiddleDragBinding::Dolly
-    } else if shift_down {
-        MiddleDragBinding::Pan
-    } else {
-        MiddleDragBinding::Orbit
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,10 +77,23 @@ mod tests {
 
     #[test]
     fn the_middle_button_means_what_the_modifiers_say() {
-        assert_eq!(middle_drag_gesture(false, false), MiddleDragBinding::Orbit);
-        assert_eq!(middle_drag_gesture(true, false), MiddleDragBinding::Pan);
-
-        assert_eq!(middle_drag_gesture(true, true), MiddleDragBinding::Dolly);
+        use crate::shortcuts::{Shortcut, Trigger};
+        for shortcut in [Shortcut::ViewOrbit, Shortcut::ViewPan, Shortcut::ViewDolly] {
+            assert_eq!(
+                shortcut.default_binding().trigger,
+                Trigger::Mouse(egui::PointerButton::Middle),
+                "{shortcut:?} starts on the middle button"
+            );
+        }
+        assert_eq!(Shortcut::ViewOrbit.default_binding().label(), "Wheel click");
+        assert_eq!(
+            Shortcut::ViewPan.default_binding().label(),
+            "Shift+Wheel click"
+        );
+        assert_eq!(
+            Shortcut::ViewDolly.default_binding().label(),
+            "Ctrl+Wheel click"
+        );
 
         let motion = Vec2::new(3.0, -7.0);
         assert_eq!(

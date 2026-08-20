@@ -7,6 +7,7 @@ impl AppState {
         self.vam_hair_presets.clear();
         self.shared_scalp = None;
         self.builtin_hair_scalps = Arc::new(Vec::new());
+        self.builtin_scalp_textures = Arc::new(Vec::new());
         self.vam_edit_sources.clear();
         self.vam_uv_mapping = None;
         self.neutral_skin_preview = None;
@@ -16,8 +17,6 @@ impl AppState {
 
         self.skin_preview_lru.clear();
         self.clear_skin_preview_selection();
-        self.hair_preview_lru.clear();
-        self.clear_hair_preview_selection();
     }
 
     fn invalidate_vam_morph_assets(&mut self) -> Result<(), String> {
@@ -42,6 +41,22 @@ impl AppState {
     }
 
     fn queue_vam_catalog_scan(&mut self, force_rescan: bool) {
+        if !force_rescan
+            && matches!(self.vam_catalog_status, VaMCatalogStatus::Indexing)
+            && let Some(root) = self.vam_root.as_ref()
+        {
+            let signature = (
+                root.clone(),
+                self.figure_sex,
+                self.workspace
+                    .template_geometry
+                    .as_ref()
+                    .map(|geometry| Arc::as_ptr(geometry) as usize),
+            );
+            if self.vam_scan_signature.as_ref() == Some(&signature) {
+                return;
+            }
+        }
         self.vam_appearance_revision = self.vam_appearance_revision.saturating_add(1);
         self.pending_vam_work
             .retain(|request| !request.is_appearance_scan());
@@ -49,11 +64,19 @@ impl AppState {
             self.pending_vam_work
                 .push_back(VaMWorkRequest::ScanAppearance {
                     catalog_revision: self.vam_appearance_revision,
-                    requested_root: root,
+                    requested_root: root.clone(),
                     figure_sex: self.figure_sex.skin_sex(),
                     template_geometry: self.workspace.template_geometry.as_ref().map(Arc::clone),
                     force_rescan,
                 });
+            self.vam_scan_signature = Some((
+                root,
+                self.figure_sex,
+                self.workspace
+                    .template_geometry
+                    .as_ref()
+                    .map(|geometry| Arc::as_ptr(geometry) as usize),
+            ));
             self.vam_catalog_status = VaMCatalogStatus::Indexing;
             self.vam_catalog_progress = 0.0;
             self.status = StatusMessage::new(TextKey::VaMIndexing, StatusTone::Info);
@@ -116,6 +139,7 @@ impl AppState {
                 self.vam_hair_presets = payload.hair_presets;
                 self.shared_scalp = payload.shared_scalp;
                 self.builtin_hair_scalps = payload.builtin_hair_scalps;
+                self.builtin_scalp_textures = payload.builtin_scalp_textures;
                 self.vam_edit_sources = payload.edit_sources;
                 self.vam_morph_index = payload.morph_index;
                 let _ = crate::diagnostics::record(
@@ -161,11 +185,6 @@ impl AppState {
                 }
                 self.rebuild_face_uv_rows();
 
-                // A freshly indexed catalog can hand over a different G2 UV map (a template or
-                // sex swap does exactly that), and every cached layer raster was drawn into the
-                // old one. The scan is expensive and rare, so pay one cold re-warp rather than
-                // guess: the mapping arrives in a brand new Arc every time, so pointer identity
-                // cannot tell a same-file rescan from a real swap.
                 self.texture_project.forget_layer_rasters();
 
                 self.vam_uv_mapping_warning = if self.vam_uv_mapping.is_none() {
@@ -192,13 +211,13 @@ impl AppState {
                 self.vam_hair_presets.clear();
                 self.shared_scalp = None;
                 self.builtin_hair_scalps = Arc::new(Vec::new());
+                self.builtin_scalp_textures = Arc::new(Vec::new());
                 self.vam_edit_sources.clear();
                 self.vam_uv_mapping = None;
                 self.neutral_skin_preview = None;
                 self.face_uv_rows = None;
                 self.vam_uv_mapping_warning = None;
                 self.clear_skin_preview_selection();
-                self.clear_hair_preview_selection();
                 self.vam_catalog_status = VaMCatalogStatus::Failed {
                     detail: detail.clone(),
                 };
@@ -301,16 +320,39 @@ impl AppState {
         let Some(wanted) = starred.clone().or_else(|| self.last_skin_id.clone()) else {
             return;
         };
-        if self
+        let sex = self.figure_sex.skin_sex();
+        match self
             .vam_skin_presets
             .iter()
-            .any(|preset| preset.stable_id == wanted)
+            .find(|preset| preset.stable_id == wanted)
         {
-            self.select_vam_skin(Some(&wanted));
-            return;
+            Some(preset) if preset.sex.is_compatible_with(sex, false) => {
+                self.select_vam_skin(Some(&wanted));
+                return;
+            }
+            Some(_) => {}
+            None => {}
         }
+        let missing_star = (starred.is_some()
+            && !self
+                .vam_skin_presets
+                .iter()
+                .any(|preset| preset.stable_id == wanted))
+        .then_some(wanted);
 
-        if starred.is_some() {
+        let fallback = self
+            .vam_skin_presets
+            .iter()
+            .filter(|preset| preset.sex.is_compatible_with(sex, false))
+            .min_by_key(|preset| {
+                let label = preset.label.to_ascii_lowercase();
+                (!label.contains("base"), label)
+            })
+            .map(|preset| preset.stable_id.clone());
+        if let Some(id) = fallback {
+            self.select_vam_skin(Some(&id));
+        }
+        if let Some(wanted) = missing_star {
             self.status =
                 StatusMessage::with_detail(TextKey::DefaultSkinMissing, StatusTone::Error, wanted);
         }
@@ -420,140 +462,6 @@ impl AppState {
         }
 
         self.invalidate_texture_bake_for_skin_change();
-    }
-
-    pub(super) fn clear_hair_preview_selection(&mut self) {
-        self.next_hair_request_id = self.next_hair_request_id.saturating_add(1);
-        self.expected_hair_request = None;
-        self.pending_hair_work = None;
-        self.selected_hair_id = None;
-        self.hair_preview_loading = false;
-        self.hair_preview = None;
-    }
-
-    pub(super) fn select_vam_hair(&mut self, preset_id: Option<&str>) {
-        let Some(preset_id) = preset_id.filter(|id| !id.trim().is_empty()) else {
-            self.clear_hair_preview_selection();
-            return;
-        };
-        if self.selected_hair_id.as_deref() == Some(preset_id)
-            && (self.hair_preview.is_some() || self.hair_preview_loading)
-        {
-            return;
-        }
-        let Some(preset) = self
-            .vam_hair_presets
-            .iter()
-            .find(|preset| {
-                preset.stable_id == preset_id
-                    && preset
-                        .sex
-                        .is_compatible_with(self.figure_sex.skin_sex(), false)
-            })
-            .cloned()
-        else {
-            self.status = StatusMessage::with_detail(
-                TextKey::HairLoadFailed,
-                StatusTone::Error,
-                format!("VaM hair preset is unavailable: {preset_id}"),
-            );
-            return;
-        };
-        let Some(template) = self.workspace.template_geometry.as_ref().map(Arc::clone) else {
-            self.status = StatusMessage::with_detail(
-                TextKey::HairLoadFailed,
-                StatusTone::Error,
-                "Load a canonical G2 template before previewing VaM hair".to_owned(),
-            );
-            return;
-        };
-        if let Some(position) = self
-            .hair_preview_lru
-            .iter()
-            .position(|(cached_id, _)| cached_id == &preset.stable_id)
-        {
-            let (cached_id, preview) = self
-                .hair_preview_lru
-                .remove(position)
-                .expect("valid hair cache index");
-            self.hair_preview_lru
-                .push_back((cached_id, Arc::clone(&preview)));
-            self.next_hair_request_id = self.next_hair_request_id.saturating_add(1);
-            self.expected_hair_request = None;
-            self.pending_hair_work = None;
-            self.selected_hair_id = Some(preset.stable_id);
-            self.hair_preview_loading = false;
-            self.hair_preview = Some(preview);
-            self.settle_hair_on_wear();
-            self.status = StatusMessage::new(TextKey::HairReady, StatusTone::Info);
-            return;
-        }
-        let request_id = self.next_hair_request_id;
-        self.next_hair_request_id = self.next_hair_request_id.saturating_add(1);
-        self.expected_hair_request = Some(request_id);
-        self.selected_hair_id = Some(preset.stable_id.clone());
-        self.hair_preview_loading = true;
-        self.pending_hair_work = Some(HairPreviewRequest {
-            request_id,
-            preset,
-            template,
-            shared_scalp: self.shared_scalp.clone(),
-            builtin_scalps: Arc::clone(&self.builtin_hair_scalps),
-        });
-        self.status = StatusMessage::new(TextKey::HairLoading, StatusTone::Info);
-    }
-
-    pub(super) fn settle_hair_on_wear(&mut self) {
-        self.hair_settle_seconds = crate::state::HAIR_SETTLE_SECONDS;
-    }
-
-    pub(super) fn finish_vam_hair(
-        &mut self,
-        request_id: u64,
-        preset_id: &str,
-        outcome: Result<Arc<HairPreview>, String>,
-    ) {
-        if self.expected_hair_request != Some(request_id)
-            || self.selected_hair_id.as_deref() != Some(preset_id)
-        {
-            return;
-        }
-        self.expected_hair_request = None;
-        self.hair_preview_loading = false;
-        match outcome {
-            Ok(preview) => {
-                self.hair_preview_lru
-                    .retain(|(cached_id, _)| cached_id != preset_id);
-                self.hair_preview_lru
-                    .push_back((preset_id.to_owned(), Arc::clone(&preview)));
-                while self.hair_preview_lru.len() > 3 {
-                    self.hair_preview_lru.pop_front();
-                }
-
-                self.status = if preview.skipped_parts.is_empty() {
-                    StatusMessage::new(TextKey::HairReady, StatusTone::Info)
-                } else {
-                    StatusMessage::with_detail(
-                        TextKey::HairPartsSkipped,
-                        StatusTone::Warning,
-                        preview.skipped_parts.join(" | "),
-                    )
-                };
-                self.failed_hair_ids.remove(preset_id);
-                self.hair_preview = Some(preview);
-                self.settle_hair_on_wear();
-            }
-            Err(detail) => {
-                self.failed_hair_ids.insert(preset_id.to_owned());
-
-                self.selected_hair_id = self
-                    .hair_preview
-                    .as_ref()
-                    .map(|preview| preview.preset_id.clone());
-                self.status =
-                    StatusMessage::with_detail(TextKey::HairLoadFailed, StatusTone::Error, detail);
-            }
-        }
     }
 
     pub(super) fn install_cached_vam_controls(&mut self) {

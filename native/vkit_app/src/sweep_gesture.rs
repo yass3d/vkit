@@ -19,19 +19,22 @@ pub enum SweepPhase {
     Finish,
 }
 
-pub const fn sweep_phase(
-    active: bool,
-    key_pressed: bool,
-    primary_pressed: bool,
-    can_start: bool,
-) -> SweepPhase {
-    if active {
-        if key_pressed || primary_pressed {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SweepInput {
+    pub active: bool,
+    pub key_pressed: bool,
+    pub primary_pressed: bool,
+    pub can_start: bool,
+}
+
+pub const fn sweep_phase(input: SweepInput) -> SweepPhase {
+    if input.active {
+        if input.key_pressed || input.primary_pressed {
             SweepPhase::Finish
         } else {
             SweepPhase::Update
         }
-    } else if key_pressed && can_start {
+    } else if input.key_pressed && input.can_start {
         SweepPhase::Start
     } else {
         SweepPhase::Idle
@@ -60,6 +63,40 @@ pub struct SweepUpdate {
     pub finished: bool,
 }
 
+const PRESS_SPENT_ID: &str = "vkit.sweep.press-spent";
+
+pub const fn sweep_spends_press(finished: bool, primary_pressed: bool) -> bool {
+    finished && primary_pressed
+}
+
+pub fn press_spent(ui: &Ui) -> bool {
+    ui.data(|data| data.get_temp::<bool>(Id::new(PRESS_SPENT_ID)))
+        .unwrap_or(false)
+}
+
+pub fn spend_press(ui: &Ui) {
+    ui.data_mut(|data| data.insert_temp(Id::new(PRESS_SPENT_ID), true));
+}
+
+pub const fn spent_press_settled(primary_down: bool, clicked: bool) -> bool {
+    !primary_down && !clicked
+}
+
+pub fn settle_press(ui: &Ui) {
+    if !press_spent(ui) {
+        return;
+    }
+    let (primary_down, clicked) = ui.input(|input| {
+        (
+            input.pointer.button_down(egui::PointerButton::Primary),
+            input.pointer.any_click(),
+        )
+    });
+    if spent_press_settled(primary_down, clicked) {
+        ui.data_mut(|data| data.remove::<bool>(Id::new(PRESS_SPENT_ID)));
+    }
+}
+
 pub fn handle_sweep(
     ui: &Ui,
     id: Id,
@@ -77,14 +114,23 @@ pub fn handle_sweep(
         )
     });
     let can_start = pointer.is_some_and(|point| viewport.contains(point));
-    let active = ui.data(|data| data.get_temp::<Sweep>(id).is_some());
+    let active = ui.data(|data| data.get_temp::<Sweep>(id)).is_some();
+    let armed_pass_id = id.with("armed-pass");
+    let this_pass = ui.ctx().cumulative_pass_nr();
+    let armed_this_pass = ui.data(|data| data.get_temp::<u64>(armed_pass_id)) == Some(this_pass);
+    let key_pressed = key_pressed && !(active && armed_this_pass);
     let value_now = || {
         pointer.and_then(|pointer| {
             ui.data(|data| data.get_temp::<Sweep>(id))
                 .map(|sweep| swept_value(sweep, pointer, sensitivity, range.clone()))
         })
     };
-    match sweep_phase(active, key_pressed, primary_pressed, can_start) {
+    match sweep_phase(SweepInput {
+        active,
+        key_pressed,
+        primary_pressed,
+        can_start,
+    }) {
         SweepPhase::Idle => SweepUpdate::default(),
         SweepPhase::Start => {
             ui.data_mut(|data| {
@@ -95,6 +141,7 @@ pub fn handle_sweep(
                         start_value: current_value,
                     },
                 );
+                data.insert_temp(armed_pass_id, this_pass);
             });
             ui.ctx().request_repaint();
             SweepUpdate {
@@ -115,6 +162,9 @@ pub fn handle_sweep(
         SweepPhase::Finish => {
             let value = value_now();
             ui.data_mut(|data| data.remove::<Sweep>(id));
+            if sweep_spends_press(true, primary_pressed) {
+                spend_press(ui);
+            }
             SweepUpdate {
                 consumed: true,
                 value,
@@ -136,27 +186,67 @@ mod tests {
         Pos2::new(x, 100.0)
     }
 
+    const RUNNING: SweepInput = SweepInput {
+        active: true,
+        key_pressed: false,
+        primary_pressed: false,
+        can_start: true,
+    };
+
     #[test]
     fn the_key_and_a_click_both_end_it() {
         assert_eq!(
-            sweep_phase(true, true, false, true),
+            sweep_phase(SweepInput {
+                key_pressed: true,
+                ..RUNNING
+            }),
             SweepPhase::Finish,
             "the arming key must also disarm"
         );
         assert_eq!(
-            sweep_phase(true, false, true, true),
+            sweep_phase(SweepInput {
+                primary_pressed: true,
+                ..RUNNING
+            }),
             SweepPhase::Finish,
             "a click must disarm"
         );
-        assert_eq!(sweep_phase(true, false, false, true), SweepPhase::Update);
+        assert_eq!(sweep_phase(RUNNING), SweepPhase::Update);
+    }
+
+    #[test]
+    fn letting_the_key_go_leaves_the_sweep_where_it_is() {
+        assert_eq!(sweep_phase(RUNNING), SweepPhase::Update);
     }
 
     #[test]
     fn it_cannot_be_armed_while_something_is_being_typed_into() {
-        assert_eq!(sweep_phase(false, true, false, false), SweepPhase::Idle);
-        assert_eq!(sweep_phase(false, true, false, true), SweepPhase::Start);
-
-        assert_eq!(sweep_phase(false, false, true, true), SweepPhase::Idle);
+        let idle = SweepInput {
+            active: false,
+            ..RUNNING
+        };
+        assert_eq!(
+            sweep_phase(SweepInput {
+                key_pressed: true,
+                can_start: false,
+                ..idle
+            }),
+            SweepPhase::Idle
+        );
+        assert_eq!(
+            sweep_phase(SweepInput {
+                key_pressed: true,
+                ..idle
+            }),
+            SweepPhase::Start
+        );
+        assert_eq!(
+            sweep_phase(SweepInput {
+                primary_pressed: true,
+                ..idle
+            }),
+            SweepPhase::Idle
+        );
     }
 
     #[test]
@@ -197,7 +287,12 @@ mod tests {
             (false, true),
             (false, false),
         ] {
-            let phase = sweep_phase(active, key, click, true);
+            let phase = sweep_phase(SweepInput {
+                active,
+                key_pressed: key,
+                primary_pressed: click,
+                ..RUNNING
+            });
             active = match phase {
                 SweepPhase::Start | SweepPhase::Update => true,
                 SweepPhase::Finish | SweepPhase::Idle => false,

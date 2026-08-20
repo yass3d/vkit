@@ -10,6 +10,30 @@ impl AppState {
         self.texture_project.commit_undo_checkpoint(undo);
     }
 
+    pub(super) fn set_texture_projection_stencil(&mut self, active: bool) {
+        self.texture_project.end_undo_transaction();
+
+        if active {
+            self.texture_project
+                .set_active_tool(TextureTool::Projection);
+        } else if self.texture_project.active_tool == TextureTool::Projection {
+            self.texture_project.set_active_tool(TextureTool::PinPair);
+        }
+        self.offer_projection_help();
+    }
+
+    pub(super) fn set_texture_projection_placement(
+        &mut self,
+        placement: crate::texture_project::StencilPlacement,
+    ) {
+        if placement.offset.iter().all(|value| value.is_finite())
+            && placement.scale.is_finite()
+            && placement.rotation.is_finite()
+        {
+            self.texture_project.place_projection_stencil(placement);
+        }
+    }
+
     pub fn move_texture_source_pin(&mut self, index: usize, point: [f32; 2]) {
         if self.block_mutation_while_busy() || !self.texture_pin_editable() {
             return;

@@ -14,10 +14,6 @@ struct Outline {
     closed: bool,
 
     width: Option<f32>,
-    /// The triangles covering this outline, for a shape that is painted solid.
-    ///
-    /// Worked out once here rather than on every frame, and empty for an
-    /// outline that is only stroked.
     fill: Vec<[u32; 3]>,
 }
 
@@ -74,22 +70,10 @@ impl SvgIcon {
     }
 }
 
-/// Covers a closed outline with triangles, concave corners and all.
-///
-/// Icons are not all made of stroked lines: an author who fills a silhouette
-/// gives us a shape whose corners turn both ways, and painting that as though
-/// it were convex fills in every notch — an L-shaped bracket comes out a solid
-/// square. Ear clipping handles either kind, and runs once when the icon is
-/// parsed rather than on every frame.
-///
-/// Ear clipping assumes the outline does not cross itself. It cannot detect
-/// one that does, and will cover it with something arbitrary rather than
-/// refuse — what is guaranteed here is only that it stops.
 fn triangulate(points: &[Pos2]) -> Vec<[u32; 3]> {
     if points.len() < 3 {
         return Vec::new();
     }
-    // Ear clipping wants one winding; work anticlockwise and flip if need be.
     let mut remaining: Vec<u32> = (0..points.len() as u32).collect();
     if signed_area(points) < 0.0 {
         remaining.reverse();
@@ -98,8 +82,6 @@ fn triangulate(points: &[Pos2]) -> Vec<[u32; 3]> {
     let mut without_progress = 0usize;
     while remaining.len() > 3 {
         if without_progress > remaining.len() {
-            // Every corner has been tried and none can be cut. That is not a
-            // shape we can cover, and rotating further would spin forever.
             return Vec::new();
         }
         let count = remaining.len();
@@ -128,7 +110,6 @@ fn triangulate(points: &[Pos2]) -> Vec<[u32; 3]> {
     triangles
 }
 
-/// Twice the signed area — positive anticlockwise in a y-down space.
 fn signed_area(points: &[Pos2]) -> f32 {
     let mut total = 0.0;
     for index in 0..points.len() {
@@ -139,11 +120,9 @@ fn signed_area(points: &[Pos2]) -> f32 {
     total
 }
 
-/// Whether the corner at `ear[1]` can be cut off without eating anything else.
 fn is_ear(points: &[Pos2], remaining: &[u32], ear: [u32; 3]) -> bool {
     let [a, b, c] = ear.map(|index| points[index as usize]);
     if cross(a, b, c) <= 0.0 {
-        // A reflex corner, or three points in a line: not a corner to cut.
         return false;
     }
     !remaining
@@ -173,11 +152,6 @@ fn collect(group: &usvg::Group, span: f32, outlines: &mut Vec<Outline>) {
 
 fn flatten(path: &usvg::Path, span: f32, outlines: &mut Vec<Outline>) {
     let filled = path.fill().is_some();
-    // Everything above this path — the group holding it, and the one the
-    // renderer builds to fit a viewBox into the declared width and height.
-    // Reading the raw coordinates and ignoring that works only while the two
-    // agree; an icon authored at 800px on a 512 viewBox came out at 64% and
-    // shifted off centre, which is how this was noticed.
     let placement = path.abs_transform();
     let scale = ((placement.sx * placement.sy - placement.kx * placement.ky).abs())
         .sqrt()
@@ -309,11 +283,9 @@ mod tests {
         fill="none" stroke="currentColor" stroke-width="2">
         <rect x="4" y="4" width="16" height="16"/></svg>"#;
 
-    /// An L, drawn anticlockwise in a y-down space, with the notch top-right.
     const BRACKET: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
         <polygon fill="black" points="2,2 8,2 8,18 22,18 22,22 2,22"/></svg>"#;
 
-    /// Every icon the interface draws, so a new one cannot skip the checks.
     fn every_icon() -> Vec<(String, SvgIcon)> {
         crate::ui_components::Icon::ALL
             .iter()
@@ -329,19 +301,12 @@ mod tests {
 
     #[test]
     fn no_icon_sits_off_centre_in_its_own_box() {
-        // An icon whose declared width and its viewBox disagree lands scaled
-        // down and pushed into a corner. That is what put a face icon in the
-        // texture toolbox at 64% and shifted, and nothing in the build said
-        // so — only someone looking at the row of buttons.
         for (name, icon) in every_icon() {
             let (mut low, mut high) = ([f32::MAX; 2], [f32::MIN; 2]);
             for point in icon.outlines.iter().flat_map(|outline| &outline.points) {
                 low = [low[0].min(point.x), low[1].min(point.y)];
                 high = [high[0].max(point.x), high[1].max(point.y)];
             }
-            // Extent is not checked: a tick and a cross are legitimately small
-            // marks. Where an icon sits is the tell, because art authored on a
-            // different grid lands in a corner rather than the middle.
             for (axis, (start, end)) in [(low[0], high[0]), (low[1], high[1])].iter().enumerate() {
                 let centre = (start + end) * 0.5;
                 assert!(
@@ -399,9 +364,6 @@ mod tests {
 
     #[test]
     fn a_shape_it_cannot_read_still_returns() {
-        // Ear clipping does not detect a crossing outline and is not asked to.
-        // What must hold is that it terminates and stays inside its own point
-        // list, whatever it is handed.
         let bowtie = [
             Pos2::new(0.0, 0.0),
             Pos2::new(1.0, 1.0),

@@ -8,18 +8,6 @@ pub struct Responsive {
 }
 
 impl Responsive {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the vocabulary leads the migration")
-    )]
-    pub const fn fixed(points: f32) -> Self {
-        Self {
-            min: points,
-            ideal: points,
-            fraction: 1.0,
-        }
-    }
-
     pub fn resolve(self, available: f32) -> Option<f32> {
         if available.is_nan() || !(self.min.is_finite() && self.ideal.is_finite()) {
             return None;
@@ -28,14 +16,6 @@ impl Responsive {
 
         let want = (available * fraction).min(self.ideal).min(available);
         (want >= self.min).then_some(want)
-    }
-
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the vocabulary leads the migration")
-    )]
-    pub fn fits(self, available: f32) -> bool {
-        self.resolve(available).is_some()
     }
 }
 
@@ -66,9 +46,6 @@ mod tests {
             None,
             "0.4 of 300 is under the floor"
         );
-        assert!(!panel().fits(300.0));
-        assert!(panel().fits(400.0));
-
         assert_eq!(panel().resolve(400.0), Some(160.0));
     }
 
@@ -89,7 +66,11 @@ mod tests {
 
     #[test]
     fn a_fixed_size_does_not_flex_but_still_refuses_to_overflow() {
-        let switch = Responsive::fixed(36.0);
+        let switch = Responsive {
+            min: 36.0,
+            ideal: 36.0,
+            fraction: 1.0,
+        };
         assert_eq!(switch.resolve(4000.0), Some(36.0));
         assert_eq!(switch.resolve(100.0), Some(36.0));
         assert_eq!(switch.resolve(20.0), None);

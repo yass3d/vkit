@@ -114,6 +114,82 @@ impl AppState {
         })
     }
 
+    pub(super) fn auto_align(&mut self) {
+        if let Some(transform) = self.suggested_auto_match() {
+            self.active_tab = Tab::Alignment;
+            self.apply_alignment_transform(transform);
+        } else {
+            self.status = StatusMessage::new(TextKey::AlignmentPending, StatusTone::Warning);
+        }
+    }
+
+    pub(super) fn reset_placement(&mut self) {
+        self.active_tab = Tab::Alignment;
+        if let Some(transform) = self.suggested_alignment() {
+            self.apply_alignment_transform(transform);
+        } else {
+            self.status = StatusMessage::new(TextKey::AlignmentPending, StatusTone::Warning);
+        }
+    }
+
+    pub(super) fn set_scale(&mut self, value: [f64; 3]) {
+        self.active_tab = Tab::Alignment;
+
+        let next = ScanTransform {
+            scale_xyz: value,
+            ..self.transform
+        };
+        self.apply_alignment_transform(next);
+    }
+
+    pub(super) fn scale_xyz_with_axis(&self, axis: usize, value: f64) -> Option<[f64; 3]> {
+        let mut scale_xyz = self.transform.scale_xyz;
+        if self.scale_linked {
+            let current = scale_xyz[axis];
+            if !current.is_finite() || current <= 0.0 {
+                return None;
+            }
+            let factor = value / current;
+            if !factor.is_finite() || factor <= 0.0 {
+                return None;
+            }
+            for axis_scale in &mut scale_xyz {
+                *axis_scale *= factor;
+            }
+            if scale_xyz
+                .iter()
+                .any(|axis_scale| !axis_scale.is_finite() || *axis_scale <= 0.0)
+            {
+                return None;
+            }
+        } else {
+            scale_xyz[axis] = value;
+        }
+        Some(scale_xyz)
+    }
+
+    pub(super) fn set_position(&mut self, axis: usize, value_cm: f64) {
+        self.active_tab = Tab::Alignment;
+        let mut translation_cm = self.transform.translation_cm;
+        translation_cm[axis] = value_cm;
+        let next = ScanTransform {
+            translation_cm,
+            ..self.transform
+        };
+        self.apply_alignment_transform(next);
+    }
+
+    pub(super) fn set_rotation(&mut self, axis: usize, value_degrees: f64) {
+        self.active_tab = Tab::Alignment;
+        let mut rotation_degrees = self.transform.rotation_degrees;
+        rotation_degrees[axis] = value_degrees;
+        let next = ScanTransform {
+            rotation_degrees,
+            ..self.transform
+        };
+        self.apply_alignment_transform(next);
+    }
+
     pub(super) fn current_scan_model_transform(&self) -> ModelTransform {
         let pivot_local = self
             .workspace

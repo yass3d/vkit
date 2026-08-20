@@ -282,20 +282,6 @@ impl BuiltinMorphSession {
         resolve_records(&records, target, head_vertex_mask, source)
     }
 
-    pub fn load_direct_deltas(&self, source: &BuiltinMorphSource) -> Result<Vec<SparseDelta>> {
-        let records = self.records_for_source(source)?;
-        records
-            .iter()
-            .find(|record| record.metadata.morph_index == source.morph_index)
-            .map(|record| record.direct_deltas.clone())
-            .ok_or_else(|| {
-                VaMError::InvalidMorphBank(format!(
-                    "morph index {} is absent from object {}",
-                    source.morph_index, source.object_path_id
-                ))
-            })
-    }
-
     fn records_for_source(&self, source: &BuiltinMorphSource) -> Result<Arc<Vec<BankMorph>>> {
         let requested_path = fs::canonicalize(&source.bundle_path)
             .map_err(|error| io_error(&source.bundle_path, error))?;

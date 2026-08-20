@@ -7,15 +7,25 @@ pub(super) fn handle_sculpt_interaction(
     response: &Response,
     camera: TurntableCamera,
     input_blocked: bool,
+    pane: crate::viewport::ViewPane,
 ) {
+    let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
+    if pressed && response.hovered() {
+        crate::viewport::claim_stroke_pane(ui, SCULPT_DRAG_ID, pane);
+    }
+    if !ui.input(|input| input.pointer.button_down(PointerButton::Primary))
+        && !ui.input(|input| input.pointer.button_released(PointerButton::Primary))
+    {
+        crate::viewport::release_stroke_pane(ui, SCULPT_DRAG_ID);
+    }
+    if !crate::viewport::stroke_pane_gate(ui, SCULPT_DRAG_ID, pane) {
+        return;
+    }
     let stroke_id = Id::new(SCULPT_DRAG_ID);
     if input_blocked {
         let existed = ui.data_mut(|data| {
             let existed = data.get_temp::<SculptViewportStroke>(stroke_id).is_some();
             data.remove::<SculptViewportStroke>(stroke_id);
-            data.remove::<crate::sweep_gesture::Sweep>(
-                crate::ui_components::BrushSweeps::SCULPT.size(),
-            );
             existed
         });
         if existed {
@@ -46,14 +56,17 @@ pub(super) fn handle_sculpt_interaction(
             ),
         )
     {
-        state.dispatch(Action::BeginSculptStroke {
-            view_direction_local: Some(ray.direction.to_array().map(f64::from)),
-            brush_direction_local: None,
-        });
+        if state.sculpt_brush.edits_geometry() {
+            state.dispatch(Action::BeginSculptStroke {
+                view_direction_local: Some(ray.direction.to_array().map(f64::from)),
+                brush_direction_local: None,
+            });
+        }
         ui.data_mut(|data| {
             data.insert_temp(
                 stroke_id,
                 SculptViewportStroke {
+                    mask_step_open: false,
                     center_local: hit.point_local,
                     last_pointer: pointer,
                     last_sample_pointer: pointer,
@@ -98,6 +111,34 @@ pub(super) fn handle_sculpt_interaction(
             camera,
             visible_targets: hit_targets,
         };
+        if input_mode == SculptInputMode::Mask {
+            let alt = ui.input(|input| input.modifiers.alt);
+            let mut gathered: std::collections::BTreeMap<u32, f32> =
+                std::collections::BTreeMap::new();
+            for sample_pointer in &sample_pointers {
+                for (vertex, weight) in morph_mask_vertices(state, dab_viewport, *sample_pointer) {
+                    let entry = gathered.entry(vertex).or_insert(0.0);
+                    *entry = entry.max(weight);
+                }
+            }
+            if !gathered.is_empty() {
+                let vertices = gathered.into_iter().collect::<Vec<_>>();
+                state.dispatch(Action::PaintMorphMask {
+                    vertices,
+                    target: if alt { 1.0 } else { 0.0 },
+                    amount: MASK_DAB_STRENGTH * state.sculpt_strength.clamp(0.01, 1.0),
+                    begins_step: !stroke.mask_step_open,
+                });
+                stroke.mask_step_open = true;
+            }
+            stroke.last_pointer = pointer;
+            ui.data_mut(|data| data.insert_temp(stroke_id, stroke));
+            if primary_down {
+                ui.ctx().request_repaint();
+            }
+            return;
+        }
+
         let mut submitted_dab = false;
         for sample_pointer in sample_pointers {
             let pointer_delta = sample_pointer - stroke.last_sample_pointer;
@@ -153,9 +194,54 @@ pub(super) fn handle_sculpt_interaction(
             }
             existed
         });
-    if stroke_finished {
+    if stroke_finished && state.sculpt_brush.edits_geometry() {
         state.dispatch(Action::EndSculptStroke);
     }
+}
+
+const MASK_DAB_STRENGTH: f32 = 0.12;
+
+fn morph_mask_vertices(
+    state: &AppState,
+    viewport: SculptDabViewport,
+    pointer: Pos2,
+) -> Vec<(u32, f32)> {
+    if state.appearance_stack.selected_id.is_none() {
+        return Vec::new();
+    }
+    let Some(ray) = viewport.camera.ray_from_screen(pointer, viewport.rect) else {
+        return Vec::new();
+    };
+    let radius_points = state.sculpt_brush_radius_points.max(1.0);
+    let Some(hit) = state.sculpt.raycast_visible_with_brush_radius(
+        ray.origin.to_array(),
+        ray.direction.to_array(),
+        viewport.visible_targets,
+        f64::from(
+            viewport
+                .camera
+                .world_units_per_point_at(viewport.camera.target, viewport.rect.height())
+                * radius_points,
+        ),
+    ) else {
+        return Vec::new();
+    };
+    let center = glam::DVec3::from_array(hit.point_local);
+    let world_per_point = viewport
+        .camera
+        .world_units_per_point_at(center.as_vec3(), viewport.rect.height())
+        .max(1.0e-8);
+    let radius = f64::from(world_per_point * radius_points);
+    let falloff = state.sculpt.falloff_preset();
+    state
+        .sculpt
+        .vertices_within(center.to_array(), radius)
+        .into_iter()
+        .filter_map(|(vertex, distance)| {
+            let weight = falloff.weight(distance / radius) as f32;
+            (weight > 0.0).then_some((vertex, weight))
+        })
+        .collect()
 }
 
 pub(super) const fn sculpt_brush_hint(brush: SculptBrush) -> &'static str {
@@ -163,6 +249,7 @@ pub(super) const fn sculpt_brush_hint(brush: SculptBrush) -> &'static str {
         SculptBrush::Move => Shortcut::SculptGrabBrush.label(),
         SculptBrush::Smooth => "Shift",
         SculptBrush::Restore => Shortcut::SculptRestoreBrush.label(),
+        SculptBrush::Mask => "Alt",
     }
 }
 
@@ -215,7 +302,9 @@ pub(super) const fn sculpt_input_mode(
     modifiers: egui::Modifiers,
     brush: SculptBrush,
 ) -> SculptInputMode {
-    if modifiers.shift {
+    if matches!(brush, SculptBrush::Mask) {
+        SculptInputMode::Mask
+    } else if modifiers.shift {
         SculptInputMode::Smooth
     } else if modifiers.alt && matches!(brush, SculptBrush::Restore) && !modifiers.ctrl {
         SculptInputMode::RestoreFit
@@ -226,32 +315,23 @@ pub(super) const fn sculpt_input_mode(
             SculptBrush::Move => SculptInputMode::Grab,
             SculptBrush::Smooth => SculptInputMode::Smooth,
             SculptBrush::Restore => SculptInputMode::Restore,
+            SculptBrush::Mask => SculptInputMode::Mask,
         }
     }
 }
 
-/// What the island should name, given what a stroke would actually do right
-/// now. Holding a modifier is not a choice, so the selection underneath is left
-/// alone and only the label follows — release the key and the island is back
-/// where it was, with nothing to undo.
-///
-/// It reads the same `sculpt_input_mode` the stroke reads, so the two cannot
-/// drift into saying different things about the same held key. Modes with no
-/// brush of their own leave the selection showing; there is nothing truer to
-/// put there.
 pub(super) const fn brush_shown_for(mode: SculptInputMode, selected: SculptBrush) -> SculptBrush {
     match mode {
         SculptInputMode::Smooth => SculptBrush::Smooth,
         SculptInputMode::Grab
         | SculptInputMode::Inflate
         | SculptInputMode::Restore
-        | SculptInputMode::RestoreFit => selected,
+        | SculptInputMode::RestoreFit
+        | SculptInputMode::Mask => selected,
     }
 }
 
 pub(super) fn displayed_sculpt_brush(ui: &Ui, state: &AppState) -> SculptBrush {
-    // A Shift+F sweep holds Shift for its whole run. That is a reach for the
-    // strength readout, not for the smooth brush, so the island stays put.
     if crate::sweep_gesture::sweep_active(ui, crate::ui_components::BrushSweeps::SCULPT.strength())
     {
         return state.sculpt_brush;
@@ -283,7 +363,6 @@ pub(super) fn handle_sculpt_brush_size_gesture(
         return true;
     }
 
-    // On a 3D brush "how much" means strength, so that is what Shift+F sweeps.
     let strength = crate::ui_components::handle_brush_strength_gesture(
         ui,
         crate::ui_components::BrushSweeps::SCULPT.strength(),
@@ -326,6 +405,7 @@ pub(super) fn make_sculpt_viewport_dab(
         .max(1.0e-8);
     let radius_local = f64::from(world_per_point * state.sculpt_brush_radius_points.max(1.0));
     let operation = match input_mode {
+        SculptInputMode::Mask => return None,
         SculptInputMode::Smooth => SculptOperation::Smooth,
         SculptInputMode::Restore => SculptOperation::Restore,
         SculptInputMode::RestoreFit => SculptOperation::RestoreFit,
@@ -440,8 +520,6 @@ pub(super) fn paint_sculpt_brush_hud(ui: &Ui, state: &AppState, response: &Respo
     let sizing =
         brush_size_gesture_anchor(ui, crate::ui_components::BrushSweeps::SCULPT.size()).is_some();
     let modifiers = ui.input(|input| input.modifiers);
-    // While a sweep runs the ring is a readout, so it drops the modifier
-    // colours -- green for smooth, amber for inflate -- and speaks plainly.
     let color = if sizing || cursor.fill.is_some() {
         COLOR_TEXT
     } else if modifiers.shift {
@@ -466,6 +544,9 @@ pub(super) const fn sculpt_visible_targets(state: &AppState) -> SculptTargets {
 }
 
 pub(super) const fn sculpt_hit_targets(state: &AppState) -> SculptTargets {
+    if matches!(state.sculpt_brush, crate::sculpt::SculptBrush::Mask) {
+        return SculptTargets::ALL;
+    }
     state.sculpt.editable_targets()
 }
 
@@ -474,4 +555,8 @@ pub fn clear_sculpt_pointer_stroke(context: &egui::Context) {
         data.remove::<SculptViewportStroke>(Id::new(SCULPT_DRAG_ID));
     });
     clear_brush_size_gesture(context, crate::ui_components::BrushSweeps::SCULPT.size());
+    clear_brush_size_gesture(
+        context,
+        crate::ui_components::BrushSweeps::SCULPT.strength(),
+    );
 }

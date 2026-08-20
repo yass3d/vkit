@@ -113,10 +113,6 @@ impl SceneHdrTarget {
         &self.resolved_view
     }
 
-    pub const fn depth_view(&self) -> &wgpu::TextureView {
-        &self.depth
-    }
-
     pub fn begin_scene_pass(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,

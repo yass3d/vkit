@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("Làm mượt lưới"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,111 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("Lưu"),
         TextKey::DetailCorrection => Some("Điêu khắc"),
         TextKey::TextureStage => Some("Texture"),
+        TextKey::HairStage => Some("Tóc"),
+        TextKey::HairUnavailable => Some("Hoàn tất kết quả điêu khắc trước khi chỉnh sửa tóc"),
+        TextKey::HairPartsPanel => Some("Các phần tóc"),
+        TextKey::AddHairPart => Some("Thêm phần tóc"),
+        TextKey::HairScalpMissing => Some("Không có lưới da đầu; hãy mở thư mục VaM và quét lại"),
+        TextKey::HairShowPoints => Some("Hien diem"),
+        TextKey::HairShowPointsHint => {
+            Some("Hien cac diem trong tren da dau. Tat di de chi xem toc; co ve van hoat dong.")
+        }
+        TextKey::HairPartTint => Some("Tô màu phân biệt"),
+        TextKey::HairPartTintHint => Some(
+            "Cho mỗi phần một màu riêng trong khung nhìn để phân biệt. Chỉ hiển thị; không ảnh hưởng xuất.",
+        ),
+        TextKey::HairSettingsPanel => Some("Cai dat toc"),
+        TextKey::HairCreateFirst => Some("Hãy tạo tóc trước."),
+        TextKey::HairHideStrands => Some("Ẩn tóc"),
+        TextKey::HairHideStrandsHint => {
+            Some("Bỏ phần tóc đã mọc để chỉ đọc các lọn dẫn hướng. Bật mục này cũng bật hiện lọn.")
+        }
+        TextKey::HairShowStreams => Some("Hiện lọn dẫn hướng"),
+        TextKey::HairShowStreamsHint => {
+            Some("Vẽ lọn tóc bạn thật sự chỉnh sửa, đè lên phần tóc mọc ra từ nó.")
+        }
+        TextKey::HairViewportPhysics => Some("Vật lý khung nhìn"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("Xem trước vật lý trên màn hình. Không liên quan đến bản xuất.")
+        }
+        TextKey::HairMirrorEdit => Some("Sửa đối xứng"),
+        TextKey::HairMirrorEditHint => {
+            Some("Cọ chỉnh sửa cả hai bên đầu cùng lúc, đối xứng trái-phải.")
+        }
+        TextKey::HairAutoPart => Some("Phần tự động"),
+        TextKey::HairAutoPartHint => {
+            Some("Cọ chỉ sửa phần được nhận ra dưới con trỏ, thay vì các lớp đang bật.")
+        }
+        TextKey::HairExportSection => Some("Lưu tóc"),
+        TextKey::HairExportBothSexes => Some("Cả hai"),
+        TextKey::HairExportRescanNotice => {
+            Some("Nhấp VaM - Hair - Rescan Files để thấy trong danh sách")
+        }
+        TextKey::HairExportOverwroteNotice => {
+            Some("Ảnh thu nhỏ bị ghi đè hiện sau Hard Reset hoặc khởi động lại VaM")
+        }
+        TextKey::HairSimToggleHint => Some("Chay vat ly toc o day va trong game."),
+        TextKey::HairCollisionToggleHint => Some("Giu toc khong xuyen qua dau va co the."),
+        TextKey::HairStyleJoints => Some("Khớp tạo kiểu"),
+        TextKey::HairStyleJointsHint => Some(
+            "Buộc các lọn gần nhau để kiểu tóc giữ dáng trong game — chính là thứ Cling điều chỉnh. Dành cho tóc dài hoặc buộc; làm nặng tệp.",
+        ),
+        TextKey::HairThumbnailPrompt => Some("Chỉnh góc rồi nhấp để chụp"),
+        TextKey::HairThumbnailShoot => Some("Chụp"),
+        TextKey::HairThumbnailSkip => Some("Bỏ qua"),
+        TextKey::HairThumbnailSaved => Some("Đã lưu ảnh thu nhỏ"),
+        TextKey::HairThumbnailFailed => Some("Lưu ảnh thu nhỏ thất bại"),
+        TextKey::HairGameOnly => Some(
+            "Cài đặt vật lý: khung nhìn không mô phỏng, nên chỉ có hiệu lực trong VaM. Được xuất cùng kiểu tóc.",
+        ),
+        TextKey::HairPartVisible => Some("Hiện hoặc ẩn phần tóc này"),
+        TextKey::RemoveHairPart => Some("Xóa phần tóc"),
+        TextKey::HairRenamePart => Some("Nhấp để đổi tên"),
+        TextKey::HairToolPlant => Some("Trồng"),
+        TextKey::HairToolErase => Some("Xóa"),
+        TextKey::HairToolGrow => Some("Mọc dài (Alt rút ngắn)"),
+        TextKey::HairToolComb => Some("Chải"),
+        TextKey::HairToolPlantHint => Some("Trong soi toc tren cac dinh da dau duoi co"),
+        TextKey::HairToolGrowHint => Some("Keo dai soi toc duoi co; giu Alt de rut ngan"),
+        TextKey::HairToolEraseHint => Some("Xoa soi toc duoi co"),
+        TextKey::HairToolCombHint => Some("Chai soi toc duoi co; chan toc giu nguyen"),
+        TextKey::HairToolPinch => Some("Gom lai"),
+        TextKey::HairToolPinchHint => Some("Gom cac soi toc duoi co. Alt de tach ra"),
+        TextKey::HairToolCut => Some("Cat toc"),
+        TextKey::HairToolCutHint => Some("Cat cac soi toc tai noi co quet qua"),
+        TextKey::HairToolPuff => Some("Lam phong"),
+        TextKey::HairToolPuffHint => Some("Dung cac soi toc duoi co len. Alt de vuot xuong"),
+        TextKey::HairCopySettings => Some("Sao chep tat ca"),
+        TextKey::HairPasteSettings => Some("Dan tat ca"),
+        TextKey::HairGroupPerformance => Some("Hieu nang"),
+        TextKey::HairGroupPhysics => Some("Vat ly"),
+        TextKey::HairGroupStiffness => Some("Do cung"),
+        TextKey::HairGroupShape => Some("Hinh dang"),
+        TextKey::HairGroupCurl => Some("Xoan"),
+        TextKey::HairGroupLook => Some("Dien mao"),
+        TextKey::HairColorScalp => Some("Da dau"),
+        TextKey::HairColorRoot => Some("Goc"),
+        TextKey::HairColorTip => Some("Ngon"),
+        TextKey::HairColorSpecular => Some("Bong"),
+        TextKey::HairScalpMask => Some("Ket cau da dau"),
+        TextKey::HairScalpMaskBuiltIn => Some("Tich hop"),
+        TextKey::HairScalpMaskCustom => Some("Tu tep..."),
+        TextKey::HairExport => Some("Xuất sang VaM"),
+        TextKey::HairExportName => Some("Tên vật phẩm"),
+        TextKey::HairExportCreator => Some("Người tạo"),
+        TextKey::HairExportNeedsMetadata => Some("Nhap ten va nguoi tao truoc khi xuat"),
+        TextKey::HairOverwriteTitle => Some("Thay the kieu toc nay?"),
+        TextKey::HairOverwriteBody => {
+            Some("Da co kieu toc cung ten va nguoi tao. Xuat se thay the tep cua no.")
+        }
+        TextKey::HairOverwriteProceed => Some("Thay the"),
+        TextKey::HairExportDone => Some("Đã lưu vật phẩm tóc"),
+        TextKey::HairExportFailed => Some("Xuất tóc thất bại"),
+        TextKey::HairExportNeedsPart => Some("Hãy chọn phần tóc có sợi trước"),
+        TextKey::HairExportNeedsVaMRoot => Some("Đặt thư mục gốc VaM trước khi xuất"),
+        TextKey::HairMirrorPart => Some("Lật phần sang bên kia"),
+        TextKey::HairDuplicatePart => Some("Nhân đôi phần"),
+        TextKey::HairSegmentsShort => Some("Seg"),
         TextKey::MorphCategoryBody => Some("Thân"),
         TextKey::TextureNamePlaceholder => Some("Nhập tên texture"),
         TextKey::TextureOverwriteTitle => Some("Thao tác này thay thế các texture trùng tên"),
@@ -68,6 +173,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("Hoàn tác"),
         TextKey::ResetAllPins => Some("Đặt lại mọi ghim"),
+        TextKey::ResetAll => Some("Dat lai tat ca"),
         TextKey::MorphSave => Some("Lưu morph"),
         TextKey::TextureSaveSection => Some("Lưu texture"),
         TextKey::Generate => Some("Khớp mặt"),
@@ -89,7 +195,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("Hiện và điều chỉnh lớp phủ Wireframe"),
         TextKey::ViewportXrayTooltip => Some("Hiện và điều chỉnh lớp phủ X-ray"),
         TextKey::ViewportSkinTooltip => Some("Chọn texture da VaM"),
-        TextKey::ViewportHairTooltip => Some("Chọn preset tóc VaM"),
         TextKey::FalloffTooltip => Some("Chọn đường cong ảnh hưởng của cọ"),
         TextKey::FalloffSmooth => Some("Mượt"),
         TextKey::FalloffSmoother => Some("Mượt hơn"),
@@ -132,6 +237,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("Đặt một ghim lên mỗi bên, hoặc khớp không cần ghim"),
         TextKey::TextureNeedsImage => Some("Thêm ảnh từ bảng bên"),
         TextKey::TexturePinPairPrompt => Some("Đặt các ghim tương ứng ở bên trái và bên phải"),
+        TextKey::TextureToolNeedsPins => Some("Đặt ghim trước để dùng công cụ này"),
         TextKey::SymmetrySuggestion => Some("Nên bật đối xứng để khớp sạch hơn"),
         TextKey::SymmetryChangeTitle => Some("Các pin sẽ bị đặt lại"),
         TextKey::SymmetryChangeConfirm => Some("Xác nhận"),
@@ -167,10 +273,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("Nạp da thất bại"),
         TextKey::SkinUvUnavailable => Some("Không có UV da"),
         TextKey::NoMatchingSkins => Some("Không có da phù hợp"),
-        TextKey::Hair => Some("Tóc"),
-        TextKey::HairNone => Some("Không"),
         TextKey::HairSearch => Some("Tìm tóc"),
-        TextKey::HairLoading => Some("Đang nạp tóc"),
         TextKey::HairReady => Some("Xem trước tóc đã sẵn sàng"),
         TextKey::HairLoadFailed => Some("Nạp tóc thất bại"),
         TextKey::HairPartsSkipped => Some("Hiển thị thiếu một số phần"),
@@ -181,6 +284,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("Khung nhìn"),
         TextKey::SettingsGeneral => Some("Chung"),
         TextKey::SettingsAbout => Some("Giới thiệu"),
+        TextKey::SettingsShortcuts => Some("Phím tắt"),
+        TextKey::ShortcutsCapturing => Some("Nhấn…"),
+        TextKey::ShortcutsResetAll => Some("Đặt lại mọi phím tắt"),
+        TextKey::ShortcutsExport => Some("Lưu sơ đồ phím ra tệp"),
+        TextKey::ShortcutsImport => Some("Tải tệp sơ đồ phím"),
+        TextKey::ShortcutsTaken => Some("Một thao tác khác đã dùng phím này"),
         TextKey::SettingsAboutBuild => Some("Bản dựng"),
         TextKey::SettingsAboutLicense => Some("Giấy phép"),
         TextKey::SettingsAboutDiagnostics => Some("Chẩn đoán"),
@@ -220,21 +329,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("Ngôn ngữ hiển thị"),
         TextKey::SettingsFoldersGroup => Some("Thư mục"),
         TextKey::SettingsVaMRoot => Some("Đường dẫn cài VaM"),
-        TextKey::HairVisible => Some("Hiện tóc"),
         TextKey::HairNeedsFinishedHead => Some("Tóc được đội lên đầu đã hoàn thiện."),
-        TextKey::HairPreviewCaveat => Some("Chi tiết tóc khác với thực tế."),
         TextKey::NoMatchingHair => Some("Không có preset tóc phù hợp"),
         TextKey::MorphSearch => Some("Tìm morph"),
         TextKey::MorphOneSidedFilter => Some("T/P"),
         TextKey::MorphOneSidedFilterShow => Some("Hiện morph chỉ tác động một bên"),
         TextKey::MorphOneSidedFilterHide => Some("Ẩn morph chỉ tác động một bên"),
         TextKey::AppearanceSearch => Some("Tìm look"),
+        TextKey::AppearanceLayers => Some("Lop ngoai hinh"),
+        TextKey::AddAppearanceLayer => Some("Them ngoai hinh dang chon"),
+        TextKey::AppearanceLayersEmpty => Some("Chua co lop nao"),
+        TextKey::AppearanceLayerRaise => Some("Len tren"),
+        TextKey::AppearanceLayerLower => Some("Xuong duoi"),
         TextKey::LookFind => Some("Nạp look"),
         TextKey::CameraTrackballArmed => {
-            Some("Xoay nghiêng · kéo ngang để nghiêng · nhấp hoặc R để kết thúc")
+            Some("Trackball · kéo để xoay tự do · nhấp hoặc R để thoát")
         }
         TextKey::HelpTrackball => Some("Xoay trackball"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("Xem từ hai góc — chia đôi khung nhìn"),
+        TextKey::SplitModelViewName => Some("Chia doi khung nhin"),
+        TextKey::HelpLevelRoll => Some("Cân bằng đường chân trời"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("Phiên trước đã kết thúc đột ngột"),
         TextKey::RecoveryBody => Some(
             "Morph, phần điêu khắc và các lớp texture của bạn đã được lưu ngay trước khi dừng. Khôi phục lại chứ?",
@@ -245,9 +361,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Diện mạo của phiên đó chưa có trong danh sách — kết cấu đã khôi phục, chỉnh sửa sẽ áp dụng khi chọn diện mạo.",
         ),
-        TextKey::SettingsOcclusionGroup => Some("Ambient occlusion"),
-        TextKey::SettingsOcclusionIntensity => Some("Cường độ"),
-        TextKey::SettingsOcclusionRadius => Some("Tầm"),
         TextKey::SettingsBloomGroup => Some("Bloom"),
         TextKey::SettingsBloomIntensity => Some("Cường độ"),
         TextKey::SettingsBloomThreshold => Some("Ngưỡng"),
@@ -260,7 +373,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("Phần điêu khắc không theo được look này"),
         TextKey::SettingsToneCurve => Some("Tone curve"),
         TextKey::SettingsToneCurveTooltip => Some("Điều chỉnh vùng tối và vùng sáng"),
-        TextKey::SettingsOcclusionTooltip => Some("Tạo bóng ở các nếp nơi bề mặt giao nhau"),
         TextKey::SettingsVignetteTooltip => Some("Làm tối các mép khung hình"),
         TextKey::SettingsEffectEnabled => Some("Bật"),
         TextKey::SettingsInterfaceGroup => Some("Giao diện"),
@@ -361,6 +473,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("Không có morph kết quả tương thích"),
         TextKey::AlignmentPending => Some("Nạp đầu quét và chọn thư mục VaM của bạn"),
         TextKey::ScanLoaded => Some("Đã nạp đầu tùy chỉnh OBJ, GLB hoặc FBX"),
+        TextKey::ScanUnloaded => Some("Đã gỡ tệp đầu; nền G2 sẵn sàng để chỉnh"),
+        TextKey::PinPairsMismatched => Some("Số lượng ghim không khớp; ghim chưa có cặp"),
+        TextKey::UnloadScanTooltip => Some("Gỡ tệp đầu này"),
         TextKey::TemplateLoaded => Some("Đã nạp G2"),
         TextKey::PinsReset => Some("Đã đặt lại mọi pin"),
         TextKey::ResultStale => Some("Thay đổi cần tạo lại kết quả"),
@@ -418,6 +533,37 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutCameraProjection => Some("Numpad ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("Làm lại"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("Cai dat toc"),
+        TextKey::HairPresetLoad => Some("Tai"),
+        TextKey::HairToolPick => Some("Chon lop"),
+        TextKey::HairToolPickHint => Some(
+            "Nhap vao mot soi trong khung nhin de kich hoat lop cua no. Co ve doi den lan nhap tiep theo.",
+        ),
+        TextKey::HelpHairPick => Some("Chon lop duoi con tro"),
+        TextKey::ShortcutHairPick => Some("V, hoac Ctrl + nhap voi bat ky co ve nao"),
+        TextKey::HelpHairSmooth => Some("Lam muot thay vi chai"),
+        TextKey::ShortcutHairSmooth => Some("Shift khi chai"),
+        TextKey::HairGroupScalp => Some("Da dau"),
+        TextKey::HairScalpAlpha => Some("Mat na da dau"),
+        TextKey::HairScalpPanel => Some("Da dau"),
+        TextKey::HairScalpMesh => Some("Luoi da dau"),
+        TextKey::HairScalpCreate => Some("Tao da dau"),
+        TextKey::HairScalpAbsent => Some("Kieu toc nay chua co lop da dau."),
+        TextKey::HistoryBranchTitle => Some("Các bước phía trước sẽ mất"),
+        TextKey::HistoryBranchProceed => Some("Vẫn chỉnh sửa"),
+        TextKey::DoNotShowAgain => Some("Không hiển thị lại"),
+        TextKey::SurfaceBaseUnblended => Some("Một số bản đồ PBR không thể hòa với da VaM"),
+        TextKey::DetailEditRedone => Some("Đã áp dụng lại chỉnh sửa vừa hoàn tác"),
+        TextKey::ShortcutBrushSmaller => Some("Thu nhỏ cọ"),
+        TextKey::ShortcutBrushLarger => Some("Phóng to cọ"),
+        TextKey::ShortcutBrushSizeDrag => Some("Kéo để đổi cỡ cọ"),
+        TextKey::ShortcutBrushStrengthDrag => Some("Kéo để đổi lực cọ"),
+        TextKey::ShortcutStencilCancel => Some("Huỷ đặt khuôn"),
+        TextKey::ShortcutViewOrbit => Some("Xoay quanh khung nhìn"),
+        TextKey::ShortcutViewPan => Some("Dời khung nhìn"),
+        TextKey::ShortcutViewDolly => Some("Đưa khung nhìn ra vào"),
         TextKey::TemplatePending => Some("Chọn thư mục VaM để tự chuẩn bị nền G2"),
         TextKey::ResultEmpty => Some("Chưa có morph nào được chuẩn bị"),
         TextKey::ScaleLink => Some("Liên kết tỉ lệ"),
@@ -451,6 +597,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Làm mượt chi tiết bề mặt"),
         TextKey::SculptBrushRestoreTooltip => Some("Đưa dần về hình dạng nền"),
+        TextKey::SculptBrushMask => Some("Mat na"),
+        TextKey::SculptBrushMaskTooltip => {
+            Some("Khoet lop ngoai hinh dang chon de lo lop ben duoi. Alt to lai")
+        }
         TextKey::TextureLayers => Some("Lớp texture"),
         TextKey::PackageSection => Some("Xuất VAR"),
         TextKey::PackageCreatorHint => Some("Tác giả"),
@@ -604,6 +754,190 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("Thêm lớp texture"),
         TextKey::DialogSaveMorphPair => Some("Lưu morph VaM VMI + VMB"),
         TextKey::DialogChooseVamFolder => Some("Chọn thư mục Virt-A-Mate"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("Số lượng tóc"),
+        "curveDensity" => Some("Mật độ đường cong"),
+        "iterations" => Some("Số vòng lặp"),
+        "simulationEnabled" => Some("Vật lý"),
+        "collisionEnabled" => Some("Va chạm"),
+        "weight" => Some("Trọng lượng"),
+        "drag" => Some("Lực cản không khí"),
+        "gravityMultiplier" => Some("Hệ số trọng lực"),
+        "collisionRadius" => Some("Bán kính va chạm"),
+        "collisionRadiusRoot" => Some("Bán kính va chạm (chân)"),
+        "friction" => Some("Ma sát"),
+        "bendResistance" => Some("Kháng uốn"),
+        "rootRigidity" => Some("Độ cứng ở chân"),
+        "mainRigidity" => Some("Độ cứng ở giữa"),
+        "tipRigidity" => Some("Độ cứng ở ngọn"),
+        "jointRigidity" => Some("Độ cứng khớp"),
+        "rigidityRolloffPower" => Some("Suy giảm độ cứng"),
+        "cling" => Some("Độ bám kiểu"),
+        "clingRolloff" => Some("Suy giảm độ bám"),
+        "snap" => Some("Bám giữ"),
+        "usePaintedRigidity" => Some("Dùng độ cứng đã vẽ"),
+        "width" => Some("Độ dày"),
+        "length1" => Some("Chiều dài 1"),
+        "length2" => Some("Chiều dài 2"),
+        "length3" => Some("Chiều dài 3"),
+        "maxSpread" => Some("Độ xòe tối đa"),
+        "spreadRoot" => Some("Xòe (chân)"),
+        "spreadMid" => Some("Xòe (giữa)"),
+        "spreadTip" => Some("Xòe (ngọn)"),
+        "spreadMidpoint" => Some("Điểm giữa của xòe"),
+        "spreadCurvePower" => Some("Đường cong xòe"),
+        "curlScale" => Some("Kích thước lọn xoăn"),
+        "curlFrequency" => Some("Tần số xoăn"),
+        "curlScaleRandomness" => Some("Ngẫu nhiên kích thước"),
+        "curlFrequencyRandomness" => Some("Ngẫu nhiên tần số"),
+        "curlRoot" => Some("Xoăn (chân)"),
+        "curlMid" => Some("Xoăn (giữa)"),
+        "curlTip" => Some("Xoăn (ngọn)"),
+        "curlMidpoint" => Some("Điểm giữa của xoăn"),
+        "curlCurvePower" => Some("Đường cong xoăn"),
+        "curlX" => Some("Xoăn X"),
+        "curlY" => Some("Xoăn Y"),
+        "curlZ" => Some("Xoăn Z"),
+        "curlNormalAdjust" => Some("Hiệu chỉnh pháp tuyến xoăn"),
+        "curlAllowReverse" => Some("Cho phép cuộn ngược"),
+        "curlAllowFlipAxis" => Some("Cho phép lật trục"),
+        "Alpha Adjust" => Some("Độ đục của da đầu"),
+        "Diffuse Color" => Some("Màu khuếch tán da đầu"),
+        "Gloss" => Some("Độ bóng da đầu"),
+        "Specular Intensity" => Some("Phản chiếu da đầu"),
+        "Diffuse Texture Offset" => Some("Dịch texture da đầu"),
+        "rootColor" => Some("Màu chân tóc"),
+        "tipColor" => Some("Màu ngọn tóc"),
+        "specularColor" => Some("Màu highlight"),
+        "colorRolloff" => Some("Suy giảm màu chân→ngọn"),
+        "randomColorPower" => Some("Cường độ màu ngẫu nhiên"),
+        "randomColorOffset" => Some("Dịch màu ngẫu nhiên"),
+        "primarySpecularSharpness" => Some("Highlight chính"),
+        "secondarySpecularSharpness" => Some("Highlight phụ"),
+        "specularShift" => Some("Dịch highlight phụ"),
+        "diffuseSoftness" => Some("Độ mềm khuếch tán"),
+        "fresnelPower" => Some("Cường độ Fresnel"),
+        "fresnelAttenuation" => Some("Suy giảm Fresnel"),
+        "IBLFactor" => Some("Ánh sáng gián tiếp"),
+        "normalRandomize" => Some("Ngẫu nhiên pháp tuyến"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some(
+            "Bao nhiêu sợi mọc ra giữa mỗi bộ ba đường dẫn. Đó chính là dáng vẻ của tóc, và phần lớn chi phí của nó.",
+        ),
+        "curveDensity" => Some(
+            "Số điểm vẽ dọc mỗi sợi. Nhiều hơn thì mượt hơn và chậm hơn; hình dáng đã đọc được từ lâu trước khi con số lên cao.",
+        ),
+        "iterations" => Some(
+            "Số lượt giải mỗi khung hình. Nhiều hơn thì giữ ràng buộc chắc hơn khi chuyển động nhanh.",
+        ),
+        "simulationEnabled" => Some(
+            "Phần này có chuyển động trong game hay không. Không liên quan đến công tắc khung nhìn.",
+        ),
+        "collisionEnabled" => Some("Sợi của phần này có bị đẩy ra khỏi cơ thể hay không."),
+        "weight" => {
+            Some("Sợi tóc rủ xuống nặng đến đâu. Nhân cả trọng lực lẫn sức cản khi bị dịch chuyển.")
+        }
+        "drag" => Some("Không khí giữ sợi tóc lại bao nhiêu. Cao thì mau đứng yên và ít đung đưa."),
+        "gravityMultiplier" => {
+            Some("Trọng lực tác dụng lên phần này, tính theo bội số trọng lực của cảnh.")
+        }
+        "collisionRadius" => Some("Độ dày mà sợi tóc dùng để va chạm, dọc suốt chiều dài."),
+        "collisionRadiusRoot" => Some("Độ dày gần chân tóc, khi cần khác với phần còn lại."),
+        "friction" => Some("Sợi tóc bám vào thứ nó chạm thay vì trượt đi, đến mức nào."),
+        "bendResistance" => Some("Sợi tóc kháng lại việc bị uốn khỏi đường thẳng đến mức nào."),
+        "rootRigidity" => Some("Phần chân giữ dáng đã tạo kiểu chắc đến đâu."),
+        "mainRigidity" => Some("Phần giữa giữ dáng đã tạo kiểu chắc đến đâu."),
+        "tipRigidity" => Some("Phần ngọn giữ dáng đã tạo kiểu chắc đến đâu."),
+        "jointRigidity" => {
+            Some("Độ cứng của các khớp kiểu tóc: những lò xo giữ cho đuôi ngựa vẫn là đuôi ngựa.")
+        }
+        "rigidityRolloffPower" => Some(
+            "Ba độ cứng hòa vào nhau dọc sợi tóc ra sao. Càng cao thì giá trị ở chân đi càng xa xuống dưới.",
+        ),
+        "cling" => Some("Các khớp kiểu tóc kéo các sợi lại gần nhau mạnh đến đâu."),
+        "clingRolloff" => {
+            Some("Độ bám phai dần dọc sợi tóc đến đâu. Càng cao càng bị giữ gần chân tóc.")
+        }
+        "snap" => Some("Mỗi đốt giữ đúng chiều dài đã tạo chắc đến mức nào."),
+        "usePaintedRigidity" => Some("Lấy độ cứng từ bản đồ đã vẽ thay vì từ ba thanh trượt."),
+        "width" => Some(
+            "Độ dày khi vẽ một sợi tóc. Thanh trượt của chính VaM cũng dừng ở một phần mười milimét.",
+        ),
+        "length1" => Some("Chiều dài các sợi gần đường dẫn thứ nhất của tam giác."),
+        "length2" => Some("Chiều dài các sợi gần đường dẫn thứ hai của tam giác."),
+        "length3" => Some("Chiều dài các sợi gần đường dẫn thứ ba của tam giác."),
+        "maxSpread" => Some(
+            "Mức trần cho khoảng cách một sợi được phép lệch khỏi đường dẫn, không phải hệ số khuếch đại. Khi đã vượt khoảng cách giữa các đường dẫn, tăng thêm cũng không đổi gì.",
+        ),
+        "spreadRoot" => {
+            Some("Các sợi tách ra tự do đến đâu ở chân tóc. Thấp thì gom chúng về phía đường dẫn.")
+        }
+        "spreadMid" => Some("Các sợi tách ra tự do đến đâu ở giữa."),
+        "spreadTip" => Some("Các sợi tách ra tự do đến đâu ở ngọn."),
+        "spreadMidpoint" => Some("Từ điểm nào trên sợi thì độ xòe ở giữa có hiệu lực."),
+        "spreadCurvePower" => Some("Độ xòe chuyển tiếp giữa chân, giữa và ngọn gắt đến mức nào."),
+        "curlScale" => Some("Bề rộng lọn xoăn: bán kính nó cuộn quanh, không phải chiều dài."),
+        "curlFrequency" => Some("Số vòng trên mỗi xentimét sợi."),
+        "curlScaleRandomness" => Some("Bề rộng lọn xoăn khác nhau giữa các sợi đến đâu."),
+        "curlFrequencyRandomness" => Some("Tốc độ cuộn khác nhau giữa các sợi đến đâu."),
+        "curlRoot" => Some("Độ xoăn tới được chân tóc bao nhiêu."),
+        "curlMid" => Some("Độ xoăn tới được phần giữa bao nhiêu."),
+        "curlTip" => Some("Độ xoăn tới được phần ngọn bao nhiêu."),
+        "curlMidpoint" => Some("Từ điểm nào trên sợi thì độ xoăn ở giữa có hiệu lực."),
+        "curlCurvePower" => Some("Độ xoăn chuyển tiếp giữa chân, giữa và ngọn gắt đến mức nào."),
+        "curlX" => {
+            Some("Độ dịch của lọn xoăn theo X. Là vectơ bị xoay, không phải trục để cuộn quanh.")
+        }
+        "curlY" => Some("Độ dịch của lọn xoăn theo Y."),
+        "curlZ" => Some("Độ dịch của lọn xoăn theo Z."),
+        "curlNormalAdjust" => Some(
+            "Được cộng vào độ dịch xoăn theo pháp tuyến. Nó nâng vòng cuộn khỏi đầu chứ không nghiêng trục.",
+        ),
+        "curlAllowReverse" => Some(
+            "Cho một số sợi cuộn ngược chiều, để cả mái tóc xoăn không đọc ra như một sợi lặp lại.",
+        ),
+        "curlAllowFlipAxis" => Some("Cho một số sợi cuộn quanh trục bị lật, cũng vì lý do đó."),
+        "Alpha Adjust" => Some(
+            "Mũ da đầu đục đến mức nào. Phần lớn các phần đội mũ của người khác nên giữ ở mức thấp nhất để giấu đi; chỉ nâng lên khi đường rẽ ngôi cần lộ da đầu.",
+        ),
+        "Diffuse Color" => Some(
+            "Màu khuếch tán của chính chiếc mũ. VaM xuất xưởng màu trắng, để lớp da bên dưới lộ qua.",
+        ),
+        "Gloss" => Some("Mũ da đầu bóng đến đâu ở chỗ nó lộ ra."),
+        "Specular Intensity" => Some("Mũ da đầu bắt highlight mạnh đến đâu."),
+        "Diffuse Texture Offset" => Some(
+            "Được cộng vào màu khuếch tán của mũ. Bất chấp cái tên, đây không phải số hiệu trang.",
+        ),
+        "rootColor" => Some("Màu ở chân tóc."),
+        "tipColor" => Some("Màu ở ngọn tóc."),
+        "specularColor" => Some("Màu của highlight."),
+        "colorRolloff" => Some("Màu chân nhường chỗ cho màu ngọn dọc theo sợi ra sao."),
+        "randomColorPower" => Some("Màu giữa các sợi khác nhau mạnh đến đâu."),
+        "randomColorOffset" => Some("Sự khác biệt ấy nghiêng về phía sáng hơn hay tối hơn."),
+        "primarySpecularSharpness" => Some("Highlight chính khít đến đâu. Càng cao càng bóng."),
+        "secondarySpecularSharpness" => {
+            Some("Highlight thứ hai khít đến đâu: cái có màu và di chuyển cùng mái tóc.")
+        }
+        "specularShift" => Some("Highlight thứ hai nằm cách cái thứ nhất bao xa dọc theo sợi."),
+        "diffuseSoftness" => {
+            Some("Ánh sáng ôm quanh sợi tóc mềm đến đâu, thay vì chỉ rọi mặt hướng về nó.")
+        }
+        "fresnelPower" => Some("Viền sáng lên gắt đến đâu ở chỗ tóc quay khỏi tầm mắt."),
+        "fresnelAttenuation" => Some("Độ mạnh của viền sáng ấy."),
+        "IBLFactor" => Some("Tóc nhận bao nhiêu ánh sáng môi trường của cảnh."),
+        "normalRandomize" => Some(
+            "Pháp tuyến tô bóng của mỗi sợi bị xê dịch bao nhiêu, để các sợi cạnh nhau không đổ bóng y hệt.",
+        ),
         _ => None,
     }
 }

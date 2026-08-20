@@ -17,17 +17,9 @@ use super::simplify::{AttributeMesh, AttributeMeshBuilder, Corner, FaceLabels};
 
 type Matrix = [[f64; 4]; 4];
 
-/// Ceilings applied per primitive, mirroring the per-document ones `simplify` enforces. A sparse
-/// accessor declares its length in JSON with no buffer to bound it, and a triangle strip expands
-/// to three indices per vertex, so both counts have to be checked before anything is allocated
-/// rather than after.
 const MAX_PRIMITIVE_VERTICES: usize = 12_000_000;
 const MAX_PRIMITIVE_TRIANGLES: usize = 5_000_000;
 
-/// What the walk stepped over rather than refusing the file for. Every field is a place where
-/// this importer used to return `Err` for something that costs the user geometry they could have
-/// had; the counts are written to the diagnostics log so that "half my model is missing" can be
-/// answered from the log rather than guessed at.
 #[derive(Debug, Default)]
 struct SkipTally {
     surfaceless_primitives: usize,
@@ -124,14 +116,6 @@ impl PositionWelder {
     }
 }
 
-/// Reads a `.glb` or `.gltf` into the mesh the fitter works on.
-///
-/// The order below is the whole point of this function. Geometry is walked first and finished
-/// first; the material library is written afterwards and cannot fail the import. Every appearance
-/// step used to sit in front of the walk and share its `Result`, which meant a texture in a format
-/// this build does not decode, a texture folder that could not be created, or a sidecar `.png` the
-/// user forgot to copy each refused a file whose vertices were never even read. Nothing about a
-/// texture may cost a user their scan.
 pub(crate) fn load_glb(
     path: &Path,
     appearance_root: &Path,
@@ -196,14 +180,6 @@ pub(crate) fn load_glb(
     Ok(mesh)
 }
 
-/// The nodes the walk starts from, and how many of them the scene never mentioned.
-///
-/// The default scene comes first, so a well-formed file is walked exactly as its author meant.
-/// Then every node no other node claims as a child is added if the scene missed it, which covers
-/// two shapes that are spec-valid and used to import as nothing at all: a document with no
-/// `scenes` array (the spec makes it optional, and glTF used as a library of meshes routinely
-/// omits it) and a mesh node the exporter left out of the scene it wrote. Nodes already reached
-/// are skipped rather than emitted twice, so instancing across scenes is untouched.
 fn walk_roots<'a>(gltf: &'a gltf::Gltf) -> (Vec<gltf::Node<'a>>, usize) {
     let mut roots = Vec::new();
     let mut claimed = HashSet::new();
@@ -240,20 +216,10 @@ struct SceneWalk<'a> {
     welder: &'a mut PositionWelder,
     builder: &'a mut AttributeMeshBuilder,
     visited_nodes: &'a mut usize,
-    /// Node indices already emitted. glTF nodes must form a forest, so a second reference to one
-    /// is malformed; without this, a document where sixty transform-only nodes each list the next
-    /// one twice costs 2^60 visits and the import never returns — no panic, no error, no cancel.
     emitted: &'a mut HashSet<usize>,
     tally: &'a mut SkipTally,
 }
 
-/// Walks one node and its subtree, emitting whatever geometry it carries.
-///
-/// The two bail-outs near the top used to refuse the whole document, and both are per-node facts
-/// about a document whose other nodes are perfectly readable: a hierarchy deeper than this walk
-/// will recurse through, and a composed transform that has gone non-finite because some ancestor
-/// carried a zero scale an exporter later inverted. A head parked on a sane branch of such a file
-/// costs the user nothing now; the subtree is stepped over and counted instead.
 fn visit_node(
     node: gltf::Node<'_>,
     parent: Matrix,
@@ -328,15 +294,26 @@ fn visit_node(
             let material = primitive.material();
             let pbr = material.pbr_metallic_roughness();
             let base_color = pbr.base_color_texture();
-            let transform = base_color
+            let uv_set = base_color
                 .as_ref()
-                .and_then(gltf::texture::Info::texture_transform);
-            let uv_set = transform
-                .as_ref()
-                .and_then(gltf::texture::TextureTransform::tex_coord)
-                .or_else(|| base_color.as_ref().map(gltf::texture::Info::tex_coord))
+                .map(|info| {
+                    info.texture_transform()
+                        .and_then(|transform| transform.tex_coord())
+                        .unwrap_or_else(|| info.tex_coord())
+                })
+                .or_else(|| material_uv_sets(&material).first().map(|(set, _)| *set))
                 .unwrap_or(0);
-            let mut uvs = read_tex_coords(&primitive, buffers, uv_set, local_positions.len());
+            let transform = material_uv_sets(&material)
+                .into_iter()
+                .find(|(set, transform)| *set == uv_set && transform.is_some())
+                .and_then(|(_, transform)| transform);
+            let mut uvs = read_tex_coords(
+                &primitive,
+                buffers,
+                uv_set,
+                local_positions.len(),
+                transform.is_some(),
+            );
             if uvs.is_none() && primitive.get(&Semantic::TexCoords(uv_set)).is_some() {
                 tally.dropped_uv_streams += 1;
             }
@@ -422,29 +399,32 @@ fn visit_node(
     Ok(())
 }
 
-/// The matrix that places a primitive's vertices, which is not always its node's world matrix.
-///
-/// A rigged head stores its bind pose in `POSITION`, which is exactly the geometry a fitter wants,
-/// so a skin is read past rather than refused. The transform rule is not the unskinned one though,
-/// and getting it wrong is the only mistake in this area that imports silently instead of failing:
-/// glTF 2.0 states that the world transform of a node referencing a skinned mesh MUST be ignored,
-/// because a skinned vertex is placed by its joints and joint transforms are already expressed in
-/// scene space. Applying the node's matrix on top would move a Ready Player Me or VRM head by
-/// whatever translation and scale the exporter parked on that node, with no error anywhere.
-/// Children still inherit the real world matrix — this rule is about one mesh's vertices, not
-/// about the hierarchy.
 fn mesh_placement(skinned: bool, world: Matrix) -> Matrix {
     if skinned { identity() } else { world }
 }
 
-/// Folds `KHR_texture_transform` into the UVs themselves.
-///
-/// The extension is an affine transform on texture coordinates and touches nothing else, so it is
-/// resolved here where Vkit's single UV per corner can hold the result. The composition is
-/// translate · rotate · scale applied to the coordinate as a column vector, matching the
-/// extension's own reference implementation, and the rotation is counter-clockwise as the spec
-/// words it. A wrong sign or a wrong order would misplace a texture and could never misplace a
-/// vertex, which is why this is worth doing at all rather than refusing the file over it.
+fn material_uv_sets<'a>(
+    material: &gltf::Material<'a>,
+) -> Vec<(u32, Option<gltf::texture::TextureTransform<'a>>)> {
+    let pbr = material.pbr_metallic_roughness();
+    [
+        pbr.base_color_texture(),
+        pbr.metallic_roughness_texture(),
+        material.emissive_texture(),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|info| {
+        let transform = info.texture_transform();
+        let set = transform
+            .as_ref()
+            .and_then(gltf::texture::TextureTransform::tex_coord)
+            .unwrap_or_else(|| info.tex_coord());
+        (set, transform)
+    })
+    .collect()
+}
+
 fn apply_texture_transform(transform: &gltf::texture::TextureTransform<'_>, uvs: &mut [[f64; 2]]) {
     let [offset_u, offset_v] = transform.offset().map(f64::from);
     let [scale_u, scale_v] = transform.scale().map(f64::from);
@@ -458,10 +438,6 @@ fn apply_texture_transform(transform: &gltf::texture::TextureTransform<'_>, uvs:
     }
 }
 
-/// The three primitive modes that carry a surface. `POINTS`, `LINES`, `LINE_LOOP` and
-/// `LINE_STRIP` are absent on purpose: they hold no triangles at all, so a document that mixes CAD
-/// edge geometry or an annotation polyline in with its shell is walked for the shell and the rest
-/// is stepped over rather than being grounds for refusing the file.
 #[derive(Clone, Copy, Debug)]
 enum Topology {
     Triangles,
@@ -479,10 +455,6 @@ impl Topology {
         }
     }
 
-    /// Rewrites a strip or a fan as the equivalent triangle list. The strip's odd steps swap the
-    /// first two corners, which is the spec's own rule and the one place a plausible-looking
-    /// mistake would import cleanly and silently invert every other face normal. `None` means the
-    /// expansion would exceed what the simplifier accepts, which is checked before allocating.
     fn expand(self, indices: Vec<u32>) -> Option<Vec<u32>> {
         let triangles = match self {
             Self::Triangles => indices.len() / 3,
@@ -517,10 +489,6 @@ impl Topology {
     }
 }
 
-/// Reads the index stream, or synthesises the draw-arrays sequence when a primitive has none. An
-/// unreadable index accessor degrades to the draw-arrays order rather than refusing the file: the
-/// vertices are in hand either way, and the worst outcome is a mesh whose faces are wrong, which
-/// the user can see.
 fn read_indices(primitive: &gltf::Primitive<'_>, buffers: &[Vec<u8>], vertices: usize) -> Vec<u32> {
     let readable = primitive
         .indices()
@@ -534,16 +502,12 @@ fn read_indices(primitive: &gltf::Primitive<'_>, buffers: &[Vec<u8>], vertices: 
     (0..vertices as u32).collect()
 }
 
-/// Reads one texture-coordinate set, or nothing. Every failure here is a texturing question and
-/// none of them may cost the caller its geometry, so the whole function returns `Option` and the
-/// caller treats `None` as "this mesh has no UVs". The named set is tried first because a material
-/// is free to point its base colour at `TEXCOORD_1`; set 0 is the fallback so that a mesh keeps
-/// the UVs it does have.
 fn read_tex_coords(
     primitive: &gltf::Primitive<'_>,
     buffers: &[Vec<u8>],
     set: u32,
     vertices: usize,
+    dequantized_by_transform: bool,
 ) -> Option<Vec<[f64; 2]>> {
     let mut wanted = vec![set];
     if set != 0 {
@@ -553,19 +517,27 @@ fn read_tex_coords(
         let Some(accessor) = primitive.get(&Semantic::TexCoords(set)) else {
             continue;
         };
-        if validate_readable_accessor(&accessor, buffers, "TEXCOORD").is_err()
-            || !tex_coords_are_interpretable(&accessor)
-        {
+        if validate_readable_accessor(&accessor, buffers, "TEXCOORD").is_err() {
             continue;
         }
-        let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
-        let Some(stream) = reader.read_tex_coords(set) else {
+        if !dequantized_by_transform && quantized_without_scale(&accessor) {
             continue;
+        }
+        let uvs = if tex_coords_read_by_the_crate(&accessor) {
+            let reader = primitive.reader(|buffer| buffers.get(buffer.index()).map(Vec::as_slice));
+            let Some(stream) = reader.read_tex_coords(set) else {
+                continue;
+            };
+            stream
+                .into_f32()
+                .map(|uv| uv.map(f64::from))
+                .collect::<Vec<_>>()
+        } else {
+            let Some(uvs) = decode_tex_coords(&accessor, buffers, vertices) else {
+                continue;
+            };
+            uvs
         };
-        let uvs = stream
-            .into_f32()
-            .map(|uv| uv.map(f64::from))
-            .collect::<Vec<_>>();
         if uvs.len() == vertices {
             return Some(uvs);
         }
@@ -580,15 +552,6 @@ fn read_positions(
     read_vec3_attribute(primitive, buffers, &Semantic::Positions, "POSITION")
 }
 
-/// Reads `NORMAL`, and only ever to settle a sign.
-///
-/// Vkit stores no normals: `Corner` carries a position and a UV, the OBJ bridge writes no `vn`,
-/// and every shading normal downstream is recomputed from winding. That is why the classic
-/// non-uniform-scale trap — transforming a normal by the matrix instead of its inverse transpose —
-/// cannot exist in this importer, and adding this read must not create it. So the stream is
-/// consumed in the node's own local space, compared against local positions, reduced to one
-/// boolean, and dropped. No normal is ever transformed, stored or handed downstream, which is what
-/// keeps the inverse-transpose question from arising at all.
 fn read_normals(
     primitive: &gltf::Primitive<'_>,
     buffers: &[Vec<u8>],
@@ -598,11 +561,6 @@ fn read_normals(
     (normals.len() == vertices).then_some(normals)
 }
 
-/// Reads a `VEC3` vertex stream itself instead of through `reader.read_positions()`, which
-/// reinterprets the bytes as `f32` whatever the accessor declares. Under `KHR_mesh_quantization`
-/// positions arrive as 8- or 16-bit integers, so that reinterpretation would yield silent garbage
-/// rather than an error. Un-normalized integers stay in their quantized range on purpose: the
-/// node's scale/translation, applied by the caller's world matrix, is what restores world units.
 fn read_vec3_attribute(
     primitive: &gltf::Primitive<'_>,
     buffers: &[Vec<u8>],
@@ -646,23 +604,9 @@ fn read_vec3_attribute(
     Ok(values)
 }
 
-/// The share of decisive triangles that must vote against the index order before it is flipped,
-/// and the fewest decisive triangles a vote is allowed to be decided on. A converter that reversed
-/// the index buffer without touching `NORMAL` reverses every triangle of the primitive, so a real
-/// inversion polls at or very near 100%; a mesh with a handful of badly authored normals polls a
-/// few per cent. Nothing lands between those on purpose — when the vote is anywhere near close,
-/// the file is left exactly as its author wrote it.
 const WINDING_VOTE_MAJORITY: usize = 4;
 const WINDING_VOTE_QUORUM: usize = 16;
 
-/// Whether a primitive's index order contradicts the normals shipped alongside it.
-///
-/// The determinant check catches inversion introduced by a mirrored *node transform*. It is blind
-/// to inversion baked into the index buffer itself, which is what `assimp`'s
-/// `aiProcess_FlipWindingOrder` and the FBX2glTF forks built on it produce: the index order is
-/// reversed and `NORMAL` is left alone. Such a file imports inside out and nothing downstream
-/// notices, because every shading normal is recomputed from winding. Both streams are in the same
-/// local space here, so no transform enters this comparison and no inverse transpose is needed.
 fn winding_disagrees_with_normals(
     positions: &[[f64; 3]],
     normals: &[[f64; 3]],
@@ -705,12 +649,6 @@ fn winding_disagrees_with_normals(
     against >= WINDING_VOTE_QUORUM && against >= with.saturating_mul(WINDING_VOTE_MAJORITY)
 }
 
-/// Overlays a sparse accessor's deviations onto the base stream.
-///
-/// The base is all zeros when the accessor names no bufferView, which is the shape glTF uses for
-/// a stream that is mostly one value — Blender shape keys and `gltf-transform` both emit it. An
-/// override naming a vertex past the accessor's own count is dropped rather than being an error,
-/// because the rest of the stream is still exactly what the exporter meant.
 fn apply_sparse_vec3(
     sparse: &gltf::accessor::sparse::Sparse<'_>,
     buffers: &[Vec<u8>],
@@ -828,14 +766,7 @@ fn position_component(data_type: DataType, normalized: bool) -> Result<PositionC
     Ok(component)
 }
 
-/// Decides whether a texture-coordinate accessor can be read at all, and this is a crash gate
-/// before it is a quality one: `gltf`'s `read_tex_coords` matches only `U8`, `U16` and `F32` and
-/// ends its match in `unreachable!()`, so handing it a `BYTE`/`SHORT`/`UNSIGNED_INT` set — legal
-/// JSON that its own validator accepts — kills the process outright under `panic = "abort"`, with
-/// no dialog and no log line. Un-normalized `U8`/`U16` is excluded for a different reason: the
-/// crate divides integers by their type maximum regardless, so such a set decodes to a near-zero
-/// smear. In both cases the mesh imports without UVs rather than not at all.
-fn tex_coords_are_interpretable(accessor: &gltf::Accessor<'_>) -> bool {
+fn tex_coords_read_by_the_crate(accessor: &gltf::Accessor<'_>) -> bool {
     match accessor.data_type() {
         DataType::F32 => true,
         DataType::U8 | DataType::U16 => accessor.normalized(),
@@ -843,9 +774,46 @@ fn tex_coords_are_interpretable(accessor: &gltf::Accessor<'_>) -> bool {
     }
 }
 
-/// Proves an accessor's byte range lies inside its buffer view before `gltf`'s iterators touch
-/// it. Their range arithmetic is unchecked and assumes `count >= 1`, so a forged accessor is
-/// caught here rather than by an arithmetic abort.
+fn quantized_without_scale(accessor: &gltf::Accessor<'_>) -> bool {
+    !accessor.normalized()
+        && matches!(
+            accessor.data_type(),
+            DataType::U8 | DataType::U16 | DataType::I8 | DataType::I16
+        )
+}
+
+fn decode_tex_coords(
+    accessor: &gltf::Accessor<'_>,
+    buffers: &[Vec<u8>],
+    vertices: usize,
+) -> Option<Vec<[f64; 2]>> {
+    if accessor.count() != vertices
+        || accessor.dimensions() != Dimensions::Vec2
+        || accessor.sparse().is_some()
+    {
+        return None;
+    }
+    let component = position_component(accessor.data_type(), accessor.normalized()).ok()?;
+    let view = accessor.view()?;
+    let data = buffer_view_bytes(&view, buffers).ok()?;
+    let element = component.size * 2;
+    let stride = view.stride().unwrap_or(element);
+    let mut uvs = Vec::with_capacity(accessor.count());
+    for index in 0..accessor.count() {
+        let base = stride
+            .checked_mul(index)
+            .and_then(|span| span.checked_add(accessor.offset()))?;
+        let mut uv = [0.0_f64; 2];
+        for (axis, value) in uv.iter_mut().enumerate() {
+            let at = base.checked_add(component.size * axis)?;
+            let end = at.checked_add(component.size)?;
+            *value = (component.read)(data.get(at..end)?);
+        }
+        uvs.push(uv);
+    }
+    Some(uvs)
+}
+
 fn validate_readable_accessor(
     accessor: &gltf::Accessor<'_>,
     buffers: &[Vec<u8>],
@@ -947,14 +915,6 @@ fn le_bytes<const N: usize>(bytes: &[u8]) -> [u8; N] {
     value
 }
 
-/// Writes the `.mtl` that carries the imported colours and, where one can be extracted, the
-/// diffuse map.
-///
-/// Nothing in here returns an error, and that is deliberate rather than lazy. Everything this
-/// function produces is optional downstream — the scene loader reads the `.mtl` with `.ok()` and
-/// no scan texture layer is created when no material carries a diffuse map — so there is no
-/// appearance failure whose right answer is "the user gets no scan". Each one is recorded instead,
-/// naming the image and the reason, so "where did my texture go" is answerable from the log.
 fn write_material_library(
     gltf: &gltf::Gltf,
     buffers: &[Vec<u8>],
@@ -1001,7 +961,6 @@ fn write_material_library(
     );
 }
 
-/// Everything the material writer needs, and the list of what it had to give up.
 struct MaterialSink<'a> {
     gltf: &'a gltf::Gltf,
     buffers: &'a [Vec<u8>],
@@ -1012,9 +971,6 @@ struct MaterialSink<'a> {
     dropped: &'a mut Vec<String>,
 }
 
-/// Writes one material. The `newmtl`, `Kd` and `d` lines are always written; only `map_Kd` is
-/// conditional, because a texture that cannot be extracted costs the material its map and nothing
-/// else. This is the shape the FBX importer has always had.
 fn write_material(mtl: &mut String, material: &gltf::Material<'_>, sink: &mut MaterialSink<'_>) {
     let pbr = material.pbr_metallic_roughness();
     let [red, green, blue, alpha] = pbr.base_color_factor();
@@ -1069,13 +1025,6 @@ fn extract_image(image: &gltf::Image<'_>, sink: &mut MaterialSink<'_>) -> Result
     Ok(relative)
 }
 
-/// Proves an image entry has the shape `gltf::Image::source` assumes before that method is called.
-///
-/// It reads `mime_type.unwrap()` for an image with a `bufferView`, and `uri.unwrap()` for one
-/// without — and `gltf-json` has no cross-field rule that would have caught either, so both shapes
-/// are legal JSON that its own validator accepts. Under `panic = "abort"` reaching one kills the
-/// process with no dialog and no log line, which surfaces to the user as the import worker simply
-/// vanishing. The JSON is public, so the shape is checked here instead.
 fn image_source_is_readable(gltf: &gltf::Gltf, index: usize) -> bool {
     let Some(image) = gltf.as_json().images.get(index) else {
         return false;
@@ -1108,15 +1057,6 @@ fn image_bytes(
     }
 }
 
-/// Names the file extension to write a texture under: from the declared MIME type when there is
-/// one, and from the URI's own suffix when there is not.
-///
-/// The set is the formats this build can decode later, not a judgement about the file. KTX2, DDS
-/// and AVIF are absent because Vkit has no decoder for them, and the honest outcome for one of
-/// those is a material without a map — never a refused document, which is what this used to
-/// produce. WebP is present because the `image` crate decodes it in pure Rust for free. A declared
-/// MIME is believed over the file name, because a producer that names a format and then contradicts
-/// it in the suffix has told us the bytes are not what the suffix claims.
 fn image_extension(mime: &str, uri: &str) -> Result<&'static str, String> {
     if !mime.is_empty() {
         return match mime.to_ascii_lowercase().as_str() {

@@ -98,12 +98,6 @@ fn main() {
     }
 }
 
-/// Fills the resource template in from the package version.
-///
-/// The version reaches the file properties dialog the same way it reaches the
-/// update check — from Cargo — so the two can never disagree. Paths are made
-/// absolute because the generated file lives in `OUT_DIR`, nowhere near the
-/// icon and manifest it names.
 fn write_windows_resources(manifest_dir: &Path) -> Result<std::path::PathBuf, String> {
     let version = std::env::var("CARGO_PKG_VERSION").map_err(|error| error.to_string())?;
     let mut parts = version.split('.').map(|part| {
@@ -116,8 +110,6 @@ fn write_windows_resources(manifest_dir: &Path) -> Result<std::path::PathBuf, St
         return Err(format!("{version:?} is not a three-part version"));
     };
 
-    // The resource compiler reads backslashes in a string literal as escapes,
-    // so a Windows path has to arrive with forward slashes.
     let absolute = |path: &Path| path.to_string_lossy().replace('\\', "/");
     let out_dir = std::env::var_os("OUT_DIR")
         .map(std::path::PathBuf::from)
@@ -136,8 +128,6 @@ fn write_windows_resources(manifest_dir: &Path) -> Result<std::path::PathBuf, St
             fs::write(output, filled).map_err(|error| format!("{}: {error}", output.display()))
         };
 
-    // The manifest is written first, because the resource script has to point
-    // the linker at the generated copy rather than at the template.
     let manifest = out_dir.join("vkit.manifest");
     fill(
         &manifest_dir.join("resources/vkit.manifest.in"),

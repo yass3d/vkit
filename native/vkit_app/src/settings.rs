@@ -4,6 +4,7 @@ use crate::{
     i18n::{Locale, TextKey, text},
     lighting::LightingPreset,
     shader_color::ToneMapping,
+    shortcuts::{Binding, ModifierPolicy, Shortcut, Trigger},
     state::{Action, AppState, MorphNameDisplay, ViewportBackgroundMode},
     theme::{
         COLOR_BORDER, COLOR_FIELD, COLOR_HAIRLINE, COLOR_MUTED, COLOR_SURFACE_HOVER,
@@ -19,18 +20,26 @@ pub enum SettingsSection {
     Graphics,
     Viewport,
     General,
+    Shortcuts,
 
     About,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 4] = [Self::Graphics, Self::Viewport, Self::General, Self::About];
+    pub const ALL: [Self; 5] = [
+        Self::Graphics,
+        Self::Viewport,
+        Self::General,
+        Self::Shortcuts,
+        Self::About,
+    ];
 
     const fn label(self) -> TextKey {
         match self {
             Self::Graphics => TextKey::SettingsGraphics,
             Self::Viewport => TextKey::SettingsViewport,
             Self::General => TextKey::SettingsGeneral,
+            Self::Shortcuts => TextKey::SettingsShortcuts,
             Self::About => TextKey::SettingsAbout,
         }
     }
@@ -157,6 +166,7 @@ fn draw_section_pane(ui: &mut Ui, state: &mut AppState, rect: Rect, section: Set
             SettingsSection::Graphics => draw_graphics_settings(ui, state),
             SettingsSection::Viewport => draw_viewport_settings(ui, state),
             SettingsSection::General => draw_general_settings(ui, state),
+            SettingsSection::Shortcuts => draw_shortcut_settings(ui, state),
             SettingsSection::About => draw_about_settings(ui, state),
         });
 }
@@ -230,7 +240,11 @@ fn effect_switch(
 ) -> egui::Response {
     let row =
         crate::ui_components::switch_row(ui, enabled, text(locale, TextKey::SettingsEffectEnabled));
-    tooltip(row, text(locale, description), None)
+    tooltip(
+        row,
+        text(locale, description),
+        crate::ui_components::NO_SHORTCUT,
+    )
 }
 
 fn group_heading(ui: &mut Ui, locale: Locale, key: TextKey) {
@@ -328,7 +342,11 @@ fn draw_lighting_settings(ui: &mut Ui, state: &mut AppState) {
             })
             .response
     });
-    tooltip(row, text(locale, TextKey::SettingsToneCurveTooltip), None);
+    tooltip(
+        row,
+        text(locale, TextKey::SettingsToneCurveTooltip),
+        crate::ui_components::NO_SHORTCUT,
+    );
     if curve != state.tone_mapping {
         state.dispatch(Action::SetToneMapping(curve));
     }
@@ -336,43 +354,6 @@ fn draw_lighting_settings(ui: &mut Ui, state: &mut AppState) {
 
 fn draw_effect_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
-
-    group_heading(ui, locale, TextKey::SettingsOcclusionGroup);
-    let mut occlusion = state.ambient_occlusion;
-    let occlusion_switch = effect_switch(
-        ui,
-        locale,
-        &mut occlusion.enabled,
-        TextKey::SettingsOcclusionTooltip,
-    );
-    let mut occlusion_changed = occlusion_switch.changed();
-    ui.add_enabled_ui(occlusion.enabled, |ui| {
-        for (key, value, range) in [
-            (
-                TextKey::SettingsOcclusionIntensity,
-                &mut occlusion.intensity,
-                crate::ambient_occlusion::INTENSITY_RANGE,
-            ),
-            (
-                TextKey::SettingsOcclusionRadius,
-                &mut occlusion.radius,
-                crate::ambient_occlusion::RADIUS_RANGE,
-            ),
-        ] {
-            occlusion_changed |= setting_row(ui, locale, key, None, |ui| {
-                ui.add(
-                    FilledNumericSlider::new(value, range)
-                        .percent()
-                        .decimals(0)
-                        .min_width(CONTROL_COLUMN_WIDTH),
-                )
-                .changed()
-            });
-        }
-    });
-    if occlusion_changed {
-        state.dispatch(Action::SetAmbientOcclusion(occlusion));
-    }
 
     group_heading(ui, locale, TextKey::SettingsBloomGroup);
     let mut bloom = state.bloom;
@@ -781,6 +762,88 @@ fn about_divider(ui: &mut Ui) {
     ui.add_space(SPACE_2);
 }
 
+fn about_version_row(ui: &mut Ui, locale: Locale) {
+    let running = env!("CARGO_PKG_VERSION");
+    let Some(tag) = crate::update_check::newer_release() else {
+        about_row(ui, "Version", running);
+        return;
+    };
+    let (row, _) =
+        ui.allocate_exact_size(vec2(ui.available_width(), ABOUT_ROW_HEIGHT), Sense::hover());
+    ui.painter().text(
+        pos2(row.left(), row.center().y),
+        egui::Align2::LEFT_CENTER,
+        "Version",
+        egui::FontId::proportional(FONT_SM),
+        COLOR_MUTED,
+    );
+    let value = ui.painter().text(
+        pos2(row.right(), row.center().y),
+        egui::Align2::RIGHT_CENTER,
+        running,
+        egui::FontId::proportional(FONT_SM),
+        COLOR_TEXT,
+    );
+
+    let label = text(locale, TextKey::UpdateAvailable);
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::FontId::proportional(FONT_XS),
+        COLOR_TEXT,
+    );
+    let capsule = Rect::from_min_size(
+        pos2(
+            value.left() - SPACE_2 - (ABOUT_UPDATE_ICON + galley.size().x + SPACE_3),
+            row.center().y - ABOUT_UPDATE_HEIGHT * 0.5,
+        ),
+        vec2(
+            ABOUT_UPDATE_ICON + galley.size().x + SPACE_3,
+            ABOUT_UPDATE_HEIGHT,
+        ),
+    );
+    let response = ui.interact(capsule, Id::new("vkit.about.update"), Sense::click());
+    let hovered = response.hovered();
+    ui.painter().rect_filled(
+        capsule,
+        capsule.height() * 0.5,
+        if hovered {
+            COLOR_SURFACE_HOVER
+        } else {
+            COLOR_SURFACE_RAISED
+        },
+    );
+    let ink = if hovered { COLOR_TEXT } else { COLOR_MUTED };
+    paint_icon(
+        ui.painter(),
+        Rect::from_center_size(
+            pos2(capsule.left() + SPACE_2 + 5.0, capsule.center().y),
+            Vec2::splat(11.0),
+        ),
+        Icon::UpdateAvailable,
+        ink,
+    );
+    ui.painter().galley(
+        pos2(
+            capsule.left() + ABOUT_UPDATE_ICON,
+            capsule.center().y - galley.size().y * 0.5,
+        ),
+        galley,
+        ink,
+    );
+
+    let response = response.on_hover_text(format!("{} \u{2192} {tag}", crate::APP_TITLE));
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if response.clicked() {
+        open_with_shell(crate::update_check::RELEASES_PAGE);
+    }
+}
+
+const ABOUT_UPDATE_HEIGHT: f32 = 18.0;
+
+const ABOUT_UPDATE_ICON: f32 = SPACE_2 + 13.0;
+
 fn about_row(ui: &mut Ui, label: &str, value: &str) {
     let (row, _) =
         ui.allocate_exact_size(vec2(ui.available_width(), ABOUT_ROW_HEIGHT), Sense::hover());
@@ -881,7 +944,7 @@ fn draw_about_settings(ui: &mut Ui, state: &mut AppState) {
     about_divider(ui);
 
     group_heading(ui, locale, TextKey::SettingsAboutBuild);
-    about_row(ui, "Version", env!("CARGO_PKG_VERSION"));
+    about_version_row(ui, locale);
     about_row(ui, "Built for VaM", crate::VAM_TARGET_VERSION);
     about_row(ui, "Renderer", "wgpu \u{00b7} Direct3D 12");
     about_row(ui, "Platform", "Windows x64");
@@ -1023,12 +1086,196 @@ pub fn draw_settings_button(ui: &mut Ui, state: &mut AppState, rect: Rect) {
             COLOR_MUTED
         },
     );
-    if tooltip(response, text(state.locale, TextKey::Settings), None).clicked() {
+    if tooltip(
+        response,
+        text(state.locale, TextKey::Settings),
+        crate::ui_components::NO_SHORTCUT,
+    )
+    .clicked()
+    {
         state.dispatch(if state.settings_open {
             Action::CloseSettings
         } else {
             Action::OpenSettings
         });
+    }
+}
+
+const CAPTURE_ID: &str = "vkit.settings.shortcut-capture";
+
+fn capturing(ui: &Ui) -> Option<Shortcut> {
+    ui.data(|data| data.get_temp::<Shortcut>(Id::new(CAPTURE_ID)))
+}
+
+const fn is_modifier_key(key: egui::Key) -> bool {
+    matches!(
+        key,
+        egui::Key::ShiftLeft
+            | egui::Key::ShiftRight
+            | egui::Key::ControlLeft
+            | egui::Key::ControlRight
+            | egui::Key::AltLeft
+            | egui::Key::AltRight
+            | egui::Key::SuperLeft
+            | egui::Key::SuperRight
+    )
+}
+
+fn captured_binding(ui: &Ui) -> Option<Binding> {
+    ui.input(|input| {
+        let modifiers = if input.modifiers.command {
+            ModifierPolicy::Exactly(egui::Modifiers::COMMAND)
+        } else if input.modifiers.shift {
+            ModifierPolicy::Exactly(egui::Modifiers::SHIFT)
+        } else if input.modifiers.alt {
+            ModifierPolicy::Exactly(egui::Modifiers::ALT)
+        } else {
+            ModifierPolicy::Exactly(egui::Modifiers::NONE)
+        };
+        let key = input.events.iter().find_map(|event| match event {
+            egui::Event::Key {
+                key,
+                pressed: true,
+                repeat: false,
+                ..
+            } if *key != egui::Key::Escape && !is_modifier_key(*key) => Some(Trigger::Key(*key)),
+            _ => None,
+        });
+        let left = (!input.modifiers.is_none())
+            .then_some(egui::PointerButton::Primary)
+            .into_iter();
+        let mouse = [
+            egui::PointerButton::Secondary,
+            egui::PointerButton::Middle,
+            egui::PointerButton::Extra1,
+            egui::PointerButton::Extra2,
+        ]
+        .into_iter()
+        .chain(left)
+        .find(|button| input.pointer.button_pressed(*button))
+        .map(Trigger::Mouse);
+        key.or(mouse).map(|trigger| Binding { trigger, modifiers })
+    })
+}
+
+fn draw_shortcut_settings(ui: &mut Ui, state: &mut AppState) {
+    let locale = state.locale;
+    let armed = capturing(ui);
+
+    let escaped = armed.is_some()
+        && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    if escaped {
+        ui.data_mut(|data| data.remove::<Shortcut>(Id::new(CAPTURE_ID)));
+    } else if let (Some(shortcut), Some(binding)) = (armed, captured_binding(ui)) {
+        ui.data_mut(|data| data.remove::<Shortcut>(Id::new(CAPTURE_ID)));
+        if state.keymap.conflict(shortcut, binding).is_none() {
+            state.dispatch(Action::RebindShortcut(shortcut, binding));
+        } else {
+            state.status = crate::state::StatusMessage::new(
+                TextKey::ShortcutsTaken,
+                crate::state::StatusTone::Warning,
+            );
+        }
+    }
+
+    for shortcut in Shortcut::ALL {
+        let binding = state.keymap.binding(shortcut);
+        let waiting = capturing(ui) == Some(shortcut);
+        setting_row(ui, locale, shortcut_label(shortcut), None, |ui| {
+            if !state.keymap.is_default(shortcut)
+                && ui
+                    .add(egui::Button::new(text(locale, TextKey::Reset)).small())
+                    .clicked()
+            {
+                state.dispatch(Action::RebindShortcut(shortcut, shortcut.default_binding()));
+            }
+            let caption = if waiting {
+                text(locale, TextKey::ShortcutsCapturing).to_owned()
+            } else {
+                binding.label()
+            };
+            if ui.add(egui::Button::new(caption)).clicked() {
+                ui.data_mut(|data| data.insert_temp(Id::new(CAPTURE_ID), shortcut));
+            }
+        });
+    }
+
+    ui.add_space(SPACE_3);
+    ui.horizontal(|ui| {
+        if ui
+            .add(egui::Button::new(text(locale, TextKey::ShortcutsResetAll)))
+            .clicked()
+        {
+            state.dispatch(Action::ResetKeymap);
+        }
+        if ui
+            .add(egui::Button::new(text(locale, TextKey::ShortcutsExport)))
+            .clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .set_file_name("vkit-keymap.json")
+                .save_file()
+            && let Err(detail) = export_keymap(&path, &state.keymap)
+        {
+            state.status = crate::state::StatusMessage::with_detail(
+                TextKey::ExportFailed,
+                crate::state::StatusTone::Error,
+                detail,
+            );
+        }
+        if ui
+            .add(egui::Button::new(text(locale, TextKey::ShortcutsImport)))
+            .clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .pick_file()
+            && let Ok(body) = std::fs::read_to_string(path)
+            && let Ok(stored) =
+                serde_json::from_str::<std::collections::BTreeMap<String, String>>(&body)
+        {
+            let loaded = crate::shortcuts::Keymap::from_stored(&stored);
+            for shortcut in Shortcut::ALL {
+                state.dispatch(Action::RebindShortcut(shortcut, loaded.binding(shortcut)));
+            }
+        }
+    });
+}
+
+fn export_keymap(path: &std::path::Path, keymap: &crate::shortcuts::Keymap) -> Result<(), String> {
+    let body = serde_json::to_string_pretty(&keymap.to_stored())
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    std::fs::write(path, body).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+const fn shortcut_label(shortcut: Shortcut) -> TextKey {
+    match shortcut {
+        Shortcut::SculptGrabBrush => TextKey::SculptGrab,
+        Shortcut::SculptRestoreBrush => TextKey::SculptBrushRestore,
+        Shortcut::HairCombBrush => TextKey::HairToolComb,
+        Shortcut::HairPlantTool => TextKey::HairToolPlant,
+        Shortcut::HairGrowTool => TextKey::HairToolGrow,
+        Shortcut::HairCutTool => TextKey::HairToolCut,
+        Shortcut::HairEraseTool => TextKey::HairToolErase,
+        Shortcut::HairMirrorPart => TextKey::HairMirrorPart,
+        Shortcut::HairPuffTool => TextKey::HairToolPuff,
+        Shortcut::HairPinchTool => TextKey::HairToolPinch,
+        Shortcut::HairPickTool => TextKey::HairToolPick,
+        Shortcut::TexturePinBrush => TextKey::TextureToolPinPair,
+        Shortcut::TextureCloneBrush => TextKey::TextureToolClone,
+        Shortcut::BrushSizeDown => TextKey::ShortcutBrushSmaller,
+        Shortcut::BrushSizeUp => TextKey::ShortcutBrushLarger,
+        Shortcut::Undo => TextKey::HelpUndo,
+        Shortcut::Redo => TextKey::HelpRedo,
+        Shortcut::BrushSizeSweep => TextKey::ShortcutBrushSizeDrag,
+        Shortcut::BrushStrengthSweep => TextKey::ShortcutBrushStrengthDrag,
+        Shortcut::ViewTrackball => TextKey::HelpTrackball,
+        Shortcut::ViewLevelRoll => TextKey::HelpLevelRoll,
+        Shortcut::CancelStencil => TextKey::ShortcutStencilCancel,
+        Shortcut::FrameSelected => TextKey::HelpFrameView,
+        Shortcut::XSymmetry => TextKey::HelpXSymmetry,
+        Shortcut::ViewOrbit => TextKey::ShortcutViewOrbit,
+        Shortcut::ViewPan => TextKey::ShortcutViewPan,
+        Shortcut::ViewDolly => TextKey::ShortcutViewDolly,
     }
 }
 
@@ -1061,14 +1308,38 @@ mod tests {
     }
 
     #[test]
+    fn a_keymap_export_round_trips_the_bindings_it_was_given() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let path = workspace.path().join("vkit-keymap.json");
+        let keymap = crate::shortcuts::Keymap::default();
+        export_keymap(&path, &keymap).expect("a writable path is the ordinary case");
+        let body = std::fs::read_to_string(&path).expect("the export exists");
+        let stored = serde_json::from_str::<std::collections::BTreeMap<String, String>>(&body)
+            .expect("the export is the map the importer reads back");
+        assert_eq!(stored, keymap.to_stored());
+    }
+
+    #[test]
+    fn a_keymap_export_that_cannot_be_written_says_so_instead_of_nothing() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let path = workspace.path().join("vkit-keymap.json");
+        std::fs::create_dir(&path).expect("occupy the destination");
+        let detail = export_keymap(&path, &crate::shortcuts::Keymap::default())
+            .expect_err("a path the OS refuses may not be reported as a saved file");
+        assert!(detail.contains("vkit-keymap.json"), "{detail}");
+        for locale in Locale::ALL {
+            assert!(
+                !text(locale, TextKey::ExportFailed).trim().is_empty(),
+                "the channel this detail is shown through has no heading in {locale:?}"
+            );
+        }
+    }
+
+    #[test]
     fn an_effect_switch_never_repeats_its_own_heading() {
         for locale in Locale::ALL {
             let enabled = text(locale, TextKey::SettingsEffectEnabled);
-            for heading in [
-                TextKey::SettingsOcclusionGroup,
-                TextKey::SettingsBloomGroup,
-                TextKey::SettingsVignetteGroup,
-            ] {
+            for heading in [TextKey::SettingsBloomGroup, TextKey::SettingsVignetteGroup] {
                 assert_ne!(enabled, text(locale, heading), "{heading:?} in {locale:?}");
             }
         }
@@ -1093,18 +1364,6 @@ mod tests {
         }
     }
 
-    /// Nothing this program says about its own version may be typed by hand.
-    ///
-    /// Two of these had gone stale unnoticed — the file properties dialog and
-    /// the assembly manifest both still read 0.0.1 while the binary called
-    /// itself 0.0.2 — because a version written out by hand only looks wrong
-    /// when someone happens to open the one dialog that shows it. The Windows
-    /// resources are templates now, filled from Cargo at build time, and this
-    /// refuses a literal creeping back into them.
-    ///
-    /// `VAM_TARGET_VERSION` is deliberately not covered: it names the version
-    /// of Virt-A-Mate this build was written against, which is a fact about
-    /// someone else's program and has to be stated somewhere.
     #[test]
     fn nothing_writes_this_programs_own_version_by_hand() {
         let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1117,8 +1376,6 @@ mod tests {
             let contents = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
             for (index, line) in contents.lines().enumerate() {
-                // Schema URLs and the supportedOS GUIDs carry dotted numbers
-                // that have nothing to do with this program's version.
                 if line.contains("http") || line.contains("supportedOS") {
                     continue;
                 }
@@ -1134,8 +1391,6 @@ mod tests {
             );
         }
 
-        // The window title is the one place a version is shown without a
-        // dialog, so it is worth naming here as well as at runtime.
         let main_source = std::fs::read_to_string(crate_root.join("src/main.rs")).unwrap();
         assert!(
             main_source.contains(r#"concat!("Vkit V", env!("CARGO_PKG_VERSION"))"#),
@@ -1165,7 +1420,7 @@ mod tests {
 
     #[test]
     fn the_section_list_covers_the_enum() {
-        assert_eq!(SettingsSection::ALL.len(), 4);
+        assert_eq!(SettingsSection::ALL.len(), 5);
         let mut seen = SettingsSection::ALL.to_vec();
         seen.dedup();
         assert_eq!(seen.len(), SettingsSection::ALL.len());

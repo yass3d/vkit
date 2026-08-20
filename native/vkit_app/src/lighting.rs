@@ -66,9 +66,6 @@ impl LightingPreset {
         self as u32
     }
 
-    /// Names the key rather than the words. Every preset reads in whatever
-    /// language the rest of the interface is speaking, which a pair of
-    /// hand-written label per language could never do.
     pub const fn label_key(self) -> crate::i18n::TextKey {
         use crate::i18n::TextKey;
         match self {

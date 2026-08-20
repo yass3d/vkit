@@ -40,9 +40,7 @@ pub use selection::{
     material_and_polygon_group_vertices, material_vertices, polygon_group_vertices,
     vertices_from_face_mask,
 };
-pub use surface_bond::{
-    AttachmentRig, FollowMode, SurfaceBond, SurfaceBondError, connected_groups,
-};
+pub use surface_bond::{SurfaceBond, SurfaceBondError, connected_groups};
 pub use transition::{
     SKIN_TRANSITION_MIN_ORIENTATION_COSINE, SkinTransitionComponentReceipt, SkinTransitionPass,
     SkinTransitionReceipt, TransitionBlend, TransitionRepairReceipt, flipped_triangle_count,

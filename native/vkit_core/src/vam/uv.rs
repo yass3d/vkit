@@ -124,11 +124,6 @@ pub fn load_g2_uv_mapping_for_sex(
     geometry: &DazGeometry,
     sex: SkinSex,
 ) -> Result<G2UvMapping> {
-    // The figure's own bundle carries this mapping and ships with every
-    // installation. The loose OBJ below does not: it is written out later by
-    // features not everyone uses, so requiring it turned a stock install into
-    // "UV unavailable". It stays as a fallback for anyone whose bundle this
-    // decoder cannot read.
     match mapping_from_bundle(root, geometry, sex) {
         Ok(mapping) => return Ok(mapping),
         Err(error) => {
@@ -148,11 +143,6 @@ pub fn load_g2_uv_mapping_for_sex(
     build_mapping(source_path, &document, geometry, true, validate_coordinates)
 }
 
-/// Builds the mapping straight from the figure bundle.
-///
-/// No correspondence to guess and no coordinates to validate: the bundle's
-/// polygon list is the canonical one, and its UV polygon list runs beside it
-/// corner for corner, so face i's texture coordinates are simply face i's.
 fn mapping_from_bundle(
     root: &VaMRoot,
     geometry: &DazGeometry,
@@ -172,9 +162,6 @@ fn mapping_from_bundle(
     let bundle = std::fs::read(&bundle_path)
         .map_err(|error| VaMError::InvalidUv(format!("{}: {error}", bundle_path.display())))?;
     let figure = super::unity_base::extract_figure_uv(&bundle)?;
-    // The material list is the cheapest proof that this bundle holds the same
-    // figure the canonical geometry was taken from — a mismatch here means the
-    // face-for-face assumption below is not safe to make.
     for (face_index, material_index) in figure.material_indices.iter().enumerate() {
         let Some(bundle_material) = figure.material_names.get(*material_index as usize) else {
             return Err(VaMError::InvalidUv(format!(
@@ -217,8 +204,6 @@ fn mapping_from_bundle(
             uncovered += positions.len().saturating_sub(2);
             continue;
         }
-        // The bundle lists the same corners in the same order; anything else
-        // means this is not the figure the canonical geometry came from.
         if bundle_positions != positions {
             return Err(VaMError::InvalidUv(format!(
                 "{} disagrees with the canonical geometry at face {face_index}",
@@ -261,8 +246,6 @@ fn mapping_from_bundle(
 
     Ok(G2UvMapping {
         source_path: bundle_path,
-        // The bundle is the geometry's own source, so there is no second set of
-        // coordinates to have drifted from.
         coordinate_rms_cm: 0.0,
         coordinate_max_cm: 0.0,
         faces,
@@ -1054,15 +1037,6 @@ mod head_membership {
         }
     }
 
-    /// Holds the bundle UV path to the file path it replaced.
-    ///
-    /// The loose `femalecustom.obj` is not part of a stock installation — it is
-    /// written out later by features not everyone uses — so requiring it left a
-    /// clean install with no UV mapping at all. The bundle ships with every
-    /// copy and carries the same coordinates; this proves "the same" rather
-    /// than assuming it, and it names the regions whose orientation took the
-    /// longest to get right, because those are the ones a changed source would
-    /// break most quietly.
     #[test]
     #[ignore = "requires the user's VaM installation"]
     fn the_bundle_carries_the_same_uv_islands_as_the_loose_obj() {
@@ -1118,7 +1092,6 @@ mod head_membership {
             let Some(material) = face.material.as_deref() else {
                 continue;
             };
-            // The exported OBJ suffixes every material with its figure number.
             let material = material.rsplit_once('-').map_or(material, |(head, _)| head);
             let island = obj_islands.entry(material.to_owned()).or_insert([
                 f64::MAX,

@@ -1,25 +1,3 @@
-//! Container preflight shared by `.glb` and `.gltf` input.
-//!
-//! `gltf::Gltf::from_slice` refuses any document whose `extensionsRequired` names an extension
-//! the crate does not itself implement, and it does so before a single byte of Vkit code runs.
-//! That verdict is final and its wording is useless to a person holding a gltfpack export, so
-//! the JSON chunk is read here first: the refusal is ours, phrased for the user, and the
-//! extensions Vkit *can* honour are resolved — meshopt views decompressed in place, Draco
-//! primitives decoded into plain accessors — and then struck from `extensionsRequired` so the
-//! crate sees a document it agrees to parse.
-//!
-//! Two other jobs live here for the same reason. Every index one glTF object holds into another
-//! is bound-checked before the crate is handed anything, because `gltf-json`'s own validator
-//! indexes the accessor array raw and dies inside the call meant to report the problem. And the
-//! spec details the crate refuses a whole document over but this importer never reads — a
-//! `byteStride` of zero, a `POSITION` accessor without `min`/`max`, an unrecognised `alphaMode`,
-//! a texture whose only image lives under an extension — are normalized away rather than argued
-//! with.
-//!
-//! The rule the whole file is arranged around: a document is refused only when its geometry
-//! cannot be recovered. Appearance — which image, which blend mode, which light — is read if it
-//! reads and dropped if it does not.
-
 use std::{
     fs,
     path::{Component, Path, PathBuf},
@@ -32,44 +10,24 @@ use base64::{
 use serde_json::{Map, Value};
 use vkit_core::formats::{MeshoptFilter, MeshoptMode, decode_meshopt_buffer_view};
 
-/// Padding is accepted rather than demanded, because the strict engine refuses payloads every
-/// browser decodes: Python's `base64.encodebytes` drops nothing but wraps lines, and hand-built
-/// data URIs routinely omit the trailing `=`. A wrong-length payload still fails to decode, and
-/// the declared `byteLength` check downstream is the second net.
 const BASE64_FORGIVING: GeneralPurpose = GeneralPurpose::new(
     &alphabet::STANDARD,
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-/// The same tolerance over the URL-safe alphabet, tried only after the standard one fails on a
-/// byte, so a `-`/`_` payload is read rather than refused.
 const BASE64_URL_FORGIVING: GeneralPurpose = GeneralPurpose::new(
     &alphabet::URL_SAFE,
     GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
 
-/// Ceiling on everything one document may pull in beyond the container file itself: external
-/// `.bin` payloads, extracted images, and decompressed buffer views all draw from it. A `.gltf`
-/// container is a few kilobytes of JSON, so the on-disk size gate the caller applies says
-/// nothing about the payload; this budget is what actually bounds the import.
 const MAX_EXTERNAL_PAYLOAD_BYTES: u64 = 1_500_000_000;
 
 const MESHOPT_EXTENSION: &str = "EXT_meshopt_compression";
 const DRACO_EXTENSION: &str = "KHR_draco_mesh_compression";
 const INSTANCING_EXTENSION: &str = "EXT_mesh_gpu_instancing";
 
-/// The most instance nodes one document may be expanded into. `gltfpack -ki` and glTF-Transform's
-/// `instance()` write the instance count in JSON, so a forged file can claim millions of copies of
-/// a mesh and turn a small download into an unbounded node array. Past this ceiling the remaining
-/// instanced nodes are left exactly as they arrive, which is one copy each — the behaviour before
-/// this step existed — rather than the import being refused.
 const MAX_EXPANDED_INSTANCES: usize = 100_000;
 
-/// Extensions that decide where a vertex is, and which this reader therefore has to resolve rather
-/// than ignore. `KHR_mesh_quantization` needs no decoding step, only integer-aware accessor reads;
-/// the other three are resolved before the crate ever sees the document —
-/// `EXT_meshopt_compression` and `KHR_draco_mesh_compression` by decoding, `KHR_texture_transform`
-/// by folding its matrix into the UVs the walk reads.
 const HANDLED_REQUIRED_EXTENSIONS: [&str; 5] = [
     "KHR_mesh_quantization",
     "KHR_texture_transform",
@@ -78,10 +36,6 @@ const HANDLED_REQUIRED_EXTENSIONS: [&str; 5] = [
     INSTANCING_EXTENSION,
 ];
 
-/// Extensions that decide how a surface is lit or which image is sampled, and never where the
-/// surface is. Requiring one of these costs the user a texture or a highlight, so the document is
-/// read and the extension is ignored rather than the file being refused for a property this
-/// importer was never going to consult.
 const IGNORABLE_REQUIRED_EXTENSIONS: [&str; 14] = [
     "KHR_texture_basisu",
     "EXT_texture_webp",
@@ -99,26 +53,12 @@ const IGNORABLE_REQUIRED_EXTENSIONS: [&str; 14] = [
     "KHR_emitter_audio",
 ];
 
-/// Decides whether a required extension can be ignored without moving a vertex.
-///
-/// The list above is exact names on purpose: allowing a geometry extension by accident is the one
-/// way this gate could hand the reader compressed bytes to interpret as raw floats, which imports
-/// silently wrong rather than failing. The single pattern is `KHR_materials_`, a namespace Khronos
-/// reserves for material models — how light leaves a surface. Every member of it to date (unlit,
-/// ior, specular, sheen, clearcoat, transmission, volume, anisotropy, dispersion, iridescence,
-/// emissive_strength, diffuse_transmission, pbrSpecularGlossiness, variants) changes shading
-/// alone, and naming them one by one would refuse tomorrow's export for a property that cannot
-/// reach a position. The geometry-bearing names are matched first, so the pattern can never
-/// swallow one.
 fn required_extension_is_readable(extension: &str) -> bool {
     HANDLED_REQUIRED_EXTENSIONS.contains(&extension)
         || IGNORABLE_REQUIRED_EXTENSIONS.contains(&extension)
         || extension.starts_with("KHR_materials_")
 }
 
-/// The extensions that carry a texture's image when the `texture` object itself declares none.
-/// WebP leads because it is the one this build can actually decode, so a texture offering both a
-/// WebP and a Basis image yields the readable one.
 const TEXTURE_SOURCE_EXTENSIONS: [&str; 4] = [
     "EXT_texture_webp",
     "KHR_texture_basisu",
@@ -132,8 +72,6 @@ pub(super) struct PreparedContainer {
     pub(super) budget: PayloadBudget,
 }
 
-/// A single allowance spent across every payload one import reads, so that a document made of
-/// many individually-legal buffers cannot add up to an unbounded read.
 pub(super) struct PayloadBudget {
     remaining: u64,
 }
@@ -191,10 +129,6 @@ pub(super) fn prepare(path: &Path) -> Result<PreparedContainer, String> {
     })
 }
 
-/// Splits a `.glb` into its JSON and BIN chunks, or hands a `.gltf` back whole.
-///
-/// `gltf::binary::Glb::from_slice` is not used because it subtracts the header size from an
-/// attacker-controlled length without checking, which aborts a debug build on a truncated file.
 fn split_container(bytes: &[u8]) -> Result<(&[u8], Option<&[u8]>), String> {
     let bytes = bytes
         .strip_prefix(b"\xef\xbb\xbf".as_slice())
@@ -259,13 +193,6 @@ fn le_bytes<const N: usize>(bytes: &[u8]) -> [u8; N] {
     value
 }
 
-/// The only remaining document-level refusal, and it fires solely on `extensionsRequired`.
-///
-/// `extensionsUsed` is never grounds for anything: it is a declaration that a producer wrote some
-/// extension somewhere, not that this mesh depends on it, so refusing on it discards files where
-/// no material even carries the feature. Animations and skins used to be refused here; both are
-/// now read past — an animation is a set of keyframes over a base pose this reader already has,
-/// and a skinned mesh stores its bind pose in `POSITION` exactly like an unskinned one.
 fn reject_unsupported_features(root: &Map<String, Value>) -> Result<(), String> {
     let unsupported = string_array(root, "extensionsRequired")
         .filter(|extension| !required_extension_is_readable(extension))
@@ -284,26 +211,10 @@ fn reject_unsupported_features(root: &Map<String, Value>) -> Result<(), String> 
     }
 }
 
-/// Removes the `animations` array, which this reader never consults.
-///
-/// Ignoring animations in the walk would already be enough to import the file; dropping them
-/// removes a second, less obvious refusal. An animation channel's `target.path` and a sampler's
-/// `interpolation` are both closed enumerations in `gltf-json`, so a value outside them — which is
-/// exactly what `KHR_animation_pointer` writes, `"path": "pointer"` — makes the crate's validator
-/// report the whole document invalid. A keyframe cannot move a vertex this importer reads, so
-/// none of that may cost the user their geometry.
 fn drop_animations(root: &mut Map<String, Value>) {
     root.remove("animations");
 }
 
-/// Lifts a texture's image out of whichever extension declares it.
-///
-/// `KHR_texture_basisu`, `EXT_texture_webp`, `EXT_texture_avif` and `MSFT_texture_dds` all say the
-/// same thing in the same shape — `extensions.<name>.source` names an image — and a producer that
-/// offers no PNG/JPEG fallback leaves the `texture` object with no `source` of its own. Hoisting
-/// the index means the texture is a texture again: the file parses, and the image is at least
-/// looked at rather than being invisible. Whether its bytes can then be decoded is a separate
-/// question the material writer answers per texture, never by refusing the file.
 fn hoist_texture_sources(root: &mut Map<String, Value>) {
     let Some(textures) = root.get_mut("textures").and_then(Value::as_array_mut) else {
         return;
@@ -326,15 +237,6 @@ fn hoist_texture_sources(root: &mut Map<String, Value>) {
     }
 }
 
-/// Bound-checks every index one glTF object holds into another, before the `gltf` crate is handed
-/// the document.
-///
-/// This is a crash gate, not a strictness gate. `gltf-json`'s own primitive validator indexes
-/// `root.accessors` raw (`mesh.rs:151`), so a `POSITION` index past the end of the accessor array
-/// aborts inside the call that was supposed to report it — and release builds abort with no
-/// message and no log line. The crate's reader API is built the same way: `nth(index).unwrap()`
-/// appears at nearly every cross-reference. One arithmetic pass over the JSON turns all of that
-/// into a sentence.
 fn validate_index_references(root: &Map<String, Value>) -> Result<(), String> {
     let bound =
         |key: &str| -> usize { root.get(key).and_then(Value::as_array).map_or(0, Vec::len) };
@@ -452,9 +354,6 @@ fn validate_index_references(root: &Map<String, Value>) -> Result<(), String> {
     Ok(())
 }
 
-/// The texture references the crate dereferences with an unchecked `nth().unwrap()`. Slots that
-/// live under `extensions` are deliberately absent: no `KHR_*` cargo feature is enabled, so the
-/// crate never looks inside them and an out-of-range index there cannot reach an unwrap.
 fn material_texture_slots(material: &Value) -> Vec<(String, &Value)> {
     let mut slots = Vec::new();
     let pbr = material.get("pbrMetallicRoughness");
@@ -522,7 +421,6 @@ fn indexed(value: Option<&Value>) -> Vec<(usize, &Value)> {
         .unwrap_or_default()
 }
 
-/// One instanced node, resolved into the child nodes that will replace its single mesh reference.
 struct InstancePlan {
     node: usize,
     mesh: u64,
@@ -537,17 +435,6 @@ struct InstanceTransform {
     scale: Option<[f64; 3]>,
 }
 
-/// Turns `EXT_mesh_gpu_instancing` into ordinary child nodes before the crate sees the document.
-///
-/// A node carrying this extension draws its mesh once per entry in the extension's TRANSLATION /
-/// ROTATION / SCALE accessors. Nothing in the reader knows that, so such a file imports as exactly
-/// one copy at the node's own transform and every other instance is silently absent — which is what
-/// `gltfpack -ki` and glTF-Transform's `instance()` produce, both routine pre-upload steps. Writing
-/// the instances out as children rather than composing matrices here is deliberate: a child node's
-/// world matrix is `parent · child`, which is exactly the "instance transforms are applied in the
-/// node's local space" rule, so the composition order cannot be got backwards, and each instance
-/// arrives at the walk as an ordinary node that re-runs the determinant winding check on its own —
-/// a mirrored instance transform inverts winding independently of its parent.
 fn expand_gpu_instancing(root: &mut Map<String, Value>, buffers: &[Vec<u8>]) {
     let plans = collect_instance_plans(root, buffers);
     if plans.is_empty() {
@@ -597,10 +484,6 @@ fn expand_gpu_instancing(root: &mut Map<String, Value>, buffers: &[Vec<u8>]) {
     nodes.extend(appended);
 }
 
-/// Resolves every instanced node's accessors into concrete transforms, spending one shared ceiling.
-///
-/// A node whose accessors cannot be read is left alone rather than dropped: leaving it is one copy
-/// of the mesh, which is strictly more geometry than removing the node would be.
 fn collect_instance_plans(root: &Map<String, Value>, buffers: &[Vec<u8>]) -> Vec<InstancePlan> {
     let mut plans = Vec::new();
     let mut spent = 0_usize;
@@ -668,12 +551,6 @@ fn collect_instance_plans(root: &Map<String, Value>, buffers: &[Vec<u8>]) -> Vec
     plans
 }
 
-/// Reads a fixed-width float accessor out of the raw JSON.
-///
-/// The crate's own reader is not available here — this runs before the document is handed to it,
-/// and `EXT_mesh_gpu_instancing` lives in an `extensions` object the crate does not model without a
-/// cargo feature. Every length, offset and stride is therefore checked here, and a stream that does
-/// not add up yields `None` so the caller can leave the node exactly as it arrived.
 fn json_accessor_floats(
     root: &Map<String, Value>,
     buffers: &[Vec<u8>],
@@ -750,15 +627,6 @@ fn json_accessor_floats(
     Some(values)
 }
 
-/// Rewrites the two spec details the crate refuses a whole document over, neither of which this
-/// importer reads.
-///
-/// `byteStride: 0` is the glTF 1.0 spelling of "tightly packed" and early COLLADA2GLTF and
-/// FBX2glTF builds still emit it; the crate's `Stride` validator rejects anything below 4, so the
-/// key is dropped rather than argued with — absent means the same thing in glTF 2.0. A `POSITION`
-/// accessor with no `min`/`max` is likewise a hard refusal, over two numbers Vkit never consults;
-/// a neutral pair is filled in so the geometry can be read. Present values are never overwritten
-/// unless they are unreadable as three numbers, which is the same refusal by another name.
 fn normalize_for_the_crate(root: &mut Map<String, Value>) {
     normalize_appearance_enums(root);
     if let Some(views) = root.get_mut("bufferViews").and_then(Value::as_array_mut) {
@@ -805,13 +673,6 @@ fn normalize_for_the_crate(root: &mut Map<String, Value>) {
     }
 }
 
-/// Drops shading enumerations the crate does not recognise, rather than letting one refuse a file.
-///
-/// `alphaMode`, and a sampler's four filter and wrap fields, are closed enumerations in
-/// `gltf-json`: a value outside the set — a typo, a vendor spelling, a value from a newer spec —
-/// makes the validator report the whole document invalid. Every one of them describes how a
-/// texture is sampled or how a fragment is blended, so an absent key means the spec default and
-/// nothing that reaches a vertex changes.
 fn normalize_appearance_enums(root: &mut Map<String, Value>) {
     if let Some(materials) = root.get_mut("materials").and_then(Value::as_array_mut) {
         for material in materials {
@@ -906,10 +767,6 @@ fn resolve_buffers(
     Ok(buffers)
 }
 
-/// Pads a buffer to a four-byte boundary the way the `gltf` crate's own importer does. Exporters
-/// routinely round the final bufferView's `byteLength` up to that boundary; without the pad the
-/// view resolves to nothing and the failure surfaces as "no POSITION stream", which sends the
-/// user hunting for an attribute that is in fact present.
 fn pad_to_four(mut data: Vec<u8>) -> Vec<u8> {
     while !data.len().is_multiple_of(4) {
         data.push(0);
@@ -917,8 +774,6 @@ fn pad_to_four(mut data: Vec<u8>) -> Vec<u8> {
     data
 }
 
-/// A meshopt fallback buffer carries no bytes of its own; every view that names it is rewritten
-/// to the decompressed buffer below, so it is left empty rather than materialised as zeros.
 fn is_meshopt_fallback(entry: &Value) -> bool {
     entry
         .get("extensions")
@@ -938,8 +793,6 @@ struct MeshoptRequest {
     filter: MeshoptFilter,
 }
 
-/// Decompresses every `EXT_meshopt_compression` buffer view into one appended buffer and points
-/// the views at it, so that everything downstream reads ordinary glTF.
 fn decompress_meshopt_buffer_views(
     root: &mut Map<String, Value>,
     buffers: &mut Vec<Vec<u8>>,
@@ -1002,25 +855,14 @@ fn decompress_meshopt_buffer_views(
     Ok(())
 }
 
-/// One primitive's `KHR_draco_mesh_compression` object, resolved against the JSON around it.
 struct DracoRequest {
     mesh: usize,
     primitive: usize,
     view: usize,
-    /// Semantic name to the accessor the primitive already declares for it, paired with the
-    /// Draco unique id the extension gives that same semantic. The pairing has to come from the
-    /// JSON: a mesh carrying several generic attributes cannot be disambiguated any other way.
     attributes: Vec<(String, usize, u32)>,
     indices: Option<usize>,
 }
 
-/// Decodes every Draco-compressed primitive into plain float attributes and a plain index list,
-/// appended as one more buffer, and repoints the accessors the primitive already declares at it.
-///
-/// The accessors are rewritten in place rather than replaced because a Draco `POSITION` accessor
-/// legitimately has no `bufferView`, and the crate's validator refuses any accessor in that shape.
-/// Leaving the originals behind as orphans would therefore refuse the very file this is here to
-/// open.
 fn decode_draco_primitives(
     root: &mut Map<String, Value>,
     buffers: &mut Vec<Vec<u8>>,
@@ -1136,11 +978,6 @@ fn decode_draco_primitives(
     Ok(())
 }
 
-/// Gives every Draco primitive an `indices` accessor to be filled in.
-///
-/// The extension requires one, but a producer that omits it would otherwise have its decoded
-/// triangle list silently replaced by draw-arrays order — the mesh would import, look plausible,
-/// and be wrong. An empty accessor slot is claimed here and rewritten below.
 fn ensure_draco_indices(root: &mut Map<String, Value>) {
     let mut next = root
         .get("accessors")
@@ -1286,8 +1123,6 @@ fn accessor_type(components: usize) -> Option<&'static str> {
     }
 }
 
-/// A real bounding box rather than a placeholder, because `POSITION` is the one accessor whose
-/// `min`/`max` the spec requires and the crate's validator enforces.
 fn component_bounds(values: &[f32], components: usize) -> String {
     if components == 0 || values.is_empty() {
         return String::new();
@@ -1445,13 +1280,6 @@ pub(super) fn read_uri(
         .map_err(|error| format!("failed to read glTF {label} URI {uri:?}: {error}"))
 }
 
-/// Turns a glTF URI into a path proven to lie inside the container's own directory.
-///
-/// Percent-decoding happens FIRST and the safety tests run on the decoded string, because the
-/// other order is a hole rather than a nicety: `%2e%2e%2f` sails past a `..` test and becomes a
-/// real traversal once something downstream decodes it. Character screening is therefore only the
-/// cheap first pass; the gate that actually holds is the canonicalized containment check, which is
-/// what the FBX importer already uses and what closes symlink and junction redirection.
 fn resolve_uri_path(root: &Path, uri: &str, label: &str) -> Result<PathBuf, String> {
     let decoded = percent_decode(uri).replace('\\', "/");
     if decoded.contains(':') {
@@ -1482,10 +1310,6 @@ fn resolve_uri_path(root: &Path, uri: &str, label: &str) -> Result<PathBuf, Stri
     Ok(candidate)
 }
 
-/// Decodes `%XX` escapes, which RFC 3986 makes mandatory in a glTF URI and which Blender,
-/// Sketchfab and every exporter that meets a space or a non-ASCII filename emit. A malformed
-/// escape is left as written rather than being an error: the path either exists or it does not,
-/// and that verdict is more useful than a lecture about encoding.
 fn percent_decode(uri: &str) -> String {
     let raw = uri.as_bytes();
     let mut decoded = Vec::with_capacity(raw.len());
@@ -1511,8 +1335,6 @@ fn percent_decode(uri: &str) -> String {
     String::from_utf8(decoded).unwrap_or_else(|_| uri.to_owned())
 }
 
-/// Whitespace is stripped because `base64.encodebytes` and hand-written JSON both wrap lines, and
-/// neither alphabet contains a whitespace character, so removing it cannot change what decodes.
 fn decode_base64(encoded: &str) -> Result<Vec<u8>, base64::DecodeError> {
     let payload = if encoded.bytes().any(|byte| byte.is_ascii_whitespace()) {
         encoded

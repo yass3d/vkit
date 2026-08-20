@@ -30,25 +30,6 @@ pub struct VaMEditSource {
 }
 
 impl VaMEditSource {
-    /// Whether picking this look would leave the base face untouched.
-    ///
-    /// A look that is missing *some* of its morphs is not worth marking. All
-    /// that is knowable at scan time is that a `.vmi` path did not resolve;
-    /// what that costs is not knowable at all, because whether the absent file
-    /// carried deltas on head vertices -- the only ones that survive
-    /// `look_head_filter` -- is a property of a file that is not there. An
-    /// alarm nobody can size, painted in the destructive colour across most
-    /// rows of a large collection, is worse than no alarm. The names and the
-    /// resolved/missing ratio go to vkit.log instead.
-    ///
-    /// A look where *nothing* resolves is the one outcome that is certain, and
-    /// worth a word: it opens as the untouched base face.
-    ///
-    /// Note this is the advisory signal, not the authoritative one:
-    /// `morph_ref_available` answers `true` for any uid that is not a `.vmi`
-    /// path, so a look built entirely from bare-name builtin references can
-    /// still load nothing without being marked here. The load-time count in
-    /// `install_direct_edit_output` is the one that saw the real resolution.
     #[must_use]
     pub const fn resolves_nothing(&self) -> bool {
         self.morph_refs > 0 && self.missing_morphs >= self.morph_refs

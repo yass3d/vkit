@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("मेश स्मूद"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,107 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("सहेजें"),
         TextKey::DetailCorrection => Some("स्कल्प्ट"),
         TextKey::TextureStage => Some("टेक्सचर"),
+        TextKey::HairStage => Some("बाल"),
+        TextKey::HairUnavailable => Some("बाल संपादित करने से पहले स्कल्प्ट परिणाम पूरा करें"),
+        TextKey::HairPartsPanel => Some("बाल भाग"),
+        TextKey::AddHairPart => Some("बाल भाग जोड़ें"),
+        TextKey::HairScalpMissing => Some("स्कैल्प मेश उपलब्ध नहीं है; VaM रूट खोलें और फिर से स्कैन करें"),
+        TextKey::HairShowPoints => Some("बिंदु दिखाएँ"),
+        TextKey::HairShowPointsHint => {
+            Some("खोपड़ी के रोपण बिंदु दिखाता है। सिर्फ बाल देखने के लिए बंद करें; ब्रश दोनों तरह काम करते हैं।")
+        }
+        TextKey::HairPartTint => Some("भाग रंग-भेद"),
+        TextKey::HairPartTintHint => {
+            Some("हर भाग को अलग रंगत देता है ताकि मिले-जुले स्टाइल में भाग पहचाने जा सकें। केवल प्रदर्शन के लिए।")
+        }
+        TextKey::HairSettingsPanel => Some("हेयर सेटिंग्स"),
+        TextKey::HairCreateFirst => Some("पहले हेयर बनाएं।"),
+        TextKey::HairHideStrands => Some("बाल छिपाएं"),
+        TextKey::HairHideStrandsHint => {
+            Some("उगे बाल हटाकर केवल स्ट्रीम दिखाता है। इसे चालू करने पर स्ट्रीम भी चालू हो जाती है।")
+        }
+        TextKey::HairShowStreams => Some("हेयर स्ट्रीम दिखाएं"),
+        TextKey::HairShowStreamsHint => {
+            Some("जिस लट को आप संपादित करते हैं, उसे बने बालों के ऊपर बनाता है।")
+        }
+        TextKey::HairViewportPhysics => Some("व्यूपोर्ट भौतिकी"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("स्क्रीन पर भौतिकी का पूर्वावलोकन। निर्यात से कोई संबंध नहीं।")
+        }
+        TextKey::HairMirrorEdit => Some("मिरर संपादन"),
+        TextKey::HairMirrorEditHint => Some("ब्रश दोनों ओर एक साथ सममित रूप से संपादित करता है।"),
+        TextKey::HairAutoPart => Some("स्वतः पार्ट"),
+        TextKey::HairAutoPartHint => {
+            Some("सक्रिय परतों के बजाय, कर्सर के नीचे पहचाने गए पार्ट को ही संपादित करता है।")
+        }
+        TextKey::HairExportSection => Some("हेयर सहेजें"),
+        TextKey::HairExportBothSexes => Some("दोनों"),
+        TextKey::HairExportRescanNotice => Some("VaM - Hair - Rescan Files दबाने पर ही सूची में दिखेगा"),
+        TextKey::HairExportOverwroteNotice => {
+            Some("अधिलेखित थंबनेल Hard Reset या VaM पुनरारंभ पर दिखेगा")
+        }
+        TextKey::HairSimToggleHint => Some("व्यूपोर्ट और गेम दोनों में हेयर फिजिक्स चलाता है।"),
+        TextKey::HairCollisionToggleHint => Some("सिमुलेशन में बाल सिर और शरीर के आर-पार नहीं जाते।"),
+        TextKey::HairStyleJoints => Some("स्टाइल जोड़"),
+        TextKey::HairStyleJointsHint => Some(
+            "पास की लटों को जोड़कर गेम में आकार बनाए रखता है — यही Cling नियंत्रित करता है। लंबे या बंधे बालों के लिए; फ़ाइल भारी होती है।",
+        ),
+        TextKey::HairThumbnailPrompt => Some("कोण सेट करें और कैप्चर के लिए क्लिक करें"),
+        TextKey::HairThumbnailShoot => Some("कैप्चर"),
+        TextKey::HairThumbnailSkip => Some("छोड़ें"),
+        TextKey::HairThumbnailSaved => Some("थंबनेल सहेजा गया"),
+        TextKey::HairThumbnailFailed => Some("थंबनेल सहेजने में विफल"),
+        TextKey::HairGameOnly => Some(
+            "भौतिकी सेटिंग: व्यूपोर्ट सिमुलेशन नहीं चलाता, इसलिए यह केवल VaM में लागू होती है। स्टाइल के साथ निर्यात होती है।",
+        ),
+        TextKey::HairPartVisible => Some("यह बाल भाग दिखाएँ या छिपाएँ"),
+        TextKey::RemoveHairPart => Some("बाल भाग हटाएँ"),
+        TextKey::HairRenamePart => Some("नाम बदलने के लिए क्लिक करें"),
+        TextKey::HairToolPlant => Some("रोपण"),
+        TextKey::HairToolErase => Some("मिटाएँ"),
+        TextKey::HairToolGrow => Some("बढ़ाएँ (Alt से छोटा करें)"),
+        TextKey::HairToolComb => Some("कंघी"),
+        TextKey::HairToolPlantHint => Some("ब्रश के नीचे स्कैल्प बिंदुओं पर बाल उगाएँ"),
+        TextKey::HairToolGrowHint => Some("ब्रश के नीचे लटें लंबी करें; छोटा करने के लिए Alt दबाएँ"),
+        TextKey::HairToolEraseHint => Some("ब्रश के नीचे लटें हटाएँ"),
+        TextKey::HairToolCombHint => Some("ब्रश के नीचे लटें खींचकर सँवारें; जड़ें स्थिर रहती हैं"),
+        TextKey::HairToolPinch => Some("समेटें"),
+        TextKey::HairToolPinchHint => Some("ब्रश के नीचे लटों को समेटें। Alt से फैलाएँ"),
+        TextKey::HairToolCut => Some("काटें"),
+        TextKey::HairToolCutHint => Some("ब्रश जहाँ से गुज़रे वहाँ लटें काटें"),
+        TextKey::HairToolPuff => Some("फुलाएँ"),
+        TextKey::HairToolPuffHint => Some("ब्रश के नीचे लटें त्वचा से उठाएँ। Alt से बिठाएँ"),
+        TextKey::HairCopySettings => Some("सब कॉपी करें"),
+        TextKey::HairPasteSettings => Some("सब पेस्ट करें"),
+        TextKey::HairGroupPerformance => Some("प्रदर्शन"),
+        TextKey::HairGroupPhysics => Some("भौतिकी"),
+        TextKey::HairGroupStiffness => Some("कठोरता"),
+        TextKey::HairGroupShape => Some("आकार"),
+        TextKey::HairGroupCurl => Some("कर्ल"),
+        TextKey::HairGroupLook => Some("रूप"),
+        TextKey::HairColorScalp => Some("स्कैल्प"),
+        TextKey::HairColorRoot => Some("जड़"),
+        TextKey::HairColorTip => Some("सिरा"),
+        TextKey::HairColorSpecular => Some("चमक"),
+        TextKey::HairScalpMask => Some("स्कैल्प टेक्सचर"),
+        TextKey::HairScalpMaskBuiltIn => Some("अंतर्निहित"),
+        TextKey::HairScalpMaskCustom => Some("फ़ाइल से..."),
+        TextKey::HairExport => Some("VaM में निर्यात करें"),
+        TextKey::HairExportName => Some("आइटम नाम"),
+        TextKey::HairExportCreator => Some("निर्माता"),
+        TextKey::HairExportNeedsMetadata => Some("निर्यात से पहले नाम और निर्माता भरें"),
+        TextKey::HairOverwriteTitle => Some("इस स्टाइल को बदलें?"),
+        TextKey::HairOverwriteBody => {
+            Some("इस नाम और निर्माता की स्टाइल पहले से है। निर्यात उसकी फ़ाइलें बदल देगा।")
+        }
+        TextKey::HairOverwriteProceed => Some("बदलें"),
+        TextKey::HairExportDone => Some("बाल आइटम सहेजा गया"),
+        TextKey::HairExportFailed => Some("बाल निर्यात विफल"),
+        TextKey::HairExportNeedsPart => Some("पहले स्ट्रैंड वाला बाल भाग चुनें"),
+        TextKey::HairExportNeedsVaMRoot => Some("निर्यात से पहले VaM रूट सेट करें"),
+        TextKey::HairMirrorPart => Some("भाग को दूसरी ओर दर्पणित करें"),
+        TextKey::HairDuplicatePart => Some("भाग की प्रतिलिपि"),
+        TextKey::HairSegmentsShort => Some("सेग"),
         TextKey::MorphCategoryBody => Some("शरीर"),
         TextKey::TextureNamePlaceholder => Some("टेक्सचर का नाम लिखें"),
         TextKey::TextureOverwriteTitle => Some("इसी नाम के टेक्सचर बदल दिए जाएँगे"),
@@ -66,6 +167,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("पूर्ववत"),
         TextKey::ResetAllPins => Some("सभी पिन रीसेट"),
+        TextKey::ResetAll => Some("सब रीसेट करें"),
         TextKey::MorphSave => Some("मॉर्फ सहेजें"),
         TextKey::TextureSaveSection => Some("टेक्सचर सहेजें"),
         TextKey::Generate => Some("चेहरा फ़िट"),
@@ -87,7 +189,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("वायरफ़्रेम ओवरले दिखाएँ और समायोजित करें"),
         TextKey::ViewportXrayTooltip => Some("एक्स-रे ओवरले दिखाएँ और समायोजित करें"),
         TextKey::ViewportSkinTooltip => Some("VaM स्किन टेक्सचर चुनें"),
-        TextKey::ViewportHairTooltip => Some("VaM हेयर प्रीसेट चुनें"),
         TextKey::FalloffTooltip => Some("ब्रश प्रभाव वक्र चुनें"),
         TextKey::FalloffSmooth => Some("स्मूद"),
         TextKey::FalloffSmoother => Some("ज़्यादा स्मूद"),
@@ -128,6 +229,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("हर एक पर पिन रखें, या बिना पिन के फ़िट करें"),
         TextKey::TextureNeedsImage => Some("साइड पैनल से एक छवि जोड़ें"),
         TextKey::TexturePinPairPrompt => Some("बाईं और दाईं ओर मेल खाते पिन लगाएँ"),
+        TextKey::TextureToolNeedsPins => Some("इसे उपयोग करने के लिए पहले पिन लगाएँ"),
         TextKey::SymmetrySuggestion => Some("साफ़ मिलान के लिए मिररिंग की सलाह है"),
         TextKey::SymmetryChangeTitle => Some("पिन रीसेट हो जाएँगे"),
         TextKey::SymmetryChangeConfirm => Some("पुष्टि करें"),
@@ -161,10 +263,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("स्किन लोड विफल"),
         TextKey::SkinUvUnavailable => Some("स्किन UV अनुपलब्ध"),
         TextKey::NoMatchingSkins => Some("कोई मेल खाती स्किन नहीं"),
-        TextKey::Hair => Some("बाल"),
-        TextKey::HairNone => Some("कोई नहीं"),
         TextKey::HairSearch => Some("बाल खोजें"),
-        TextKey::HairLoading => Some("बाल लोड हो रहे हैं"),
         TextKey::HairReady => Some("बाल प्रीव्यू तैयार"),
         TextKey::HairLoadFailed => Some("बाल लोड विफल"),
         TextKey::HairPartsSkipped => Some("कुछ भागों के बिना दिखाया जा रहा है"),
@@ -175,6 +274,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("व्यूपोर्ट"),
         TextKey::SettingsGeneral => Some("सामान्य"),
         TextKey::SettingsAbout => Some("परिचय"),
+        TextKey::SettingsShortcuts => Some("शॉर्टकट"),
+        TextKey::ShortcutsCapturing => Some("दबाएँ…"),
+        TextKey::ShortcutsResetAll => Some("सभी शॉर्टकट रीसेट करें"),
+        TextKey::ShortcutsExport => Some("कीमैप फ़ाइल में सहेजें"),
+        TextKey::ShortcutsImport => Some("कीमैप फ़ाइल लोड करें"),
+        TextKey::ShortcutsTaken => Some("यह पहले से किसी और क्रिया का है"),
         TextKey::SettingsAboutBuild => Some("बिल्ड"),
         TextKey::SettingsAboutLicense => Some("लाइसेंस"),
         TextKey::SettingsAboutDiagnostics => Some("निदान"),
@@ -214,18 +319,23 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("प्रदर्शन भाषा"),
         TextKey::SettingsFoldersGroup => Some("फ़ोल्डर"),
         TextKey::SettingsVaMRoot => Some("VaM इंस्टॉल पथ"),
-        TextKey::HairVisible => Some("बाल दिखाएँ"),
         TextKey::HairNeedsFinishedHead => Some("बाल तैयार सिर पर पहनाए जाते हैं।"),
-        TextKey::HairPreviewCaveat => Some("बालों का विवरण असल से भिन्न है।"),
         TextKey::NoMatchingHair => Some("कोई मेल खाता हेयर प्रीसेट नहीं"),
         TextKey::MorphSearch => Some("मॉर्फ खोजें"),
         TextKey::AppearanceSearch => Some("लुक खोजें"),
+        TextKey::AppearanceLayers => Some("रूप परतें"),
+        TextKey::AddAppearanceLayer => Some("चयनित रूप जोड़ें"),
+        TextKey::AppearanceLayersEmpty => Some("अभी कोई परत नहीं"),
+        TextKey::AppearanceLayerRaise => Some("ऊपर ले जाएँ"),
+        TextKey::AppearanceLayerLower => Some("नीचे ले जाएँ"),
         TextKey::LookFind => Some("लुक लोड करें"),
-        TextKey::CameraTrackballArmed => {
-            Some("रोल सक्रिय · झुकाने के लिए आड़ा खींचें · समाप्त करने हेतु क्लिक या R")
-        }
+        TextKey::CameraTrackballArmed => Some("ट्रैकबॉल · स्वतंत्र घुमाने के लिए खींचें · क्लिक या R से बाहर"),
         TextKey::HelpTrackball => Some("ट्रैकबॉल घुमाव"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("दो कोणों से देखें — व्यू बाँटें"),
+        TextKey::SplitModelViewName => Some("विभाजित दृश्य"),
+        TextKey::HelpLevelRoll => Some("क्षितिज समतल करें"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("पिछला सत्र अचानक बंद हो गया था"),
         TextKey::RecoveryBody => {
             Some("आपके मॉर्फ, स्कल्प्टिंग और टेक्सचर लेयर रुकने से ठीक पहले सहेज लिए गए थे। उन्हें वापस लाएँ?")
@@ -236,9 +346,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("उस सत्र का लुक अभी सूची में नहीं है — बनावटें बहाल हो गईं, और लुक चुनते ही संपादन लागू होंगे।")
         }
-        TextKey::SettingsOcclusionGroup => Some("एम्बिएंट ऑक्लूज़न"),
-        TextKey::SettingsOcclusionIntensity => Some("तीव्रता"),
-        TextKey::SettingsOcclusionRadius => Some("पहुँच"),
         TextKey::SettingsBloomGroup => Some("ब्लूम"),
         TextKey::SettingsBloomIntensity => Some("तीव्रता"),
         TextKey::SettingsBloomThreshold => Some("सीमा"),
@@ -251,7 +358,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("स्कल्प्टिंग इस लुक तक नहीं आ सकी"),
         TextKey::SettingsToneCurve => Some("टोन वक्र"),
         TextKey::SettingsToneCurveTooltip => Some("छायाओं और हाइलाइट्स को समायोजित करता है"),
-        TextKey::SettingsOcclusionTooltip => Some("जहाँ सतहें मिलती हैं उन दरारों को गहरा करता है"),
         TextKey::SettingsVignetteTooltip => Some("फ़्रेम के किनारों को गहरा करता है"),
         TextKey::SettingsEffectEnabled => Some("चालू"),
         TextKey::SettingsInterfaceGroup => Some("इंटरफ़ेस"),
@@ -327,6 +433,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("कोई संगत परिणाम मॉर्फ उपलब्ध नहीं है"),
         TextKey::AlignmentPending => Some("स्कैन हेड लोड करें और अपना VaM फ़ोल्डर चुनें"),
         TextKey::ScanLoaded => Some("कस्टम हेड OBJ, GLB या FBX लोड हुआ"),
+        TextKey::ScanUnloaded => Some("हेड फ़ाइल हटाई गई; G2 बेस संपादन के लिए तैयार है"),
+        TextKey::PinPairsMismatched => Some("पिन की संख्या मेल नहीं खाती; बिना जोड़ी वाले पिन"),
+        TextKey::UnloadScanTooltip => Some("यह हेड फ़ाइल हटाएँ"),
         TextKey::TemplateLoaded => Some("G2 लोड हुआ"),
         TextKey::PinsReset => Some("सभी पिन रीसेट हो गए"),
         TextKey::ResultStale => Some("बदलावों के लिए परिणाम दोबारा बनाना ज़रूरी है"),
@@ -384,6 +493,37 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("नंपैड 1-9"),
         TextKey::ShortcutCameraProjection => Some("नंपैड ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("फिर करें"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("बालों के प्रीसेट"),
+        TextKey::HairPresetLoad => Some("लोड करें"),
+        TextKey::HairToolPick => Some("परत चुनें"),
+        TextKey::HairToolPickHint => {
+            Some("व्यूपोर्ट में किसी लट पर क्लिक करके उसकी परत सक्रिय करें। ब्रश अगली क्लिक से चलेगा।")
+        }
+        TextKey::HelpHairPick => Some("कर्सर के नीचे की परत चुनें"),
+        TextKey::ShortcutHairPick => Some("V, या किसी भी ब्रश से Ctrl + क्लिक"),
+        TextKey::HelpHairSmooth => Some("कंघी के बजाय चिकना करें"),
+        TextKey::ShortcutHairSmooth => Some("कंघी करते समय Shift"),
+        TextKey::HairGroupScalp => Some("खोपड़ी"),
+        TextKey::HairScalpAlpha => Some("खोपड़ी मास्क"),
+        TextKey::HairScalpPanel => Some("खोपड़ी"),
+        TextKey::HairScalpMesh => Some("खोपड़ी मेश"),
+        TextKey::HairScalpCreate => Some("खोपड़ी बनाएं"),
+        TextKey::HairScalpAbsent => Some("इस स्टाइल में अभी खोपड़ी परत नहीं है।"),
+        TextKey::HistoryBranchTitle => Some("आगे के चरण मिट जाएँगे"),
+        TextKey::HistoryBranchProceed => Some("फिर भी संपादित करें"),
+        TextKey::DoNotShowAgain => Some("यह फ़िर न दिखाएँ"),
+        TextKey::SurfaceBaseUnblended => Some("कुछ PBR मैप VaM स्किन के साथ मिलाए नहीं जा सके"),
+        TextKey::DetailEditRedone => Some("पूर्ववत किया गया संपादन फिर लागू किया गया"),
+        TextKey::ShortcutBrushSmaller => Some("ब्रश छोटा करें"),
+        TextKey::ShortcutBrushLarger => Some("ब्रश बड़ा करें"),
+        TextKey::ShortcutBrushSizeDrag => Some("खींचकर ब्रश का आकार"),
+        TextKey::ShortcutBrushStrengthDrag => Some("खींचकर ब्रश की शक्ति"),
+        TextKey::ShortcutStencilCancel => Some("स्टेंसिल रखना रद्द करें"),
+        TextKey::ShortcutViewOrbit => Some("दृश्य के चारों ओर घुमाएँ"),
+        TextKey::ShortcutViewPan => Some("दृश्य खिसकाएँ"),
+        TextKey::ShortcutViewDolly => Some("दृश्य पास-दूर करें"),
         TextKey::TemplatePending => Some("G2 बेस अपने आप तैयार करने के लिए अपना VaM फ़ोल्डर चुनें"),
         TextKey::ResultEmpty => Some("कोई तैयार मॉर्फ नहीं"),
         TextKey::ScaleLink => Some("स्केल लिंक"),
@@ -417,6 +557,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("सतह की डिटेल को स्मूद करता है"),
         TextKey::SculptBrushRestoreTooltip => Some("बेस आकार की ओर वापस लाता है"),
+        TextKey::SculptBrushMask => Some("मास्क"),
+        TextKey::SculptBrushMaskTooltip => {
+            Some("चयनित रूप परत को हटाकर नीचे वाली दिखाएँ। Alt से वापस लगाएँ")
+        }
         TextKey::TextureLayers => Some("टेक्सचर लेयर"),
         TextKey::PackageSection => Some("VAR निर्यात"),
         TextKey::PackageCreatorHint => Some("क्रिएटर"),
@@ -592,6 +736,178 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("टेक्सचर लेयर जोड़ें"),
         TextKey::DialogSaveMorphPair => Some("VaM मॉर्फ़ VMI + VMB सहेजें"),
         TextKey::DialogChooseVamFolder => Some("Virt-A-Mate फ़ोल्डर चुनें"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("बालों की मात्रा"),
+        "curveDensity" => Some("वक्र घनत्व"),
+        "iterations" => Some("पुनरावृत्तियाँ"),
+        "simulationEnabled" => Some("भौतिकी"),
+        "collisionEnabled" => Some("टक्कर"),
+        "weight" => Some("भार"),
+        "drag" => Some("वायु प्रतिरोध"),
+        "gravityMultiplier" => Some("गुरुत्व गुणक"),
+        "collisionRadius" => Some("टक्कर त्रिज्या"),
+        "collisionRadiusRoot" => Some("टक्कर त्रिज्या (जड़)"),
+        "friction" => Some("घर्षण"),
+        "bendResistance" => Some("मोड़ प्रतिरोध"),
+        "rootRigidity" => Some("जड़ की कठोरता"),
+        "mainRigidity" => Some("मध्य की कठोरता"),
+        "tipRigidity" => Some("सिरे की कठोरता"),
+        "jointRigidity" => Some("जोड़ की कठोरता"),
+        "rigidityRolloffPower" => Some("कठोरता क्षय"),
+        "cling" => Some("शैली संसक्ति"),
+        "clingRolloff" => Some("संसक्ति क्षय"),
+        "snap" => Some("पकड़"),
+        "usePaintedRigidity" => Some("चित्रित कठोरता उपयोग करें"),
+        "width" => Some("मोटाई"),
+        "length1" => Some("लंबाई 1"),
+        "length2" => Some("लंबाई 2"),
+        "length3" => Some("लंबाई 3"),
+        "maxSpread" => Some("अधिकतम फैलाव"),
+        "spreadRoot" => Some("फैलाव (जड़)"),
+        "spreadMid" => Some("फैलाव (मध्य)"),
+        "spreadTip" => Some("फैलाव (सिरा)"),
+        "spreadMidpoint" => Some("फैलाव मध्यबिंदु"),
+        "spreadCurvePower" => Some("फैलाव वक्र"),
+        "curlScale" => Some("घुंघरालेपन का आकार"),
+        "curlFrequency" => Some("घुंघरालेपन की आवृत्ति"),
+        "curlScaleRandomness" => Some("आकार यादृच्छिकता"),
+        "curlFrequencyRandomness" => Some("आवृत्ति यादृच्छिकता"),
+        "curlRoot" => Some("घुंघरालापन (जड़)"),
+        "curlMid" => Some("घुंघरालापन (मध्य)"),
+        "curlTip" => Some("घुंघरालापन (सिरा)"),
+        "curlMidpoint" => Some("घुंघरालापन मध्यबिंदु"),
+        "curlCurvePower" => Some("घुंघरालापन वक्र"),
+        "curlX" => Some("घुंघरालापन X"),
+        "curlY" => Some("घुंघरालापन Y"),
+        "curlZ" => Some("घुंघरालापन Z"),
+        "curlNormalAdjust" => Some("घुंघरालापन सामान्य सुधार"),
+        "curlAllowReverse" => Some("उल्टी दिशा की अनुमति"),
+        "curlAllowFlipAxis" => Some("अक्ष पलटने की अनुमति"),
+        "Alpha Adjust" => Some("खोपड़ी की अपारदर्शिता"),
+        "Diffuse Color" => Some("खोपड़ी का विसरित रंग"),
+        "Gloss" => Some("खोपड़ी की चमक"),
+        "Specular Intensity" => Some("खोपड़ी का परावर्तन"),
+        "Diffuse Texture Offset" => Some("खोपड़ी टेक्सचर ऑफ़सेट"),
+        "rootColor" => Some("जड़ का रंग"),
+        "tipColor" => Some("सिरे का रंग"),
+        "specularColor" => Some("चमक का रंग"),
+        "colorRolloff" => Some("जड़→सिरा रंग क्षय"),
+        "randomColorPower" => Some("यादृच्छिक रंग की तीव्रता"),
+        "randomColorOffset" => Some("यादृच्छिक रंग ऑफ़सेट"),
+        "primarySpecularSharpness" => Some("प्राथमिक चमक"),
+        "secondarySpecularSharpness" => Some("द्वितीयक चमक"),
+        "specularShift" => Some("द्वितीयक चमक विस्थापन"),
+        "diffuseSoftness" => Some("विसरित कोमलता"),
+        "fresnelPower" => Some("फ़्रेनेल तीव्रता"),
+        "fresnelAttenuation" => Some("फ़्रेनेल क्षय"),
+        "IBLFactor" => Some("अप्रत्यक्ष प्रकाश"),
+        "normalRandomize" => Some("सामान्य यादृच्छिकता"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => {
+            Some("हर तीन गाइडों के बीच कितनी लटें उगती हैं। बालों का रूप यही है, और उनका अधिकांश खर्च भी।")
+        }
+        "curveDensity" => Some(
+            "हर लट पर बनाए गए बिंदु। अधिक होने पर चिकना और धीमा; आकार संख्या के ऊँचा होने से बहुत पहले ही पढ़ा जाने लगता है।",
+        ),
+        "iterations" => Some("प्रति फ़्रेम सॉल्वर के चक्र। अधिक होने पर तेज़ गति में अवरोध कसकर टिकते हैं।"),
+        "simulationEnabled" => Some("यह भाग खेल में हिलता है या नहीं। व्यूपोर्ट स्विच से इसका कोई संबंध नहीं।"),
+        "collisionEnabled" => Some("इस भाग की लटें शरीर से बाहर धकेली जाती हैं या नहीं।"),
+        "weight" => Some("लट कितनी भारी लटकती है। गुरुत्व और हिलाए जाने के प्रतिरोध, दोनों को बढ़ाता है।"),
+        "drag" => Some("हवा लट को कितना रोकती है। ऊँचा होने पर वह जल्दी थम जाती है और कम झूलती है।"),
+        "gravityMultiplier" => Some("इस भाग पर लगने वाला गुरुत्व, दृश्य के गुरुत्व के गुणक के रूप में।"),
+        "collisionRadius" => Some("जिस मोटाई से लट टकराती है, उसकी पूरी लंबाई में।"),
+        "collisionRadiusRoot" => Some("जड़ के पास की मोटाई, जब उसे बाकी से अलग रखना हो।"),
+        "friction" => Some("लट जिसे छूती है उसे फिसलने के बजाय कितना पकड़ती है।"),
+        "bendResistance" => Some("लट सीधी रेखा से मोड़े जाने का कितना विरोध करती है।"),
+        "rootRigidity" => Some("जड़ का सिरा गढ़े गए आकार को कितनी मज़बूती से थामता है।"),
+        "mainRigidity" => Some("मध्य भाग गढ़े गए आकार को कितनी मज़बूती से थामता है।"),
+        "tipRigidity" => Some("सिरा गढ़े गए आकार को कितनी मज़बूती से थामता है।"),
+        "jointRigidity" => Some("शैली-जोड़ों की कठोरता: वे स्प्रिंग जो चोटी को चोटी बनाए रखते हैं।"),
+        "rigidityRolloffPower" => {
+            Some("तीनों कठोरताएँ लट के साथ कैसे घुलती हैं। ऊँचा होने पर जड़ का मान और नीचे तक पहुँचता है।")
+        }
+        "cling" => Some("शैली-जोड़ लटों को एक-दूसरे के पास कितनी ज़ोर से खींचते हैं।"),
+        "clingRolloff" => {
+            Some("संसक्ति लट के साथ कितनी दूर तक फीकी पड़ती है। ऊँचा होने पर वह जड़ के पास ही सीमित रहती है।")
+        }
+        "snap" => Some("हर खंड अपनी बनाई गई लंबाई को कितनी दृढ़ता से बनाए रखता है।"),
+        "usePaintedRigidity" => Some("तीन स्लाइडरों के बजाय चित्रित मानचित्र से कठोरता लें।"),
+        "width" => {
+            Some("लट कितनी मोटी खींची जाती है। VaM का अपना स्लाइडर भी दसवें मिलीमीटर पर रुक जाता है।")
+        }
+        "length1" => Some("अपने त्रिभुज के पहले गाइड के सबसे पास वाली लटों की लंबाई।"),
+        "length2" => Some("अपने त्रिभुज के दूसरे गाइड के सबसे पास वाली लटों की लंबाई।"),
+        "length3" => Some("अपने त्रिभुज के तीसरे गाइड के सबसे पास वाली लटों की लंबाई।"),
+        "maxSpread" => Some(
+            "लट अपने गाइड से कितनी दूर हट सकती है, उसकी ऊपरी सीमा; कोई प्रवर्धक नहीं। गाइडों की आपसी दूरी पार होते ही इसे बढ़ाने से कुछ नहीं बदलता।",
+        ),
+        "spreadRoot" => {
+            Some("जड़ पर लटें कितनी स्वतंत्रता से अलग होती हैं। कम होने पर वे गाइड की ओर सिमट जाती हैं।")
+        }
+        "spreadMid" => Some("मध्य में लटें कितनी स्वतंत्रता से अलग होती हैं।"),
+        "spreadTip" => Some("सिरे पर लटें कितनी स्वतंत्रता से अलग होती हैं।"),
+        "spreadMidpoint" => Some("लट पर किस बिंदु से मध्य वाला फैलाव लागू होता है।"),
+        "spreadCurvePower" => Some("फैलाव जड़, मध्य और सिरे के बीच कितनी तीव्रता से बदलता है।"),
+        "curlScale" => Some("घुंघरालेपन की चौड़ाई: वह त्रिज्या जिसके चारों ओर वह लिपटता है, उसकी लंबाई नहीं।"),
+        "curlFrequency" => Some("लट के प्रति सेंटीमीटर लपेटों की संख्या।"),
+        "curlScaleRandomness" => Some("लट-दर-लट घुंघरालेपन की चौड़ाई कितनी बदलती है।"),
+        "curlFrequencyRandomness" => Some("लट-दर-लट लपेटने की दर कितनी बदलती है।"),
+        "curlRoot" => Some("घुंघरालापन जड़ तक कितना पहुँचता है।"),
+        "curlMid" => Some("घुंघरालापन मध्य तक कितना पहुँचता है।"),
+        "curlTip" => Some("घुंघरालापन सिरे तक कितना पहुँचता है।"),
+        "curlMidpoint" => Some("लट पर किस बिंदु से मध्य वाला घुंघरालापन लागू होता है।"),
+        "curlCurvePower" => Some("घुंघरालापन जड़, मध्य और सिरे के बीच कितनी तीव्रता से बदलता है।"),
+        "curlX" => Some("X दिशा में घुंघरालेपन का विस्थापन। यह घुमाया जाने वाला सदिश है, लिपटने की धुरी नहीं।"),
+        "curlY" => Some("Y दिशा में घुंघरालेपन का विस्थापन।"),
+        "curlZ" => Some("Z दिशा में घुंघरालेपन का विस्थापन।"),
+        "curlNormalAdjust" => Some(
+            "सामान्य दिशा में घुंघरालेपन के ऑफ़सेट में जोड़ा जाता है। यह कुंडली को सिर से ऊपर उठाता है, धुरी को झुकाता नहीं।",
+        ),
+        "curlAllowReverse" => {
+            Some("कुछ लटों को उल्टी दिशा में लिपटने देता है, ताकि घुंघराला सिर एक ही लट की पुनरावृत्ति न लगे।")
+        }
+        "curlAllowFlipAxis" => Some("कुछ लटों को पलटी हुई धुरी पर लिपटने देता है, उसी कारण से।"),
+        "Alpha Adjust" => Some(
+            "खोपड़ी की टोपी कितनी अपारदर्शी है। अधिकांश भाग किसी और की टोपी पहनते हैं, इसलिए इसे सबसे नीचे रखकर छिपाते हैं; इसे तभी बढ़ाएँ जब माँग से खोपड़ी दिखानी हो।",
+        ),
+        "Diffuse Color" => {
+            Some("टोपी का अपना विसरित रंग। VaM इसे सफ़ेद भेजता है, ताकि नीचे की त्वचा झलक सके।")
+        }
+        "Gloss" => Some("जहाँ खोपड़ी की टोपी दिखती है, वहाँ वह कितनी चमकीली है।"),
+        "Specular Intensity" => Some("खोपड़ी की टोपी चमक को कितनी तीव्रता से पकड़ती है।"),
+        "Diffuse Texture Offset" => {
+            Some("टोपी के विसरित रंग में जोड़ा जाता है। नाम के बावजूद यह कोई शीट संख्या नहीं है।")
+        }
+        "rootColor" => Some("जड़ पर रंग।"),
+        "tipColor" => Some("सिरे पर रंग।"),
+        "specularColor" => Some("चमक का रंग।"),
+        "colorRolloff" => Some("लट के साथ जड़ का रंग सिरे के रंग को कैसे सौंपता है।"),
+        "randomColorPower" => Some("लटों के बीच रंग कितनी तीव्रता से भिन्न होता है।"),
+        "randomColorOffset" => Some("वह भिन्नता किस ओर झुकती है, उजले या गहरे।"),
+        "primarySpecularSharpness" => Some("मुख्य चमक कितनी कसी हुई है। ऊँचा होने पर अधिक चमकदार।"),
+        "secondarySpecularSharpness" => {
+            Some("दूसरी चमक कितनी कसी हुई है: वह रंगीन जो बालों के साथ चलती है।")
+        }
+        "specularShift" => Some("दूसरी चमक लट के साथ पहली से कितनी दूर बैठती है।"),
+        "diffuseSoftness" => Some(
+            "प्रकाश लट के चारों ओर कितनी कोमलता से लिपटता है, बजाय केवल सामने वाले हिस्से को उजागर करने के।",
+        ),
+        "fresnelPower" => Some("जहाँ बाल दृष्टि से मुड़ते हैं, वहाँ किनारा कितनी तीव्रता से उजला होता है।"),
+        "fresnelAttenuation" => Some("उस किनारे के उजलेपन की तीव्रता।"),
+        "IBLFactor" => Some("बाल दृश्य के परिवेशी प्रकाश को कितना ग्रहण करते हैं।"),
+        "normalRandomize" => {
+            Some("हर लट का छायांकन सामान्य कितना हिलाया जाता है, ताकि पड़ोसी लटें एक जैसी न छायांकित हों।")
+        }
         _ => None,
     }
 }

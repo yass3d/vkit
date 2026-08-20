@@ -7,7 +7,6 @@ license.workspace = true
 
 [features]
 default = []
-rig = []
 
 [dependencies]
 vkit-geometry-core = { path = "../vkit_geometry_core" }

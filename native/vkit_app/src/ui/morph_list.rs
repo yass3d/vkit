@@ -35,9 +35,6 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
             let spacing = ui.spacing().item_spacing.x;
 
             let pile_width = MORPH_FILTER_CAPSULE_WIDTH.min(ui.available_width());
-            // The side filter is two glyphs and a slash, so it asks for what it
-            // needs rather than a share of the row. The search field gives up
-            // the difference; it had length to spare.
             let side_label = text(state.locale, TextKey::MorphOneSidedFilter);
             let side_width = ui
                 .painter()
@@ -121,7 +118,7 @@ pub(crate) fn draw_morph_filters(ui: &mut Ui, state: &mut AppState) -> MorphFilt
                         TextKey::MorphOneSidedFilterShow
                     },
                 ),
-                None,
+                crate::ui_components::NO_SHORTCUT,
             );
 
             rect.union(ui.min_rect())

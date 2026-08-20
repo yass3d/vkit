@@ -137,10 +137,6 @@ pub(super) fn detail_numeric_label_width(text_width: f32, control_width: f32) ->
     (text_width + 2.0).min(cap)
 }
 
-/// How a number is written: the span it moves through, how many places it
-/// keeps, and whether it reads as a percentage. Three answers to one question,
-/// so they arrive together — which also leaves the shortcut where every other
-/// control in this crate puts it, last.
 pub(super) struct NumericFormat {
     pub range: std::ops::RangeInclusive<f32>,
     pub decimals: usize,
@@ -191,8 +187,6 @@ pub(super) fn detail_numeric_control(
                 .value_gap(0.0);
             let slider = ui.add(if percent { slider.percent() } else { slider });
             changed = slider.changed();
-            // Both halves answer the hover: the label is what a hand reaches
-            // for when it does not know the control has a key at all.
             crate::ui_components::tooltip(label_response | slider, label, shortcut);
         },
     );
@@ -263,25 +257,6 @@ pub(super) fn draw_detail_group_panel(ui: &mut Ui, state: &mut AppState, rect: R
             }
             for target in SculptTarget::ALL {
                 draw_detail_group_row(ui, state, target);
-            }
-            let footer_width = ui.available_width().max(0.0);
-            let enabled = !state.busy();
-            let (_footer, reset) = ui.allocate_exact_size(
-                vec2(footer_width, crate::theme::CONTROL_H_DENSE),
-                if enabled {
-                    Sense::click()
-                } else {
-                    Sense::hover()
-                },
-            );
-            let reset = paint_reset_capsule_button(
-                &*ui,
-                reset,
-                text(state.locale, TextKey::ResetSculpt),
-                enabled,
-            );
-            if reset.clicked() {
-                state.dispatch(Action::ResetSculpt);
             }
         });
 }
@@ -588,6 +563,9 @@ pub(super) fn clear_stale_detail_pointer_state(ui: &Ui, state: &mut AppState) {
     if state.is_texturing() {
         ui.data_mut(|data| data.remove::<bool>(Id::new(DETAIL_GROUP_PAINT)));
     }
+    if !state.is_hair_editing() {
+        super::hair_input::clear_hair_pointer_state(ui.ctx());
+    }
     if interrupted && state.texture_project.edit_transaction_active() {
         state.dispatch(Action::EndTextureEdit);
     }
@@ -627,9 +605,6 @@ pub(super) struct TextureSurfaceHit {
     barycentric: [f64; 3],
 }
 
-/// One mapped head triangle, with everything a ray test needs already gathered: the two levels of
-/// indirection (mapping row to canonical triangle to three vertex rows) and the f32-to-f64 widening
-/// are what a dab used to redo ~16.7k times.
 #[derive(Clone, Copy)]
 struct HeadPickTriangle {
     triangle_index: u32,
@@ -637,8 +612,6 @@ struct HeadPickTriangle {
     corners: [glam::DVec3; 3],
 }
 
-/// The candidate list plus the two inputs it was gathered from. The strong handles are the point:
-/// they keep the keyed allocations alive, so pointer identity cannot be reused underneath us.
 struct HeadPickCandidates {
     mesh: Arc<SurfaceMesh>,
     mapping: Arc<vkit_core::vam::G2UvMapping>,
@@ -650,8 +623,6 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-/// Gathered once per (generated head, UV map) pair and then reused for every dab of every stroke.
-/// A morph, a sculpt or a catalog rescan replaces one of those `Arc`s and rebuilds the list.
 fn head_pick_candidates(
     mesh: &Arc<SurfaceMesh>,
     mapping: &Arc<vkit_core::vam::G2UvMapping>,
@@ -727,10 +698,6 @@ pub(super) fn handle_texture_paint_interaction(
     let drag_id = Id::new(TEXTURE_TARGET_MASK_DRAG);
     if input_blocked {
         ui.data_mut(|data| data.remove::<Pos2>(drag_id));
-        clear_brush_size_gesture(
-            ui.ctx(),
-            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
-        );
         state.dispatch(Action::EndTextureEdit);
         return;
     }
@@ -749,7 +716,6 @@ pub(super) fn handle_texture_paint_interaction(
         return;
     }
 
-    // On a 2D brush "how much" means opacity, so Shift+F sweeps that instead.
     let strength_update = crate::ui_components::handle_brush_strength_gesture(
         ui,
         crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
@@ -832,13 +798,6 @@ pub(super) fn handle_texture_paint_interaction(
     ui.ctx().request_repaint();
 }
 
-/// How many screen points one G2 UV unit spans at the surface under `pointer`.
-///
-/// The dab the texture brush lands is sized as a fraction of the square G2 mask
-/// (`apply_layer_mask_dab`), i.e. a UV radius, so its screen footprint grows and shrinks with the
-/// camera. Measuring the local UV-to-screen scale is what lets the ring and the stroke spacing be
-/// stated in the same units as the dab instead of in a fraction of the viewport, which only
-/// agreed with the dab at one accidental camera distance.
 pub(super) fn measure_texture_brush_points_per_uv(
     state: &AppState,
     viewport: Rect,
@@ -880,10 +839,6 @@ pub(super) fn measure_texture_brush_points_per_uv(
     (screen_area > 0.0 && uv_area > 1.0e-12).then(|| (screen_area / uv_area).sqrt())
 }
 
-/// [`measure_texture_brush_points_per_uv`], remembered across frames. Sliding the cursor off the
-/// head — or holding the brush-size gesture anchor off it — has nothing to measure, and snapping
-/// the ring to a viewport-sized fallback there would read as the brush changing size. The last
-/// surface the cursor was actually over is the honest answer until it is over another one.
 fn texture_brush_points_per_uv(
     ui: &Ui,
     state: &AppState,
@@ -980,76 +935,6 @@ pub(super) fn paint_stencil_brush_cursor(
 const STENCIL_STROKE_LAST: &str = "vkit.texture.stencil-stroke-last";
 
 const STENCIL_STROKE_TRIANGLES: &str = "vkit.texture.stencil-stroke-triangles";
-const STENCIL_PREVIEW: &str = "vkit.texture.stencil-preview";
-const STENCIL_PREVIEW_CAMERA: &str = "vkit.texture.stencil-preview-camera";
-
-#[derive(Clone)]
-pub(crate) struct StencilProjection {
-    pub triangles: std::sync::Arc<Vec<vkit_core::texture_bake::ProjectedTriangle>>,
-    pub stencil: Rect,
-    pub placement: crate::texture_project::StencilPlacement,
-}
-
-pub(crate) fn stencil_projection(ui: &Ui) -> Option<StencilProjection> {
-    ui.data(|data| data.get_temp::<StencilProjection>(Id::new(STENCIL_PREVIEW)))
-}
-
-pub(crate) fn forget_stencil_projection(ui: &Ui) {
-    ui.data_mut(|data| {
-        data.remove::<StencilProjection>(Id::new(STENCIL_PREVIEW));
-        data.remove::<u64>(Id::new(STENCIL_PREVIEW_CAMERA));
-    });
-}
-
-pub(super) fn publish_stencil_projection(
-    ui: &Ui,
-    state: &AppState,
-    viewport: Rect,
-    camera: TurntableCamera,
-    stencil: Rect,
-) {
-    let fingerprint = camera_fingerprint(camera, viewport);
-    let cached = ui
-        .data(|data| data.get_temp::<u64>(Id::new(STENCIL_PREVIEW_CAMERA)))
-        .filter(|held| *held == fingerprint)
-        .and_then(|_| ui.data(|data| data.get_temp::<StencilProjection>(Id::new(STENCIL_PREVIEW))))
-        .map(|held| held.triangles);
-    let triangles = cached
-        .unwrap_or_else(|| std::sync::Arc::new(project_face_triangles(state, viewport, camera)));
-    let projection = StencilProjection {
-        triangles,
-        stencil,
-        placement: state.texture_project.projection_placement,
-    };
-    ui.data_mut(|data| {
-        data.insert_temp(Id::new(STENCIL_PREVIEW_CAMERA), fingerprint);
-        data.insert_temp(Id::new(STENCIL_PREVIEW), projection);
-    });
-}
-
-fn camera_fingerprint(camera: TurntableCamera, viewport: Rect) -> u64 {
-    let mut key = 0_u64;
-    for value in [
-        camera.yaw,
-        camera.pitch,
-        camera.roll,
-        camera.target.x,
-        camera.target.y,
-        camera.target.z,
-        camera.distance,
-        camera.fov_y_radians,
-        camera.orthographic_scale,
-        viewport.width(),
-        viewport.height(),
-    ] {
-        key = key
-            .rotate_left(7)
-            .wrapping_mul(0x0100_0000_01b3)
-            .wrapping_add(u64::from(value.to_bits()));
-    }
-    key
-}
-
 fn project_face_triangles(
     state: &AppState,
     viewport: Rect,
@@ -1185,10 +1070,6 @@ pub(super) fn handle_projection_stencil(
                 Id::new(STENCIL_STROKE_TRIANGLES),
             );
         });
-        clear_brush_size_gesture(
-            ui.ctx(),
-            crate::ui_components::BrushSweeps::TEXTURE_SURFACE.size(),
-        );
 
         if state.texture_project.edit_transaction_active() {
             state.dispatch(Action::EndTextureEdit);
@@ -1242,10 +1123,6 @@ pub(super) fn handle_projection_stencil(
     if size_update.consumed {
         return;
     }
-    // The stencil brush had size and no strength, alone among the brushes. It
-    // paints with the same opacity every other 2D brush does, so it answers to
-    // the same sweep -- there was no reason for it to be the exception beyond
-    // nobody having wired it.
     let strength_update = crate::ui_components::handle_brush_strength_gesture(
         ui,
         crate::ui_components::BrushSweeps::TEXTURE_SURFACE.strength(),
@@ -1490,12 +1367,6 @@ pub(super) fn nearest_texture_target_pin(
         .map(|(_, index)| index)
 }
 
-/// Marks the clone anchor on the model itself.
-///
-/// The 3D side could set an anchor with Alt and then showed nothing at all, so
-/// there was no way to tell whether the pick had registered, or where it landed
-/// once the camera moved. Projected from the triangle it was picked on, the
-/// same way the pins are, so it tracks the surface rather than the screen.
 pub(super) fn paint_clone_anchor_on_surface(
     ui: &Ui,
     state: &AppState,
@@ -1524,9 +1395,11 @@ pub(super) fn paint_clone_anchor_on_surface(
     let Some(projected) = camera.project(point.as_vec3(), viewport) else {
         return;
     };
-    // Behind the camera is not somewhere to draw a marker.
     if projected.depth > 0.0 {
-        crate::ui_components::paint_clone_anchor(ui.painter(), projected.screen);
+        let painter = ui
+            .painter()
+            .with_clip_rect(ui.clip_rect().intersect(viewport));
+        crate::ui_components::paint_clone_anchor(&painter, projected.screen);
     }
 }
 
@@ -1536,9 +1409,12 @@ pub(super) fn paint_texture_target_pins(
     viewport: Rect,
     camera: TurntableCamera,
 ) {
+    let painter = ui
+        .painter()
+        .with_clip_rect(ui.clip_rect().intersect(viewport));
     for (index, center, invalid) in texture_target_pin_screen_positions(state, viewport, camera) {
         paint_texture_pin(
-            ui.painter(),
+            &painter,
             center,
             state.texture_project.pin_opacity,
             &(index + 1).to_string(),

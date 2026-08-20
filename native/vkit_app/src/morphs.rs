@@ -56,16 +56,8 @@ pub enum MorphSource {
     LocalVaM,
 }
 
-/// Which half of the face a morph moves.
-///
-/// Read once from the name when the control is built, because the name is the
-/// only evidence there is and re-deriving it per frame would be the same answer
-/// at a cost. Left and right are kept apart rather than collapsed to a flag: a
-/// side is worth knowing for pairing and mirroring later, and it costs nothing
-/// to carry now.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum HorizontalSymmetry {
-    /// Moves both halves together, or sits on the centre line.
     #[default]
     Mirrored,
     Left,
@@ -361,7 +353,7 @@ impl MorphControl {
         self.is_resolved() && self.is_modified()
     }
 
-    fn canonical_active(&self) -> bool {
+    pub(crate) fn canonical_active(&self) -> bool {
         self.active() && self.genital_target.is_none()
     }
 }
@@ -391,44 +383,10 @@ pub struct MorphLibrary {
     pub category_filter: MorphCategoryFilter,
     list_filter: MorphListFilter,
 
-    /// Whether morphs that move one side of the face alone stay in the list.
-    ///
-    /// Off to begin with, and unlike the category capsules it outlives a
-    /// category change: it is a property of the whole library rather than a
-    /// selection within one part of it.
     pub show_one_sided: bool,
 }
 
-/// Does this morph name say it moves one side of the face by itself?
-///
-/// Derived from the names actually reachable here — the 576 built-ins plus a
-/// 120-package sample of the installed library — because nobody enforced a
-/// convention and three different spellings are in use at once.
-///
-/// Three shapes have to be told apart, and each one breaks the obvious rule for
-/// the other two:
-///
-/// - `Cheek Squish Left`, `BrowD_L` — separated, the easy case.
-/// - `JawLeft`, `PHMSnarlRight` — glued on, but the capital starts a new
-///   camel-case word, so splitting on that seam finds them.
-/// - `PHMEyesSizeL`, `PHMMouthSmileSimpleR` — a bare capital stuck to the end of
-///   a word with no seam of its own. This is the dominant shape in the built-in
-///   set (38 mirror pairs of it) and camel-case splitting alone reads it as
-///   "sizel", so a trailing lone L or R is treated as its own word.
-///
-/// What must NOT match matters just as much: `ChinCleft` and `TM_Upright1` carry
-/// "left" and "right" inside a longer word and sit dead centre on the face, so a
-/// side word only counts when it is a whole word.
-///
-/// A trailing capital is only read as a side when the rest of the name has more
-/// than one letter, which keeps a name that is merely titled `L` from vanishing.
 fn horizontal_symmetry(name: &str) -> HorizontalSymmetry {
-    /// A lone letter only marks a side when it was written as a capital.
-    ///
-    /// Names carry hashed suffixes — `TM_RollRight1-fc5737e5` — and splitting one
-    /// of those can leave a bare `r`. Requiring the capital keeps hash debris from
-    /// hiding a morph, and costs nothing: every side marker in the real data is
-    /// upper case.
     fn side_of(word: &str, was_capital: bool) -> Option<HorizontalSymmetry> {
         match word {
             "left" | "lft" => Some(HorizontalSymmetry::Left),
@@ -450,8 +408,6 @@ fn horizontal_symmetry(name: &str) -> HorizontalSymmetry {
 
         for (index, character) in token.char_indices() {
             let starts_camel_word = character.is_uppercase() && previous_was_lower;
-            // A capital L or R closing the token is the side marker on its own,
-            // even with no seam before it: PHMEyesSizeL, not "sizel".
             let is_trailing_side = matches!(character, 'L' | 'R')
                 && index + character.len_utf8() == token.len()
                 && token.len() > 2;
@@ -471,8 +427,6 @@ fn horizontal_symmetry(name: &str) -> HorizontalSymmetry {
 }
 
 impl HorizontalSymmetry {
-    /// Keep the first side that was named; a label and an id can disagree only
-    /// when one of them is silent, and a stated side outranks silence.
     const fn or(self, other: Self) -> Self {
         match self {
             Self::Mirrored => other,
@@ -750,20 +704,10 @@ impl MorphLibrary {
         changed
     }
 
-    /// Every filter that looks at the morph itself rather than at what it is
-    /// called in the reader's language.
-    ///
-    /// Search lives with the caller because a localised name is not something
-    /// the library knows. Everything else lives here, so a filter added later
-    /// cannot reach one list and miss the other — which is exactly how the
-    /// left/right toggle came to flip a flag nobody read: the list the
-    /// interface actually draws was filtering on its own and had never heard
-    /// of it.
     #[must_use]
     pub fn control_passes_non_text_filters(&self, control: &MorphControl) -> bool {
         let category_matches = match self.category_filter {
             MorphCategoryFilter::All => true,
-            // Cheekbones read as part of the cheeks to anyone looking for them.
             MorphCategoryFilter::Category(MorphCategory::Cheeks) => matches!(
                 control.category,
                 MorphCategory::Cheeks | MorphCategory::Cheekbones
@@ -778,6 +722,10 @@ impl MorphLibrary {
         category_matches && pile_matches && side_matches
     }
 
+    #[allow(
+        dead_code,
+        reason = "retained as the locale-neutral library filter used by focused tests"
+    )]
     fn control_matches_normalized_filters(&self, control: &MorphControl, query: &str) -> bool {
         let search_matches = query.is_empty()
             || normalize_search(&format!("{} {}", control.label, control.id)).contains(query);
@@ -786,7 +734,7 @@ impl MorphLibrary {
 
     #[allow(
         dead_code,
-        reason = "retained as the locale-neutral library filter used by focused tests"
+        reason = "retained as the fully checked boundary/reference composition path"
     )]
     pub fn visible_indices(&self) -> Vec<usize> {
         let query = normalize_search(&self.query);
@@ -800,10 +748,6 @@ impl MorphLibrary {
             .collect()
     }
 
-    #[allow(
-        dead_code,
-        reason = "retained as the fully checked boundary/reference composition path"
-    )]
     pub fn compose_onto(&self, base: &OrderedObjMesh) -> Result<OrderedObjMesh, FormatError> {
         base.validate()?;
         let mut result = base.clone();
@@ -1627,8 +1571,6 @@ mod tests {
 
     #[test]
     fn a_side_word_inside_a_longer_word_is_not_a_side() {
-        // Every name here was taken from the real library, not invented. The two
-        // groups are the two ways a substring test goes wrong, and both occur.
         for centred in [
             "ChinCleft",
             "PHMChinCleft",
@@ -1649,7 +1591,6 @@ mod tests {
         }
 
         for sided in [
-            // Separated.
             "Cheek Squish Left",
             "Cheek Squish Right",
             "Iris Placement L",
@@ -1657,15 +1598,11 @@ mod tests {
             "EyeSquint_R",
             "BK Breast Diameter L",
             "LT Areola S2S R",
-            // Glued on, but starting a camel-case word.
             "PHMSnarlLeft",
             "PHMSnarlRight",
             "JawLeft",
             "PBMBicepsLeftSWM",
             "TM_RollRight1-fc5737e5",
-            // A bare capital closing the word, with no seam of its own. This is
-            // the dominant shape in the built-in set — 38 mirror pairs of it —
-            // and it is the one an earlier rule read as "sizel" and let through.
             "PHMEyesSizeL",
             "PHMEyesSizeR",
             "PHMMouthSmileSimpleL",
@@ -1686,9 +1623,6 @@ mod tests {
 
     #[test]
     fn the_rule_agrees_with_the_real_built_in_list() {
-        // The manifests are the shipped built-in set, so this measures the rule
-        // against the population it actually runs on rather than against
-        // examples chosen to suit it.
         let manifests = [
             include_str!("../resources/g2f-builtin-morph-names.txt"),
             include_str!("../resources/g2m-builtin-morph-names.txt"),
@@ -1705,11 +1639,6 @@ mod tests {
             .filter(|name| horizontal_symmetry(name).is_one_sided())
             .collect();
 
-        // Every one of these should have a mirror twin in the list, and that is
-        // the independent check: a rule that fired on a centre-line morph would
-        // produce a name with no opposite number. Only the side MARKER is
-        // flipped — swapping every L and R would turn "EyeLids" into "EyeRids"
-        // and invent failures.
         let twin_of = |name: &str| -> Option<String> {
             if let Some(stem) = name.strip_suffix('L') {
                 return Some(format!("{stem}R"));
@@ -1748,14 +1677,6 @@ mod tests {
 
     #[test]
     fn the_list_the_interface_draws_honours_the_side_toggle() {
-        // The toggle set a flag, the library's filter read it, and the list on
-        // screen was built by a *second* function in `ui` that decided category,
-        // pile and side for itself. Every test passed, because the library was
-        // the only thing under test and the library was right.
-        //
-        // The two now share one predicate. This walks the same controls through
-        // it and asserts the count the interface would show, so a list that
-        // starts filtering on its own again fails here.
         let mut library = MorphLibrary {
             controls: vec![
                 control_named("Brow Inner Up", MorphCategory::Brows),
@@ -1782,8 +1703,6 @@ mod tests {
             "the toggle off has to drop the left and right pair from the list"
         );
 
-        // And the library's own answer agrees, so the two cannot drift apart
-        // again without one of these failing.
         assert_eq!(library.visible_indices().len(), listed(&library));
     }
 
@@ -1813,8 +1732,6 @@ mod tests {
 
         library.show_one_sided = false;
 
-        // A category capsule narrows within a part; this one is a property of the
-        // whole library and must still hold after switching parts.
         library.category_filter = MorphCategoryFilter::Category(MorphCategory::Brows);
         assert!(
             library.visible_indices().is_empty(),

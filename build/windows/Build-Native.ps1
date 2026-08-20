@@ -3,7 +3,7 @@ param(
     [ValidateSet("release", "release-small")]
     [string]$Profile = "release-small",
     [string]$OutputRoot,
-    [int]$MaximumMiB = 26,
+    [int]$MaximumMiB = 48,
     [string]$TargetTriple = "x86_64-pc-windows-msvc",
     [string]$CargoTargetDir,
     [ValidateRange(1, 100)]

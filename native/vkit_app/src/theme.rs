@@ -10,6 +10,7 @@ use crate::i18n::Locale;
 pub const COLOR_BG: Color32 = Color32::from_rgb(0x0b, 0x0b, 0x0b);
 pub const COLOR_SURFACE: Color32 = Color32::from_rgb(0x18, 0x18, 0x18);
 pub const COLOR_SURFACE_RAISED: Color32 = Color32::from_rgb(0x23, 0x23, 0x23);
+pub const COLOR_MODAL_SURFACE: Color32 = Color32::from_rgb(0x0d, 0x0d, 0x0e);
 pub const COLOR_SURFACE_HOVER: Color32 = Color32::from_rgb(0x30, 0x30, 0x30);
 pub const COLOR_TEXT: Color32 = Color32::from_rgb(0xea, 0xea, 0xea);
 pub const COLOR_MUTED: Color32 = Color32::from_rgb(0xa0, 0xa0, 0xa0);
@@ -24,10 +25,6 @@ pub const COLOR_WARNING: Color32 = Color32::from_rgb(0xe6, 0xb7, 0x45);
 
 pub const COLOR_WARNING_ACTIVE_BG: Color32 = Color32::from_rgb(0x8a, 0x72, 0x2a);
 
-/// The one colour the guidance pulse breathes in. Everything else in the
-/// interface is grey, so hue is the only channel a pulse can use that will not
-/// be mistaken for a hover or a selection — which is why this is the only
-/// saturated colour a background is allowed to take.
 pub const COLOR_EMPHASIS: Color32 = Color32::from_rgb(0xf5, 0xb3, 0x0a);
 
 pub const COLOR_TEXTURE_PIN: Color32 = Color32::from_rgb(42, 60, 78);
@@ -49,6 +46,7 @@ pub const COLOR_TRACK_FILL: Color32 = Color32::from_gray(238);
 pub const COLOR_ICON: Color32 = Color32::from_gray(208);
 
 pub const COLOR_ACTIVE_BG: Color32 = Color32::from_gray(232);
+pub const COLOR_ACTIVE_ROW: Color32 = Color32::from_gray(208);
 pub const COLOR_ACTIVE_INK: Color32 = Color32::from_gray(18);
 
 pub const COLOR_RAIL_IDLE: Color32 = Color32::from_gray(20);
@@ -144,6 +142,10 @@ const TOOLTIP_SUPPRESSED_DELAY_SECS: f32 = 3600.0;
 pub const SECTION_LABEL_FONT_SIZE: f32 = BODY_FONT_SIZE + 2.0;
 pub const CONTROL_RADIUS: u8 = 8;
 pub const CAPSULE_RADIUS: u8 = 16;
+
+pub fn capsule_radius(height: f32) -> f32 {
+    height * 0.5
+}
 
 pub const ACTION_RADIUS: u8 = CAPSULE_RADIUS;
 
@@ -477,11 +479,6 @@ mod tests {
 
     #[test]
     fn the_emphasis_colour_carries_a_hue_no_surface_can_imitate() {
-        // The pulse used to breathe in near-white, and against surfaces that
-        // are themselves grey it read as a hover rather than as a summons —
-        // which is how it came to be missed. Its whole job now rests on being
-        // the one saturated thing on screen, so a slide back toward grey has
-        // to fail here rather than in front of someone using the app.
         let chroma_of = |color: Color32| {
             let [red, green, blue, _] = color.to_array().map(i16::from);
             red.max(green).max(blue) - red.min(green).min(blue)
@@ -812,6 +809,17 @@ mod tests {
             ("ui.rs", include_str!("ui.rs"), 0_usize),
             ("ui_components.rs", include_str!("ui_components.rs"), 2),
             ("viewport.rs", include_str!("viewport.rs"), 7),
+            (
+                "viewport/hair_hud.rs",
+                include_str!("viewport/hair_hud.rs"),
+                0,
+            ),
+            (
+                "viewport/hair_input.rs",
+                include_str!("viewport/hair_input.rs"),
+                0,
+            ),
+            ("ui/hair_ui.rs", include_str!("ui/hair_ui.rs"), 1),
             (
                 "viewport_tool_layout.rs",
                 include_str!("viewport_tool_layout.rs"),

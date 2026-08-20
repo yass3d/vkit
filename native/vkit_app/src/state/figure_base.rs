@@ -22,8 +22,6 @@ impl AppState {
         let explicit_base = self.vam_geometry_base_path.clone();
         ProviderDiscoveryContext {
             vam_root: self.vam_root.clone(),
-            // The path and the provider are always installed together, so a loaded provider tells
-            // us which figure the path holds.
             explicit_base_sex: explicit_base
                 .as_ref()
                 .and(self.vam_geometry_provider.as_deref())
@@ -199,11 +197,6 @@ impl AppState {
         let output_was_automatic = self.output_path_is_automatic_vam_default();
         self.figure_sex = value;
 
-        // Cached previews were warped against the outgoing sex's UV mapping, and a
-        // surviving skin selection keeps apply_default_skin from picking again once the
-        // new sex's catalog lands.
-        self.hair_preview_lru.clear();
-        self.clear_hair_preview_selection();
         self.skin_preview_lru.clear();
         self.clear_skin_preview_selection();
         if output_was_automatic {
@@ -425,10 +418,6 @@ mod tests {
 
         state.dispatch(Action::SetFigureSex(FigureSex::Male));
 
-        // The preview was warped against the outgoing sex's UV map and the id points into
-        // the outgoing sex's catalog; a survivor here also blocks apply_default_skin from
-        // dressing the figure when the new catalog lands, and keeps the stale texture
-        // eligible as a bake base.
         assert_eq!(state.selected_skin_id, None);
         assert!(state.skin_preview.is_none());
         assert!(state.skin_preview_lru.is_empty());

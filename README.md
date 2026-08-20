@@ -1,9 +1,10 @@
 <h1 align="center">Vkit</h1>
 
 <p align="center">
-  <b>A companion tool for making Virt-A-Mate head morphs.</b><br>
-  Fit a face to a scan or a photo, sculpt it, paint it, and write it back to
-  VaM — from a single Windows executable, with no installer.
+  <b>A companion tool for making Virt-A-Mate head morphs and hair.</b><br>
+  Fit a face to a scan or a photo, sculpt it, paint it, grow hair on it, and
+  write it all back to VaM — from a single Windows executable, with no
+  installer.
 </p>
 
 <p align="center">
@@ -24,10 +25,10 @@
 ---
 
 Vkit is a companion tool for [Virt-A-Mate](https://www.virtamate.com/) that
-makes head morphs. It reads the base figure, the morph library, the skins and
-the hair out of your own VaM installation, lets you build a face against them,
-and writes the result back as a VaM morph pair, a texture set, or a `.var`
-package.
+makes head morphs and hair. It reads the base figure, the morph library, the
+skins and the hair out of your own VaM installation, lets you build a face
+against them, and writes the result back as a VaM morph pair, a texture set, a
+hair item, or a `.var` package.
 
 One Rust binary — egui and wgpu on Direct3D 12. No Python sidecar, no WebView,
 no redistributables, no installer, and nothing to install beside it. Scans are
@@ -49,28 +50,30 @@ the badge opens the release page in your browser; Vkit never updates itself.
 
 ## What it does
 
-Four stages, left to right along the top of the window.
+Five stages, left to right along the top of the window.
 
 | | Stage | |
 |---|---|---|
 | **1** | **Create** | Start from a 3D scan (OBJ / glTF / GLB / FBX, all read in-process), from a photograph projected onto the surface, or from a look already installed in VaM. Place numbered pin pairs — or let the bundled MediaPipe Face Landmarker place them — then fit: weighted similarity alignment, a Laplacian pin warp, and three-stage dense registration. Eyes, mouth and nostrils are held rigid, and Genesis 2 vertex order survives untouched. |
 | **2** | **Sculpt** | Grab, smooth and restore brushes, plus the whole morph library from your install with search, categories and translated names. Sculpt strokes and morph values are kept apart and recomposed, so moving between them never costs you either. |
 | **3** | **Texture** | Layers on the face UV: paint, clone, heal, dodge and burn, stamps, a positionable stencil, projection as its own brush, mirroring, and a bake to a finished texture set. |
-| **4** | **Save** | A VaM morph pair (`.vmi` + `.vmb`) into `Custom/Atom/Person/Morphs/`, the baked texture set, or a self-contained `.var` written by the same code that reads one. A saved morph pair reaches VaM through **Reload Custom Morphs**; a saved `.var` needs VaM restarted, because `AddonPackages` is enumerated once at startup and that button rescans the loose morph folders rather than the mounted packages. Vkit says which of the two you just did, under the button. |
+| **4** | **Hair** | Grow hair on the head you just made, or take a style already installed in VaM apart into layers you can edit. Plant guide strands on the scalp with a brush, and the strands between them are interpolated the way VaM interpolates them. Parts stack as layers with their own length, curl, spread, stiffness, physics and colour — 65 parameters, each one a VaM storable written straight through. The scalp is a layer of its own with its own page: pick the built-in cap mesh, give it a sheet and a cutout of your own, and tune a material that starts from the values VaM ships that mesh with. The viewport runs VaM's own solver, so what drapes here drapes there. It saves as a `Custom/Hair` item: `.vam`, `.vaj`, `.vab` and a default `.vap` preset, with a thumbnail per part. |
+| **5** | **Save** | A VaM morph pair (`.vmi` + `.vmb`) into `Custom/Atom/Person/Morphs/`, the baked texture set, or a self-contained `.var` written by the same code that reads one. A saved morph pair reaches VaM through **Reload Custom Morphs**; a saved `.var` needs VaM restarted, because `AddonPackages` is enumerated once at startup and that button rescans the loose morph folders rather than the mounted packages. Vkit says which of the two you just did, under the button. |
 
-Hair is a try-on rather than a stage: pick a style from your install and it is
-rendered as strands with VaM's own simulation — the solver, the curl, the drape
-capture and the body collision were measured out of VaM, not approximated.
+A style already installed in VaM can be taken apart in the Hair stage and
+edited as layers — the solver, the curl, the drape capture and the body
+collision were measured out of VaM rather than approximated, so a style looks
+here the way it will look there.
 
 Nothing Vkit writes goes anywhere near your VaM installation's own files. It
 reads them; what it produces lands in `Custom/` or `AddonPackages/`, the same
 places VaM picks up anybody else's content from.
 
-## The other three stages
+## The other stages
 
 **Sculpt.** Your install's own morph library — searchable, categorised, names
 translated — beside brushes that move the mesh directly. Parts can be soloed or
-hidden while you work, and a hair style from your install is tried on live.
+hidden while you work.
 
 <p align="center">
   <img alt="The Sculpt tab: morph library on the right, a face with simulated hair in the viewport"
@@ -84,6 +87,15 @@ that ends as a finished texture set at 2K or 4K.
 <p align="center">
   <img alt="The Texture tab: stamped layers on the face, the same layers on the UV canvas beside it"
        src=".github/assets/texture-layers.png">
+</p>
+
+**Hair.** Plant guide strands with a brush and Vkit fills in between them the way
+VaM does. Or open a style you already own: its parts arrive as layers you can
+comb, cut and recolour, with the scalp lifted out into a layer of its own.
+
+<p align="center">
+  <img alt="The Hair tab: a loaded style broken into tinted layers, the preset list and layer list on the right"
+       src=".github/assets/hair_create.png">
 </p>
 
 **Save.** The morph pair, the texture set, or a `.var` — and a compare slider to
@@ -192,7 +204,7 @@ From the project root:
 
 That runs the workspace tests, builds the `release-small` profile for
 `x86_64-pc-windows-msvc`, and audits the result before publishing it: static CRT,
-Windows-system imports only, a 26 MiB size gate, and exactly one file in the
+Windows-system imports only, a 48 MiB size gate, and exactly one file in the
 output directory.
 
     dist\native\Vkit.exe        the only distributable item

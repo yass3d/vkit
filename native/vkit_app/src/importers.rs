@@ -179,18 +179,12 @@ pub fn prepare_mesh_import_with_progress(
     }
 }
 
-/// What a mesh file holds before anything is done to it.
-///
-/// The editor never carries a scan at this size — it rebuilds one down to
-/// [`MAX_SCAN_TRIANGLES`] first. This reads the file and stops, so the cost of
-/// that rebuild can be weighed against what skipping it would leave behind.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MeshCensus {
     pub triangles: usize,
     pub vertices: usize,
 }
 
-/// Reads a mesh at the size it was authored, performing no rebuild.
 pub fn census_at_native_resolution(path: &Path) -> Result<MeshCensus, ImportError> {
     let root = path.parent().unwrap_or_else(|| Path::new("."));
     let mesh = match extension(path).as_deref() {
@@ -209,9 +203,6 @@ pub fn census_at_native_resolution(path: &Path) -> Result<MeshCensus, ImportErro
     })
 }
 
-/// Bounds the container file itself. A `.gltf` container is only the JSON, so for that input
-/// this gate says nothing about the payload; what bounds a `.gltf` is the importer's payload
-/// budget, which every external buffer, image, and decompressed buffer view draws from.
 fn validate_native_source_size(path: &Path) -> Result<(), ImportError> {
     let bytes = path
         .metadata()
@@ -565,6 +556,92 @@ mod tests {
         assert_eq!(max_y, 3.0);
     }
 
+    fn inheritance_fbx(inherit_type: i32) -> String {
+        format!(
+            concat!(
+                "; Synthetic Vkit fixture: no third-party asset content.\n",
+                "FBXHeaderExtension:  {{\n",
+                "    FBXHeaderVersion: 1003\n",
+                "    FBXVersion: 7400\n",
+                "    CreationTimeStamp:  {{\n",
+                "        Version: 1000\n",
+                "        Year: 2026\n",
+                "        Month: 7\n",
+                "        Day: 19\n",
+                "        Hour: 0\n",
+                "        Minute: 0\n",
+                "        Second: 0\n",
+                "        Millisecond: 0\n",
+                "    }}\n",
+                "    Creator: \"Vkit importer fixture\"\n",
+                "}}\n",
+                "Definitions:  {{\n",
+                "    ObjectType: \"Model\" {{\n",
+                "        PropertyTemplate: \"FbxNode\" {{\n",
+                "            Properties70:  {{\n",
+                "                P: \"Lcl Translation\", \"Lcl Translation\", \"\", \"A\",0,0,0\n",
+                "                P: \"Lcl Scaling\", \"Lcl Scaling\", \"\", \"A\",1,1,1\n",
+                "            }}\n",
+                "        }}\n",
+                "    }}\n",
+                "    ObjectType: \"Geometry\" {{\n",
+                "        PropertyTemplate: \"FbxMesh\" {{\n",
+                "            Properties70:  {{\n",
+                "                P: \"Color\", \"ColorRGB\", \"Color\", \"\",1,1,1\n",
+                "            }}\n",
+                "        }}\n",
+                "    }}\n",
+                "}}\n",
+                "Objects:  {{\n",
+                "    Model: 100, \"Model::root\", \"Null\" {{\n",
+                "    }}\n",
+                "    Model: 101, \"Model::child\", \"Mesh\" {{\n",
+                "        Properties70:  {{\n",
+                "            P: \"InheritType\", \"enum\", \"\", \"\",{inherit_type}\n",
+                "        }}\n",
+                "    }}\n",
+                "    Geometry: 200, \"Geometry::quad\", \"Mesh\" {{\n",
+                "        Vertices: *12 {{\n",
+                "            a: 0,0,0,1,0,0,1,1,0,0,1,0\n",
+                "        }}\n",
+                "        PolygonVertexIndex: *4 {{\n",
+                "            a: 0,1,2,-4\n",
+                "        }}\n",
+                "    }}\n",
+                "}}\n",
+                "Connections:  {{\n",
+                "    C: \"OO\",200,101\n",
+                "    C: \"OO\",101,100\n",
+                "}}\n"
+            ),
+            inherit_type = inherit_type
+        )
+    }
+
+    #[test]
+    fn an_fbx_inheritance_type_outside_the_enum_is_an_error_not_an_abort() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let source = workspace.path().join("inherit.fbx");
+        fs::write(&source, inheritance_fbx(3)).expect("FBX fixture");
+        let error = prepare_mesh_import_with_progress(&source, |_| {})
+            .expect_err("a fourth inheritance mode is the file's mistake, not grounds for a kill")
+            .to_string();
+        assert!(error.contains("inheritance"), "{error}");
+        assert!(error.contains('3'), "{error}");
+    }
+
+    #[test]
+    fn the_three_inheritance_modes_the_enum_does_name_all_import() {
+        for inherit_type in [0, 1, 2] {
+            let workspace = tempfile::tempdir().expect("tempdir");
+            let source = workspace.path().join("inherit.fbx");
+            fs::write(&source, inheritance_fbx(inherit_type)).expect("FBX fixture");
+            let imported = prepare_mesh_import_with_progress(&source, |_| {})
+                .unwrap_or_else(|error| panic!("InheritType {inherit_type}: {error}"));
+            assert_eq!(imported.final_triangles, 2);
+        }
+    }
+
     #[test]
     fn a_gltf_container_reads_its_sibling_binary_payload() {
         let workspace = tempfile::tempdir().expect("tempdir");
@@ -807,37 +884,179 @@ mod tests {
         assert_eq!(imported.final_triangles, 1);
     }
 
-    #[test]
-    fn a_short_texcoord_component_imports_without_uvs_instead_of_killing_the_process() {
-        let workspace = tempfile::tempdir().expect("tempdir");
+    fn quantized_uv_glb(
+        workspace: &Path,
+        name: &str,
+        component_type: u32,
+        normalized: bool,
+        uv_bytes: &[u8],
+    ) -> PathBuf {
+        quantized_uv_glb_with_emissive_transform(
+            workspace,
+            name,
+            component_type,
+            normalized,
+            uv_bytes,
+            None,
+        )
+    }
+
+    fn quantized_uv_glb_with_emissive_transform(
+        workspace: &Path,
+        name: &str,
+        component_type: u32,
+        normalized: bool,
+        uv_bytes: &[u8],
+        emissive_scale: Option<f64>,
+    ) -> PathBuf {
         let mut binary = triangle_binary();
         let uv_offset = binary.len();
-        for uv in [[0_i16, 0], [32767, 0], [0, 32767]] {
-            for value in uv {
-                binary.extend_from_slice(&value.to_le_bytes());
-            }
+        binary.extend_from_slice(uv_bytes);
+        while !binary.len().is_multiple_of(4) {
+            binary.push(0);
         }
+        let (extensions, material_block, material_ref) = match emissive_scale {
+            Some(scale) => (
+                r#""extensionsUsed":["KHR_texture_transform"],"#.to_owned(),
+                format!(
+                    concat!(
+                        r#""textures":[{{}}],"materials":[{{"emissiveTexture":{{"index":0,"#,
+                        r#""extensions":{{"KHR_texture_transform":{{"scale":[{scale},{scale}]}}}}"#,
+                        r#"}}}}],"#
+                    ),
+                    scale = scale
+                ),
+                r#","material":0"#.to_owned(),
+            ),
+            None => (String::new(), String::new(), String::new()),
+        };
         let json = format!(
             concat!(
-                r#"{{"asset":{{"version":"2.0"}},"buffers":[{{"byteLength":{length}}}],"#,
+                r#"{{"asset":{{"version":"2.0"}},{extensions}"#,
+                r#""buffers":[{{"byteLength":{length}}}],"#,
                 r#""bufferViews":[{{"buffer":0,"byteOffset":0,"byteLength":36}},"#,
                 r#"{{"buffer":0,"byteOffset":36,"byteLength":6}},"#,
-                r#"{{"buffer":0,"byteOffset":{uv_offset},"byteLength":12}}],"#,
+                r#"{{"buffer":0,"byteOffset":{uv_offset},"byteLength":{uv_length}}}],"#,
                 r#"{accessors},"#,
-                r#"{{"bufferView":2,"componentType":5122,"normalized":true,"count":3,"#,
-                r#""type":"VEC2"}}],"#,
+                r#"{{"bufferView":2,"componentType":{component_type},"#,
+                r#""normalized":{normalized},"count":3,"type":"VEC2"}}],"#,
+                r#"{material_block}"#,
                 r#""meshes":[{{"primitives":[{{"attributes":{{"POSITION":0,"TEXCOORD_0":2}},"#,
-                r#""indices":1}}]}}],"#,
+                r#""indices":1{material_ref}}}]}}],"#,
                 r#""nodes":[{{"mesh":0}}],"scenes":[{{"nodes":[0]}}],"scene":0}}"#
             ),
+            extensions = extensions,
             length = binary.len(),
             uv_offset = uv_offset,
-            accessors = TRIANGLE_ACCESSORS
+            uv_length = uv_bytes.len(),
+            accessors = TRIANGLE_ACCESSORS,
+            component_type = component_type,
+            normalized = normalized,
+            material_block = material_block,
+            material_ref = material_ref
         );
-        let source = write_glb(workspace.path(), "short_uv.glb", &json, &binary);
+        write_glb(workspace, name, &json, &binary)
+    }
+
+    fn imported_texcoords(imported: &PreparedMeshImport) -> Vec<[f64; 2]> {
+        load_obj_document(&imported.appearance_path)
+            .expect("appearance OBJ")
+            .appearance
+            .texcoords
+            .clone()
+    }
+
+    fn holds_uv(texcoords: &[[f64; 2]], wanted: [f64; 2]) -> bool {
+        texcoords.iter().any(|found| {
+            (found[0] - wanted[0]).abs() < 1.0e-4 && (found[1] - wanted[1]).abs() < 1.0e-4
+        })
+    }
+
+    #[test]
+    fn a_short_texcoord_component_imports_its_uvs_instead_of_killing_the_process() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let mut uv_bytes = Vec::new();
+        for uv in [[0_i16, 0], [32767, 0], [0, 32767]] {
+            for value in uv {
+                uv_bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        let source = quantized_uv_glb(workspace.path(), "short_uv.glb", 5122, true, &uv_bytes);
         let imported = prepare_mesh_import_with_progress(&source, |_| {})
             .expect("a SHORT TEXCOORD used to reach unreachable!() and abort the process");
         assert_eq!(imported.final_triangles, 1);
+        let texcoords = imported_texcoords(&imported);
+        for wanted in [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]] {
+            assert!(
+                holds_uv(&texcoords, wanted),
+                "a normalized SHORT set divides by 32767 and lands on {wanted:?}, and dropping \
+                 it costs the material its map. Found {texcoords:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_normalized_byte_texcoord_set_lands_on_the_unit_square() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let uv_bytes = [0_u8, 0, 255, 0, 0, 255];
+        let source = quantized_uv_glb(workspace.path(), "byte_uv.glb", 5121, true, &uv_bytes);
+        let imported = prepare_mesh_import_with_progress(&source, |_| {})
+            .expect("normalized UNSIGNED_BYTE UVs are plain glTF 2.0");
+        assert_eq!(imported.final_triangles, 1);
+        let texcoords = imported_texcoords(&imported);
+        for wanted in [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]] {
+            assert!(holds_uv(&texcoords, wanted), "{texcoords:?}");
+        }
+    }
+
+    #[test]
+    fn an_unnormalized_texcoord_set_with_nothing_to_rescale_it_is_dropped() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let mut uv_bytes = Vec::new();
+        for uv in [[0_u16, 0], [1024, 0], [0, 1024]] {
+            for value in uv {
+                uv_bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        let source = quantized_uv_glb(workspace.path(), "raw_uv.glb", 5123, false, &uv_bytes);
+        let imported = prepare_mesh_import_with_progress(&source, |_| {})
+            .expect("the mesh imports; only its unscalable UV set is refused");
+        assert_eq!(imported.final_triangles, 1);
+        let texcoords = imported_texcoords(&imported);
+        assert!(
+            !holds_uv(&texcoords, [1024.0, 0.0]),
+            "the authored quantized range must not reach the mesh unscaled: {texcoords:?}"
+        );
+    }
+
+    #[test]
+    fn a_quantized_set_is_rescaled_by_a_transform_on_a_slot_other_than_base_colour() {
+        let workspace = tempfile::tempdir().expect("tempdir");
+        let mut uv_bytes = Vec::new();
+        for uv in [[0_u16, 0], [1024, 0], [0, 1024]] {
+            for value in uv {
+                uv_bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        let source = quantized_uv_glb_with_emissive_transform(
+            workspace.path(),
+            "emissive_transform_uv.glb",
+            5123,
+            false,
+            &uv_bytes,
+            Some(1.0 / 1024.0),
+        );
+        let imported = prepare_mesh_import_with_progress(&source, |_| {})
+            .expect("a quantized set with a transform to rescale it imports");
+        assert_eq!(imported.final_triangles, 1);
+        let texcoords = imported_texcoords(&imported);
+        for wanted in [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]] {
+            assert!(
+                holds_uv(&texcoords, wanted),
+                "the emissive slot's transform maps the authored range onto the unit square. \
+                 Found {texcoords:?}"
+            );
+        }
     }
 
     #[test]
@@ -1151,9 +1370,6 @@ mod tests {
         assert_eq!(imported.final_triangles, 1);
     }
 
-    /// A one-triangle GLB carrying `POSITION`, `NORMAL` and indices, plus whatever node array the
-    /// caller wants to hang it under. The scene-graph tests all differ only in that array, so it is
-    /// the one thing this helper leaves to the caller.
     fn normal_triangle_glb(
         workspace: &Path,
         name: &str,
@@ -1197,10 +1413,6 @@ mod tests {
         write_glb(workspace, name, &json, &binary)
     }
 
-    /// The signed area of the first imported triangle projected on the XY plane, which is the `z`
-    /// component of its geometric normal. Its sign is the winding, and winding is the only record
-    /// of facing this importer keeps: no normal survives the import, so a flip that reaches the
-    /// mesh is invisible everywhere except here.
     fn first_triangle_facing(imported: &PreparedMeshImport) -> f64 {
         let face = &imported.ordered.faces[0].vertex_indices;
         let corner = |at: usize| imported.ordered.vertices[face[at] as usize];
@@ -1504,12 +1716,6 @@ mod tests {
         std::env::var_os("VKIT_GLTF_CORPUS").map(PathBuf::from)
     }
 
-    /// The largest distance from any answer-key vertex to the nearest vertex of `other`.
-    ///
-    /// Position order is not comparable across a Draco decode — the codec stores its own point
-    /// order and the weld renumbers what survives — so agreement is measured as a nearest-vertex
-    /// distance rather than index by index. It is the one-sided worst case, which is what a
-    /// missing or displaced vertex would show up in.
     fn worst_nearest_vertex(key: &[[f64; 3]], other: &[[f64; 3]]) -> f64 {
         let mut worst = 0.0_f64;
         for want in key {
@@ -1526,14 +1732,6 @@ mod tests {
         worst
     }
 
-    /// Six times the signed volume swept by a mesh's faces about its own centroid.
-    ///
-    /// Referring every corner to the centroid makes this translation invariant, which matters
-    /// because it is compared across files whose nodes park the same mesh in different places.
-    /// Under a linear map it scales by that map's determinant, and reversing the index order
-    /// negates it — so its SIGN is exactly the question the winding flip exists to answer. A
-    /// negative-determinant parent must not change it: the mirror flips the sign and the corner
-    /// swap flips it back.
     fn signed_volume(imported: &PreparedMeshImport) -> f64 {
         let vertices = &imported.ordered.vertices;
         if vertices.is_empty() {
@@ -1572,12 +1770,6 @@ mod tests {
         total
     }
 
-    /// Replays every corpus file through the real importer and prints the table.
-    ///
-    /// This is the whole-corpus receipt rather than an assertion of one property, so it runs only
-    /// when the corpus is present and prints under `--nocapture`. It still asserts: the three files
-    /// that are literally the same mesh as the answer key must match it exactly, and the Draco pair
-    /// must land inside one quantization step of it.
     #[test]
     fn the_whole_corpus_replays_through_the_real_importer() {
         let Some(corpus) = gltf_corpus() else {
@@ -1891,9 +2083,6 @@ mod tests {
         );
     }
 
-    /// A one-triangle payload plus a UV stream and eight bytes standing in for an image, laid out
-    /// so the four bufferViews below always name the same ranges. Every appearance test shares it,
-    /// so each one differs from the next only in the JSON under test.
     fn textured_binary() -> (Vec<u8>, usize, usize) {
         let mut binary = triangle_binary();
         let uv_offset = binary.len();
@@ -1907,8 +2096,6 @@ mod tests {
         (binary, uv_offset, image_offset)
     }
 
-    /// Wraps the shared payload around whatever `images`, `textures` and `materials` a test wants
-    /// to put in front of the material writer.
     fn textured_glb(appearance: &str) -> Vec<u8> {
         let (binary, uv_offset, image_offset) = textured_binary();
         let json = format!(
@@ -2245,10 +2432,6 @@ mod tests {
         source
     }
 
-    /// Encodes a `EXT_meshopt_compression` ATTRIBUTES stream the long way: every byte group is
-    /// written as sixteen literal zigzag deltas, and the tail is left zeroed so it also serves
-    /// as the predictor seed. It is the simplest stream the decoder accepts, which is what makes
-    /// it useful for proving the wiring rather than the codec.
     fn encode_meshopt_vertices(vertices: &[[f32; 3]]) -> Vec<u8> {
         const STRIDE: usize = 12;
         let raw = vertices

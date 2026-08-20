@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("মেশ স্মুদ"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,101 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("সংরক্ষণ"),
         TextKey::DetailCorrection => Some("স্কাল্পট"),
         TextKey::TextureStage => Some("টেক্সচার"),
+        TextKey::HairStage => Some("চুল"),
+        TextKey::HairUnavailable => Some("চুল সম্পাদনার আগে স্কাল্পট ফলাফল সম্পূর্ণ করুন"),
+        TextKey::HairPartsPanel => Some("চুলের অংশ"),
+        TextKey::AddHairPart => Some("চুলের অংশ যোগ করুন"),
+        TextKey::HairScalpMissing => Some("স্ক্যাল্প মেশ নেই; VaM রুট খুলে আবার স্ক্যান করুন"),
+        TextKey::HairShowPoints => Some("বিন্দু দেখান"),
+        TextKey::HairShowPointsHint => {
+            Some("মাথার ত্বকের রোপণ বিন্দু দেখায়। শুধু চুল দেখতে বন্ধ করুন; ব্রাশ দুভাবেই কাজ করে।")
+        }
+        TextKey::HairPartTint => Some("অংশ রঙে আলাদা"),
+        TextKey::HairPartTintHint => {
+            Some("প্রতিটি অংশকে আলাদা রঙ দেয় যাতে মিশ্র স্টাইলে অংশ চেনা যায়। শুধু প্রদর্শনের জন্য।")
+        }
+        TextKey::HairSettingsPanel => Some("হেয়ার সেটিংস"),
+        TextKey::HairCreateFirst => Some("প্রথমে হেয়ার তৈরি করুন।"),
+        TextKey::HairHideStrands => Some("চুল লুকান"),
+        TextKey::HairHideStrandsHint => {
+            Some("গজানো চুল সরিয়ে কেবল স্ট্রিম দেখায়। এটি চালু করলে স্ট্রিমও চালু হয়।")
+        }
+        TextKey::HairShowStreams => Some("হেয়ার স্ট্রিম দেখান"),
+        TextKey::HairShowStreamsHint => Some("আপনি যে গোছা সম্পাদনা করেন, তা তৈরি হওয়া চুলের উপরে আঁকে।"),
+        TextKey::HairViewportPhysics => Some("ভিউপোর্ট ফিজিক্স"),
+        TextKey::HairViewportPhysicsHint => Some("পর্দায় ফিজিক্স প্রিভিউ করে। রপ্তানির সাথে সম্পর্ক নেই।"),
+        TextKey::HairMirrorEdit => Some("মিরর সম্পাদনা"),
+        TextKey::HairMirrorEditHint => Some("ব্রাশ দুই পাশ একসাথে প্রতিসমভাবে সম্পাদনা করে।"),
+        TextKey::HairAutoPart => Some("স্বয়ংক্রিয় পার্ট"),
+        TextKey::HairAutoPartHint => Some("সক্রিয় লেয়ারের বদলে, কার্সরের নিচে চেনা পার্টটিই সম্পাদিত হয়।"),
+        TextKey::HairExportSection => Some("হেয়ার সংরক্ষণ"),
+        TextKey::HairExportBothSexes => Some("উভয়"),
+        TextKey::HairExportRescanNotice => Some("VaM - Hair - Rescan Files চাপলে তালিকায় দেখা যাবে"),
+        TextKey::HairExportOverwroteNotice => {
+            Some("প্রতিস্থাপিত থাম্বনেইল Hard Reset বা VaM পুনরায় চালুতে দেখা যাবে")
+        }
+        TextKey::HairSimToggleHint => Some("ভিউপোর্ট ও গেম উভয়ে হেয়ার ফিজিক্স চালায়।"),
+        TextKey::HairCollisionToggleHint => Some("সিমুলেশনে চুল মাথা ও শরীর ভেদ করে না।"),
+        TextKey::HairStyleJoints => Some("স্টাইল জয়েন্ট"),
+        TextKey::HairStyleJointsHint => Some(
+            "কাছের গোছাগুলো বেঁধে খেলায় আকার ধরে রাখে — Cling এটাই নিয়ন্ত্রণ করে। লম্বা বা বাঁধা চুলের জন্য; ফাইল ভারী হয়।",
+        ),
+        TextKey::HairThumbnailPrompt => Some("কোণ ঠিক করে ক্লিক করে ছবি তুলুন"),
+        TextKey::HairThumbnailShoot => Some("ক্যাপচার"),
+        TextKey::HairThumbnailSkip => Some("এড়িয়ে যান"),
+        TextKey::HairThumbnailSaved => Some("থাম্বনেইল সংরক্ষিত"),
+        TextKey::HairThumbnailFailed => Some("থাম্বনেইল সংরক্ষণ ব্যর্থ"),
+        TextKey::HairGameOnly => Some(
+            "পদার্থবিজ্ঞান সেটিং: ভিউপোর্ট সিমুলেশন চালায় না, তাই এটি কেবল VaM-এ কার্যকর হয়। স্টাইলের সাথে রপ্তানি হয়।",
+        ),
+        TextKey::HairPartVisible => Some("এই চুলের অংশ দেখান বা লুকান"),
+        TextKey::RemoveHairPart => Some("চুলের অংশ সরান"),
+        TextKey::HairRenamePart => Some("নাম বদলাতে ক্লিক করুন"),
+        TextKey::HairToolPlant => Some("রোপণ"),
+        TextKey::HairToolErase => Some("মুছুন"),
+        TextKey::HairToolGrow => Some("বাড়ান (Alt দিয়ে ছোট করুন)"),
+        TextKey::HairToolComb => Some("আঁচড়ান"),
+        TextKey::HairToolPlantHint => Some("ব্রাশের নিচে স্ক্যাল্প বিন্দুতে চুল গজান"),
+        TextKey::HairToolGrowHint => Some("ব্রাশের নিচের গুচ্ছ লম্বা করুন; ছোট করতে Alt চাপুন"),
+        TextKey::HairToolEraseHint => Some("ব্রাশের নিচের গুচ্ছ মুছুন"),
+        TextKey::HairToolCombHint => Some("ব্রাশের নিচের গুচ্ছ টেনে সাজান; গোড়া স্থির থাকে"),
+        TextKey::HairToolPinch => Some("জড়ো করা"),
+        TextKey::HairToolPinchHint => Some("ব্রাশের নিচের চুল জড়ো করে। Alt দিয়ে ছড়ান"),
+        TextKey::HairToolCut => Some("কাটা"),
+        TextKey::HairToolCutHint => Some("ব্রাশ যেখানে দিয়ে যায় সেখানে চুল কাটে"),
+        TextKey::HairToolPuff => Some("ফোলানো"),
+        TextKey::HairToolPuffHint => Some("ব্রাশের নিচের চুল ত্বক থেকে দাঁড় করায়। Alt দিয়ে শোয়ায়"),
+        TextKey::HairCopySettings => Some("সব কপি"),
+        TextKey::HairPasteSettings => Some("সব পেস্ট"),
+        TextKey::HairGroupPerformance => Some("কর্মক্ষমতা"),
+        TextKey::HairGroupPhysics => Some("পদার্থবিদ্যা"),
+        TextKey::HairGroupStiffness => Some("কাঠিন্য"),
+        TextKey::HairGroupShape => Some("আকৃতি"),
+        TextKey::HairGroupCurl => Some("কার্ল"),
+        TextKey::HairGroupLook => Some("চেহারা"),
+        TextKey::HairColorScalp => Some("স্ক্যাল্প"),
+        TextKey::HairColorRoot => Some("গোড়া"),
+        TextKey::HairColorTip => Some("ডগা"),
+        TextKey::HairColorSpecular => Some("ঝলক"),
+        TextKey::HairScalpMask => Some("স্ক্যাল্প টেক্সচার"),
+        TextKey::HairScalpMaskBuiltIn => Some("অন্তর্নির্মিত"),
+        TextKey::HairScalpMaskCustom => Some("ফাইল থেকে..."),
+        TextKey::HairExport => Some("VaM-এ রপ্তানি"),
+        TextKey::HairExportName => Some("আইটেমের নাম"),
+        TextKey::HairExportCreator => Some("নির্মাতা"),
+        TextKey::HairExportNeedsMetadata => Some("রপ্তানির আগে নাম ও নির্মাতা লিখুন"),
+        TextKey::HairOverwriteTitle => Some("এই স্টাইল বদলাবেন?"),
+        TextKey::HairOverwriteBody => {
+            Some("একই নাম ও নির্মাতার স্টাইল আগে থেকেই আছে। রপ্তানি করলে ফাইল বদলে যাবে।")
+        }
+        TextKey::HairOverwriteProceed => Some("বদলান"),
+        TextKey::HairExportDone => Some("চুলের আইটেম সংরক্ষিত"),
+        TextKey::HairExportFailed => Some("চুল রপ্তানি ব্যর্থ"),
+        TextKey::HairExportNeedsPart => Some("আগে স্ট্র্যান্ডসহ চুলের অংশ নির্বাচন করুন"),
+        TextKey::HairExportNeedsVaMRoot => Some("রপ্তানির আগে VaM রুট সেট করুন"),
+        TextKey::HairMirrorPart => Some("অংশ অন্য পাশে প্রতিফলিত করুন"),
+        TextKey::HairDuplicatePart => Some("অংশ অনুলিপি"),
+        TextKey::HairSegmentsShort => Some("সেগ"),
         TextKey::MorphCategoryBody => Some("শরীর"),
         TextKey::TextureNamePlaceholder => Some("টেক্সচারের নাম দিন"),
         TextKey::TextureOverwriteTitle => Some("একই নামের টেক্সচার প্রতিস্থাপিত হবে"),
@@ -66,6 +161,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::Undo => Some("আনডু"),
         TextKey::ResetAllPins => Some("সব পিন রিসেট"),
+        TextKey::ResetAll => Some("সব রিসেট"),
         TextKey::MorphSave => Some("মর্ফ সংরক্ষণ"),
         TextKey::TextureSaveSection => Some("টেক্সচার সংরক্ষণ"),
         TextKey::Generate => Some("মুখ ফিট"),
@@ -87,7 +183,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("ওয়্যারফ্রেম ওভারলে দেখান ও সমন্বয় করুন"),
         TextKey::ViewportXrayTooltip => Some("এক্স-রে ওভারলে দেখান ও সমন্বয় করুন"),
         TextKey::ViewportSkinTooltip => Some("VaM স্কিন টেক্সচার বাছুন"),
-        TextKey::ViewportHairTooltip => Some("VaM চুলের প্রিসেট বাছুন"),
         TextKey::FalloffTooltip => Some("ব্রাশের প্রভাবের কার্ভ বাছুন"),
         TextKey::FalloffSmooth => Some("মসৃণ"),
         TextKey::FalloffSmoother => Some("বেশি মসৃণ"),
@@ -128,6 +223,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("প্রতিটিতে একটি পিন রাখুন, বা পিন ছাড়াই ফিট করুন"),
         TextKey::TextureNeedsImage => Some("সাইড প্যানেল থেকে একটি ছবি যোগ করুন"),
         TextKey::TexturePinPairPrompt => Some("বাঁ ও ডান দিকে মিলযুক্ত পিন বসান"),
+        TextKey::TextureToolNeedsPins => Some("ব্যবহার করতে আগে পিন বসান"),
         TextKey::SymmetrySuggestion => Some("নিখুঁত মিলের জন্য মিররিং করা ভালো"),
         TextKey::SymmetryChangeTitle => Some("পিনগুলো রিসেট হয়ে যাবে"),
         TextKey::SymmetryChangeConfirm => Some("নিশ্চিত করুন"),
@@ -161,10 +257,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("স্কিন লোড ব্যর্থ"),
         TextKey::SkinUvUnavailable => Some("স্কিন UV নেই"),
         TextKey::NoMatchingSkins => Some("মিলে যাওয়া স্কিন নেই"),
-        TextKey::Hair => Some("চুল"),
-        TextKey::HairNone => Some("নেই"),
         TextKey::HairSearch => Some("চুল খুঁজুন"),
-        TextKey::HairLoading => Some("চুল লোড হচ্ছে"),
         TextKey::HairReady => Some("চুলের প্রিভিউ প্রস্তুত"),
         TextKey::HairLoadFailed => Some("চুল লোড ব্যর্থ"),
         TextKey::HairPartsSkipped => Some("কিছু অংশ ছাড়া দেখানো হচ্ছে"),
@@ -175,6 +268,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("ভিউপোর্ট"),
         TextKey::SettingsGeneral => Some("সাধারণ"),
         TextKey::SettingsAbout => Some("পরিচিতি"),
+        TextKey::SettingsShortcuts => Some("শর্টকাট"),
+        TextKey::ShortcutsCapturing => Some("চাপুন…"),
+        TextKey::ShortcutsResetAll => Some("সব শর্টকাট রিসেট করুন"),
+        TextKey::ShortcutsExport => Some("কীম্যাপ ফাইলে সংরক্ষণ"),
+        TextKey::ShortcutsImport => Some("কীম্যাপ ফাইল লোড করুন"),
+        TextKey::ShortcutsTaken => Some("এটি ইতিমধ্যে অন্য কাজে ব্যবহৃত"),
         TextKey::SettingsAboutBuild => Some("বিল্ড"),
         TextKey::SettingsAboutLicense => Some("লাইসেন্স"),
         TextKey::SettingsAboutDiagnostics => Some("ডায়াগনস্টিক"),
@@ -214,16 +313,23 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("প্রদর্শনের ভাষা"),
         TextKey::SettingsFoldersGroup => Some("ফোল্ডার"),
         TextKey::SettingsVaMRoot => Some("VaM ইনস্টল পথ"),
-        TextKey::HairVisible => Some("চুল দেখান"),
         TextKey::HairNeedsFinishedHead => Some("চুল সম্পূর্ণ মাথায় পরানো হয়।"),
-        TextKey::HairPreviewCaveat => Some("চুলের বিস্তারিত আসলের চেয়ে আলাদা।"),
         TextKey::NoMatchingHair => Some("মিলে যাওয়া চুলের প্রিসেট নেই"),
         TextKey::MorphSearch => Some("মর্ফ খুঁজুন"),
         TextKey::AppearanceSearch => Some("লুক খুঁজুন"),
+        TextKey::AppearanceLayers => Some("চেহারা স্তর"),
+        TextKey::AddAppearanceLayer => Some("নির্বাচিত চেহারা যোগ করুন"),
+        TextKey::AppearanceLayersEmpty => Some("এখনো কোনো স্তর নেই"),
+        TextKey::AppearanceLayerRaise => Some("উপরে"),
+        TextKey::AppearanceLayerLower => Some("নিচে"),
         TextKey::LookFind => Some("লুক লোড"),
-        TextKey::CameraTrackballArmed => Some("রোল সক্রিয় · কাত করতে পাশাপাশি টানুন · শেষ করতে ক্লিক বা R"),
+        TextKey::CameraTrackballArmed => Some("ট্র্যাকবল · অবাধে ঘোরাতে টানুন · ক্লিক বা R চেপে বেরোন"),
         TextKey::HelpTrackball => Some("ট্র্যাকবল ঘূর্ণন"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("দুই কোণ থেকে দেখুন — ভিউ ভাগ করুন"),
+        TextKey::SplitModelViewName => Some("বিভক্ত ভিউ"),
+        TextKey::HelpLevelRoll => Some("দিগন্ত সমান করুন"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("গত সেশন অপ্রত্যাশিতভাবে শেষ হয়েছিল"),
         TextKey::RecoveryBody => {
             Some("থেমে যাওয়ার ঠিক আগে আপনার মর্ফ, স্কাল্পটিং ও টেক্সচার লেয়ার সংরক্ষিত হয়েছিল। ফিরিয়ে আনব?")
@@ -234,9 +340,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "সেই সেশনের লুক এখনো তালিকায় নেই — টেক্সচার পুনরুদ্ধার হয়েছে, লুক নির্বাচন করলে সম্পাদনাগুলি প্রযোজ্য হবে।",
         ),
-        TextKey::SettingsOcclusionGroup => Some("অ্যাম্বিয়েন্ট অক্লুশন"),
-        TextKey::SettingsOcclusionIntensity => Some("শক্তি"),
-        TextKey::SettingsOcclusionRadius => Some("বিস্তার"),
         TextKey::SettingsBloomGroup => Some("ব্লুম"),
         TextKey::SettingsBloomIntensity => Some("তীব্রতা"),
         TextKey::SettingsBloomThreshold => Some("থ্রেশহোল্ড"),
@@ -249,7 +352,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("স্কাল্পটিং এই লুকে আসতে পারেনি"),
         TextKey::SettingsToneCurve => Some("টোন কার্ভ"),
         TextKey::SettingsToneCurveTooltip => Some("ছায়া ও হাইলাইট সমন্বয় করে"),
-        TextKey::SettingsOcclusionTooltip => Some("সারফেস মেলার ভাঁজে ছায়া দেয়"),
         TextKey::SettingsVignetteTooltip => Some("ফ্রেমের কিনারা গাঢ় করে"),
         TextKey::SettingsEffectEnabled => Some("চালু"),
         TextKey::SettingsInterfaceGroup => Some("ইন্টারফেস"),
@@ -325,6 +427,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("সঙ্গতিপূর্ণ ফলাফল মর্ফ নেই"),
         TextKey::AlignmentPending => Some("স্ক্যান হেড লোড করুন ও VaM ফোল্ডার বাছুন"),
         TextKey::ScanLoaded => Some("কাস্টম হেড OBJ, GLB বা FBX লোড হয়েছে"),
+        TextKey::ScanUnloaded => Some("হেড ফাইল সরানো হয়েছে; G2 বেস সম্পাদনার জন্য প্রস্তুত"),
+        TextKey::PinPairsMismatched => Some("পিনের সংখ্যা মেলে না; জোড়াহীন পিন"),
+        TextKey::UnloadScanTooltip => Some("এই হেড ফাইল সরান"),
         TextKey::TemplateLoaded => Some("G2 লোড হয়েছে"),
         TextKey::PinsReset => Some("সব পিন রিসেট হয়েছে"),
         TextKey::ResultStale => Some("পরিবর্তনের জন্য ফলাফল আবার তৈরি করতে হবে"),
@@ -380,6 +485,37 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutCameraProjection => Some("Numpad ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("পুনরায় করুন"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("চুলের প্রিসেট"),
+        TextKey::HairPresetLoad => Some("লোড করুন"),
+        TextKey::HairToolPick => Some("স্তর বাছুন"),
+        TextKey::HairToolPickHint => {
+            Some("ভিউপোর্টে একটি গোছায় ক্লিক করলে তার স্তর সক্রিয় হয়। ব্রাশ পরের ক্লিক থেকে কাজ করে।")
+        }
+        TextKey::HelpHairPick => Some("কার্সরের নিচের স্তর বাছুন"),
+        TextKey::ShortcutHairPick => Some("V, বা যেকোনো ব্রাশে Ctrl + ক্লিক"),
+        TextKey::HelpHairSmooth => Some("আঁচড়ানোর বদলে মসৃণ করুন"),
+        TextKey::ShortcutHairSmooth => Some("আঁচড়ানোর সময় Shift"),
+        TextKey::HairGroupScalp => Some("মাথার ত্বক"),
+        TextKey::HairScalpAlpha => Some("মাথার ত্বকের মাস্ক"),
+        TextKey::HairScalpPanel => Some("মাথার ত্বক"),
+        TextKey::HairScalpMesh => Some("মাথার ত্বকের মেশ"),
+        TextKey::HairScalpCreate => Some("মাথার ত্বক তৈরি করুন"),
+        TextKey::HairScalpAbsent => Some("এই স্টাইলে এখনো মাথার ত্বকের স্তর নেই।"),
+        TextKey::HistoryBranchTitle => Some("সামনের ধাপগুলি হারিয়ে যাবে"),
+        TextKey::HistoryBranchProceed => Some("তবুও সম্পাদনা করুন"),
+        TextKey::DoNotShowAgain => Some("এটি আর দেখাবেন না"),
+        TextKey::SurfaceBaseUnblended => Some("কিছু PBR ম্যাপ VaM স্কিনের সঙ্গে মেশানো যায়নি"),
+        TextKey::DetailEditRedone => Some("পূর্বাবস্থায় নেওয়া সম্পাদনা আবার প্রয়োগ হয়েছে"),
+        TextKey::ShortcutBrushSmaller => Some("ব্রাশ ছোট করুন"),
+        TextKey::ShortcutBrushLarger => Some("ব্রাশ বড় করুন"),
+        TextKey::ShortcutBrushSizeDrag => Some("টেনে ব্রাশের আকার"),
+        TextKey::ShortcutBrushStrengthDrag => Some("টেনে ব্রাশের শক্তি"),
+        TextKey::ShortcutStencilCancel => Some("স্টেনসিল বসানো বাতিল করুন"),
+        TextKey::ShortcutViewOrbit => Some("ভিউ ঘুরিয়ে দেখুন"),
+        TextKey::ShortcutViewPan => Some("ভিউ সরান"),
+        TextKey::ShortcutViewDolly => Some("ভিউ কাছে-দূরে আনুন"),
         TextKey::TemplatePending => Some("G2 বেস স্বয়ংক্রিয়ভাবে প্রস্তুত করতে VaM ফোল্ডার বাছুন"),
         TextKey::ResultEmpty => Some("প্রস্তুত মর্ফ নেই"),
         TextKey::ScaleLink => Some("স্কেল লিংক"),
@@ -413,6 +549,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("সারফেসের বিস্তারিত মসৃণ করে"),
         TextKey::SculptBrushRestoreTooltip => Some("বেস আকৃতির দিকে ফিরিয়ে আনে"),
+        TextKey::SculptBrushMask => Some("মাস্ক"),
+        TextKey::SculptBrushMaskTooltip => {
+            Some("নির্বাচিত চেহারা স্তর কেটে নিচেরটি দেখান। Alt দিয়ে ফিরিয়ে আনুন")
+        }
         TextKey::TextureLayers => Some("টেক্সচার লেয়ার"),
         TextKey::PackageSection => Some("VAR এক্সপোর্ট"),
         TextKey::PackageCreatorHint => Some("নির্মাতা"),
@@ -584,6 +724,172 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("টেক্সচার লেয়ার যোগ করুন"),
         TextKey::DialogSaveMorphPair => Some("VaM মর্ফ VMI + VMB সংরক্ষণ করুন"),
         TextKey::DialogChooseVamFolder => Some("Virt-A-Mate ফোল্ডার নির্বাচন করুন"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("চুলের পরিমাণ"),
+        "curveDensity" => Some("বক্ররেখার ঘনত্ব"),
+        "iterations" => Some("পুনরাবৃত্তি"),
+        "simulationEnabled" => Some("পদার্থবিদ্যা"),
+        "collisionEnabled" => Some("সংঘর্ষ"),
+        "weight" => Some("ওজন"),
+        "drag" => Some("বায়ু বাধা"),
+        "gravityMultiplier" => Some("মাধ্যাকর্ষণ গুণক"),
+        "collisionRadius" => Some("সংঘর্ষ ব্যাসার্ধ"),
+        "collisionRadiusRoot" => Some("সংঘর্ষ ব্যাসার্ধ (গোড়া)"),
+        "friction" => Some("ঘর্ষণ"),
+        "bendResistance" => Some("বাঁকার বাধা"),
+        "rootRigidity" => Some("গোড়ার দৃঢ়তা"),
+        "mainRigidity" => Some("মাঝের দৃঢ়তা"),
+        "tipRigidity" => Some("ডগার দৃঢ়তা"),
+        "jointRigidity" => Some("জোড়ের দৃঢ়তা"),
+        "rigidityRolloffPower" => Some("দৃঢ়তার ক্ষয়"),
+        "cling" => Some("স্টাইল সংসক্তি"),
+        "clingRolloff" => Some("সংসক্তির ক্ষয়"),
+        "snap" => Some("আঁকড়ে ধরা"),
+        "usePaintedRigidity" => Some("আঁকা দৃঢ়তা ব্যবহার করুন"),
+        "width" => Some("পুরুত্ব"),
+        "length1" => Some("দৈর্ঘ্য ১"),
+        "length2" => Some("দৈর্ঘ্য ২"),
+        "length3" => Some("দৈর্ঘ্য ৩"),
+        "maxSpread" => Some("সর্বোচ্চ বিস্তার"),
+        "spreadRoot" => Some("বিস্তার (গোড়া)"),
+        "spreadMid" => Some("বিস্তার (মাঝ)"),
+        "spreadTip" => Some("বিস্তার (ডগা)"),
+        "spreadMidpoint" => Some("বিস্তারের মধ্যবিন্দু"),
+        "spreadCurvePower" => Some("বিস্তারের বক্ররেখা"),
+        "curlScale" => Some("কোঁকড়ার আকার"),
+        "curlFrequency" => Some("কোঁকড়ার কম্পাঙ্ক"),
+        "curlScaleRandomness" => Some("আকারের এলোমেলোতা"),
+        "curlFrequencyRandomness" => Some("কম্পাঙ্কের এলোমেলোতা"),
+        "curlRoot" => Some("কোঁকড়া (গোড়া)"),
+        "curlMid" => Some("কোঁকড়া (মাঝ)"),
+        "curlTip" => Some("কোঁকড়া (ডগা)"),
+        "curlMidpoint" => Some("কোঁকড়ার মধ্যবিন্দু"),
+        "curlCurvePower" => Some("কোঁকড়ার বক্ররেখা"),
+        "curlX" => Some("কোঁকড়া X"),
+        "curlY" => Some("কোঁকড়া Y"),
+        "curlZ" => Some("কোঁকড়া Z"),
+        "curlNormalAdjust" => Some("কোঁকড়ার নর্মাল সংশোধন"),
+        "curlAllowReverse" => Some("উল্টো দিকে অনুমতি"),
+        "curlAllowFlipAxis" => Some("অক্ষ উল্টানোর অনুমতি"),
+        "Alpha Adjust" => Some("মাথার ত্বকের অস্বচ্ছতা"),
+        "Diffuse Color" => Some("মাথার ত্বকের বিচ্ছুরিত রঙ"),
+        "Gloss" => Some("মাথার ত্বকের ঔজ্জ্বল্য"),
+        "Specular Intensity" => Some("মাথার ত্বকের প্রতিফলন"),
+        "Diffuse Texture Offset" => Some("মাথার ত্বকের টেক্সচার অফসেট"),
+        "rootColor" => Some("গোড়ার রঙ"),
+        "tipColor" => Some("ডগার রঙ"),
+        "specularColor" => Some("ঝিলিকের রঙ"),
+        "colorRolloff" => Some("গোড়া→ডগা রঙের ক্ষয়"),
+        "randomColorPower" => Some("এলোমেলো রঙের তীব্রতা"),
+        "randomColorOffset" => Some("এলোমেলো রঙের অফসেট"),
+        "primarySpecularSharpness" => Some("প্রাথমিক ঝিলিক"),
+        "secondarySpecularSharpness" => Some("গৌণ ঝিলিক"),
+        "specularShift" => Some("গৌণ ঝিলিকের সরণ"),
+        "diffuseSoftness" => Some("বিচ্ছুরণের কোমলতা"),
+        "fresnelPower" => Some("ফ্রেনেল তীব্রতা"),
+        "fresnelAttenuation" => Some("ফ্রেনেল ক্ষয়"),
+        "IBLFactor" => Some("পরোক্ষ আলো"),
+        "normalRandomize" => Some("নর্মালের এলোমেলোতা"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => {
+            Some("প্রতি তিনটি গাইডের মাঝে কতগুলো গোছা গজায়। চুলের চেহারাটাই এটা, আর এর খরচেরও বেশিরভাগ।")
+        }
+        "curveDensity" => Some(
+            "প্রতিটি গোছার গায়ে বসানো বিন্দুর সংখ্যা। বেশি হলে মসৃণ ও ধীর; সংখ্যা বাড়ার অনেক আগেই আকৃতি বোঝা যায়।",
+        ),
+        "iterations" => Some("প্রতি ফ্রেমে সলভারের পাস। বেশি হলে দ্রুত নড়াচড়ায় বাধাগুলো আরও শক্ত করে ধরে রাখে।"),
+        "simulationEnabled" => {
+            Some("এই অংশটি খেলার ভেতরে নড়ে কি না। ভিউপোর্টের সুইচের সঙ্গে এর সম্পর্ক নেই।")
+        }
+        "collisionEnabled" => Some("এই অংশের গোছাগুলো শরীর থেকে বাইরে ঠেলে দেওয়া হয় কি না।"),
+        "weight" => Some("গোছা কতটা ভারী হয়ে ঝোলে। মাধ্যাকর্ষণ আর নড়ানোর বিরুদ্ধে বাধা—দুটোই বাড়ায়।"),
+        "drag" => Some("বাতাস গোছাকে কতটা আটকে রাখে। বেশি হলে দ্রুত থিতিয়ে যায় আর কম দোলে।"),
+        "gravityMultiplier" => Some("এই অংশে কাজ করা মাধ্যাকর্ষণ, দৃশ্যের মাধ্যাকর্ষণের গুণিতক হিসেবে।"),
+        "collisionRadius" => Some("যে পুরুত্ব নিয়ে গোছা সংঘর্ষ করে, তার পুরো দৈর্ঘ্য জুড়ে।"),
+        "collisionRadiusRoot" => Some("গোড়ার কাছের পুরুত্ব, যখন সেটি বাকি অংশ থেকে আলাদা হওয়া দরকার।"),
+        "friction" => Some("গোছা যা স্পর্শ করে তা পিছলে না গিয়ে কতটা আঁকড়ে ধরে।"),
+        "bendResistance" => Some("সোজা অবস্থা থেকে বাঁকানোর বিরুদ্ধে গোছা কতটা বাধা দেয়।"),
+        "rootRigidity" => Some("গোড়ার প্রান্ত সাজানো আকৃতি কতটা শক্ত করে ধরে রাখে।"),
+        "mainRigidity" => Some("মাঝের অংশ সাজানো আকৃতি কতটা শক্ত করে ধরে রাখে।"),
+        "tipRigidity" => Some("ডগা সাজানো আকৃতি কতটা শক্ত করে ধরে রাখে।"),
+        "jointRigidity" => Some("স্টাইল-জোড়গুলোর কাঠিন্য: যে স্প্রিংগুলো ঝুঁটিকে ঝুঁটি করে রাখে।"),
+        "rigidityRolloffPower" => {
+            Some("তিনটি দৃঢ়তা গোছা বরাবর কীভাবে মেশে। বেশি হলে গোড়ার মান আরও নিচ পর্যন্ত পৌঁছায়।")
+        }
+        "cling" => Some("স্টাইল-জোড়গুলো গোছাগুলোকে পরস্পরের দিকে কত জোরে টানে।"),
+        "clingRolloff" => Some("সংসক্তি গোছা বরাবর কতদূর মিলিয়ে যায়। বেশি হলে তা গোড়ার কাছেই আটকে থাকে।"),
+        "snap" => Some("প্রতিটি খণ্ড তার তৈরি করা দৈর্ঘ্য কতটা দৃঢ়ভাবে ধরে রাখে।"),
+        "usePaintedRigidity" => Some("তিনটি স্লাইডারের বদলে আঁকা মানচিত্র থেকে দৃঢ়তা নিন।"),
+        "width" => Some(
+            "একটি গোছা কত মোটা করে আঁকা হয়। VaM-এর নিজের স্লাইডারও এক মিলিমিটারের দশ ভাগের এক ভাগে থেমে যায়।",
+        ),
+        "length1" => Some("নিজের ত্রিভুজের প্রথম গাইডের সবচেয়ে কাছের গোছাগুলোর দৈর্ঘ্য।"),
+        "length2" => Some("নিজের ত্রিভুজের দ্বিতীয় গাইডের সবচেয়ে কাছের গোছাগুলোর দৈর্ঘ্য।"),
+        "length3" => Some("নিজের ত্রিভুজের তৃতীয় গাইডের সবচেয়ে কাছের গোছাগুলোর দৈর্ঘ্য।"),
+        "maxSpread" => Some(
+            "একটি গোছা তার গাইড থেকে কতদূর সরতে পারে তার ঊর্ধ্বসীমা, কোনো বর্ধক নয়। গাইডের ব্যবধান ছাড়িয়ে গেলে এটি বাড়ালে আর কিছুই বদলায় না।",
+        ),
+        "spreadRoot" => Some("গোড়ায় গোছাগুলো কত অবাধে আলাদা হয়। কম হলে সেগুলো গাইডের দিকে জড়ো হয়।"),
+        "spreadMid" => Some("মাঝখানে গোছাগুলো কত অবাধে আলাদা হয়।"),
+        "spreadTip" => Some("ডগায় গোছাগুলো কত অবাধে আলাদা হয়।"),
+        "spreadMidpoint" => Some("গোছার কোন বিন্দু থেকে মাঝের বিস্তার কার্যকর হয়।"),
+        "spreadCurvePower" => Some("গোড়া, মাঝ ও ডগার মধ্যে বিস্তার কত তীক্ষ্ণভাবে বদলায়।"),
+        "curlScale" => Some("কোঁকড়ার প্রস্থ: যে ব্যাসার্ধ ঘিরে সেটি পাক খায়, তার দৈর্ঘ্য নয়।"),
+        "curlFrequency" => Some("গোছার প্রতি সেন্টিমিটারে পাকের সংখ্যা।"),
+        "curlScaleRandomness" => Some("গোছা থেকে গোছায় কোঁকড়ার প্রস্থ কতটা আলাদা হয়।"),
+        "curlFrequencyRandomness" => Some("গোছা থেকে গোছায় পাক খাওয়ার হার কতটা আলাদা হয়।"),
+        "curlRoot" => Some("কোঁকড়া গোড়া পর্যন্ত কতটা পৌঁছায়।"),
+        "curlMid" => Some("কোঁকড়া মাঝ পর্যন্ত কতটা পৌঁছায়।"),
+        "curlTip" => Some("কোঁকড়া ডগা পর্যন্ত কতটা পৌঁছায়।"),
+        "curlMidpoint" => Some("গোছার কোন বিন্দু থেকে মাঝের কোঁকড়া কার্যকর হয়।"),
+        "curlCurvePower" => Some("গোড়া, মাঝ ও ডগার মধ্যে কোঁকড়া কত তীক্ষ্ণভাবে বদলায়।"),
+        "curlX" => Some("X বরাবর কোঁকড়ার সরণ। এটি ঘোরানো একটি ভেক্টর, পাক খাওয়ার অক্ষ নয়।"),
+        "curlY" => Some("Y বরাবর কোঁকড়ার সরণ।"),
+        "curlZ" => Some("Z বরাবর কোঁকড়ার সরণ।"),
+        "curlNormalAdjust" => {
+            Some("নর্মাল বরাবর কোঁকড়ার অফসেটের সঙ্গে যোগ হয়। এটি কুণ্ডলীটিকে মাথা থেকে তোলে, অক্ষ হেলায় না।")
+        }
+        "curlAllowReverse" => {
+            Some("কিছু গোছাকে উল্টো দিকে পাক খেতে দেয়, যাতে কোঁকড়া মাথা একটিমাত্র গোছার পুনরাবৃত্তি মনে না হয়।")
+        }
+        "curlAllowFlipAxis" => Some("কিছু গোছাকে উল্টানো অক্ষে পাক খেতে দেয়, একই কারণে।"),
+        "Alpha Adjust" => Some(
+            "মাথার ত্বকের ক্যাপ কতটা অস্বচ্ছ। বেশিরভাগ অংশ অন্যের ক্যাপ পরে থাকে, তাই এটিকে সবচেয়ে নিচে রেখে লুকিয়ে ফেলা হয়; সিঁথিতে ত্বক দেখাতে হলেই কেবল বাড়ান।",
+        ),
+        "Diffuse Color" => {
+            Some("ক্যাপের নিজস্ব বিচ্ছুরিত রঙ। VaM এটিকে সাদা করে পাঠায়, যাতে নিচের ত্বক ফুটে ওঠে।")
+        }
+        "Gloss" => Some("যেখানে মাথার ত্বকের ক্যাপ দেখা যায়, সেখানে তা কতটা চকচকে।"),
+        "Specular Intensity" => Some("মাথার ত্বকের ক্যাপ ঝিলিক কত জোরালোভাবে ধরে।"),
+        "Diffuse Texture Offset" => {
+            Some("ক্যাপের বিচ্ছুরিত রঙের সঙ্গে যোগ হয়। নাম যা-ই হোক, এটি কোনো শিট নম্বর নয়।")
+        }
+        "rootColor" => Some("গোড়ার রঙ।"),
+        "tipColor" => Some("ডগার রঙ।"),
+        "specularColor" => Some("ঝিলিকের রঙ।"),
+        "colorRolloff" => Some("গোছা বরাবর গোড়ার রঙ কীভাবে ডগার রঙকে জায়গা ছেড়ে দেয়।"),
+        "randomColorPower" => Some("গোছায় গোছায় রঙ কত জোরালোভাবে আলাদা হয়।"),
+        "randomColorOffset" => Some("সেই পার্থক্য কোন দিকে ঝোঁকে, উজ্জ্বল না গাঢ়।"),
+        "primarySpecularSharpness" => Some("প্রধান ঝিলিক কতটা আঁটসাঁট। বেশি হলে বেশি চকচকে।"),
+        "secondarySpecularSharpness" => Some("দ্বিতীয় ঝিলিক কতটা আঁটসাঁট: রঙিন যেটি চুলের সঙ্গে চলে।"),
+        "specularShift" => Some("দ্বিতীয় ঝিলিক গোছা বরাবর প্রথমটি থেকে কতদূরে বসে।"),
+        "diffuseSoftness" => Some("আলো কেবল সামনের দিক আলোকিত না করে গোছাকে কত কোমলভাবে জড়িয়ে ধরে।"),
+        "fresnelPower" => Some("চুল যেখানে দৃষ্টি থেকে ঘুরে যায়, সেখানে কিনারা কত তীক্ষ্ণভাবে উজ্জ্বল হয়।"),
+        "fresnelAttenuation" => Some("সেই কিনারার উজ্জ্বলতা কতটা প্রবল।"),
+        "IBLFactor" => Some("চুল দৃশ্যের পরিবেশ-আলো কতটা গ্রহণ করে।"),
+        "normalRandomize" => {
+            Some("প্রতিটি গোছার ছায়াদান নর্মাল কতটা নাড়ানো হয়, যাতে পাশাপাশি গোছাগুলো একইভাবে ছায়া না ফেলে।")
+        }
         _ => None,
     }
 }

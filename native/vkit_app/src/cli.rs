@@ -1,23 +1,9 @@
-//! A way into the work that is not the window.
-//!
-//! The editor answers questions about itself badly: to find out what an import
-//! costs you have to watch a progress bar and guess which part of it was slow.
-//! These subcommands run the same code with no window and print numbers, which
-//! is how "is the mesh rebuild worth its time" becomes a measurement instead of
-//! an opinion.
-
 use std::fmt::Write as _;
 use std::path::Path;
 use std::time::Instant;
 
-/// Exit code handed back to the operating system when a subcommand fails.
 const FAILED: i32 = 1;
 
-/// Reads the command line and, if it asks for headless work, does it.
-///
-/// Returns the process exit code when it handled the run, and `None` when the
-/// window should open as usual — so a plain double-click and a shortcut with a
-/// file dropped on it both still behave the way they always did.
 pub fn run_if_asked() -> Option<i32> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let (command, rest) = arguments.split_first()?;
@@ -31,9 +17,6 @@ pub fn run_if_asked() -> Option<i32> {
             println!("{} {}", crate::APP_NAME, env!("CARGO_PKG_VERSION"));
             0
         })),
-        // Anything else is not ours to interpret. A path handed over by the
-        // shell belongs to the window, and an unknown flag is more likely a
-        // future subcommand than a mistake worth refusing to start over.
         _ => None,
     }
 }
@@ -54,7 +37,6 @@ fn usage() -> String {
     )
 }
 
-/// Times the stages an imported mesh actually passes through.
 fn measure_import(arguments: &[String]) -> i32 {
     let mut path: Option<&str> = None;
     let mut whole = false;
@@ -102,7 +84,6 @@ fn measure_import(arguments: &[String]) -> i32 {
     }
 }
 
-/// The import the editor performs: parse, rebuild to the working budget, weld.
 fn measure_pipeline(path: &Path) -> Result<String, String> {
     let mut stages: Vec<(&str, f32)> = Vec::new();
     let mut phase_started = Instant::now();
@@ -141,11 +122,6 @@ fn measure_pipeline(path: &Path) -> Result<String, String> {
     Ok(report)
 }
 
-/// The import the editor does not perform: parse and stop.
-///
-/// This is the shape of the question — what does a scan cost if nothing is
-/// thrown away — so it reports the size the rest of the program would then be
-/// carrying rather than pretending the parse is the whole story.
 fn measure_whole(path: &Path) -> Result<String, String> {
     let started = Instant::now();
     let census =
@@ -200,12 +176,6 @@ fn mebibytes(bytes: u64) -> String {
     format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
 }
 
-/// Runs a subcommand with somewhere for its output to go.
-///
-/// A release build is a windows-subsystem binary, which starts with no console
-/// at all: every `println!` in here would be written to a closed handle and the
-/// user would watch the process exit in silence. Borrowing the console of the
-/// shell that launched us costs nothing when there isn't one.
 fn attached(body: impl FnOnce() -> i32) -> i32 {
     #[cfg(windows)]
     attach_parent_console();
@@ -219,8 +189,6 @@ fn attached(body: impl FnOnce() -> i32) -> i32 {
 )]
 fn attach_parent_console() {
     const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
-    // Failure is the ordinary case when there is no parent console — launched
-    // from Explorer, say — and there is nothing to do about it either way.
     unsafe { windows_sys::Win32::System::Console::AttachConsole(ATTACH_PARENT_PROCESS) };
 }
 
@@ -230,8 +198,6 @@ mod tests {
 
     #[test]
     fn a_bare_launch_and_a_dropped_file_both_open_the_window() {
-        // Nothing here may claim the run: the shell hands a path over when a
-        // file is dropped on the exe, and that has to reach the editor.
         for arguments in [vec![], vec!["C:/scans/face.glb".to_owned()]] {
             let (command, _) = match arguments.split_first() {
                 Some(split) => split,

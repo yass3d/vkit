@@ -1,12 +1,11 @@
 use super::*;
 
-pub(super) const VIEWPORT_TOOL_PANELS: [ViewportToolPanel; 7] = [
+pub(super) const VIEWPORT_TOOL_PANELS: [ViewportToolPanel; 6] = [
     ViewportToolPanel::Lighting,
     BACKGROUND_PANEL,
     ViewportToolPanel::Wireframe,
     ViewportToolPanel::Xray,
     ViewportToolPanel::Skin,
-    ViewportToolPanel::Hair,
     ViewportToolPanel::Camera,
 ];
 
@@ -26,7 +25,7 @@ pub(super) fn draw_viewport_tools(
             continue;
         };
 
-        let available = panel != ViewportToolPanel::Hair || state.active_tab != Tab::Edit;
+        let available = true;
         let response = ui
             .interact(rect, id.with(("button", index)), Sense::click())
             .on_disabled_hover_text(text(state.locale, TextKey::HairNeedsFinishedHead));
@@ -34,7 +33,6 @@ pub(super) fn draw_viewport_tools(
         let enabled = match panel {
             ViewportToolPanel::Lighting
             | ViewportToolPanel::Skin
-            | ViewportToolPanel::Hair
             | ViewportToolPanel::Camera
             | ViewportToolPanel::BaseView => false,
             ViewportToolPanel::Wireframe => state.wireframe_visible,
@@ -72,7 +70,6 @@ pub(super) fn draw_viewport_tools(
             ViewportToolPanel::Wireframe => TextKey::ViewportWireframeTooltip,
             ViewportToolPanel::Xray => TextKey::ViewportXrayTooltip,
             ViewportToolPanel::Skin => TextKey::ViewportSkinTooltip,
-            ViewportToolPanel::Hair => TextKey::ViewportHairTooltip,
             ViewportToolPanel::Camera => TextKey::CameraSettings,
         };
         let response = response.on_hover_text(text(state.locale, tooltip));
@@ -80,7 +77,7 @@ pub(super) fn draw_viewport_tools(
         if response.clicked() && available {
             let was_open = state.viewport_tool_panel == Some(panel);
             state.dispatch(Action::ToggleViewportToolPanel(panel));
-            if matches!(panel, ViewportToolPanel::Skin | ViewportToolPanel::Hair)
+            if matches!(panel, ViewportToolPanel::Skin)
                 && !was_open
                 && state.vam_root.is_some()
                 && matches!(state.vam_catalog_status, VaMCatalogStatus::Unconfigured)
@@ -249,7 +246,6 @@ pub(super) fn draw_viewport_tool_panel_contents(
         ViewportToolPanel::Xray => TextKey::XraySettings,
 
         ViewportToolPanel::Skin => TextKey::SkinSettings,
-        ViewportToolPanel::Hair => TextKey::Hair,
         ViewportToolPanel::Camera => TextKey::CameraSettings,
     };
     draw_centered_viewport_panel_title(ui, text(state.locale, title));
@@ -339,7 +335,6 @@ pub(super) fn draw_viewport_tool_panel_contents(
             }
         }
         ViewportToolPanel::Skin => crate::ui::draw_viewport_skin_panel_contents(ui, state),
-        ViewportToolPanel::Hair => crate::ui::draw_viewport_hair_panel_contents(ui, state),
         ViewportToolPanel::Camera => draw_viewport_camera_panel(ui, state),
     }
 
@@ -568,8 +563,6 @@ pub(super) fn draw_viewport_lighting_panel(ui: &mut Ui, state: &mut AppState) {
                     .min_width(120.0),
             );
             rotation_changed |= slider.changed();
-            // The same rotation is a drag in the viewport, which is how most
-            // hands will actually reach it — so the slider says where it lives.
             crate::ui_components::tooltip(
                 slider,
                 text(state.locale, TextKey::LightRotation),
@@ -632,18 +625,6 @@ pub(super) fn viewport_tool_panel_measure_revision(
             state.selected_skin_id.is_some().hash(&mut hasher);
             state.skin_preview.is_some().hash(&mut hasher);
             (state.status.key == TextKey::SkinLoadFailed).hash(&mut hasher);
-        }
-        ViewportToolPanel::Hair => {
-            crate::ui::panel_observed_tail(ui, crate::ui::HAIR_PANEL_TAIL)
-                .to_bits()
-                .hash(&mut hasher);
-            state.hair_visible.hash(&mut hasher);
-            state.vam_hair_presets.len().hash(&mut hasher);
-            std::mem::discriminant(&state.vam_catalog_status).hash(&mut hasher);
-            state.hair_preview_loading.hash(&mut hasher);
-            state.selected_hair_id.is_some().hash(&mut hasher);
-            state.hair_preview.is_some().hash(&mut hasher);
-            (state.status.key == TextKey::HairLoadFailed).hash(&mut hasher);
         }
         ViewportToolPanel::BaseView => {}
         ViewportToolPanel::Lighting
@@ -787,11 +768,6 @@ pub(super) fn viewport_tools_should_block_pointer(
         || help_card_spends_pointer(state.help_visible, clicked, primary_down)
 }
 
-/// The open help card dismisses on the next click anywhere, but egui reports
-/// that click on the release frame, after the press frame has already landed a
-/// pin or a paint-style dab. The whole primary gesture is the dismissal, so
-/// all of it is spent: the press, the frames it is held, and the click itself.
-/// A hover with no button involved stays live so the camera keeps working.
 pub(super) const fn help_card_spends_pointer(
     help_visible: bool,
     clicked: bool,
@@ -821,7 +797,6 @@ pub(super) fn paint_viewport_tool_icon(
         ViewportToolPanel::Wireframe => Icon::Wireframe,
         ViewportToolPanel::Xray => Icon::Xray,
         ViewportToolPanel::Skin => Icon::HeadTexture,
-        ViewportToolPanel::Hair => Icon::Hair,
         ViewportToolPanel::Camera => Icon::Camera,
     };
     paint_icon(ui.painter(), rect.shrink(6.0), icon, color);

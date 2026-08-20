@@ -1,7 +1,6 @@
 use egui::{Rect, epaint};
 use egui_wgpu::{Callback, CallbackResources, CallbackTrait, ScreenDescriptor, wgpu};
 
-use crate::ambient_occlusion::{AmbientOcclusion, AmbientOcclusionSettings, AoView};
 use crate::hdr_target::{HDR_FORMAT, SceneHdrTarget};
 use crate::post_process::BloomSettings;
 use crate::renderer::SceneTarget;
@@ -85,9 +84,7 @@ fn quadratic_threshold(color: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_prefilter(in: VertexOut) -> @location(0) vec4<f32> {
     let uv = in.uv * uniforms.uv_scale;
-
-    let occlusion = textureSampleLevel(occlusion_texture, source_sampler, uv, 0.0).r;
-    let color = sanitize_radiance(downsample_box(uv, uniforms.texel)) * occlusion;
+    let color = sanitize_radiance(downsample_box(uv, uniforms.texel));
     return vec4<f32>(quadratic_threshold(color), 1.0);
 }
 
@@ -103,16 +100,13 @@ fn fs_upsample(in: VertexOut) -> @location(0) vec4<f32> {
 "#,
     r#"
 @group(1) @binding(0) var scene_texture: texture_2d<f32>;
-@group(1) @binding(1) var occlusion_texture: texture_2d<f32>;
 
 @fragment
 fn fs_overlay(in: VertexOut) -> @location(0) vec4<f32> {
     let source_uv = in.uv * uniforms.uv_scale;
-
-    let occlusion = textureSampleLevel(occlusion_texture, source_sampler, source_uv, 0.0).r;
     let scene = sanitize_radiance(
         textureSampleLevel(scene_texture, source_sampler, source_uv, 0.0).rgb
-    ) * occlusion;
+    );
     let bloom = textureSampleLevel(source_texture, source_sampler, source_uv, 0.0).rgb
         * uniforms.params.y;
     let exposure = uniforms.params.z;
@@ -134,7 +128,7 @@ struct BloomLevel {
     up: Option<wgpu::BindGroup>,
 }
 
-pub struct BloomResources {
+pub struct PaneBloom {
     prefilter: wgpu::RenderPipeline,
     downsample: wgpu::RenderPipeline,
     upsample: wgpu::RenderPipeline,
@@ -146,8 +140,6 @@ pub struct BloomResources {
 
     pub target: SceneHdrTarget,
 
-    occlusion: AmbientOcclusion,
-
     live: (u32, u32),
     pyramid: Option<wgpu::Texture>,
     levels: Vec<BloomLevel>,
@@ -158,8 +150,102 @@ pub struct BloomResources {
     built_for: Option<((u32, u32), u32)>,
 
     queue: Vec<HdrDraw>,
+}
 
-    armed: bool,
+impl PaneBloom {
+    fn fork(&self, device: &wgpu::Device) -> Self {
+        Self {
+            prefilter: self.prefilter.clone(),
+            downsample: self.downsample.clone(),
+            upsample: self.upsample.clone(),
+            overlay: self.overlay.clone(),
+            filter_layout: self.filter_layout.clone(),
+            scene_layout: self.scene_layout.clone(),
+            sampler: self.sampler.clone(),
+            uniforms: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("vkit.bloom.uniforms"),
+                size: UNIFORM_SLOTS * UNIFORM_STRIDE,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            target: SceneHdrTarget::new(device, self.live.0, self.live.1),
+            live: self.live,
+            pyramid: None,
+            levels: Vec::new(),
+            overlay_scene: None,
+            overlay_bloom: None,
+            built_for: None,
+            queue: Vec::new(),
+        }
+    }
+}
+
+pub struct BloomResources {
+    panes: std::collections::BTreeMap<u64, PaneBloom>,
+    armed: Option<u64>,
+    seen: std::collections::BTreeSet<u64>,
+}
+
+const PRIMARY_PANE: u64 = 0;
+
+impl BloomResources {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> Self {
+        let mut panes = std::collections::BTreeMap::new();
+        panes.insert(
+            PRIMARY_PANE,
+            PaneBloom::new(device, surface_format, width, height),
+        );
+        Self {
+            panes,
+            armed: None,
+            seen: std::collections::BTreeSet::new(),
+        }
+    }
+
+    const fn route(salt: u64) -> u64 {
+        salt
+    }
+
+    pub fn arm(&mut self, device: &wgpu::Device, salt: u64) {
+        let salt = Self::route(salt);
+        if !self.panes.contains_key(&salt)
+            && let Some(source) = self.panes.get(&PRIMARY_PANE)
+        {
+            let forked = source.fork(device);
+            self.panes.insert(salt, forked);
+        }
+        if salt == PRIMARY_PANE {
+            let seen = std::mem::take(&mut self.seen);
+            self.panes
+                .retain(|key, _| *key == PRIMARY_PANE || seen.contains(key));
+        }
+        self.seen.insert(salt);
+        self.armed = Some(salt);
+        if let Some(pane) = self.panes.get_mut(&salt) {
+            pane.arm();
+        }
+    }
+
+    pub fn record(&mut self, draw: HdrDraw) {
+        if let Some(salt) = self.armed
+            && let Some(pane) = self.panes.get_mut(&salt)
+        {
+            pane.record(draw);
+        }
+    }
+
+    pub fn pane(&self, salt: u64) -> Option<&PaneBloom> {
+        self.panes.get(&salt)
+    }
+
+    pub fn disarm(&mut self) {
+        self.armed = None;
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -171,10 +257,9 @@ pub enum HdrDraw {
 
 const UNIFORM_SLOTS: u64 = crate::post_process::MAX_PYRAMID_LEVELS as u64 * 2 + 1;
 
-impl BloomResources {
+impl PaneBloom {
     pub fn new(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         surface_format: wgpu::TextureFormat,
         width: u32,
         height: u32,
@@ -216,28 +301,16 @@ impl BloomResources {
         });
         let scene_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vkit.bloom.scene-layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
                 },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-            ],
+                count: None,
+            }],
         });
         let filter_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -253,11 +326,7 @@ impl BloomResources {
             });
 
         let filter = |entry: &'static str, label: &'static str| {
-            let layout = if entry == "fs_prefilter" {
-                &overlay_pipeline_layout
-            } else {
-                &filter_pipeline_layout
-            };
+            let layout = &filter_pipeline_layout;
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
@@ -317,7 +386,6 @@ impl BloomResources {
                 mapped_at_creation: false,
             }),
             target: SceneHdrTarget::new(device, width, height),
-            occlusion: AmbientOcclusion::new(device, queue, surface_format),
             live: (width.max(1), height.max(1)),
             pyramid: None,
             levels: Vec::new(),
@@ -325,20 +393,16 @@ impl BloomResources {
             overlay_bloom: None,
             built_for: None,
             queue: Vec::new(),
-            armed: false,
         }
     }
 
     pub fn arm(&mut self) {
-        self.armed = true;
         self.queue.clear();
         self.target.end_frame();
     }
 
     pub fn record(&mut self, draw: HdrDraw) {
-        if self.armed {
-            self.queue.push(draw);
-        }
+        self.queue.push(draw);
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, settings: BloomSettings, live: (u32, u32)) {
@@ -346,41 +410,9 @@ impl BloomResources {
         let replaced = self.target.ensure(device, self.live.0, self.live.1);
         let levels = settings.pyramid_levels(self.live.1);
 
-        self.occlusion.resize(
-            device,
-            self.target.depth_view(),
-            self.target.resolved_view(),
-            self.target.size(),
-            replaced,
-        );
         if replaced || self.built_for != Some((self.target.size(), levels)) {
             self.rebuild_pyramid(device, levels);
         }
-    }
-
-    pub fn build_occlusion(
-        &mut self,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        settings: AmbientOcclusionSettings,
-        view: AoView,
-    ) {
-        if !self.target.has_scene() {
-            self.occlusion.clear_ready();
-            return;
-        }
-        self.occlusion.build(
-            queue,
-            encoder,
-            settings,
-            view,
-            self.target.size(),
-            self.live,
-        );
-    }
-
-    pub fn paint_occlusion(&self, pass: &mut wgpu::RenderPass<'static>) {
-        self.occlusion.paint(pass);
     }
 
     fn uv_scale(&self) -> [f32; 2] {
@@ -458,21 +490,16 @@ impl BloomResources {
             });
         }
 
+        self.target.end_frame();
         let overlay_slot = crate::post_process::MAX_PYRAMID_LEVELS as u64 * 2;
         self.overlay_bloom = Some(self.filter_bind_group(device, &mip_view(0), overlay_slot));
         self.overlay_scene = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("vkit.bloom.overlay-scene"),
             layout: &self.scene_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(self.target.resolved_view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(self.occlusion.visibility_view()),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(self.target.resolved_view()),
+            }],
         }));
         self.pyramid = Some(texture);
         self.levels = levels_out;
@@ -558,10 +585,6 @@ impl BloomResources {
             pass.set_bind_group(0, &level.down, &[]);
             if index == 0 {
                 pass.set_pipeline(&self.prefilter);
-
-                if let Some(scene) = self.overlay_scene.as_ref() {
-                    pass.set_bind_group(1, scene, &[]);
-                }
             } else {
                 pass.set_pipeline(&self.downsample);
             }
@@ -590,7 +613,6 @@ impl BloomResources {
             pass.draw(0..3, 0..1);
         }
 
-        self.target.end_frame();
         let overlay_slot = crate::post_process::MAX_PYRAMID_LEVELS as u64 * 2;
         let top = self.levels[0].extent;
         queue.write_buffer(
@@ -723,7 +745,9 @@ fn begin_pass(
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct BloomBeginCallback;
+pub struct BloomBeginCallback {
+    pub salt: u64,
+}
 
 impl BloomBeginCallback {
     pub fn paint_callback(self, rect: Rect) -> epaint::PaintCallback {
@@ -734,14 +758,14 @@ impl BloomBeginCallback {
 impl CallbackTrait for BloomBeginCallback {
     fn prepare(
         &self,
-        _device: &wgpu::Device,
+        device: &wgpu::Device,
         _queue: &wgpu::Queue,
         _screen: &ScreenDescriptor,
         _encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(bloom) = callback_resources.get_mut::<BloomResources>() {
-            bloom.arm();
+            bloom.arm(device, self.salt);
         }
         Vec::new()
     }
@@ -757,10 +781,8 @@ impl CallbackTrait for BloomBeginCallback {
 
 #[derive(Clone, Copy, Debug)]
 pub struct BloomOverlayCallback {
+    pub salt: u64,
     pub settings: BloomSettings,
-    pub occlusion: AmbientOcclusionSettings,
-
-    pub view: AoView,
 
     pub rect: Rect,
     pub exposure: f32,
@@ -783,7 +805,13 @@ impl CallbackTrait for BloomOverlayCallback {
         encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let Some(mut bloom) = callback_resources.remove::<BloomResources>() else {
+        let Some(mut stack) = callback_resources.remove::<BloomResources>() else {
+            return Vec::new();
+        };
+        stack.disarm();
+        let salt = BloomResources::route(self.salt);
+        let Some(mut bloom) = stack.panes.remove(&salt) else {
+            callback_resources.insert(stack);
             return Vec::new();
         };
         let scale = screen.pixels_per_point.max(0.1);
@@ -793,39 +821,40 @@ impl CallbackTrait for BloomOverlayCallback {
         );
         bloom.resize(device, self.settings, live);
         let queued = std::mem::take(&mut bloom.queue);
-        bloom.armed = false;
 
-        for draw in queued {
+        if !queued.is_empty() {
             let mut pass = bloom.target.begin_scene_pass(encoder);
             pass.set_viewport(0.0, 0.0, live.0 as f32, live.1 as f32, 0.0, 1.0);
-            match draw {
-                HdrDraw::Skin(key) => {
-                    if let Some(skin) =
-                        callback_resources.get::<crate::renderer::SkinRenderResources>()
-                    {
-                        skin.paint(&mut pass, key, SceneTarget::Hdr);
+            for draw in queued {
+                match draw {
+                    HdrDraw::Skin(key) => {
+                        if let Some(skin) =
+                            callback_resources.get::<crate::renderer::SkinRenderResources>()
+                        {
+                            skin.paint(&mut pass, key, SceneTarget::Hdr);
+                        }
                     }
-                }
-                HdrDraw::Scalp(key) => {
-                    if let Some(scalp) =
-                        callback_resources.get::<crate::hair_renderer::ScalpRenderResources>()
-                    {
-                        scalp.paint(&mut pass, key, SceneTarget::Hdr);
+                    HdrDraw::Scalp(key) => {
+                        if let Some(scalp) =
+                            callback_resources.get::<crate::hair_renderer::ScalpRenderResources>()
+                        {
+                            scalp.paint(&mut pass, key, SceneTarget::Hdr);
+                        }
                     }
-                }
-                HdrDraw::Hair(key) => {
-                    if let Some(hair) =
-                        callback_resources.get::<crate::hair_renderer::HairRenderResources>()
-                    {
-                        hair.paint(&mut pass, key, SceneTarget::Hdr);
+                    HdrDraw::Hair(key) => {
+                        if let Some(hair) =
+                            callback_resources.get::<crate::hair_renderer::HairRenderResources>()
+                        {
+                            hair.paint(&mut pass, key, SceneTarget::Hdr);
+                        }
                     }
                 }
             }
         }
 
-        bloom.build_occlusion(queue, encoder, self.occlusion, self.view);
         bloom.build(queue, encoder, self.settings, self.exposure, self.filmic);
-        callback_resources.insert(bloom);
+        stack.panes.insert(salt, bloom);
+        callback_resources.insert(stack);
         Vec::new()
     }
 
@@ -835,8 +864,10 @@ impl CallbackTrait for BloomOverlayCallback {
         pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     ) {
-        if let Some(bloom) = callback_resources.get::<BloomResources>() {
-            bloom.paint_occlusion(pass);
+        if let Some(bloom) = callback_resources
+            .get::<BloomResources>()
+            .and_then(|stack| stack.pane(BloomResources::route(self.salt)))
+        {
             bloom.paint(pass);
         }
     }
@@ -862,6 +893,77 @@ mod tests {
     }
 
     #[test]
+    fn every_pane_routes_to_a_stack_of_its_own() {
+        const SPLIT: u64 = 0x5350_4c54_5641;
+        assert_eq!(BloomResources::route(PRIMARY_PANE), PRIMARY_PANE);
+        assert_eq!(BloomResources::route(SPLIT), SPLIT);
+    }
+
+    #[test]
+    fn each_pane_gets_its_own_screen_space_stack() {
+        let Some((device, _queue)) = test_device() else {
+            return;
+        };
+        let mut stack = BloomResources::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, 640, 480);
+        const SPLIT: u64 = 0x5350_4c54_5641;
+
+        assert_eq!(stack.panes.len(), 1);
+        stack.arm(&device, PRIMARY_PANE);
+        stack.record(HdrDraw::Skin(1));
+        stack.arm(&device, SPLIT);
+        stack.record(HdrDraw::Skin(2));
+        assert_eq!(
+            stack.panes.len(),
+            2,
+            "the split pane got no stack of its own"
+        );
+
+        assert_eq!(
+            stack.pane(PRIMARY_PANE).unwrap().queue,
+            vec![HdrDraw::Skin(1)]
+        );
+        assert_eq!(stack.pane(SPLIT).unwrap().queue, vec![HdrDraw::Skin(2)]);
+
+        assert_ne!(
+            &stack.pane(PRIMARY_PANE).unwrap().uniforms,
+            &stack.pane(SPLIT).unwrap().uniforms,
+            "both panes write one uniform buffer",
+        );
+
+        stack.arm(&device, PRIMARY_PANE);
+        assert_eq!(
+            stack.panes.len(),
+            2,
+            "a pane is kept for the frame after its last"
+        );
+        stack.arm(&device, PRIMARY_PANE);
+        assert_eq!(
+            stack.panes.len(),
+            1,
+            "the closed pane never gave its textures back"
+        );
+    }
+
+    fn test_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+        let instance = wgpu::Instance::default();
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        }))
+        .ok()?;
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("vkit.bloom-pane-test"),
+            required_features: wgpu::Features::empty(),
+            required_limits: adapter.limits(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            memory_hints: wgpu::MemoryHints::MemoryUsage,
+            trace: wgpu::Trace::Off,
+        }))
+        .ok()
+    }
+
+    #[test]
     fn the_bloom_pipelines_build_on_an_available_adapter() {
         let instance = wgpu::Instance::default();
         let Ok(adapter) =
@@ -873,7 +975,7 @@ mod tests {
         else {
             return;
         };
-        let Ok((device, queue)) =
+        let Ok((device, _queue)) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 label: Some("vkit.bloom-pipeline-test"),
                 required_features: wgpu::Features::empty(),
@@ -886,13 +988,7 @@ mod tests {
             return;
         };
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let mut resources = BloomResources::new(
-            &device,
-            &queue,
-            wgpu::TextureFormat::Bgra8UnormSrgb,
-            1280,
-            720,
-        );
+        let mut resources = PaneBloom::new(&device, wgpu::TextureFormat::Bgra8UnormSrgb, 1280, 720);
 
         resources.resize(&device, BloomSettings::default(), (1280, 720));
         let failure = pollster::block_on(scope.pop());

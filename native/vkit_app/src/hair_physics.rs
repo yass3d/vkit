@@ -10,21 +10,24 @@ use crate::{
     scene::SurfaceMesh,
 };
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum HairSimulation {
+    #[default]
+    Off,
+    Every,
+}
+
 const WORKGROUP_SIZE: u32 = 64;
 const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0;
-const MAX_FRAME_STEPS: usize = 3;
+const MAX_FRAME_STEPS: usize = 1;
+
+const WARMUP_RESET_FRAMES_HOST: u32 = 10;
 
 pub(crate) const MAX_RENDER_SUBDIVISIONS: u32 = 8;
 
-const AUTO_SETTLE_GRAVITY: f32 = 1.0;
-
-const WEAR_SETTLE_SECONDS: f32 = crate::state::HAIR_SETTLE_SECONDS;
-
-pub(crate) const SHAPE_CHANGE_SETTLE_SECONDS: f32 = 0.6;
-
 pub(crate) const SHAPE_QUIET_SECONDS: f64 = 0.25;
 
-const MAX_VAM_ITERATIONS: u32 = 8;
+const MAX_VAM_ITERATIONS: u32 = 5;
 const MAX_PART_INDEX: usize = u16::MAX as usize;
 const MAX_SEGMENTS_PER_STRAND: usize = u16::MAX as usize;
 
@@ -205,12 +208,12 @@ fn integrate(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (physics.frame < WARMUP_RESET_FRAMES) {
         particles[index].position = vec4<f32>(rest.position.xyz, 1.0);
         particles[index].previous = vec4<f32>(rest.position.xyz, 1.0);
-        particles[index].inner = vec4<f32>(rest.position.xyz, 1.0);
-        particles[index].velocity = vec4<f32>(0.0);
+        particles[index].inner = vec4<f32>(rest.position.xyz, 0.0);
+        particles[index].velocity = vec4<f32>(rest.position.xyz, 0.0);
         return;
     }
 
-    if (physics.frame < WARMUP_STILL_FRAMES) {
+    if (physics.frame <= WARMUP_STILL_FRAMES) {
         return;
     }
 
@@ -226,12 +229,15 @@ fn integrate(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (physics.settle_gravity > 0.0) {
         gravity = max(gravity, physics.settle_gravity);
     }
+    let collision_drag = clamp(particles[index].velocity.w, 0.0, 1.0);
     let acceleration =
         vec3<f32>(0.0, -9.81 * gravity * part.misc.y, 0.0) +
         part.wind.xyz * part.misc.y;
     particles[index].previous = vec4<f32>(current, 1.0);
-    particles[index].position =
-        vec4<f32>(current + delta + acceleration * (0.5 * dt * dt), 1.0);
+    particles[index].position = vec4<f32>(
+        current + delta + acceleration * (0.5 * dt * dt) * (1.0 - collision_drag),
+        1.0,
+    );
 }
 
 @compute @workgroup_size(64)
@@ -254,8 +260,15 @@ fn point_joints(@builtin(global_invocation_id) invocation: vec3<u32>) {
         particles[index].position = vec4<f32>(rest.position.xyz, 1.0);
         return;
     }
+    if (physics.frame < WARMUP_RESET_FRAMES) {
+        return;
+    }
 
-    let rigidity = clamp(rest.data.y, 0.0, 1.0);
+    if (rest.data.y >= 1.0) {
+        particles[index].position = vec4<f32>(rest.position.xyz, 1.0);
+        return;
+    }
+    let rigidity = clamp(rest.data.y * max(part.forces.z, 0.0), 0.0, 1.0);
     if (rigidity <= 0.0) {
         return;
     }
@@ -274,6 +287,9 @@ fn solve_constraint(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let joint = constraints[phase.offset + local_index];
     let part = parts[joint.indices.z];
     if (!active_for_iteration(part)) {
+        return;
+    }
+    if (physics.frame < WARMUP_RESET_FRAMES) {
         return;
     }
     let a_index = joint.indices.x;
@@ -295,23 +311,21 @@ fn solve_constraint(@builtin(global_invocation_id) invocation: vec3<u32>) {
         }
         strength = clamp(part.constraints.y, 0.0, 1.0) / iterations;
     } else if (joint.indices.w == 2u) {
-
         let elasticity = clamp(joint.values.y, 0.0, 1.0);
+        let rolloff = clamp(part.constraints.w, 0.0, 1.0);
         strength = clamp(part.constraints.z, 0.0, 1.0) * 0.5 / iterations
-            * pow(elasticity, 1.0 + max(part.constraints.w, 0.0));
+            * (1.0 + rolloff * (elasticity - 1.0));
     }
     let error = (distance - joint.values.x) / distance;
     let correction = delta * error * strength;
-    let a_weight = select(1.0, 0.0, rests[a_index].indices.z != 0u);
-    let b_weight = select(1.0, 0.0, rests[b_index].indices.z != 0u);
-    let weight_sum = a_weight + b_weight;
-    if (weight_sum <= 0.0) {
-        return;
+    if (rests[a_index].indices.z == 0u) {
+        a = a + correction;
+        particles[a_index].position = vec4<f32>(a, 1.0);
     }
-    a = a + correction * (a_weight / weight_sum);
-    b = b - correction * (b_weight / weight_sum);
-    particles[a_index].position = vec4<f32>(a, 1.0);
-    particles[b_index].position = vec4<f32>(b, 1.0);
+    if (rests[b_index].indices.z == 0u) {
+        b = b - correction;
+        particles[b_index].position = vec4<f32>(b, 1.0);
+    }
 }
 
 @compute @workgroup_size(64)
@@ -325,6 +339,9 @@ fn spline_joints(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (!active_for_iteration(part) || !simulating(part)) {
         return;
     }
+    if (physics.frame < WARMUP_RESET_FRAMES) {
+        return;
+    }
 
     let power = min(
         clamp(part.constraints.x, 0.0, 1.0) * 2.0 / part_iterations(part),
@@ -336,34 +353,22 @@ fn spline_joints(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let start = strand.x;
     let count = strand.y;
 
-    var carried_axis = vec3<f32>(0.0, 1.0, 0.0);
-    var carried_cos = 1.0;
-    var carried_sin = 0.0;
     for (var point = 1u; point < count; point = point + 1u) {
         let index = start + point;
-        let rest_offset = rests[index].position.xyz - rests[index - 1u].position.xyz;
+        let rest_length = length(
+            rests[index].position.xyz - rests[index - 1u].position.xyz,
+        );
         let parent = particles[index - 1u].position.xyz;
         let current = particles[index].position.xyz;
-
-        let carried = rest_offset * carried_cos
-            + cross(carried_axis, rest_offset) * carried_sin
-            + carried_axis * dot(carried_axis, rest_offset) * (1.0 - carried_cos);
-        let snapped = parent + carried;
-        particles[index].position = vec4<f32>(mix(current, snapped, power), 1.0);
-
-        let rest_direction = normalize(rest_offset + vec3<f32>(0.0, 1.0e-9, 0.0));
-        let actual = particles[index].position.xyz - parent;
-        let actual_length = length(actual);
-        if (actual_length > 1.0e-6) {
-            let actual_direction = actual / actual_length;
-            let turn = cross(rest_direction, actual_direction);
-            let turn_sin = length(turn);
-            if (turn_sin > 1.0e-6) {
-                carried_axis = turn / turn_sin;
-                carried_sin = turn_sin;
-                carried_cos = clamp(dot(rest_direction, actual_direction), -1.0, 1.0);
-            }
+        let delta = parent - current;
+        let distance = length(delta);
+        if (distance <= 1.0e-6) {
+            continue;
         }
+        particles[index].position = vec4<f32>(
+            current + delta * (power * (distance - rest_length) / distance),
+            1.0,
+        );
     }
 }
 
@@ -395,36 +400,45 @@ fn collide(@builtin(global_invocation_id) invocation: vec3<u32>) {
     let rest = rests[index];
     let part = parts[rest.indices.x];
 
-    let collides = part.collision.x >= 0.5 || physics.settle_gravity > 0.0;
-    if (!collides || rest.indices.z != 0u || !simulating(part)) {
+    if (rest.indices.z != 0u || !simulating(part)) {
+        return;
+    }
+    if (physics.frame < WARMUP_RESET_FRAMES) {
         return;
     }
 
+    let collides = part.collision.x >= 0.5 || physics.settle_gravity > 0.0;
     let strand_radius = rest.data.z;
     var position = particles[index].position.xyz;
     let original = position;
-    let centre = head_field[0].xyz;
-    let offset = position - centre;
-    let distance = length(offset);
-    if (distance > 1.0e-5) {
-        let direction = offset / distance;
-        let surface = head_surface_radius(direction);
-        let clearance = surface + strand_radius;
-        if (surface > 0.0 && distance < clearance) {
-            position = centre + direction * clearance;
+    if (collides) {
+        let centre = head_field[0].xyz;
+        let offset = position - centre;
+        let distance = length(offset);
+        if (distance > 1.0e-5) {
+            let direction = offset / distance;
+            let surface = head_surface_radius(direction);
+            let clearance = surface + strand_radius;
+            if (surface > 0.0 && distance < clearance) {
+                position = centre + direction * clearance;
+            }
+        }
+        for (var capsule = 0u; capsule < physics.capsule_count; capsule = capsule + 1u) {
+            position = resolve_capsule(position, strand_radius, capsules[capsule]);
         }
     }
-    for (var capsule = 0u; capsule < physics.capsule_count; capsule = capsule + 1u) {
-        position = resolve_capsule(position, strand_radius, capsules[capsule]);
-    }
-    if (any(position != original)) {
+    let pen = length(position - original);
+    var hold = 0.0;
+    var drag = 0.0;
+    if (pen > 0.0) {
         let friction = clamp(part.wind.w, 0.0, 1.0);
+        let pen_f = clamp(pen / max(part.misc.y, 1.0e-6) * 50.0, 0.0, 0.5);
+        hold = clamp(pen_f + friction + 0.02, 0.0, 1.0);
+        drag = friction;
         particles[index].position = vec4<f32>(position, 1.0);
-        particles[index].previous = vec4<f32>(
-            mix(particles[index].previous.xyz, position, friction),
-            1.0,
-        );
     }
+    particles[index].inner.w = hold;
+    particles[index].velocity.w = drag;
 }
 
 @compute @workgroup_size(64)
@@ -442,12 +456,14 @@ fn velocity_inner(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (!active_for_iteration(part) || rest.indices.z != 0u || !simulating(part)) {
         return;
     }
-    let dt = part_inner_dt(part);
-    let step = 1.0 / part_iterations(part);
+    if (physics.frame < WARMUP_RESET_FRAMES) {
+        return;
+    }
+    let hold = clamp(particles[index].inner.w, 0.0, 1.0);
     let position = particles[index].position.xyz;
-    let chunk = (position - particles[index].inner.xyz) * (step / dt);
-    particles[index].velocity = vec4<f32>(particles[index].velocity.xyz + chunk, 0.0);
-    particles[index].inner = vec4<f32>(position, 1.0);
+    let damped = (position - particles[index].inner.xyz) * (1.0 - hold);
+    particles[index].previous = vec4<f32>(position - damped, 1.0);
+    particles[index].inner = vec4<f32>(position, hold);
 }
 
 @compute @workgroup_size(64)
@@ -465,15 +481,16 @@ fn velocity_outer(@builtin(global_invocation_id) invocation: vec3<u32>) {
     if (rest.indices.z != 0u || !simulating(part)) {
         return;
     }
+    if (physics.frame < WARMUP_RESET_FRAMES) {
+        return;
+    }
     let dt = part_inner_dt(part);
     let outer_dt = dt * part_iterations(part);
+    let hold = clamp(particles[index].inner.w, 0.0, 1.0);
     let position = particles[index].position.xyz;
-
-    let chunk = (position - particles[index].inner.xyz) / outer_dt;
-    let velocity = particles[index].velocity.xyz + chunk;
-    particles[index].inner = vec4<f32>(position, 1.0);
-    particles[index].velocity = vec4<f32>(0.0);
-
+    let velocity = (position - particles[index].velocity.xyz) * ((1.0 - hold) / outer_dt);
+    particles[index].inner = vec4<f32>(position, hold);
+    particles[index].velocity = vec4<f32>(position, particles[index].velocity.w);
     particles[index].previous = vec4<f32>(position - velocity * dt, 1.0);
 }
 "#;
@@ -566,6 +583,7 @@ pub(crate) struct GpuHairRenderSegment {
     pub particles: [u32; 4],
 
     pub weights: [f32; 4],
+    pub slot: [f32; 4],
 }
 
 #[repr(C)]
@@ -588,6 +606,8 @@ pub(crate) struct GpuHairRenderPart {
     pub waviness_b: [f32; 4],
 
     pub waviness_c: [f32; 4],
+
+    pub waviness_d: [f32; 4],
 
     pub spread_a: [f32; 4],
 
@@ -686,6 +706,7 @@ impl HairPhysicsPipelines {
 }
 
 pub(crate) struct HairPhysicsScene {
+    simulate: HairSimulation,
     preview: Arc<HairPreview>,
     mesh: Arc<SurfaceMesh>,
     mesh_revision: u64,
@@ -694,6 +715,7 @@ pub(crate) struct HairPhysicsScene {
     _settings_buffer: wgpu::Buffer,
     _constraint_buffer: wgpu::Buffer,
     collider_buffer: wgpu::Buffer,
+    guide_normal_buffer: wgpu::Buffer,
     render_segment_buffer: wgpu::Buffer,
     render_part_buffer: wgpu::Buffer,
     _strand_buffer: wgpu::Buffer,
@@ -704,8 +726,6 @@ pub(crate) struct HairPhysicsScene {
     particle_count: u32,
     render_segment_count: u32,
     render_subdivisions: u32,
-
-    auto_settle_seconds: f32,
 
     shape_changed: bool,
 
@@ -726,6 +746,7 @@ impl HairPhysicsScene {
         preview: Arc<HairPreview>,
         mesh: Arc<SurfaceMesh>,
         pipelines: &HairPhysicsPipelines,
+        simulate: HairSimulation,
     ) -> Option<Self> {
         let storage_limit = device.limits().max_storage_buffer_binding_size as usize;
         let max_segment_bytes = device
@@ -736,7 +757,7 @@ impl HairPhysicsScene {
         let max_segments = (max_segment_bytes / std::mem::size_of::<GpuHairRenderSegment>())
             .min(u32::MAX as usize / 6);
         let max_constraints = storage_limit / std::mem::size_of::<GpuConstraint>();
-        let data = build_scene_data(&preview, &mesh, max_segments, max_constraints)?;
+        let data = build_scene_data(&preview, &mesh, max_segments, max_constraints, simulate)?;
         if data.rests.is_empty() || data.render_segments.is_empty() {
             return None;
         }
@@ -757,6 +778,12 @@ impl HairPhysicsScene {
             device,
             "vkit.hair-physics.rests",
             &data.rests,
+            wgpu::BufferUsages::COPY_DST,
+        );
+        let guide_normal_buffer = storage_buffer(
+            device,
+            "vkit.hair-physics.guide-data",
+            &data.guide_data,
             wgpu::BufferUsages::COPY_DST,
         );
         let settings_buffer = storage_buffer(
@@ -845,6 +872,7 @@ impl HairPhysicsScene {
             &data.constraint_ranges,
         );
         Some(Self {
+            simulate,
             mesh_revision: mesh.revision,
             preview,
             mesh,
@@ -853,6 +881,7 @@ impl HairPhysicsScene {
             _settings_buffer: settings_buffer,
             _constraint_buffer: constraint_buffer,
             collider_buffer,
+            guide_normal_buffer,
             render_segment_buffer,
             render_part_buffer,
             _strand_buffer: strand_buffer,
@@ -863,7 +892,6 @@ impl HairPhysicsScene {
             particle_count: data.rests.len() as u32,
             render_segment_count: data.render_segments.len() as u32,
             render_subdivisions: data.render_subdivisions,
-            auto_settle_seconds: WEAR_SETTLE_SECONDS,
             shape_changed: false,
             shape_fingerprint: 0,
             shape_changed_at: None,
@@ -874,8 +902,14 @@ impl HairPhysicsScene {
         })
     }
 
-    pub(crate) fn matches(&self, preview: &Arc<HairPreview>, mesh: &Arc<SurfaceMesh>) -> bool {
-        Arc::ptr_eq(&self.preview, preview)
+    pub(crate) fn matches(
+        &self,
+        preview: &Arc<HairPreview>,
+        mesh: &Arc<SurfaceMesh>,
+        simulate: HairSimulation,
+    ) -> bool {
+        self.simulate == simulate
+            && Arc::ptr_eq(&self.preview, preview)
             && self.mesh.topology_revision == mesh.topology_revision
             && self.mesh.mesh.vertices.len() == mesh.mesh.vertices.len()
             && self.mesh.mesh.triangles.len() == mesh.mesh.triangles.len()
@@ -893,6 +927,13 @@ impl HairPhysicsScene {
             && rests.len() as u32 == self.particle_count
         {
             queue.write_buffer(&self.rest_buffer, 0, bytemuck::cast_slice(&rests));
+            if let Some(guide_data) = build_guide_data(&self.preview, &mesh) {
+                queue.write_buffer(
+                    &self.guide_normal_buffer,
+                    0,
+                    bytemuck::cast_slice(&guide_data),
+                );
+            }
 
             let fingerprint = rest_fingerprint(&rests);
             if fingerprint != self.shape_fingerprint {
@@ -900,6 +941,10 @@ impl HairPhysicsScene {
                 self.shape_changed = true;
             }
 
+            if self.simulate == HairSimulation::Off {
+                let particles = particles_from_rests(&rests);
+                queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
+            }
             let (field, _) = head_field_for_mesh(&mesh);
             queue.write_buffer(&self.collider_buffer, 0, bytemuck::cast_slice(&field));
             self.mesh_revision = mesh.revision;
@@ -914,7 +959,12 @@ impl HairPhysicsScene {
         pipelines: &HairPhysicsPipelines,
         time_seconds: f64,
         settle_gravity: f32,
+        solve: bool,
     ) {
+        if !solve {
+            self.last_time_seconds = Some(time_seconds);
+            return;
+        }
         if self.shape_changed {
             self.shape_changed = false;
             self.shape_changed_at = Some(time_seconds);
@@ -922,14 +972,11 @@ impl HairPhysicsScene {
             && time_seconds - changed_at >= SHAPE_QUIET_SECONDS
         {
             self.shape_changed_at = None;
-            self.auto_settle_seconds = self.auto_settle_seconds.max(SHAPE_CHANGE_SETTLE_SECONDS);
+            if self.simulate != HairSimulation::Off {
+                self.frame = self.frame.min(WARMUP_RESET_FRAMES_HOST);
+            }
         }
-        let auto_gravity = if self.auto_settle_seconds > 0.0 {
-            AUTO_SETTLE_GRAVITY
-        } else {
-            0.0
-        };
-        let effective_gravity = settle_gravity.max(auto_gravity);
+        let effective_gravity = settle_gravity;
         if (self.settle_gravity - effective_gravity).abs() > f32::EPSILON {
             if self.settle_gravity <= 0.0 && effective_gravity > 0.0 {
                 self.frame = self.frame.min(10);
@@ -941,7 +988,7 @@ impl HairPhysicsScene {
                 bytemuck::bytes_of(&effective_gravity),
             );
         }
-        if effective_gravity <= 0.0 {
+        if effective_gravity <= 0.0 && self.simulate == HairSimulation::Off {
             self.last_time_seconds = Some(time_seconds);
             return;
         }
@@ -955,16 +1002,14 @@ impl HairPhysicsScene {
         if steps == 0 {
             return;
         }
-        self.accumulator_seconds -= fixed * steps as f64;
-        self.auto_settle_seconds =
-            (self.auto_settle_seconds - FIXED_STEP_SECONDS * steps as f32).max(0.0);
+        self.accumulator_seconds = (self.accumulator_seconds - fixed * steps as f64).min(fixed);
 
         queue.write_buffer(
             &self.physics_uniform,
             std::mem::offset_of!(GpuPhysicsUniform, frame) as u64,
             bytemuck::bytes_of(&self.frame),
         );
-        self.frame = self.frame.saturating_add(steps as u32);
+        self.frame = self.frame.saturating_add(1);
 
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("vkit.hair-physics.pass"),
@@ -991,6 +1036,10 @@ impl HairPhysicsScene {
 
     pub(crate) fn particle_buffer(&self) -> &wgpu::Buffer {
         &self.particle_buffer
+    }
+
+    pub(crate) fn guide_normal_buffer(&self) -> &wgpu::Buffer {
+        &self.guide_normal_buffer
     }
 
     pub(crate) fn render_segment_buffer(&self) -> &wgpu::Buffer {
@@ -1023,6 +1072,7 @@ struct SceneData {
     colliders: Vec<GpuHeadFieldElement>,
 
     collider_count: u32,
+    guide_data: Vec<GpuGuideData>,
     render_segments: Vec<GpuHairRenderSegment>,
     render_parts: Vec<GpuHairRenderPart>,
     render_subdivisions: u32,
@@ -1040,13 +1090,19 @@ fn build_scene_data(
     mesh: &SurfaceMesh,
     max_render_segments: usize,
     max_constraints: usize,
+    simulate: HairSimulation,
 ) -> Option<SceneData> {
     if preview.parts.len() > MAX_PART_INDEX {
         return None;
     }
     let rests = build_rest_particles(preview, mesh)?;
+    let guide_data = build_guide_data(preview, mesh)?;
     let particles = particles_from_rests(&rests);
-    let settings = preview.parts.iter().map(gpu_settings).collect::<Vec<_>>();
+    let settings = preview
+        .parts
+        .iter()
+        .map(|part| gpu_settings(part, simulate))
+        .collect::<Vec<_>>();
     let render_parts = preview
         .parts
         .iter()
@@ -1092,13 +1148,13 @@ fn build_scene_data(
                         | (part.waviness.allow_flip_axis as u32) << 1) as f32,
                 ],
                 waviness_a: [
-                    part.waviness.axis[0],
-                    part.waviness.axis[1],
-                    part.waviness.axis[2],
-                    part.waviness.scale_m * part.strand_length_m * part.metres_to_template,
+                    part.waviness.vector_m[0] * part.metres_to_template,
+                    part.waviness.vector_m[1] * part.metres_to_template,
+                    part.waviness.vector_m[2] * part.metres_to_template,
+                    part.waviness.scale,
                 ],
                 waviness_b: [
-                    part.waviness.frequency,
+                    part.waviness.frequency * 100.0 / part.metres_to_template.max(1.0e-6),
                     part.waviness.scale_randomness,
                     part.waviness.frequency_randomness,
                     part.waviness.curve_power.max(1.0e-4),
@@ -1108,6 +1164,12 @@ fn build_scene_data(
                     part.waviness.mid,
                     part.waviness.tip,
                     part.waviness.midpoint,
+                ],
+                waviness_d: [
+                    part.waviness.normal_adjust * part.metres_to_template,
+                    0.0,
+                    0.0,
+                    0.0,
                 ],
                 spread_a: [
                     part.spread.root,
@@ -1119,7 +1181,7 @@ fn build_scene_data(
                     part.spread.curve_power.max(1.0e-4),
                     part.spread.max_spread_m * part.metres_to_template,
                     part.strand_length_m.max(0.01),
-                    part_subdivisions(part.curve_density) as f32,
+                    part.curve_density.clamp(2, 64) as f32,
                 ],
                 lengths: [
                     optics.child_lengths[0],
@@ -1219,6 +1281,7 @@ fn build_scene_data(
         capsules,
         colliders,
         collider_count,
+        guide_data,
         render_segments,
         render_subdivisions: preview
             .parts
@@ -1237,8 +1300,8 @@ fn particles_from_rests(rests: &[GpuRestParticle]) -> Vec<GpuParticle> {
         .map(|rest| GpuParticle {
             position: [rest.position[0], rest.position[1], rest.position[2], 1.0],
             previous: [rest.position[0], rest.position[1], rest.position[2], 1.0],
-            inner: [rest.position[0], rest.position[1], rest.position[2], 1.0],
-            velocity: [0.0; 4],
+            inner: [rest.position[0], rest.position[1], rest.position[2], 0.0],
+            velocity: [rest.position[0], rest.position[1], rest.position[2], 0.0],
         })
         .collect()
 }
@@ -1291,6 +1354,33 @@ fn part_subdivisions(curve_density: u32) -> u32 {
     curve_density.clamp(1, MAX_RENDER_SUBDIVISIONS)
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(crate) struct GpuGuideData {
+    pub normal_phase: [f32; 4],
+    pub rand: [f32; 4],
+}
+
+fn build_guide_data(preview: &HairPreview, mesh: &SurfaceMesh) -> Option<Vec<GpuGuideData>> {
+    let mut data = Vec::new();
+    for part in preview.parts.iter() {
+        for guide in part.guides.iter() {
+            let frame = binding_frame(&guide.binding, mesh)?;
+            let entry = GpuGuideData {
+                normal_phase: [frame.3.x, frame.3.y, frame.3.z, guide.curl_phase],
+                rand: [
+                    guide.curl_rand[0],
+                    guide.curl_rand[1],
+                    guide.curl_rand[2],
+                    0.0,
+                ],
+            };
+            data.extend(std::iter::repeat_n(entry, guide.local_points.len()));
+        }
+    }
+    Some(data)
+}
+
 fn build_rest_particles(preview: &HairPreview, mesh: &SurfaceMesh) -> Option<Vec<GpuRestParticle>> {
     let mut rests = Vec::new();
     for (part_index, part) in preview.parts.iter().enumerate() {
@@ -1337,8 +1427,19 @@ fn guide_ranges(preview: &HairPreview) -> Option<Vec<Vec<GuideRange>>> {
     Some(result)
 }
 
-fn gpu_settings(part: &crate::hair_preview::HairPreviewPart) -> GpuPartSettings {
-    let physics = part.physics;
+fn gpu_settings(
+    part: &crate::hair_preview::HairPreviewPart,
+    simulate: HairSimulation,
+) -> GpuPartSettings {
+    let mut physics = part.physics;
+    match simulate {
+        HairSimulation::Off => {
+            physics.simulation_enabled = false;
+            physics.collision_enabled = false;
+            physics.gravity_multiplier = 0.0;
+        }
+        HairSimulation::Every => physics.simulation_enabled = true,
+    }
     let iterations = physics.iterations.clamp(1, MAX_VAM_ITERATIONS);
     GpuPartSettings {
         forces: [
@@ -1461,12 +1562,15 @@ fn render_segments(
     let mut result = Vec::new();
     'parts: for (part_index, part) in preview.parts.iter().enumerate() {
         for strand in part.strands.iter() {
-            let (guide_indices, weights) = match strand.source {
-                HairStrandSource::Guide(guide) => ([guide, guide, guide], [1.0, 0.0, 0.0]),
+            let (guide_indices, weights, length_weights) = match strand.source {
+                HairStrandSource::Guide(guide) => {
+                    ([guide, guide, guide], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
+                }
                 HairStrandSource::Interpolated {
                     guides,
                     barycentric,
-                } => (guides, barycentric),
+                    length_barycentric,
+                } => (guides, barycentric, length_barycentric),
             };
             let Some(guide_ranges) = guide_indices
                 .map(|guide| {
@@ -1508,6 +1612,7 @@ fn render_segments(
                         weights[2],
                         segment as f32 / segment_count as f32,
                     ],
+                    slot: [length_weights[0], length_weights[1], length_weights[2], 0.0],
                 });
             }
         }
@@ -1989,9 +2094,14 @@ mod tests {
         let head = sphere_mesh(Vec3::ZERO, 10.0);
         let preview = Arc::new(two_strand_preview());
         let pipelines = HairPhysicsPipelines::new(&device);
-        let mut scene =
-            HairPhysicsScene::new(&device, Arc::clone(&preview), Arc::clone(&head), &pipelines)
-                .expect("the scene builds");
+        let mut scene = HairPhysicsScene::new(
+            &device,
+            Arc::clone(&preview),
+            Arc::clone(&head),
+            &pipelines,
+            HairSimulation::Every,
+        )
+        .expect("the scene builds");
 
         let before = read_particles(&device, &queue, &scene);
 
@@ -2007,6 +2117,7 @@ mod tests {
                 &pipelines,
                 time,
                 crate::state::HAIR_SETTLE_GRAVITY,
+                true,
             );
             queue.submit([encoder.finish()]);
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
@@ -2127,6 +2238,8 @@ mod tests {
             },
             local_points: points.clone(),
             painted_rigidity: vec![1.0; points.len()],
+            curl_rand: [0.5, 0.5, 0.5],
+            curl_phase: 0.0,
         };
         let part = |guide: HairPreviewGuide, physics: HairPhysicsSettings| HairPreviewPart {
             curve_density: 4,
@@ -2162,7 +2275,6 @@ mod tests {
             ..styled
         };
         HairPreview {
-            preset_id: "test".to_owned(),
             parts: vec![
                 part(
                     guide([SPHERE_SIDE, SPHERE_SIDE - SPHERE_RING, SPHERE_SIDE + 1]),
@@ -2178,7 +2290,6 @@ mod tests {
                 ),
             ],
             scalps: Vec::new(),
-            skipped_parts: Vec::new(),
             body_capsules: Vec::new(),
         }
     }
@@ -2249,9 +2360,10 @@ mod tests {
 
     #[test]
     fn render_segment_layout_stays_compact() {
-        assert_eq!(std::mem::size_of::<GpuHairRenderSegment>(), 32);
+        assert_eq!(std::mem::size_of::<GpuHairRenderSegment>(), 48);
         assert_eq!(std::mem::align_of::<GpuHairRenderSegment>(), 4);
-        assert_eq!(std::mem::size_of::<GpuHairRenderPart>(), 192);
+        assert_eq!(std::mem::size_of::<GpuHairRenderPart>(), 208);
+        assert_eq!(std::mem::size_of::<GpuHairRenderPart>() % 16, 0);
     }
 
     #[test]
@@ -2297,9 +2409,85 @@ mod tests {
             },
             local_points: vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             painted_rigidity: vec![1.0, 1.0],
+            curl_rand: [0.5, 0.5, 0.5],
+            curl_phase: 0.0,
         };
         let points = deformed_guide_points(&guide, &mesh).unwrap();
         assert!(points[0].distance(Vec3::new(-0.25, 0.25, 0.0)) < 1.0e-6);
         assert!(points[1].distance(Vec3::new(-1.25, 0.25, 0.0)) < 1.0e-6);
+    }
+
+    #[test]
+    fn the_mode_governs_every_route_gravity_can_take() {
+        let preview = two_strand_preview();
+        let mut part = preview.parts[0].clone();
+        part.physics.simulation_enabled = true;
+        part.physics.collision_enabled = true;
+        part.physics.gravity_multiplier = 4.0;
+
+        let off = gpu_settings(&part, HairSimulation::Off);
+        assert!(
+            off.forces[3] < 0.5,
+            "simulate flag survived off: {:?}",
+            off.forces
+        );
+        assert!(
+            (off.forces[0]).abs() < f32::EPSILON,
+            "gravity survived off: {:?}",
+            off.forces
+        );
+        assert!(
+            off.collision[0] < 0.5,
+            "collision survived off: {:?}",
+            off.collision
+        );
+
+        let on = gpu_settings(&part, HairSimulation::Every);
+        assert!(
+            on.forces[3] >= 0.5,
+            "simulate flag lost on: {:?}",
+            on.forces
+        );
+        assert!(
+            (on.forces[0] - 4.0).abs() < f32::EPSILON,
+            "gravity lost on: {:?}",
+            on.forces
+        );
+        assert!(
+            on.collision[0] >= 0.5,
+            "collision lost on: {:?}",
+            on.collision
+        );
+    }
+
+    #[test]
+    fn the_viewport_switch_overrules_a_part_that_would_stand_still() {
+        let preview = two_strand_preview();
+        let mut part = preview.parts[0].clone();
+        part.physics.simulation_enabled = false;
+        part.physics.gravity_multiplier = 4.0;
+
+        let off = gpu_settings(&part, HairSimulation::Off);
+        assert!(
+            off.forces[3] < 0.5,
+            "with the switch off nothing moves: {:?}",
+            off.forces
+        );
+
+        let every = gpu_settings(&part, HairSimulation::Every);
+        assert!(
+            every.forces[3] >= 0.5,
+            "the viewport switch answers for every part: {:?}",
+            every.forces
+        );
+        assert!(
+            (every.forces[0] - 4.0).abs() < f32::EPSILON,
+            "the part keeps its own numbers, only the switch changes: {:?}",
+            every.forces
+        );
+        assert!(
+            !part.physics.simulation_enabled,
+            "the export setting is read, never written"
+        );
     }
 }

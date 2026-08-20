@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -32,9 +32,7 @@ use vkit_core::{
 use vkit_core::vam::{load_or_extract_neutral_base, validate_neutral_shared_prefix};
 
 use crate::{
-    ambient_occlusion::AmbientOcclusionSettings,
     camera::{ProjectionMode, StandardView},
-    hair_preview::HairPreview,
     i18n::{Locale, TextKey},
     importers::is_supported_mesh_path,
     lighting::{DEFAULT_LIGHT_BRIGHTNESS, LightingPreset, ViewportGrading, sanitize_brightness},
@@ -59,7 +57,6 @@ use crate::{
         PackedMorphPairAsset, ResolvedMorphPairAsset, VaMEditSource, VaMEditSourceKind,
         morph_identity_candidates, parse_appearance_recipe, resolve_morph_pair_asset,
     },
-    vam_hair::HairPreviewRequest,
     vam_morph_cache::CachedBuiltinMorph,
     vam_morph_index::{MorphLocation, VaMMorphIndex},
     vam_skin::SkinPreviewRequest,
@@ -90,6 +87,13 @@ const fn enrolled_cache_slot(sex: FigureSex) -> usize {
 }
 
 #[derive(Clone, Debug)]
+struct MorphMaskUndo {
+    layer_id: u64,
+    mask: crate::morph_mask::MorphMask,
+    seq: u64,
+}
+
+#[derive(Clone, Debug)]
 struct MorphResetUndo {
     values: MorphLibraryValueSnapshot,
     eye_closure: f32,
@@ -97,11 +101,9 @@ struct MorphResetUndo {
     seq: u64,
 }
 
-pub(crate) const HAIR_SETTLE_SECONDS: f32 = 2.5;
-
-pub const HAIR_SETTLE_GRAVITY: f32 = 1.0;
-
 const MAX_MORPH_VALUE_UNDO: usize = 64;
+
+pub(crate) const HISTORY_BRANCH_WARN_STEPS: usize = 5;
 
 const COMPARE_PREVIEW_SIGNATURE_TAG: f64 = f64::NEG_INFINITY;
 
@@ -222,10 +224,6 @@ pub struct AppState {
     pub inspector_width: f32,
     pub revision: u64,
 
-    /// Advances on every dispatched action. `revision` counts geometry refits
-    /// only, yet the recovery snapshot is mostly things that never refit --
-    /// morph values, sculpt strokes, eye closure -- so autosave needs a pulse
-    /// that moves with those too.
     edit_seq: u64,
     pub scan_path: Option<PathBuf>,
     pub template_path: Option<PathBuf>,
@@ -289,7 +287,6 @@ pub struct AppState {
     pub xray_opacity: f32,
     pub viewport_tool_panel: Option<ViewportToolPanel>,
 
-    pub hair_visible: bool,
     pub scan_overlay: bool,
     pub overlay_opacity: f32,
 
@@ -312,8 +309,6 @@ pub struct AppState {
 
     pub pending_recovery: Option<crate::session_snapshot::SessionSnapshot>,
 
-    pub ambient_occlusion: AmbientOcclusionSettings,
-
     pub bloom: BloomSettings,
 
     pub vignette: VignetteSettings,
@@ -321,13 +316,34 @@ pub struct AppState {
     pub morph_library: MorphLibrary,
     morph_reset_undo: Option<MorphResetUndo>,
 
+    morph_reset_forward: Option<MorphResetUndo>,
+
     morph_value_history: VecDeque<MorphResetUndo>,
+    morph_mask_history: VecDeque<MorphMaskUndo>,
+    morph_mask_forward: VecDeque<MorphMaskUndo>,
+
+    morph_value_forward: VecDeque<MorphResetUndo>,
 
     morph_edit_open: Option<String>,
     pub sculpt_brush_radius_points: f32,
     pub sculpt_strength: f32,
 
     pub sculpt_x_symmetry: bool,
+
+    pub split_model_view: bool,
+
+    pub keymap: crate::shortcuts::Keymap,
+
+    pub model_split_ratio: f32,
+
+    pub active_view_pane: crate::viewport::ViewPane,
+
+    pub pending_history_branch: bool,
+    pub pending_hair_overwrite: bool,
+    pub pending_hair_portraits: Vec<crate::state::HairThumbnailTarget>,
+    pub hair_preset_pick: Option<String>,
+    pub hair_overwrite_confirmed: bool,
+    pub history_branch_warning_muted: bool,
 
     pub sculpt_connected_topology_only: bool,
 
@@ -336,6 +352,10 @@ pub struct AppState {
     pub sculpt_groups_collapsed: bool,
 
     pub detail_group_panel_pos: Option<[f32; 2]>,
+    pub hair_toolbox_pos: Option<[f32; 2]>,
+    pub hair_panel_page: crate::hair_project::HairPanelPage,
+    pub hair_scalp_mesh: String,
+    pub hair_toolbox_columns: u8,
 
     pub sculpt_brush: SculptBrush,
 
@@ -351,11 +371,6 @@ pub struct AppState {
 
     pub vam_package_index: Arc<PackageIndex>,
 
-    /// What the head wears in "layers only" until a bake arrives.
-    ///
-    /// Kept ready rather than derived on demand because the viewport asks with
-    /// a shared borrow; rebuilt when the toggle, the base colour or the UV
-    /// mapping changes, which is nowhere near every frame.
     pub neutral_skin_preview: Option<Arc<SkinPreview>>,
     pub var_metadata: vkit_core::vam::VarMetadata,
 
@@ -422,16 +437,11 @@ pub struct AppState {
 
     skin_preview_lru: VecDeque<(String, Arc<SkinPreview>)>,
     pub hair_query: String,
-    pub selected_hair_id: Option<String>,
-
-    pub failed_hair_ids: BTreeSet<String>,
-    pub hair_preview_loading: bool,
-    pub hair_preview: Option<Arc<HairPreview>>,
 
     pub shared_scalp: Option<Box<vkit_core::vam::HairPartReference>>,
 
     pub builtin_hair_scalps: Arc<Vec<BuiltinHairScalp>>,
-    hair_preview_lru: VecDeque<(String, Arc<HairPreview>)>,
+    pub builtin_scalp_textures: Arc<Vec<vkit_core::vam::BuiltinScalpTextureSet>>,
 
     pub morph_preview_timing: Option<MorphPreviewTiming>,
 
@@ -452,12 +462,34 @@ pub struct AppState {
     pub sculpt: SculptSession,
 
     pub texture_project: TextureProject,
+    pub hair_project: crate::hair_project::HairProject,
+    pub hair_scalps:
+        std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
+    pub appearance_stack: crate::appearance_layers::AppearanceStack,
+    pub hair_brush_radius_points: f32,
+    pub hair_brush_strength: f32,
+    hair_collider: Option<(u64, std::sync::Arc<crate::hair_collision::HeadCollider>)>,
+    pub hair_thumbnail: Option<HairThumbnailJob>,
+    pub hair_part_thumbnails: std::collections::HashMap<u64, HairPartThumbnail>,
+    pub hair_preset_thumbnail: Option<HairPartThumbnail>,
+    pub hair_export_notice: Option<HairExportNotice>,
+    pub hair_shot_flash: Option<HairShotFlash>,
+    pub hair_part_tint: bool,
+    pub hair_show_points: bool,
+    pub hair_viewport_physics: bool,
+    pub hair_show_streams: bool,
+    pub hair_hide_strands: bool,
+    pub hair_mirror_edit: bool,
+    pub hair_auto_part: bool,
+    pub(crate) vam_scan_signature: Option<(std::path::PathBuf, FigureSex, Option<usize>)>,
+    pub hair_export_attempted_blank: bool,
+    pub hair_param_group: crate::hair_settings::HairParamGroup,
+    pub hair_settings_clipboard: Option<crate::hair_settings::HairSettings>,
 
     pub hair_settle_seconds: f32,
+    pub hair_simulation_seconds: f32,
 
     pub scan_fidelity: f32,
-    /// Whether a finished fit hands over with the ears, nape and back of the
-    /// skull held at the G2 base, blended toward the face.
     pub restore_neck_ears: bool,
     pub settings_open: bool,
     pub settings_section: crate::settings::SettingsSection,
@@ -490,7 +522,7 @@ pub struct AppState {
 
     pub morph_name_display: MorphNameDisplay,
 
-    pub last_package_path: Option<PathBuf>,
+    pub last_saved_paths: BTreeMap<SaveSection, PathBuf>,
 
     pub last_morph_save_hint: Option<TextKey>,
     vam_cached_morphs: BTreeMap<String, CachedBuiltinMorph>,
@@ -503,9 +535,6 @@ pub struct AppState {
     next_texture_request_id: u64,
     expected_texture_bake_request: Option<(u64, u64, u32)>,
     pending_texture_work: VecDeque<TextureWorkRequest>,
-    next_hair_request_id: u64,
-    expected_hair_request: Option<u64>,
-    pending_hair_work: Option<HairPreviewRequest>,
     eyelid_conformation_plan: Option<Arc<EyelidConformationPlan>>,
 
     morph_preview_reference_arrays: Vec<[f64; 3]>,
@@ -546,9 +575,6 @@ impl Default for AppState {
             complete_pairs: 0,
             output_path: String::new(),
             vam_export_display_name: String::new(),
-            // Blank, not a guess. Whatever is typed here is remembered, so a
-            // seeded default would be a value the user never chose and would
-            // have to notice and clear before their own choice could stick.
             vam_export_group: String::new(),
             vam_export_region: String::new(),
             vam_export_is_pose_control: false,
@@ -574,7 +600,6 @@ impl Default for AppState {
             xray_opacity: 0.28,
             viewport_tool_panel: None,
             scan_overlay: false,
-            hair_visible: true,
             overlay_opacity: 0.5,
             morph_compare_blend: 1.0,
             custom_morph_origin: None,
@@ -589,21 +614,38 @@ impl Default for AppState {
             tone_mapping: ToneMapping::default(),
             camera_control: crate::camera_control::ControlMode::default(),
             pending_recovery: None,
-            ambient_occlusion: AmbientOcclusionSettings::default(),
             bloom: BloomSettings::default(),
             vignette: VignetteSettings::default(),
             eye_closure: 0.0,
             morph_library: MorphLibrary::default(),
             morph_reset_undo: None,
+            morph_reset_forward: None,
             morph_value_history: VecDeque::new(),
+            morph_mask_history: VecDeque::new(),
+            morph_mask_forward: VecDeque::new(),
+            morph_value_forward: VecDeque::new(),
             morph_edit_open: None,
             sculpt_brush_radius_points: 64.0,
             sculpt_strength: 0.35,
             sculpt_x_symmetry: true,
+            split_model_view: false,
+            keymap: crate::shortcuts::Keymap::default(),
+            model_split_ratio: 0.5,
+            active_view_pane: crate::viewport::ViewPane::Primary,
+            pending_history_branch: false,
+            pending_hair_overwrite: false,
+            pending_hair_portraits: Vec::new(),
+            hair_preset_pick: None,
+            hair_overwrite_confirmed: false,
+            history_branch_warning_muted: false,
             sculpt_connected_topology_only: false,
             sculpt_eye_tracking: false,
             sculpt_groups_collapsed: true,
             detail_group_panel_pos: None,
+            hair_toolbox_pos: None,
+            hair_toolbox_columns: 1,
+            hair_panel_page: crate::hair_project::HairPanelPage::default(),
+            hair_scalp_mesh: String::new(),
             sculpt_brush: SculptBrush::default(),
             vam_root: None,
             edit_source_mode: EditSourceMode::ScanHead,
@@ -651,13 +693,9 @@ impl Default for AppState {
             skin_preview: None,
             skin_preview_lru: VecDeque::new(),
             hair_query: String::new(),
-            selected_hair_id: None,
-            failed_hair_ids: BTreeSet::new(),
-            hair_preview_loading: false,
-            hair_preview: None,
             shared_scalp: None,
             builtin_hair_scalps: Arc::new(Vec::new()),
-            hair_preview_lru: VecDeque::new(),
+            builtin_scalp_textures: Arc::new(Vec::new()),
             morph_preview_timing: None,
             sculpt_dab_timing: None,
             fit_reference_value: None,
@@ -670,7 +708,30 @@ impl Default for AppState {
             workspace: WorkspaceScene::default(),
             sculpt,
             texture_project: TextureProject::default(),
+            hair_project: crate::hair_project::HairProject::default(),
+            hair_scalps: std::collections::HashMap::new(),
+            appearance_stack: crate::appearance_layers::AppearanceStack::default(),
+            hair_brush_radius_points: 64.0,
+            hair_brush_strength: 0.5,
+            hair_collider: None,
+            hair_thumbnail: None,
+            hair_part_thumbnails: std::collections::HashMap::new(),
+            hair_preset_thumbnail: None,
+            hair_export_notice: None,
+            hair_shot_flash: None,
+            hair_part_tint: false,
+            hair_show_points: true,
+            hair_viewport_physics: false,
+            hair_show_streams: false,
+            hair_hide_strands: false,
+            hair_mirror_edit: false,
+            hair_auto_part: false,
+            vam_scan_signature: None,
+            hair_export_attempted_blank: false,
+            hair_param_group: crate::hair_settings::HairParamGroup::Performance,
+            hair_settings_clipboard: None,
             hair_settle_seconds: 0.0,
+            hair_simulation_seconds: 0.0,
             scan_fidelity: 1.0,
             restore_neck_ears: true,
             settings_open: false,
@@ -697,7 +758,7 @@ impl Default for AppState {
             vam_catalog_revision: 0,
 
             morph_name_display: MorphNameDisplay::default(),
-            last_package_path: None,
+            last_saved_paths: BTreeMap::new(),
             last_morph_save_hint: None,
             vam_cached_morphs: BTreeMap::new(),
             vam_morph_faces: None,
@@ -708,9 +769,6 @@ impl Default for AppState {
             next_texture_request_id: 1,
             expected_texture_bake_request: None,
             pending_texture_work: VecDeque::new(),
-            next_hair_request_id: 1,
-            expected_hair_request: None,
-            pending_hair_work: None,
             eyelid_conformation_plan: None,
             morph_preview_reference_arrays: Vec::new(),
             morph_preview_reference_scratch: Vec::new(),
@@ -764,9 +822,6 @@ impl AppState {
             || self.export.is_active()
     }
 
-    /// Moves whenever anything the recovery snapshot records could have moved:
-    /// geometry refits, dispatched edits, and texture-project mutations that
-    /// reach the project directly rather than through an action.
     pub const fn autosave_edit_signal(&self) -> (u64, u64, u64) {
         (
             self.revision,
@@ -802,64 +857,12 @@ impl AppState {
         matches!(self.active_tab, Tab::Morph)
     }
 
+    pub const fn is_hair_editing(&self) -> bool {
+        matches!(self.active_tab, Tab::Hair)
+    }
+
     pub const fn is_texturing(&self) -> bool {
         matches!(self.active_tab, Tab::Texture)
-    }
-
-    pub fn morph_compare_available(&self) -> bool {
-        self.compare_origin().is_some()
-    }
-
-    fn compare_origin(&self) -> Option<&[[f64; 3]]> {
-        let baked = self.workspace.result_output.as_deref()?.vertices.len();
-        if self.edit_source_mode == EditSourceMode::CustomMorph
-            && let Some(origin) = self.custom_morph_origin.as_deref()
-            && origin.len() == baked
-        {
-            return Some(origin);
-        }
-        self.workspace
-            .template
-            .as_ref()
-            .map(|template| template.mesh.vertices.as_slice())
-            .filter(|vertices| vertices.len() == baked)
-    }
-
-    fn morph_compare_active(&self) -> bool {
-        self.active_tab == Tab::Result
-            && self.morph_compare_blend < 1.0
-            && self.morph_compare_available()
-    }
-
-    pub fn morph_compare_signature(&self) -> Option<[f64; 2]> {
-        self.morph_compare_active().then(|| {
-            [
-                f64::from(self.morph_compare_blend),
-                COMPARE_PREVIEW_SIGNATURE_TAG,
-            ]
-        })
-    }
-
-    pub fn morph_compare_vertices(&self) -> Option<Vec<[f64; 3]>> {
-        if !self.morph_compare_active() {
-            return None;
-        }
-        let origin = self.compare_origin()?;
-        let baked = &self.workspace.result_output.as_deref()?.vertices;
-        let blend = f64::from(self.morph_compare_blend.clamp(0.0, 1.0));
-        Some(
-            origin
-                .iter()
-                .zip(baked)
-                .map(|(from, to)| {
-                    [
-                        from[0] + (to[0] - from[0]) * blend,
-                        from[1] + (to[1] - from[1]) * blend,
-                        from[2] + (to[2] - from[2]) * blend,
-                    ]
-                })
-                .collect(),
-        )
     }
 
     #[must_use]
@@ -930,48 +933,6 @@ impl AppState {
         Some(path)
     }
 
-    pub fn sculpt_eye_follow_vertices(
-        &self,
-        left_pitch_degrees: f64,
-        right_pitch_degrees: f64,
-    ) -> Option<Vec<[f64; 3]>> {
-        let output = self.workspace.result_output.as_deref()?;
-        let mut vertices = output.vertices.clone();
-        let mut applied = false;
-        let morph = |name: &str| {
-            self.vam_cached_morphs
-                .values()
-                .find(|morph| morph.internal_name.eq_ignore_ascii_case(name))
-        };
-        for (pitch, suffix) in [(left_pitch_degrees, "L"), (right_pitch_degrees, "R")] {
-            let weights = vkit_core::anatomy::eyelid_look_weights(-pitch.to_radians());
-            if weights.is_rest() {
-                continue;
-            }
-            for target in weights.named(suffix) {
-                if target.weight <= 1.0e-6 {
-                    continue;
-                }
-
-                let Some(resolved) = morph(&target.per_side)
-                    .or_else(|| (suffix == "L").then(|| morph(target.shared)).flatten())
-                else {
-                    continue;
-                };
-                for &(vertex_id, delta) in resolved.deltas.iter() {
-                    let Some(vertex) = vertices.get_mut(vertex_id as usize) else {
-                        continue;
-                    };
-                    for axis in 0..3 {
-                        vertex[axis] += delta[axis] * target.weight;
-                    }
-                }
-                applied = true;
-            }
-        }
-        applied.then_some(vertices)
-    }
-
     pub fn take_vam_appearance_work(&mut self) -> Option<VaMWorkRequest> {
         let index = self
             .pending_vam_work
@@ -1007,17 +968,9 @@ impl AppState {
         }
 
         if self.texture_project.hide_vam_skin_preview {
-            // The plain base, so the head is never the untextured fallback.
-            // Flipping the whole viewport to the solid view and waiting for a
-            // bake to flip it back is what used to leave a white face wherever
-            // that bake was late, failed, or never came.
             return self.neutral_skin_preview.as_ref().map(Arc::clone);
         }
         self.skin_preview.as_ref().map(Arc::clone)
-    }
-
-    pub fn take_hair_work(&mut self) -> Option<HairPreviewRequest> {
-        self.pending_hair_work.take()
     }
 
     pub fn take_cancel_request(&mut self) -> Option<u64> {
@@ -1115,7 +1068,7 @@ impl AppState {
     }
 
     #[must_use]
-    pub fn morph_name_locale(&self) -> Locale {
+    pub fn vam_name_locale(&self) -> Locale {
         match self.morph_name_display {
             MorphNameDisplay::Localized => self.locale,
             MorphNameDisplay::Original => Locale::English,
@@ -1134,7 +1087,7 @@ impl AppState {
                 ) && self.sculpt.is_ready()
                     && !self.morph_library.has_loading_controls()
             }
-            Tab::Morph | Tab::Texture => {
+            Tab::Morph | Tab::Texture | Tab::Hair => {
                 matches!(
                     self.result,
                     ResultState::Ready { source_revision, .. } if source_revision == self.revision
@@ -1245,9 +1198,6 @@ impl AppState {
         if action.is_mutating() && self.block_mutation_while_busy() {
             return;
         }
-        // Counted before the arms rather than in an epilogue because several
-        // arms return early. An uncounted edit is a crash snapshot that never
-        // gets written; an overcounted one only costs a debounced re-save.
         self.edit_seq = self.edit_seq.saturating_add(1);
         let texture_undo = action
             .records_texture_undo()
@@ -1255,27 +1205,19 @@ impl AppState {
             .flatten();
         let stage_was_reachable = self.tab_available(self.active_tab);
         let was_busy = self.busy();
+        if action.branches_hair_history()
+            && !self.history_branch_warning_muted
+            && self.hair_project.history_position().1 >= HISTORY_BRANCH_WARN_STEPS
+        {
+            self.pending_history_branch = true;
+            return;
+        }
         match action {
             Action::SetVarMetadata(field, value) => {
-                let slot = match field {
-                    VarMetadataField::Version => {
-                        self.var_version_text =
-                            value.chars().filter(char::is_ascii_digit).take(9).collect();
-                        return;
-                    }
-                    VarMetadataField::Creator => {
-                        self.missing_package_fields.creator = false;
-                        &mut self.var_metadata.creator
-                    }
-                    VarMetadataField::Package => {
-                        self.missing_package_fields.package = false;
-                        &mut self.var_metadata.package
-                    }
-                    VarMetadataField::License => &mut self.var_metadata.license,
-                    VarMetadataField::Description => &mut self.var_metadata.description,
-                    VarMetadataField::Credits => &mut self.var_metadata.credits,
-                    VarMetadataField::Instructions => &mut self.var_metadata.instructions,
-                    VarMetadataField::PromotionalLink => &mut self.var_metadata.promotional_link,
+                let Some(slot) = self.var_metadata_slot(field) else {
+                    self.var_version_text =
+                        value.chars().filter(char::is_ascii_digit).take(9).collect();
+                    return;
                 };
                 *slot = value;
             }
@@ -1287,6 +1229,7 @@ impl AppState {
             Action::RequestOpenScan => {
                 self.pending_dialog = Some(DialogIntent::OpenScan);
             }
+            Action::UnloadScan => self.unload_scan(),
             Action::RequestTextureImageBrowse(source_mode) => {
                 self.pending_dialog = Some(DialogIntent::OpenTextureImage(source_mode));
             }
@@ -1297,6 +1240,136 @@ impl AppState {
 
             Action::RefreshVaMCatalog => self.force_vam_catalog_refresh(),
             Action::SelectVaMEditSource(id) => self.select_vam_edit_source(&id),
+            Action::AddHairPart { provider_name } => {
+                self.hair_project.active_tool = crate::hair_project::HairTool::Plant;
+                self.hair_project.checkpoint();
+                self.add_hair_part(&provider_name);
+            }
+            Action::RemoveHairPart(id) => {
+                self.hair_part_thumbnails.remove(&id);
+                self.hair_project.checkpoint();
+                self.hair_project.remove_part(id);
+            }
+            Action::ActivateHairPart { id, additive } => {
+                self.hair_project.activate_part(id, additive);
+            }
+            Action::ToggleHairPartVisible(id) => {
+                self.hair_project.checkpoint();
+                self.hair_project.toggle_part_visible(id);
+            }
+            Action::SetHairTool(tool) => self.hair_project.active_tool = tool,
+            Action::SelectHairParamGroup(group) => self.hair_param_group = group,
+            Action::SetHairBrushStrength(strength) => {
+                self.hair_brush_strength = strength.clamp(0.05, 1.0);
+            }
+            Action::SetHairBrushRadius(radius) => {
+                self.hair_brush_radius_points = radius.clamp(8.0, 220.0);
+            }
+            Action::PlantHairStrands {
+                part_id,
+                scalp_indices,
+            } => {
+                self.hair_project.begin_stroke();
+                self.plant_hair_strands(part_id, &scalp_indices);
+                self.clear_hair_of_the_head(part_id, &scalp_indices);
+            }
+            Action::UnplantHairStrands {
+                part_id,
+                scalp_indices,
+            } => {
+                self.hair_project.begin_stroke();
+                self.unplant_hair_strands(part_id, &scalp_indices);
+            }
+            Action::SetHairPartSegments { id, segments } => {
+                self.set_hair_part_segments(id, segments);
+            }
+            Action::ScaleHairStrands {
+                part_id,
+                scalp_indices,
+                factor,
+            } => {
+                self.hair_project.begin_stroke();
+                self.scale_hair_strands(part_id, &scalp_indices, factor);
+                self.clear_hair_of_the_head(part_id, &scalp_indices);
+            }
+            Action::SetHairStrandPoints { part_id, strands } => {
+                self.hair_project.begin_stroke();
+                self.set_hair_strand_points(part_id, strands);
+            }
+            Action::PaintMorphMask {
+                vertices,
+                target,
+                amount,
+                begins_step,
+            } => self.paint_morph_mask(vertices, target, amount, begins_step),
+            Action::AddAppearanceLayer => {
+                self.add_appearance_layer();
+                self.recompose_appearance_blend();
+            }
+            Action::SelectAppearanceLayer(id) => {
+                if self.appearance_stack.layer(id).is_some() {
+                    self.appearance_stack.selected_id = Some(id);
+                }
+            }
+            Action::SetAppearanceLayerVisible { id, visible } => {
+                if let Some(layer) = self.appearance_stack.layer_mut(id) {
+                    layer.visible = visible;
+                }
+                self.recompose_appearance_blend();
+            }
+            Action::RaiseAppearanceLayer(id) => {
+                self.appearance_stack.raise(id);
+                self.recompose_appearance_blend();
+            }
+            Action::LowerAppearanceLayer(id) => {
+                self.appearance_stack.lower(id);
+                self.recompose_appearance_blend();
+            }
+            Action::RemoveAppearanceLayer(id) => self.remove_appearance_layer(id),
+            Action::ExportHairPart => self.request_hair_export(),
+            Action::ConfirmHairOverwrite => {
+                self.pending_hair_overwrite = false;
+                self.hair_overwrite_confirmed = true;
+                self.export_hair_style();
+                self.hair_overwrite_confirmed = false;
+            }
+            Action::CancelHairOverwrite => self.pending_hair_overwrite = false,
+            Action::EndHairStroke => {
+                self.hair_project.end_stroke();
+                self.hair_project.end_control();
+            }
+            Action::SetHairParam { id, key, value } => self.set_hair_param(id, key, value),
+            Action::SetHairColorChannel {
+                id,
+                key,
+                channel,
+                value,
+            } => self.set_hair_color_channel(id, key, channel, value),
+            Action::ResetHairParams(id) => self.reset_hair_params(id),
+            Action::ResetHairShapes => self.reset_hair_shapes(),
+            Action::SetHairPartName { id, name } => self.set_hair_part_name(id, name),
+            Action::SetHairPartStyleJoints { id, on } => self.set_hair_part_style_joints(id, on),
+            Action::AddHairScalp(mesh) => self.add_hair_scalp(&mesh),
+            Action::SetHairScalpMesh { id, mesh } => self.set_hair_scalp_mesh(id, &mesh),
+            Action::SetHairScalpTexture { id, texture } => self.set_hair_scalp_texture(id, texture),
+            Action::CopyHairSettings(id) => self.copy_hair_settings(id),
+            Action::PasteHairSettings(id) => self.paste_hair_settings(id),
+            Action::SetHairExportSexes(sexes) => {
+                self.hair_project.export_sexes = sexes;
+            }
+            Action::SetHairExportName(name) => {
+                self.hair_overwrite_confirmed = false;
+                self.hair_project.export_name = name;
+            }
+            Action::SetHairExportCreator(creator) => {
+                self.hair_overwrite_confirmed = false;
+                self.hair_project.export_creator = creator;
+            }
+            Action::MirrorHairPart(id) => self.mirror_hair_part(id),
+            Action::DuplicateHairPart(id) => {
+                self.hair_project.checkpoint();
+                self.hair_project.duplicate_part(id);
+            }
             Action::SelectBaseFace => self.select_base_face(),
             Action::BeginDirectEdit => self.enter_direct_edit(Tab::Morph),
             Action::SetFigureSex(value) => self.set_figure_sex(value),
@@ -1307,24 +1380,8 @@ impl AppState {
             Action::FinishWorkspaceLoad { path, outcome } => {
                 self.finish_workspace_load(path, outcome);
             }
-            Action::AutoAlign => {
-                if let Some(transform) = self.suggested_auto_match() {
-                    self.active_tab = Tab::Alignment;
-                    self.apply_alignment_transform(transform);
-                } else {
-                    self.status =
-                        StatusMessage::new(TextKey::AlignmentPending, StatusTone::Warning);
-                }
-            }
-            Action::PlacementReset => {
-                self.active_tab = Tab::Alignment;
-                if let Some(transform) = self.suggested_alignment() {
-                    self.apply_alignment_transform(transform);
-                } else {
-                    self.status =
-                        StatusMessage::new(TextKey::AlignmentPending, StatusTone::Warning);
-                }
-            }
+            Action::AutoAlign => self.auto_align(),
+            Action::PlacementReset => self.reset_placement(),
             Action::BeginAlignmentTransform => {
                 self.begin_alignment_transform();
             }
@@ -1338,60 +1395,23 @@ impl AppState {
                 if value.iter().any(|axis| !axis.is_finite() || *axis <= 0.0) {
                     return;
                 }
-                self.active_tab = Tab::Alignment;
-
-                let next = ScanTransform {
-                    scale_xyz: value,
-                    ..self.transform
-                };
-                self.apply_alignment_transform(next);
+                self.set_scale(value);
             }
             Action::SetScaleLinked(value) => self.scale_linked = value,
             Action::SetScaleAxis { axis, value } => {
                 if axis >= 3 || !value.is_finite() || value <= 0.0 {
                     return;
                 }
-                let mut scale_xyz = self.transform.scale_xyz;
-                if self.scale_linked {
-                    let current = scale_xyz[axis];
-                    if !current.is_finite() || current <= 0.0 {
-                        return;
-                    }
-                    let factor = value / current;
-                    if !factor.is_finite() || factor <= 0.0 {
-                        return;
-                    }
-                    for axis_scale in &mut scale_xyz {
-                        *axis_scale *= factor;
-                    }
-                    if scale_xyz
-                        .iter()
-                        .any(|axis_scale| !axis_scale.is_finite() || *axis_scale <= 0.0)
-                    {
-                        return;
-                    }
-                } else {
-                    scale_xyz[axis] = value;
-                }
-                self.active_tab = Tab::Alignment;
-                let next = ScanTransform {
-                    scale_xyz,
-                    ..self.transform
+                let Some(scale_xyz) = self.scale_xyz_with_axis(axis, value) else {
+                    return;
                 };
-                self.apply_alignment_transform(next);
+                self.set_scale(scale_xyz);
             }
             Action::SetPosition { axis, value_cm } => {
                 if axis >= 3 || !value_cm.is_finite() {
                     return;
                 }
-                self.active_tab = Tab::Alignment;
-                let mut translation_cm = self.transform.translation_cm;
-                translation_cm[axis] = value_cm;
-                let next = ScanTransform {
-                    translation_cm,
-                    ..self.transform
-                };
-                self.apply_alignment_transform(next);
+                self.set_position(axis, value_cm);
             }
             Action::SetRotation {
                 axis,
@@ -1400,25 +1420,14 @@ impl AppState {
                 if axis >= 3 || !value_degrees.is_finite() {
                     return;
                 }
-                self.active_tab = Tab::Alignment;
-                let mut rotation_degrees = self.transform.rotation_degrees;
-                rotation_degrees[axis] = value_degrees;
-                let next = ScanTransform {
-                    rotation_degrees,
-                    ..self.transform
-                };
-                self.apply_alignment_transform(next);
+                self.set_rotation(axis, value_degrees);
             }
             Action::ToggleXMirror(value) => self.x_mirror = value,
             Action::RequestScanSymmetry(value) => {
                 if value == self.scan_symmetry {
                     return;
                 }
-                if self.workspace.pins.pairs().is_empty() {
-                    self.set_scan_symmetry(value);
-                } else {
-                    self.pending_symmetry_change = Some(value);
-                }
+                self.request_scan_symmetry(value);
             }
             Action::ConfirmScanSymmetry => {
                 if let Some(value) = self.pending_symmetry_change.take() {
@@ -1518,7 +1527,6 @@ impl AppState {
             }
             Action::SetToneMapping(value) => self.tone_mapping = value,
             Action::SetBloom(value) => self.bloom = value,
-            Action::SetAmbientOcclusion(value) => self.ambient_occlusion = value,
             Action::SetCameraControl(mode) => self.camera_control = mode,
             Action::RestoreSession => self.answer_recovery(true),
             Action::DiscardSession => self.answer_recovery(false),
@@ -1527,26 +1535,9 @@ impl AppState {
                 self.help_visible = !self.help_visible;
                 self.help_opened_for_projection = false;
             }
-            Action::Undo => {
-                if self.active_tab == Tab::Alignment && self.undo_alignment_transform() {
-                } else if self.active_tab == Tab::Texture {
-                    self.texture_project.undo();
-                } else if self.active_tab == Tab::Morph {
-                    self.undo_detail_edit();
-                } else if self.workspace.pins.undo() {
-                    self.active_tab = Tab::Edit;
-                    self.sync_pin_count_and_invalidate();
-                } else {
-                    self.status = StatusMessage::new(TextKey::NativeCorePending, StatusTone::Info);
-                }
-            }
-            Action::ResetPins => {
-                if self.workspace.pins.reset() {
-                    self.active_tab = Tab::Edit;
-                    self.complete_pairs = 0;
-                    self.invalidate_geometry(TextKey::PinsReset);
-                }
-            }
+            Action::Undo => self.undo(),
+            Action::Redo => self.redo(),
+            Action::ResetPins => self.reset_pins(),
             Action::SetOutputPath(path) => {
                 self.output_path = path;
                 self.pending_overwrite_path = None;
@@ -1597,6 +1588,23 @@ impl AppState {
                     self.sculpt_strength = value.clamp(0.01, 1.0);
                 }
             }
+            Action::RebindShortcut(shortcut, binding) => {
+                self.keymap.rebind(shortcut, binding);
+            }
+            Action::ResetKeymap => {
+                self.keymap.reset();
+            }
+            Action::SetModelSplitRatio(value) => {
+                if value.is_finite() {
+                    self.model_split_ratio = value.clamp(0.05, 0.95);
+                }
+            }
+            Action::SetSplitModelView(value) => {
+                self.split_model_view = value;
+                if value {
+                    self.workspace.result_camera_split = self.workspace.result_camera;
+                }
+            }
             Action::SetSculptXSymmetry(value) => {
                 self.sculpt_x_symmetry = value;
                 self.sculpt.set_x_symmetry(value);
@@ -1624,23 +1632,10 @@ impl AppState {
                 self.offer_projection_help();
             }
             Action::SetTextureProjectionStencil(active) => {
-                self.texture_project.end_undo_transaction();
-
-                if active {
-                    self.texture_project
-                        .set_active_tool(TextureTool::Projection);
-                } else if self.texture_project.active_tool == TextureTool::Projection {
-                    self.texture_project.set_active_tool(TextureTool::PinPair);
-                }
-                self.offer_projection_help();
+                self.set_texture_projection_stencil(active);
             }
             Action::SetTextureProjectionPlacement(placement) => {
-                if placement.offset.iter().all(|value| value.is_finite())
-                    && placement.scale.is_finite()
-                    && placement.rotation.is_finite()
-                {
-                    self.texture_project.place_projection_stencil(placement);
-                }
+                self.set_texture_projection_placement(placement);
             }
             Action::SetTextureProjectionOpacity(value) => {
                 if value.is_finite() {
@@ -1650,7 +1645,25 @@ impl AppState {
             Action::SetTextureRetouchReverse(value) => {
                 self.texture_project.retouch_reverse = value;
             }
-            Action::BeginTextureEdit => self.texture_project.begin_undo_transaction(),
+            Action::BeginTextureEdit => {
+                if self.history_branch_needs_asking() {
+                    self.pending_history_branch = true;
+                } else {
+                    self.texture_project.begin_undo_transaction();
+                }
+            }
+            Action::ConfirmHistoryBranch => {
+                self.pending_history_branch = false;
+                match self.active_tab {
+                    Tab::Texture => self.texture_project.begin_undo_transaction(),
+                    Tab::Morph => self.clear_detail_forward_history(),
+                    Tab::Hair => self.hair_project.clear_forward_history(),
+                    _ => {}
+                }
+            }
+            Action::ImportHairPreset(preset_id) => self.import_hair_preset(&preset_id),
+            Action::CancelHistoryBranch => self.pending_history_branch = false,
+            Action::MuteHistoryBranchWarning => self.history_branch_warning_muted = true,
             Action::EndTextureEdit => {
                 self.texture_project.end_undo_transaction();
                 self.texture_project.end_clone_stroke();
@@ -1675,98 +1688,38 @@ impl AppState {
                 self.texture_project.set_source_view(id, zoom, center);
             }
             Action::SetTextureLayerVisible { id, visible } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
-                    layer.visible = visible;
-                    self.texture_project.mark_dirty();
-                }
+                self.edit_texture_layer(id, |layer| layer.visible = visible);
             }
             Action::SetTextureLayerChannel { id, channel } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
-                    layer.channel = channel;
-
-                    self.texture_project.mark_dirty();
-                }
+                self.edit_texture_layer(id, |layer| layer.channel = channel);
             }
             Action::SetTextureLayerOpacity { id, opacity } => {
-                if opacity.is_finite()
-                    && let Some(layer) = self
-                        .texture_project
-                        .layers
-                        .iter_mut()
-                        .find(|layer| layer.id == id)
-                {
-                    layer.opacity = opacity.clamp(0.0, 1.0);
-                    self.texture_project.mark_dirty();
+                if opacity.is_finite() {
+                    self.edit_texture_layer(id, |layer| layer.opacity = opacity.clamp(0.0, 1.0));
                 }
             }
             Action::SetTextureLayerMirror { id, mirror } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
+                self.edit_texture_layer(id, |layer| {
                     layer.mirror = mirror;
 
                     layer.raster_revision = layer.raster_revision.saturating_add(1);
-                    self.texture_project.mark_dirty();
-                }
+                });
             }
             Action::SetTextureLayerBlendMode { id, blend_mode } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
-                    layer.blend_mode = blend_mode;
-                    self.texture_project.mark_dirty();
-                }
+                self.edit_texture_layer(id, |layer| layer.blend_mode = blend_mode);
             }
             Action::SetTextureLayerAdjustments { id, adjustments } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
-                    layer.adjustments = adjustments;
-
-                    self.texture_project.mark_dirty();
-                }
+                self.edit_texture_layer(id, |layer| layer.adjustments = adjustments);
             }
             Action::SetTextureLayerNormalStrength { id, strength } => {
-                if strength.is_finite()
-                    && let Some(layer) = self
-                        .texture_project
-                        .layers
-                        .iter_mut()
-                        .find(|layer| layer.id == id)
-                {
-                    layer.normal_strength = strength.clamp(0.0, 3.0);
-                    self.texture_project.mark_dirty();
+                if strength.is_finite() {
+                    self.edit_texture_layer(id, |layer| {
+                        layer.normal_strength = strength.clamp(0.0, 3.0);
+                    });
                 }
             }
             Action::SetTextureLayerScalarInvert { id, invert } => {
-                if let Some(layer) = self
-                    .texture_project
-                    .layers
-                    .iter_mut()
-                    .find(|layer| layer.id == id)
-                {
-                    layer.scalar_invert = invert;
-                    self.texture_project.mark_dirty();
-                }
+                self.edit_texture_layer(id, |layer| layer.scalar_invert = invert);
             }
             Action::SetTextureMaskBrushRadius(value) => {
                 if value.is_finite() {
@@ -1828,15 +1781,7 @@ impl AppState {
             }
             Action::SetTextureBakeBase(value) => {
                 if value == TextureBakeBase::CurrentSkin && !self.skin_base_available() {
-                    self.status =
-                        StatusMessage::new(TextKey::SkinPresetRequired, StatusTone::Warning);
-                    self.flash_attention(
-                        if self.viewport_tool_panel == Some(ViewportToolPanel::Skin) {
-                            AttentionTarget::SkinTextureMode
-                        } else {
-                            AttentionTarget::SkinPanel
-                        },
-                    );
+                    self.warn_skin_preset_required();
                     return;
                 }
                 self.texture_project.bake_base = value;
@@ -1846,11 +1791,7 @@ impl AppState {
                 if value == self.texture_project.hide_vam_skin_preview {
                     return;
                 }
-                self.texture_project.hide_vam_skin_preview = value;
-                if value {
-                    self.refresh_neutral_skin_preview();
-                }
-                self.texture_project.mark_dirty();
+                self.set_texture_hide_vam_skin(value);
             }
             Action::SetTextureOutputPbr(value) => self.texture_project.output_pbr = value,
             Action::RequestTextureBake(quality) => self.request_texture_bake(quality),
@@ -1887,35 +1828,9 @@ impl AppState {
                 job_id,
                 source_revision,
                 progress,
-            } => {
-                if matches!(self.result, ResultState::Running { job_id: active, source_revision: active_revision } if active == job_id && active_revision == source_revision)
-                {
-                    let floor = self.progress.map_or(0.0, |current| current.fraction);
-                    self.progress =
-                        Some(Progress::new(progress.stage, progress.fraction.max(floor)));
-                }
-            }
+            } => self.report_progress(job_id, source_revision, progress),
             Action::ReportImportProgress { path, progress } => {
-                if self.scan_import.active_path() == Some(path.as_path()) {
-                    let progress = ImportProgress::with_size(
-                        progress.phase,
-                        progress.fraction,
-                        progress.source_triangles,
-                    );
-                    let fraction = self.import_progress.map_or(progress.fraction, |current| {
-                        current.fraction.max(progress.fraction)
-                    });
-
-                    let triangles = progress.source_triangles.or_else(|| {
-                        self.import_progress
-                            .and_then(|current| current.source_triangles)
-                    });
-                    self.import_progress = Some(ImportProgress::with_size(
-                        progress.phase,
-                        fraction,
-                        triangles,
-                    ));
-                }
+                self.report_import_progress(path, progress);
             }
             Action::FinishGeneration {
                 job_id,
@@ -1932,7 +1847,6 @@ impl AppState {
                 fraction,
             } => self.report_export_progress(source_revision, fraction),
             Action::ToggleScanOverlay(value) => self.scan_overlay = value,
-            Action::ToggleHairVisible(value) => self.hair_visible = value,
 
             Action::SetScanFidelity(value) => {
                 self.scan_fidelity = value.clamp(
@@ -1949,8 +1863,6 @@ impl AppState {
                     return;
                 }
                 if self.sculpt.top_undo_seq().is_some() {
-                    // Rebasing the sculpt session would discard those strokes;
-                    // the choice is kept and applies on the next generation.
                     self.status =
                         StatusMessage::new(TextKey::RestoreNeckEarsDeferred, StatusTone::Warning);
                     return;
@@ -1988,6 +1900,7 @@ impl AppState {
             Action::CloseSettings => self.settings_open = false,
             Action::SpendHairSettle(elapsed) => {
                 self.hair_settle_seconds = (self.hair_settle_seconds - elapsed).max(0.0);
+                self.hair_simulation_seconds = (self.hair_simulation_seconds - elapsed).max(0.0);
             }
             Action::SetOverlayOpacity(value) => self.overlay_opacity = value.clamp(0.0, 1.0),
             Action::SetMorphCompareBlend(value) => {
@@ -2023,12 +1936,6 @@ impl AppState {
                 preset_id,
                 outcome,
             } => self.finish_vam_skin(request_id, &preset_id, outcome),
-            Action::SelectVaMHair(preset_id) => self.select_vam_hair(preset_id.as_deref()),
-            Action::FinishVaMHair {
-                request_id,
-                preset_id,
-                outcome,
-            } => self.finish_vam_hair(request_id, &preset_id, outcome),
             Action::ReportVaMCatalogProgress {
                 catalog_revision,
                 fraction,
@@ -2047,51 +1954,9 @@ impl AppState {
                 control_id,
                 outcome,
             } => self.finish_vam_morph(catalog_revision, geometry_revision, &control_id, outcome),
-            Action::SetPackageFromThisHead(value) => {
-                self.package_from_this_head = value;
-                // The two are a choice, not two switches. Turning the head back
-                // on drops the attachments rather than leaving a list that is
-                // still on screen but no longer packaged -- and turning it off
-                // is how picking a file stops the head being baked at all,
-                // which is what used to fail with "identical to the loaded G2
-                // template" when the head had not been touched.
-                if value {
-                    self.package_morphs.clear();
-                    self.package_textures.clear();
-                }
-            }
-            Action::AddPackageFiles(slot, paths) => {
-                // Picking a file is the same statement as choosing the file
-                // route, so it makes it rather than requiring a second click.
-                self.package_from_this_head = false;
-                let paths = match slot {
-                    // A VaM morph is two files that are useless apart: the .vmi
-                    // describes it and the .vmb holds the deltas. Picking one
-                    // and shipping a package without the other is a mistake
-                    // nobody makes on purpose, so the twin comes along.
-                    PackageSlot::Morph => with_morph_twins(paths),
-                    PackageSlot::Texture => paths,
-                };
-                let list = match slot {
-                    PackageSlot::Morph => &mut self.package_morphs,
-                    PackageSlot::Texture => &mut self.package_textures,
-                };
-
-                for path in paths {
-                    if !list.iter().any(|existing| existing.path == path) {
-                        list.push(PackageFile::new(path));
-                    }
-                }
-            }
-            Action::RemovePackageFile(slot, index) => {
-                let list = match slot {
-                    PackageSlot::Morph => &mut self.package_morphs,
-                    PackageSlot::Texture => &mut self.package_textures,
-                };
-                if index < list.len() {
-                    list.remove(index);
-                }
-            }
+            Action::SetPackageFromThisHead(value) => self.set_package_from_this_head(value),
+            Action::AddPackageFiles(slot, paths) => self.add_package_files(slot, paths),
+            Action::RemovePackageFile(slot, index) => self.remove_package_file(slot, index),
             Action::SetPackageDirectory(directory) => self.package_directory = directory,
             Action::ResetMorphs => self.reset_morphs(),
         }
@@ -2107,9 +1972,6 @@ impl AppState {
         self.settle_projection_entry();
     }
 
-    /// A stencil raised over an image it has never been placed against starts centred on the pane,
-    /// with the head framed behind it. Re-raising the stencil over a layer the user has already
-    /// dragged leaves both the placement and the camera exactly where they left them.
     fn settle_projection_entry(&mut self) {
         if !self.texture_project.projection_stencil()
             || !self.texture_project.stencil_needs_fresh_placement()
@@ -2119,6 +1981,55 @@ impl AppState {
         self.texture_project.centre_projection_stencil();
         if let Some(bounds) = self.result_head_bounds() {
             self.workspace.result_camera.frame(bounds);
+        }
+    }
+
+    fn undo(&mut self) {
+        if self.active_tab == Tab::Alignment && self.undo_alignment_transform() {
+        } else if self.active_tab == Tab::Hair {
+            if !self.hair_project.undo() {
+                self.status = StatusMessage::new(TextKey::NativeCorePending, StatusTone::Info);
+            }
+        } else if self.active_tab == Tab::Texture {
+            self.texture_project.undo();
+        } else if self.active_tab == Tab::Morph {
+            self.undo_detail_edit();
+        } else if self.workspace.pins.undo() {
+            self.active_tab = Tab::Edit;
+            self.sync_pin_count_and_invalidate();
+        } else {
+            self.status = StatusMessage::new(TextKey::NativeCorePending, StatusTone::Info);
+        }
+    }
+
+    fn redo(&mut self) {
+        match self.active_tab {
+            Tab::Texture => {
+                self.texture_project.redo();
+            }
+            Tab::Morph => {
+                self.redo_detail_edit();
+            }
+            Tab::Hair => {
+                self.hair_project.redo();
+            }
+            _ => {}
+        }
+    }
+
+    fn reset_pins(&mut self) {
+        if self.workspace.pins.reset() {
+            self.active_tab = Tab::Edit;
+            self.complete_pairs = 0;
+            self.invalidate_geometry(TextKey::PinsReset);
+        }
+    }
+
+    fn request_scan_symmetry(&mut self, value: ScanSymmetry) {
+        if self.workspace.pins.pairs().is_empty() {
+            self.set_scan_symmetry(value);
+        } else {
+            self.pending_symmetry_change = Some(value);
         }
     }
 
@@ -2175,12 +2086,7 @@ impl AppState {
             self.placed_head = true;
         }
 
-        // No scan opened means the G2 template *is* the head, so every stage
-        // downstream of the fit has something to work on. This used to say
-        // `tab == Tab::Morph`, which is why sculpt let you in from a cold start
-        // and texture and save did not -- not a rule about what they need, just
-        // a condition that was never widened when the others were added.
-        if matches!(tab, Tab::Morph | Tab::Texture | Tab::Result)
+        if matches!(tab, Tab::Morph | Tab::Texture | Tab::Hair | Tab::Result)
             && self.can_enter_detail_from_template()
             && !self.tab_available(tab)
         {
@@ -2198,12 +2104,15 @@ impl AppState {
                 Tab::Edit => TextKey::AlignmentPending,
                 Tab::Result => TextKey::ResultUnavailable,
                 Tab::Morph | Tab::Texture => TextKey::MorphUnavailable,
+                Tab::Hair => TextKey::HairUnavailable,
             };
             self.status = StatusMessage::new(key, StatusTone::Warning);
             return;
         }
         let transition = match tab {
-            Tab::Morph | Tab::Texture => self.compose_current_morphs(ResultPreviewPhase::Morph),
+            Tab::Morph | Tab::Texture | Tab::Hair => {
+                self.compose_current_morphs(ResultPreviewPhase::Morph)
+            }
             Tab::Result => self.commit_save_preview(),
             Tab::Alignment | Tab::Edit => Ok(()),
         };
@@ -2219,22 +2128,6 @@ impl AppState {
         }
     }
 
-    fn capture_edit_carry(&self) -> Option<CarriedEdit> {
-        let morph_values = self.morph_library.snapshot_values();
-        let sculpt = self
-            .sculpt
-            .displacement()
-            .filter(|delta| delta.iter().flatten().any(|axis| *axis != 0.0));
-        if sculpt.is_none() && !self.morph_library.has_modified_controls() {
-            return None;
-        }
-        Some(CarriedEdit {
-            morph_values,
-            sculpt,
-            eye_closure: self.eye_closure,
-        })
-    }
-
     fn offer_projection_help(&mut self) {
         if self.texture_project.active_tool != TextureTool::Projection
             || self.projection_help_offered
@@ -2248,753 +2141,145 @@ impl AppState {
         }
     }
 
-    fn select_vam_edit_source(&mut self, id: &str) {
+    fn add_appearance_layer(&mut self) {
+        let Some(id) = self.selected_vam_edit_source_id.clone() else {
+            return;
+        };
         let Some(source) = self
             .vam_edit_sources
             .iter()
             .find(|source| source.stable_id == id)
-            .cloned()
         else {
-            self.status = StatusMessage::with_detail(
-                TextKey::VaMMorphPairRejected,
-                StatusTone::Error,
-                format!("VaM edit source is unavailable: {id}"),
-            );
             return;
         };
-
-        if !self.look_suits_current_figure(&source) {
-            self.status = StatusMessage::with_detail(
-                TextKey::LookBelongsToOtherFigure,
-                StatusTone::Warning,
-                source.label.clone(),
-            );
-            return;
-        }
-
-        // A carry that is still pending -- a recovered session waiting for its
-        // look to be installed -- holds the only copy of that work. Capturing
-        // "no edits on stage" over it would destroy exactly what it protects,
-        // so an empty capture leaves the pending carry in place.
-        if let Some(carry) = self.capture_edit_carry() {
-            self.pending_edit_carry = Some(carry);
-        }
-        self.set_edit_source_mode(EditSourceMode::CustomMorph);
-        self.selected_vam_edit_source_id = Some(source.stable_id.clone());
-        self.pending_direct_edit_source = Some(source.clone());
-        self.clear_generated_buffers();
-        self.result = ResultState::Empty;
-        self.start_pending_direct_edit_source_if_ready();
-    }
-
-    pub fn look_suits_current_figure(&self, source: &VaMEditSource) -> bool {
-        match source.sex {
-            Some(vkit_core::vam::SkinSex::Female) => self.figure_sex == FigureSex::Female,
-            Some(vkit_core::vam::SkinSex::Male) => self.figure_sex == FigureSex::Male,
-            Some(vkit_core::vam::SkinSex::Unknown) | None => true,
-        }
-    }
-
-    fn start_pending_direct_edit_source_if_ready(&mut self) {
-        if self.edit_source_mode != EditSourceMode::CustomMorph {
-            return;
-        }
-        let Some(source) = self.pending_direct_edit_source.as_ref() else {
-            return;
-        };
-        if self.workspace_load.is_active() || self.workspace.template_geometry.is_none() {
-            return;
-        }
-        if source.kind == VaMEditSourceKind::AppearancePreset
-            && matches!(self.vam_morph_cache_status, VaMMorphCacheStatus::Loading)
-        {
-            return;
-        }
-        let source = self
-            .pending_direct_edit_source
-            .take()
-            .expect("direct edit source checked above");
-        self.request_workspace_load(
-            WorkspaceLoadKind::DirectEditSource,
-            source.path.clone(),
-            TextKey::MorphLoading,
-        );
-        self.pending_direct_edit_source = Some(source);
-    }
-
-    fn enter_direct_edit(&mut self, landing: Tab) {
-        if self.edit_source_mode != EditSourceMode::CustomMorph {
-            return;
-        }
-        self.begin_template_edit(false, landing);
-    }
-
-    fn select_base_face(&mut self) {
-        if self.busy() {
-            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
-            return;
-        }
-        self.selected_vam_edit_source_id = None;
-        self.pending_direct_edit_source = None;
-        self.clear_morph_reset_undo();
-        self.morph_value_history.clear();
-        self.morph_edit_open = None;
-        self.morph_library.reset();
-        self.custom_morph_origin = None;
-        self.morph_compare_blend = 1.0;
-        self.begin_template_edit(true, Tab::Morph);
-    }
-
-    fn resolve_eyelid_control_now(&mut self, id: &str) {
-        if !self.morph_library.needs_resolution(id) {
-            return;
-        }
-        let Some(descriptor) = self.vam_cached_morphs.get(id) else {
-            return;
-        };
-        let (Some(geometry), Some(canonical_faces)) = (
-            self.workspace.template_geometry.as_deref(),
-            self.vam_morph_faces.as_ref(),
-        ) else {
-            return;
-        };
-        let Ok(target) = vkit_core::formats::MorphTarget::from_sparse_deltas_shared(
-            format!("builtin:{}", descriptor.internal_name),
-            geometry.vertices.len(),
-            descriptor.deltas.as_slice(),
-            Arc::clone(canonical_faces),
-            vkit_core::formats::MorphAuthoring::vam(
-                descriptor.minimum,
-                descriptor.maximum,
-                descriptor.default,
-            ),
-        ) else {
-            return;
-        };
-        let _ = self
-            .morph_library
-            .install_resolved_target(id, Arc::new(target));
-    }
-
-    pub(crate) fn builtin_morph_id_by_internal_name(&self, internal_name: &str) -> Option<String> {
-        self.morph_library
-            .controls()
-            .iter()
-            .find(|control| {
-                control.source == MorphSource::VaMBuiltin && control.id == internal_name
-            })
-            .map(|control| control.id.clone())
-    }
-
-    fn freeze_eye_gaze(&mut self, gaze: [f32; 2]) {
-        let gaze = gaze.map(sanitize_eye_gaze_axis);
-        for (left_eye, suffix) in [(true, "L"), (false, "R")] {
-            let [_, pitch] = eye_angles_from_gaze(gaze, left_eye);
-            let weights = vkit_core::anatomy::eyelid_look_weights(-pitch.to_radians());
-            for target in weights.named(suffix) {
-                let id = self
-                    .builtin_morph_id_by_internal_name(&target.per_side)
-                    .or_else(|| {
-                        (suffix == "L")
-                            .then(|| self.builtin_morph_id_by_internal_name(target.shared))
-                            .flatten()
-                    });
-                if let Some(id) = id {
-                    self.resolve_eyelid_control_now(&id);
-                    self.set_face_morph(&id, target.weight as f32);
-                }
-            }
-        }
-        self.frozen_eye_gaze = Some(gaze);
-        self.sculpt_eye_tracking = false;
-        self.manual_eye_gaze = gaze;
-        self.eye_gaze_mode = EyeGazeMode::Manual;
-        if let Err(detail) = self.compose_current_morphs(self.result_preview_phase) {
-            self.status =
-                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
-        }
-    }
-
-    fn thaw_frozen_eye_gaze(&mut self) {
-        if self.frozen_eye_gaze.take().is_none() {
-            return;
-        }
-        for suffix in ["L", "R"] {
-            let weights = vkit_core::anatomy::EyelidLookWeights::default();
-            for target in weights.named(suffix) {
-                let id = self
-                    .builtin_morph_id_by_internal_name(&target.per_side)
-                    .or_else(|| {
-                        (suffix == "L")
-                            .then(|| self.builtin_morph_id_by_internal_name(target.shared))
-                            .flatten()
-                    });
-                if let Some(id) = id {
-                    self.resolve_eyelid_control_now(&id);
-                    self.set_face_morph(&id, 0.0);
-                }
-            }
-        }
-        if let Err(detail) = self.compose_current_morphs(self.result_preview_phase) {
-            self.status =
-                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
-        }
-    }
-
-    pub(crate) fn eyelid_control_live_value(&self, control_id: &str) -> Option<f32> {
-        if !self.sculpt_eye_tracking {
-            return None;
-        }
-        let (role, left_eye) = eyelid_role_of_control_id(control_id)?;
-        let [_, pitch] = eye_angles_from_gaze(self.manual_eye_gaze, left_eye.unwrap_or(true));
-        let weights = vkit_core::anatomy::eyelid_look_weights(-pitch.to_radians());
-        Some(match role {
-            vkit_core::anatomy::EyelidLookRole::TopDown => weights.top_down as f32,
-            vkit_core::anatomy::EyelidLookRole::TopUp => weights.top_up as f32,
-            vkit_core::anatomy::EyelidLookRole::BottomDown => weights.bottom_down as f32,
-            vkit_core::anatomy::EyelidLookRole::BottomUp => weights.bottom_up as f32,
-        })
-    }
-
-    pub(crate) fn gaze_for_eyelid_control_value(
-        &self,
-        control_id: &str,
-        value: f32,
-    ) -> Option<[f32; 2]> {
-        if !self.sculpt_eye_tracking {
-            return None;
-        }
-        let (role, _) = eyelid_role_of_control_id(control_id)?;
-        let pitch_down_radians =
-            vkit_core::anatomy::gaze_pitch_for_lid_weight(role, f64::from(value));
-        let pitch_view_degrees = -pitch_down_radians.to_degrees();
-        let gaze_y = if pitch_view_degrees < 0.0 {
-            pitch_view_degrees / 30.0
-        } else {
-            pitch_view_degrees / 20.0
-        };
-        Some([self.manual_eye_gaze[0], gaze_y.clamp(-1.0, 1.0) as f32])
-    }
-
-    fn begin_template_edit(&mut self, force_reinstall: bool, landing: Tab) {
-        if self.busy() {
-            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
-            return;
-        }
-        let started = std::time::Instant::now();
-        let mut install_ms = 0.0;
-        if force_reinstall || !self.tab_available(Tab::Morph) {
-            if self.selected_vam_edit_source_id.is_some() {
-                self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
-                return;
-            }
-
-            let output = match self.workspace.template_ordered_obj() {
-                Some(cached) => cached,
-                None => {
-                    let Some(template) = self.workspace.template_geometry.as_deref() else {
-                        self.status =
-                            StatusMessage::new(TextKey::TemplatePending, StatusTone::Warning);
-                        return;
-                    };
-                    match template.to_ordered_obj(None) {
-                        Ok(output) => Arc::new(output),
-                        Err(error) => {
-                            self.status = StatusMessage::with_detail(
-                                TextKey::GenerationFailed,
-                                StatusTone::Error,
-                                error.to_string(),
-                            );
-                            return;
-                        }
-                    }
-                }
-            };
-            let install_started = std::time::Instant::now();
-            if let Err(detail) = self.install_direct_edit_output(output, None, Vec::new(), 0) {
-                self.status = StatusMessage::with_detail(
-                    TextKey::GenerationFailed,
-                    StatusTone::Error,
-                    detail,
-                );
-                return;
-            }
-            install_ms = install_started.elapsed().as_secs_f64() * 1000.0;
-        }
-        let compose_started = std::time::Instant::now();
-        if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
-            self.status =
-                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
-            return;
-        }
-        // Landing where the click asked rather than always on sculpt. Being
-        // dragged to a tab you did not press is what made the old behaviour
-        // read as "sculpt must be visited first".
-        self.active_tab = landing;
-        if landing == Tab::Result {
-            // Save composes its own preview, and entering it without one shows
-            // an empty stage.
-            if let Err(detail) = self.commit_save_preview() {
-                self.status = StatusMessage::with_detail(
-                    TextKey::GenerationFailed,
-                    StatusTone::Error,
-                    detail,
-                );
-            }
-        }
-
+        let label = source.label.clone();
+        let deltas = self.loaded_appearance_deltas();
         let _ = crate::diagnostics::record(
             crate::diagnostics::Severity::Debug,
-            "runtime",
-            "direct_edit_timing",
+            "state",
+            "appearance_layer_added",
             &format!(
-                "install_ms={install_ms:.3}; compose_ms={:.3}; total_ms={:.3}",
-                compose_started.elapsed().as_secs_f64() * 1000.0,
-                started.elapsed().as_secs_f64() * 1000.0,
+                "layer={label}; vertices={}; moved={}",
+                deltas.len(),
+                deltas.iter().filter(|delta| *delta != &[0.0; 3]).count(),
             ),
         );
+        self.appearance_stack.add(label, deltas);
     }
 
-    fn set_edit_source_mode(&mut self, mode: EditSourceMode) {
-        if self.edit_source_mode == mode {
+    fn remove_appearance_layer(&mut self, id: u64) {
+        self.appearance_stack.remove(id);
+        self.morph_mask_history.retain(|step| step.layer_id != id);
+        self.morph_mask_forward.retain(|step| step.layer_id != id);
+        self.recompose_appearance_blend();
+    }
+
+    fn loaded_appearance_deltas(&self) -> Vec<[f32; 3]> {
+        let Some(origin) = self.custom_morph_origin.as_deref() else {
+            return Vec::new();
+        };
+        let Some(template) = self.workspace.template.as_ref() else {
+            return Vec::new();
+        };
+        let base = &template.mesh.vertices;
+        if base.len() != origin.len() {
+            return Vec::new();
+        }
+        origin
+            .iter()
+            .zip(base)
+            .map(|(baked, base)| {
+                [
+                    (baked[0] - base[0]) as f32,
+                    (baked[1] - base[1]) as f32,
+                    (baked[2] - base[2]) as f32,
+                ]
+            })
+            .collect()
+    }
+
+    pub(super) fn appearance_blend(&self, vertex_count: usize) -> Option<Vec<[f32; 3]>> {
+        let contributing = self.appearance_stack.contributing();
+        if contributing.is_empty() {
+            return None;
+        }
+        let borrowed = contributing
+            .iter()
+            .map(|layer| layer.deltas.as_slice())
+            .collect::<Vec<_>>();
+        let masks = contributing
+            .iter()
+            .map(|layer| &layer.mask)
+            .collect::<Vec<_>>();
+        Some(crate::appearance_layers::blend_vertex_deltas(
+            &borrowed,
+            &masks,
+            vertex_count,
+        ))
+    }
+
+    fn recompose_appearance_blend(&mut self) {
+        self.morph_preview_dirty = true;
+        if !self.tab_available(Tab::Morph) {
             return;
         }
-        self.edit_source_mode = mode;
-        self.active_tab = Tab::Alignment;
-        self.custom_morph_origin = None;
-        self.morph_compare_blend = 1.0;
-        self.clear_generated_buffers();
-        self.result = ResultState::Empty;
-        self.clear_morph_reset_undo();
-        self.morph_value_history.clear();
-        self.morph_edit_open = None;
-        self.morph_library.reset();
-        match mode {
-            EditSourceMode::ScanHead => {
-                self.selected_vam_edit_source_id = None;
-                self.pending_direct_edit_source = None;
-            }
-            EditSourceMode::CustomMorph => {
-                self.scan_path = None;
-                self.workspace.clear_scan();
-                self.complete_pairs = 0;
-                self.transform = ScanTransform::default();
-                self.clear_alignment_history();
-            }
+        if let Err(detail) = self.compose_current_morphs(self.result_preview_phase) {
+            self.status =
+                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
         }
     }
 
-    fn install_direct_edit_output(
+    #[must_use]
+    pub fn history_position(&self) -> (usize, usize) {
+        match self.active_tab {
+            Tab::Texture => self.texture_project.history_position(),
+            Tab::Hair => self.hair_project.history_position(),
+            Tab::Morph => {
+                let (sculpt_back, sculpt_forward) = self.sculpt.history_position();
+                (
+                    self.morph_value_history.len()
+                        + usize::from(self.morph_reset_undo.is_some())
+                        + sculpt_back
+                        + self.morph_mask_history.len(),
+                    self.morph_value_forward.len()
+                        + usize::from(self.morph_reset_forward.is_some())
+                        + sculpt_forward
+                        + self.morph_mask_forward.len(),
+                )
+            }
+            _ => (0, 0),
+        }
+    }
+
+    #[must_use]
+    pub fn history_branch_needs_asking(&self) -> bool {
+        !self.history_branch_warning_muted && self.history_position().1 >= HISTORY_BRANCH_WARN_STEPS
+    }
+
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "history inspection, test-asserted")
+    )]
+    pub fn has_forward_history(&self) -> bool {
+        self.history_position().1 != 0
+    }
+
+    fn active_stage_camera_mut(
         &mut self,
-        output: Arc<OrderedObjMesh>,
-        source_path: Option<&Path>,
-        missing_morphs: Vec<String>,
-        resolved_morphs: usize,
-    ) -> Result<(), String> {
-        let carry = self.pending_edit_carry.take();
-        self.clear_generated_buffers();
-        self.clear_morph_reset_undo();
-        self.morph_value_history.clear();
-        self.morph_edit_open = None;
-        self.morph_library.reset();
-        let carried_morphs = carry
-            .as_ref()
-            .is_some_and(|carry| self.morph_library.restore_values(&carry.morph_values));
-        self.custom_morph_origin = Some(Arc::new(output.vertices.clone()));
-        self.workspace
-            .install_result(output)
-            .map_err(|error| error.to_string())?;
-        self.morph_compare_blend = 1.0;
-        self.result = ResultState::Ready {
-            source_revision: self.revision,
-            morph_available: self.workspace.eye_morph.is_some(),
-        };
-        self.fit_reference_value = Some(0.0);
-        self.eye_closure = carry.as_ref().map_or(0.0, |carry| carry.eye_closure);
-        self.begin_sculpt_stage()?;
-        if let Some(delta) = carry.and_then(|carry| carry.sculpt) {
-            match self.sculpt.graft_displacement(&delta) {
-                Ok(_) => {}
-                Err(_) => {
-                    self.status =
-                        StatusMessage::new(TextKey::SculptNotCarried, StatusTone::Warning);
-                }
-            }
-        }
-        self.result_preview_phase = ResultPreviewPhase::Sculpt;
-        self.morph_preview_dirty = false;
-        self.output_topology = OutputTopology::VaM;
-
-        self.vam_export_display_name.clear();
-        self.clear_output_destination();
-        if let Some(path) = source_path.filter(|path| {
-            path.extension()
-                .and_then(|value| value.to_str())
-                .is_some_and(|value| value.eq_ignore_ascii_case("vmi"))
-        }) {
-            self.output_path = path.to_string_lossy().into_owned();
-        } else {
-            self.set_default_vam_output_path_if_empty();
-        }
-        // Naming the morphs that went missing tells the user nothing they can
-        // act on: the file is gone, so what it would have done to this face is
-        // exactly the thing that can no longer be determined. Interrupting with
-        // an alarm of unknowable size, on load after load, trains the user to
-        // ignore the status line. The names still go to vkit.log -- now with
-        // the count that resolved beside them, which is what was missing when
-        // reading that log. The user is only stopped when nothing loaded at
-        // all, which certainly means the base face is on screen.
-        if !missing_morphs.is_empty() {
-            let _ = crate::diagnostics::record(
-                crate::diagnostics::Severity::Warning,
-                "appearance",
-                "missing_morphs",
-                &format!(
-                    "resolved={resolved_morphs}; missing={}; {}",
-                    missing_morphs.len(),
-                    missing_morphs.join(" | ")
-                ),
-            );
-        }
-        self.status = if missing_morphs.is_empty() || resolved_morphs > 0 {
-            StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Success)
-        } else {
-            StatusMessage::new(TextKey::SourceMorphMissing, StatusTone::Warning)
-        };
-        if carried_morphs {
-            self.morph_preview_dirty = true;
-            if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
-                self.morph_preview_dirty = false;
-                self.result_preview_phase = ResultPreviewPhase::Sculpt;
-                self.status = StatusMessage::with_detail(
-                    TextKey::MorphPreviewUpdated,
-                    StatusTone::Warning,
-                    detail,
-                );
-            }
-        }
-        Ok(())
-    }
-
-    fn restore_sculpt_preview(&mut self) -> Result<(), String> {
-        let vertices = self
-            .sculpt
-            .working_mesh()
-            .map(|mesh| mesh.vertices.clone())
-            .ok_or_else(|| "sculpt working mesh is unavailable".to_owned())?;
-        self.sculpt.clear_presentation_vertices();
-        self.refresh_vam_full_preview(&vertices)?;
-        self.workspace
-            .update_result_preview_vertices(vertices)
-            .map_err(|error| error.to_string())?;
-        self.result_preview_phase = ResultPreviewPhase::Sculpt;
-        Ok(())
-    }
-
-    fn refresh_vam_full_preview(&mut self, canonical_vertices: &[[f64; 3]]) -> Result<(), String> {
-        let has_genital_controls = self
-            .morph_library
-            .controls()
-            .iter()
-            .any(|control| control.genital_target.is_some());
-        if !has_genital_controls {
-            self.vam_full_preview = None;
-            return Ok(());
-        }
-        let provider = self
-            .vam_geometry_provider
-            .as_ref()
-            .map(Arc::clone)
-            .ok_or_else(|| {
-                "Genital morph preview requires its validated user-owned VaM geometry provider"
-                    .to_owned()
-            })?;
-        let expected_sex = figure_sex_to_geometry_sex(self.figure_sex);
-        if provider.sex() != expected_sex {
-            return Err(format!(
-                "Genital morph preview provider is {:?}, but the current figure is {:?}",
-                provider.sex(),
-                expected_sex
-            ));
-        }
-        if canonical_vertices.len() != provider.daz_anchor().vertices.len() {
-            return Err(format!(
-                "Genital morph preview requires {} canonical vertices, got {}",
-                provider.daz_anchor().vertices.len(),
-                canonical_vertices.len()
-            ));
-        }
-        let mut target = provider.daz_anchor().clone();
-        target.vertices.clone_from_slice(canonical_vertices);
-        target.validate().map_err(|error| error.to_string())?;
-        let mut full = provider
-            .compose_vam_output(&target)
-            .map_err(|error| error.to_string())?;
-        let applications = self
-            .morph_library
-            .genital_applications()
-            .map_err(|error| error.to_string())?;
-        apply_genital_applications_to_vam_mesh(&provider, &mut full, &applications)
-            .map_err(|error| error.to_string())?;
-        self.vam_full_preview = Some(Arc::new(full));
-        Ok(())
-    }
-
-    /// Re-derives the result from the pristine fit, holding the neck-and-ears
-    /// regions at the G2 base when the option is on.
-    ///
-    /// The fit itself is never modified — `fitted_result` stays the solver's
-    /// own answer — so the option can be turned either way without re-solving.
-    fn apply_neck_ear_restore_to_result(&mut self) -> Result<(), String> {
-        let Some(fit) = self.workspace.fitted_result.clone() else {
-            return Ok(());
-        };
-        let vertices = if self.restore_neck_ears {
-            let Some(weights) = self.workspace.neck_ear_restore_weights() else {
-                // A template without the named materials cannot seed the mask;
-                // declining beats guessing at anatomy.
-                return Ok(());
-            };
-            let Some(template) = self.workspace.template_ordered_obj() else {
-                return Ok(());
-            };
-            if template.vertices.len() != fit.vertices.len() {
-                return Err("template and fit vertex counts disagree".to_owned());
-            }
-            vkit_core::restore_region::blend_toward_base(
-                &template.vertices,
-                &fit.vertices,
-                &weights,
-            )
-        } else {
-            fit.vertices.clone()
-        };
-        self.workspace
-            .update_result_preview_vertices(vertices)
-            .map_err(|error| error.to_string())
-    }
-
-    fn compose_current_morphs(&mut self, phase: ResultPreviewPhase) -> Result<(), String> {
-        let morph_available = matches!(
-            self.result,
-            ResultState::Ready {
-                morph_available: true,
-                ..
-            }
-        );
-        if morph_available {
-            self.rebuild_morph_preview(self.eye_closure)?;
-        } else {
-            self.restore_sculpt_preview()?;
-        }
-        self.morph_preview_dirty = false;
-        self.result_preview_phase = phase;
-        Ok(())
-    }
-
-    fn commit_save_preview(&mut self) -> Result<(), String> {
-        if self.morph_library.has_loading_controls() {
-            return Err("morph controls are still loading".to_owned());
-        }
-
-        self.sculpt_eye_tracking = false;
-        self.manual_eye_gaze = [0.0; 2];
-        self.eye_gaze_mode = EyeGazeMode::Manual;
-
-        self.morph_compare_blend = 1.0;
-
-        if !self.texture_project.baked_preview_enabled || self.texture_project.hide_vam_skin_preview
+        stage: Tab,
+    ) -> Option<&mut crate::camera::TurntableCamera> {
+        if self.split_model_view
+            && self.active_view_pane == crate::viewport::ViewPane::Split
+            && matches!(stage, Tab::Morph | Tab::Texture | Tab::Hair | Tab::Result)
         {
-            self.texture_project.baked_preview_enabled = true;
-            self.texture_project.hide_vam_skin_preview = false;
-            self.texture_project.mark_dirty();
+            return Some(&mut self.workspace.result_camera_split);
         }
-        self.compose_current_morphs(ResultPreviewPhase::Save)?;
-        self.sculpt.mark_applied();
-        Ok(())
+        self.workspace.stage_camera_mut(stage)
     }
 
     fn sync_pin_count_and_invalidate(&mut self) {
         self.complete_pairs = self.workspace.pins.complete_count();
         self.invalidate_geometry(TextKey::ResultStale);
-    }
-
-    fn begin_generation(&mut self) {
-        if self.scan_path.is_none() {
-            self.status = StatusMessage::new(TextKey::NeedScan, StatusTone::Error);
-
-            self.flash_attention(AttentionTarget::CustomHeadLoad);
-            return;
-        }
-        if self.workspace.template_geometry.is_none() {
-            self.status = StatusMessage::new(TextKey::TemplatePending, StatusTone::Warning);
-            return;
-        }
-        if self.eye_state == EyeState::Closed && self.workspace.eye_morph.is_none() {
-            self.status = StatusMessage::new(TextKey::NeedEyeMorph, StatusTone::Warning);
-            return;
-        }
-        if self.workspace.pins.review_count() != 0 {
-            self.status = StatusMessage::new(TextKey::ReviewEyePins, StatusTone::Warning);
-            return;
-        }
-
-        self.pending_edit_carry = self.capture_edit_carry();
-        let job_id = self.next_job_id;
-        self.next_job_id = self.next_job_id.saturating_add(1);
-        self.clear_morph_reset_undo();
-        self.clear_generated_buffers();
-        self.result = ResultState::Running {
-            job_id,
-            source_revision: self.revision,
-        };
-        self.progress = Some(Progress::new(JobStage::Prepare, 0.0));
-        self.active_tab = Tab::Edit;
-        self.status = StatusMessage::new(TextKey::GenerationStarted, StatusTone::Info);
-    }
-
-    fn bake_morph(&mut self) {
-        if self.morph_library.has_loading_controls() {
-            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
-            return;
-        }
-        if !matches!(
-            self.result,
-            ResultState::Ready { source_revision, .. } if source_revision == self.revision
-        ) || self.workspace.result_output.is_none()
-        {
-            self.status = StatusMessage::new(TextKey::ResultUnavailable, StatusTone::Warning);
-            return;
-        }
-        if let Err(detail) = self.commit_save_preview() {
-            self.status =
-                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
-            return;
-        }
-        self.active_tab = Tab::Result;
-        self.status = StatusMessage::new(TextKey::MorphApplied, StatusTone::Success);
-    }
-
-    fn finish_generation(
-        &mut self,
-        job_id: u64,
-        reported_revision: u64,
-        outcome: GenerationOutcome,
-        morph_available: bool,
-    ) {
-        let ResultState::Running {
-            job_id: active_job,
-            source_revision,
-        } = self.result
-        else {
-            return;
-        };
-        if active_job != job_id || source_revision != reported_revision {
-            return;
-        }
-        self.progress = None;
-        if source_revision != self.revision {
-            self.clear_generated_buffers();
-            self.result = ResultState::Stale {
-                generated_revision: source_revision,
-            };
-            self.active_tab = Tab::Edit;
-            self.status = StatusMessage::new(TextKey::ResultStale, StatusTone::Warning);
-            return;
-        }
-        match outcome {
-            GenerationOutcome::Success {
-                output,
-                fit_reference_value,
-            } => match self.workspace.install_result(Arc::new(output)) {
-                Ok(()) => {
-                    if self.restore_neck_ears
-                        && let Err(detail) = self.apply_neck_ear_restore_to_result()
-                    {
-                        // The fit stands on its own; losing the restore is a
-                        // warning, not a failed generation.
-                        self.status = StatusMessage::with_detail(
-                            TextKey::RestoreNeckEarsDeferred,
-                            StatusTone::Warning,
-                            detail,
-                        );
-                    }
-                    let carry = self.pending_edit_carry.take();
-                    self.clear_morph_reset_undo();
-                    self.morph_value_history.clear();
-                    self.morph_edit_open = None;
-                    self.morph_library.reset();
-                    if let Some(carry) = carry.as_ref() {
-                        self.morph_library.restore_values(&carry.morph_values);
-                    }
-                    self.fit_reference_value = Some(fit_reference_value);
-                    self.eye_closure = fit_reference_value as f32;
-                    self.result = ResultState::Ready {
-                        source_revision,
-                        morph_available,
-                    };
-                    if let Err(detail) = self.begin_sculpt_stage() {
-                        self.clear_generated_buffers();
-                        self.result = ResultState::Empty;
-                        self.active_tab = Tab::Edit;
-                        self.status = StatusMessage::with_detail(
-                            TextKey::GenerationFailed,
-                            StatusTone::Error,
-                            detail,
-                        );
-                        return;
-                    }
-                    if let Some(delta) = carry.and_then(|carry| carry.sculpt)
-                        && self.sculpt.graft_displacement(&delta).is_err()
-                    {
-                        self.status =
-                            StatusMessage::new(TextKey::SculptNotCarried, StatusTone::Warning);
-                    }
-                    self.morph_preview_dirty = true;
-                    if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
-                        self.clear_generated_buffers();
-                        self.result = ResultState::Empty;
-                        self.active_tab = Tab::Edit;
-                        self.status = StatusMessage::with_detail(
-                            TextKey::GenerationFailed,
-                            StatusTone::Error,
-                            detail,
-                        );
-                        return;
-                    }
-                    self.active_tab = Tab::Morph;
-                    self.ensure_scan_texture_layer();
-                    self.status =
-                        StatusMessage::new(TextKey::GenerationComplete, StatusTone::Success);
-                }
-                Err(error) => {
-                    self.clear_generated_buffers();
-                    self.result = ResultState::Empty;
-                    self.active_tab = Tab::Edit;
-                    self.status = StatusMessage::with_detail(
-                        TextKey::GenerationFailed,
-                        StatusTone::Error,
-                        error.to_string(),
-                    );
-                }
-            },
-            GenerationOutcome::Failed(detail) => {
-                self.clear_generated_buffers();
-                self.result = ResultState::Empty;
-                self.active_tab = Tab::Edit;
-                self.status = StatusMessage::with_detail(
-                    TextKey::GenerationFailed,
-                    StatusTone::Error,
-                    detail,
-                );
-            }
-            GenerationOutcome::Cancelled => {
-                self.clear_generated_buffers();
-                self.result = ResultState::Empty;
-                self.active_tab = Tab::Edit;
-                self.status = StatusMessage::new(TextKey::GenerationCancelled, StatusTone::Info);
-            }
-        }
     }
 
     fn block_mutation_while_busy(&mut self) -> bool {
@@ -3101,6 +2386,7 @@ mod alignment;
 mod cameras;
 mod export;
 mod figure_base;
+mod hair;
 mod jobs;
 mod loading;
 mod morph_values;
@@ -3114,6 +2400,12 @@ use jobs::*;
 pub use jobs::{
     DirectEditLoadJob, PreparedDirectEdit, TemplateLoadJob, VaMPairLoadJob, WorkspaceLoadJob,
     WorkspaceLoadOutcome,
+};
+
+pub(crate) use hair::HAIR_SIMULATION_SECONDS;
+pub use hair::{
+    HAIR_SETTLE_GRAVITY, HairExportNotice, HairPartThumbnail, HairShotFlash, HairThumbnailJob,
+    HairThumbnailTarget,
 };
 
 #[cfg(test)]

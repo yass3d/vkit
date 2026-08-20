@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use egui::{
-    Align, Align2, Button, CentralPanel, Color32, ComboBox, DragValue, FontId, Frame, Id, Layout,
-    Margin, Panel, Rect, ResizeDirection, Response, RichText, ScrollArea, Sense, Spinner, Stroke,
-    TextEdit, TextureHandle, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand, WidgetInfo,
-    WidgetType, containers::scroll_area::ScrollBarVisibility, pos2, vec2,
+    Align, Align2, Button, CentralPanel, Color32, DragValue, FontId, Frame, Id, Layout, Margin,
+    Panel, Rect, ResizeDirection, Response, RichText, ScrollArea, Sense, Spinner, Stroke, TextEdit,
+    TextureHandle, TextureOptions, Ui, UiBuilder, Vec2, ViewportCommand, WidgetInfo, WidgetType,
+    containers::scroll_area::ScrollBarVisibility, pos2, vec2,
 };
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
         CONTROL_HEIGHT, CONTROL_RADIUS, FONT_BODY, FONT_HEADING, FONT_SM, FONT_XS,
         INSPECTOR_ACTIVE_DIVIDER_WIDTH, INSPECTOR_DEFAULT_WIDTH, PANEL_INSET, PROGRESS_HEIGHT,
         SECTION_GAP, SECTION_LABEL_FONT_SIZE, SPACE_2, SPACE_3, SPACE_4, STATUS_BAR_HEIGHT,
-        TOP_BAR_HEIGHT, clamp_inspector_width, disabled,
+        TOP_BAR_HEIGHT, clamp_inspector_width, disabled, hover_fill,
     },
     ui_components::{
         CapsuleFieldButton, FilledNumericSlider, Icon, MINI_POPUP_CONTENT_INSET_Y, animate_rect,
@@ -54,23 +54,18 @@ const TOP_TAB_GAP: f32 = 4.0;
 const TITLE_BRAND_WIDTH: f32 = 146.0;
 const TITLE_VAM_FIELD_WIDTH: f32 = 180.0;
 
-const TITLE_LOCALE_WIDTH: f32 = 76.0;
-
-pub(crate) const TITLE_LOCALE_CHROME: f32 = 36.0;
-
-pub(crate) const TITLE_LOCALE_MAX_WIDTH: f32 = 190.0;
-const TITLE_LOCALE_HEIGHT: f32 = 28.0;
 const TITLE_WINDOW_BUTTON_WIDTH: f32 = 40.0;
 const PRIMARY_FOOTER_HEIGHT: f32 = 112.0;
-const ALIGNMENT_FOOTER_HEIGHT: f32 = 62.0;
+pub(crate) const SINGLE_ACTION_FOOTER_HEIGHT: f32 = 62.0;
+const ALIGNMENT_FOOTER_HEIGHT: f32 = SINGLE_ACTION_FOOTER_HEIGHT;
 const MORPH_ACTION_FOOTER_HEIGHT: f32 = 118.0;
-const MORPH_ROW_HEIGHT: f32 = 46.0;
+const MORPH_ROW_HEIGHT: f32 = 48.0;
 const MORPH_ROW_GAP: f32 = 1.0;
 const MORPH_FILTER_LIST_GAP: f32 = 6.0;
 const MORPH_APPLY_HEIGHT: f32 = CONTROL_H_PRIMARY;
 const MORPH_FOOTER_BUTTON_GAP: f32 = 8.0;
 const MORPH_ROW_HORIZONTAL_INSET: f32 = 8.0;
-const MORPH_ROW_VERTICAL_INSET: f32 = 3.0;
+const MORPH_ROW_VERTICAL_INSET: f32 = 4.0;
 const MORPH_ROW_LABEL_HEIGHT: f32 = 16.0;
 const MORPH_ROW_CONTROL_HEIGHT: f32 = 22.0;
 const MORPH_ROW_LINE_GAP: f32 = 1.0;
@@ -99,6 +94,10 @@ const VAM_EDIT_SOURCE_MIN_LIST_HEIGHT: f32 = 132.0;
 const VAM_EDIT_SOURCE_FRAME_MARGIN: i8 = 4;
 const PRIMARY_ACTION_HEIGHT: f32 = CONTROL_H_PRIMARY;
 
+const UNLOAD_SCAN_INSET: f32 = 20.0;
+const UNLOAD_SCAN_HIT: f32 = 26.0;
+const UNLOAD_SCAN_GLYPH: f32 = 13.0;
+
 const PLACE_HEAD_SIDE_INSET: f32 = 6.0;
 
 const SLIDER_ROW_INSET: f32 = 4.0;
@@ -121,18 +120,14 @@ const STATUS_TOAST_FADE_OUT_SECONDS: f64 = 0.42;
 const STATUS_PROGRESS_GAP: f32 = 2.0;
 const CATALOG_PROGRESS_HOLD_SECONDS: f64 = 0.22;
 
-const TOP_TABS: [(Tab, TextKey); 4] = [
+const TOP_TABS: [(Tab, TextKey); 5] = [
     (Tab::Edit, TextKey::FaceMatch),
     (Tab::Morph, TextKey::DetailCorrection),
     (Tab::Texture, TextKey::TextureStage),
+    (Tab::Hair, TextKey::HairStage),
     (Tab::Result, TextKey::Save),
 ];
 
-/// How long the reset button keeps offering to take itself back.
-///
-/// Long enough to notice what just happened and reach for the mouse, short
-/// enough that the button is not lying about what it does the next time it is
-/// glanced at.
 const MORPH_RESET_UNDO_SECONDS: f64 = 3.0;
 
 fn offer_morph_reset_undo(ui: &Ui, id: Id) {
@@ -144,11 +139,6 @@ fn forget_morph_reset_undo(ui: &Ui, id: Id) {
     ui.data_mut(|data| data.remove::<f64>(id.with("undo-until")));
 }
 
-/// Is the reset still within its take-it-back window?
-///
-/// Someone who hits this by accident and does not know Ctrl+Z has no other way
-/// back, so the button offers itself as the way back — and names the shortcut
-/// underneath, which is how the shortcut gets learned.
 fn morph_reset_undo_is_offered(ui: &Ui, id: Id) -> bool {
     let until = ui.data(|data| data.get_temp::<f64>(id.with("undo-until")));
     let Some(until) = until else {
@@ -159,14 +149,11 @@ fn morph_reset_undo_is_offered(ui: &Ui, id: Id) -> bool {
         forget_morph_reset_undo(ui, id);
         return false;
     }
-    // Without this the label would sit on "undo" until some other event happened
-    // to repaint, which could be long after the offer has actually lapsed.
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_secs_f64((until - now).max(0.05)));
     true
 }
 
-/// A small shortcut caption directly under a control.
 fn paint_shortcut_hint_below(ui: &Ui, control: Rect, shortcut: &str) {
     ui.painter().text(
         pos2(control.center().x, control.bottom() + crate::theme::SPACE_1),
@@ -177,19 +164,10 @@ fn paint_shortcut_hint_below(ui: &Ui, control: Rect, shortcut: &str) {
     );
 }
 
-/// Whether a top tab can be entered right now.
-///
-/// Two of the four stand for a pair of inner tabs, so this cannot simply ask
-/// `tab_available`. It is shared by the click path and the number keys because a
-/// key that could enter a tab the button refuses would be a second, quieter set
-/// of rules.
 pub(crate) fn top_tab_available(state: &AppState, tab: Tab) -> bool {
-    // Every stage past the fit can start from the G2 template when no scan has
-    // been opened. The button has to say so, or the tab is reachable in state
-    // and unclickable in the interface.
     let base = match tab {
         Tab::Edit => state.tab_available(Tab::Alignment) || state.tab_available(Tab::Edit),
-        Tab::Morph | Tab::Texture | Tab::Result => {
+        Tab::Morph | Tab::Texture | Tab::Hair | Tab::Result => {
             state.tab_available(tab) || state.can_enter_detail_from_template()
         }
         other => state.tab_available(other),
@@ -197,7 +175,6 @@ pub(crate) fn top_tab_available(state: &AppState, tab: Tab) -> bool {
     base && (!state.busy() || visible_tab_is_active(state, tab))
 }
 
-/// Where a top tab actually lands, which is not always the tab itself.
 fn top_tab_target(state: &AppState, tab: Tab) -> Tab {
     if tab == Tab::Edit && !state.tab_available(Tab::Edit) {
         Tab::Alignment
@@ -206,19 +183,16 @@ fn top_tab_target(state: &AppState, tab: Tab) -> Tab {
     }
 }
 
-/// Number keys 1..4 pick the top tabs, in the order they are drawn.
-///
-/// Ignored while a text field has the keyboard, or the digits would be swallowed
-/// out of every search box and name field in the program.
 fn handle_top_tab_keys(ui: &Ui, state: &mut AppState) {
     if ui.ctx().egui_wants_keyboard_input() {
         return;
     }
-    const DIGITS: [egui::Key; 4] = [
+    const DIGITS: [egui::Key; 5] = [
         egui::Key::Num1,
         egui::Key::Num2,
         egui::Key::Num3,
         egui::Key::Num4,
+        egui::Key::Num5,
     ];
     let pressed = ui.input(|input| {
         DIGITS
@@ -419,19 +393,27 @@ fn pin_footer_buttons(footer: Rect) -> PinFooterButtons {
 }
 
 pub fn draw(root: &mut Ui, state: &mut AppState) {
+    crate::shortcuts::install(root.ctx(), &state.keymap);
     let wants_keyboard_input = root.ctx().egui_wants_keyboard_input();
 
+    let undo_pressed = Shortcut::Undo.pressed(root);
     let undo_requested = root.ctx().input(|input| {
         routes_global_undo(
             state.active_tab,
             input.modifiers.ctrl,
-            input.key_pressed(Shortcut::Undo.key()),
+            undo_pressed,
             wants_keyboard_input,
         )
     });
+    if Shortcut::Redo.pressed(root) {
+        state.dispatch(Action::Redo);
+    }
     if undo_requested {
         if state.is_detail_editing() {
             crate::viewport::clear_sculpt_pointer_stroke(root.ctx());
+        }
+        if state.is_hair_editing() {
+            crate::viewport::clear_hair_pointer_state(root.ctx());
         }
         state.dispatch(Action::Undo);
     }
@@ -442,6 +424,37 @@ pub fn draw(root: &mut Ui, state: &mut AppState) {
             state.dispatch(Action::SetSculptXSymmetry(!state.sculpt_x_symmetry));
         }
         None => {}
+    }
+
+    if state.is_hair_editing() && !wants_keyboard_input {
+        let tool = [
+            (
+                Shortcut::HairPlantTool,
+                crate::hair_project::HairTool::Plant,
+            ),
+            (Shortcut::HairGrowTool, crate::hair_project::HairTool::Grow),
+            (Shortcut::HairCutTool, crate::hair_project::HairTool::Cut),
+            (
+                Shortcut::HairEraseTool,
+                crate::hair_project::HairTool::Erase,
+            ),
+            (Shortcut::HairPuffTool, crate::hair_project::HairTool::Puff),
+            (
+                Shortcut::HairPinchTool,
+                crate::hair_project::HairTool::Pinch,
+            ),
+            (Shortcut::HairPickTool, crate::hair_project::HairTool::Pick),
+        ]
+        .into_iter()
+        .find_map(|(shortcut, tool)| shortcut.pressed(root).then_some(tool));
+        if let Some(tool) = tool {
+            state.dispatch(Action::SetHairTool(tool));
+        }
+        if Shortcut::HairMirrorPart.pressed(root)
+            && let Some(part_id) = state.hair_project.selected_part_id
+        {
+            state.dispatch(Action::MirrorHairPart(part_id));
+        }
     }
 
     let texture_tool_shortcut =
@@ -476,6 +489,8 @@ pub fn draw(root: &mut Ui, state: &mut AppState) {
     draw_texture_overwrite_confirmation(root, state);
     draw_package_replace_confirmation(root, state);
     draw_recovery_prompt(root, state);
+    draw_history_branch_prompt(root, state);
+    draw_hair_overwrite_prompt(root, state);
     draw_diagnostic_log_modal(root, state.locale);
     crate::settings::draw_settings_page(root, state);
     draw_window_resize_zones(root);
@@ -499,7 +514,7 @@ const fn routes_x_symmetry(
     match active_tab {
         Tab::Edit => Some(XSymmetryTarget::Pins),
         Tab::Morph | Tab::Texture => Some(XSymmetryTarget::Brush),
-        Tab::Alignment | Tab::Result => None,
+        Tab::Alignment | Tab::Hair | Tab::Result => None,
     }
 }
 
@@ -525,7 +540,7 @@ pub(crate) fn attention_frame_for(
     crate::ui_components::attention_pulse_now(ui, attention_target_id(target))
 }
 
-const fn routes_global_undo(
+pub(crate) const fn routes_global_undo(
     active_tab: Tab,
     ctrl_down: bool,
     z_pressed: bool,
@@ -536,7 +551,7 @@ const fn routes_global_undo(
         && !wants_keyboard_input
         && matches!(
             active_tab,
-            Tab::Alignment | Tab::Edit | Tab::Morph | Tab::Texture
+            Tab::Alignment | Tab::Edit | Tab::Morph | Tab::Texture | Tab::Hair
         )
 }
 
@@ -546,14 +561,13 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
         .frame(Frame::new().fill(COLOR_TOPBAR).stroke(Stroke::NONE))
         .show(root, |ui| {
             let rect = ui.max_rect();
-            // One layout, worked out once, then read from. Recomputing any of
-            // these rects here — or rebuilding the struct to hand onward — is
-            // how the capsule and the cell that makes room for it would come to
-            // disagree about where the title bar puts them.
             let caption = caption_layout(
                 rect,
-                title_locale_width(ui),
                 title_update_width(ui, state.locale),
+                Some(title_text_end(
+                    ui,
+                    brand_cell(rect, title_update_width(ui, state.locale)),
+                )),
             );
             let CaptionLayout {
                 bar_rect: _,
@@ -561,7 +575,6 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                 vam_rect,
                 tabs_rect,
                 tab_width,
-                locale_rect,
                 settings_rect,
                 controls_rect,
                 update_rect,
@@ -604,10 +617,6 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                     COLOR_MUTED
                 };
 
-                // Just the name. The digit used to sit in front of it to make
-                // the binding visible, but four numbers across the top of the
-                // window is a lot of furniture for a shortcut, and the tooltip
-                // says it just as well to anyone who goes looking.
                 let fitted = crate::ui_components::ellipsize_to_width(
                     ui,
                     label,
@@ -662,47 +671,17 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                     "before-tabs",
                 );
             }
-            if locale_rect.left() > tabs_rect.right() {
+            if settings_rect.left() > tabs_rect.right() {
                 title_drag_region(
                     ui,
                     Rect::from_min_max(
                         pos2(tabs_rect.right(), rect.top() + 6.0),
-                        pos2(locale_rect.left(), rect.bottom()),
+                        pos2(settings_rect.left(), rect.bottom()),
                     ),
                     "after-tabs",
                 );
             }
 
-            let mut selected_locale = state.locale;
-            ui.scope_builder(
-                UiBuilder::new()
-                    .max_rect(locale_rect)
-                    .layout(Layout::top_down(Align::Max)),
-                |ui| {
-                    set_capsule_widget_radius(ui);
-                    ui.spacing_mut().button_padding = vec2(7.0, 3.0);
-                    ui.visuals_mut().widgets.inactive.bg_fill = COLOR_BG;
-                    ui.visuals_mut().widgets.inactive.weak_bg_fill = COLOR_BG;
-                    ui.visuals_mut().widgets.hovered.bg_fill = COLOR_FIELD;
-                    ui.visuals_mut().widgets.active.bg_fill = COLOR_FIELD;
-                    ui.set_min_width(locale_rect.width());
-                    ComboBox::from_id_salt("vkit.locale")
-                        .width(locale_rect.width())
-                        .selected_text(selected_locale.selector_label())
-                        .show_ui(ui, |ui| {
-                            for locale in Locale::ALL {
-                                ui.selectable_value(
-                                    &mut selected_locale,
-                                    locale,
-                                    locale.selector_label(),
-                                );
-                            }
-                        });
-                },
-            );
-            if selected_locale != state.locale {
-                state.dispatch(Action::SetLocale(selected_locale));
-            }
             crate::settings::draw_settings_button(ui, state, settings_rect);
             publish_non_client_layout(ui, caption);
             draw_window_buttons(ui, state, controls_rect);
@@ -710,6 +689,7 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
 }
 
 mod asset_panels;
+pub(crate) mod hair_ui;
 pub(crate) use asset_panels::*;
 mod morph_list;
 mod window_chrome;
@@ -1052,8 +1032,6 @@ fn simplify_diagnostic_log(raw: &str, locale: Locale) -> String {
 
                 let message = match crate::i18n::log_event_label(locale, event) {
                     Some(label) => {
-                        // severity_tag has already traded the severity word for its mark,
-                        // and only INFO's mark is empty.
                         let is_failure = !tag.is_empty();
                         if is_failure && !detail.is_empty() {
                             format!("{label} — {detail}")
@@ -1368,6 +1346,7 @@ fn draw_inspector(root: &mut Ui, state: &mut AppState) {
             Tab::Edit => draw_edit_inspector(ui, state),
             Tab::Result => draw_result_inspector(ui, state),
             Tab::Morph | Tab::Texture => draw_morph_inspector(ui, state),
+            Tab::Hair => hair_ui::draw_hair_inspector(ui, state),
         });
 
     let divider_x = shown.response.rect.left();
@@ -1394,7 +1373,7 @@ fn draw_inspector(root: &mut Ui, state: &mut AppState) {
         let divider_color = if resize_response.dragged() {
             COLOR_PRIMARY
         } else {
-            COLOR_MUTED
+            COLOR_MUTED.gamma_multiply(0.55)
         };
         root.painter().vline(
             shown.response.rect.left(),
@@ -1570,10 +1549,6 @@ fn draw_edit_inspector(ui: &mut Ui, state: &mut AppState) {
                     TextKey::ContinueStep
                 };
                 let button = next_step_button(ui, buttons.generate, text(state.locale, step), true);
-                // Over, not under. This button fills its whole rect opaquely, so
-                // a glow laid down first was covered the instant it painted —
-                // the step that most wants pointing at was the one step that
-                // never pulsed.
                 if crate::guidance::next_step(state) == Some(crate::guidance::NextStep::Generate) {
                     guide_glow_over(ui, buttons.generate, capsule_radius_for(buttons.generate));
                 }
@@ -1600,10 +1575,38 @@ fn edit_source_section(ui: &mut Ui, state: &mut AppState) {
     set_capsule_widget_radius(ui);
     ui.spacing_mut().item_spacing.y = SPACE_2;
 
-    if let Some(scan_name) = state.scan_name().map(str::to_owned)
-        && ui.add(CapsuleFieldButton::new(&scan_name, true)).clicked()
-    {
-        state.dispatch(Action::RequestOpenScan);
+    if let Some(scan_name) = state.scan_name().map(str::to_owned) {
+        let slot = ui.add(CapsuleFieldButton::new(&scan_name, true));
+        let mark = Rect::from_center_size(
+            pos2(slot.rect.right() - UNLOAD_SCAN_INSET, slot.rect.center().y),
+            Vec2::splat(UNLOAD_SCAN_HIT),
+        );
+        let unload = ui
+            .interact(mark, Id::new("vkit.create.unload-scan"), Sense::click())
+            .on_hover_text(text(state.locale, TextKey::UnloadScanTooltip));
+        if unload.hovered() {
+            ui.painter().circle_filled(
+                mark.center(),
+                UNLOAD_SCAN_HIT * 0.5,
+                hover_fill(COLOR_FIELD),
+            );
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        paint_icon(
+            ui.painter(),
+            Rect::from_center_size(mark.center(), Vec2::splat(UNLOAD_SCAN_GLYPH)),
+            Icon::Cross,
+            if unload.hovered() {
+                COLOR_TEXT
+            } else {
+                COLOR_MUTED
+            },
+        );
+        if unload.clicked() {
+            state.dispatch(Action::UnloadScan);
+        } else if slot.clicked() && !unload.hovered() {
+            state.dispatch(Action::RequestOpenScan);
+        }
     }
 
     ui.allocate_ui_with_layout(
@@ -1815,13 +1818,6 @@ fn vam_edit_source_row(
     );
     paint_list_row_highlight(ui, rect, selected, response.hovered());
 
-    // A look with a few unresolved morph references is drawn like any other.
-    // We know one of its files is gone; we cannot know what that file would
-    // have contributed to the face, so there is nothing here to warn about
-    // that would not be guesswork -- and guesswork in the destructive colour,
-    // on row after row, buries the file path that the tooltip is for. The
-    // detail is in vkit.log. Only a look where nothing resolves is dimmed:
-    // that one certainly opens as the untouched base face.
     let label_ink = if resolves_nothing {
         COLOR_MUTED
     } else {
@@ -2184,7 +2180,7 @@ fn alignment_geometry_section(ui: &mut Ui, state: &mut AppState) {
         &mut restore,
         text(state.locale, TextKey::RestoreNeckEars),
         text(state.locale, TextKey::RestoreNeckEarsTooltip),
-        None,
+        crate::ui_components::NO_SHORTCUT,
     ) {
         state.dispatch(Action::SetRestoreNeckEars(restore));
     }
@@ -2212,7 +2208,7 @@ fn edit_view_section(ui: &mut Ui, state: &mut AppState) {
         &mut numbers,
         text(state.locale, TextKey::Numbers),
         text(state.locale, TextKey::NumbersTooltip),
-        None,
+        crate::ui_components::NO_SHORTCUT,
     ) {
         state.dispatch(Action::TogglePinNumbers(numbers));
     }
@@ -2227,7 +2223,7 @@ fn edit_pins_section(ui: &mut Ui, state: &mut AppState) {
         &mut mirror,
         text(state.locale, TextKey::XMirror),
         text(state.locale, TextKey::XMirrorTooltip),
-        Some(crate::shortcuts::Shortcut::XSymmetry.label()),
+        Some(crate::shortcuts::Shortcut::XSymmetry.label_now(ui)),
     ) {
         state.dispatch(Action::ToggleXMirror(mirror));
     }
@@ -2245,6 +2241,7 @@ fn draw_result_inspector(ui: &mut Ui, state: &mut AppState) {
             let sections = [
                 (SaveSection::Morph, TextKey::MorphSave),
                 (SaveSection::Texture, TextKey::TextureSaveSection),
+                (SaveSection::Hair, TextKey::HairExportSection),
                 (SaveSection::Package, TextKey::PackageSection),
             ];
             let selected = sections
@@ -2275,6 +2272,7 @@ fn draw_result_inspector(ui: &mut Ui, state: &mut AppState) {
             match state.save_section {
                 SaveSection::Morph => draw_morph_export_section(ui, state),
                 SaveSection::Texture => crate::texture_ui::draw_texture_export_section(ui, state),
+                SaveSection::Hair => crate::ui::hair_ui::draw_hair_export_section(ui, state),
                 SaveSection::Package => draw_package_section(ui, state),
             }
         },
@@ -2300,6 +2298,7 @@ fn draw_morph_export_section(ui: &mut Ui, state: &mut AppState) {
                 .color(COLOR_WARNING),
         );
     }
+    draw_saved_path_link(ui, state, SaveSection::Morph);
     section_end(ui);
 }
 
@@ -2314,6 +2313,37 @@ fn hint_with_requirement(locale: Locale, hint: TextKey, required: bool) -> Strin
 
 fn without_verbatim_prefix(path: &str) -> &str {
     path.strip_prefix(r"\\?\").unwrap_or(path)
+}
+
+pub(crate) fn draw_saved_path_link(ui: &mut Ui, state: &AppState, section: SaveSection) {
+    let Some(saved) = state.last_saved_paths.get(&section) else {
+        return;
+    };
+    ui.add_space(SPACE_3);
+    ui.label(
+        RichText::new(text(state.locale, TextKey::PackageSavedTo))
+            .size(FONT_XS)
+            .color(COLOR_MUTED),
+    );
+    let shown = saved.display().to_string();
+    let link = ui.add(
+        egui::Label::new(
+            RichText::new(without_verbatim_prefix(&shown))
+                .size(FONT_XS)
+                .color(COLOR_WARNING)
+                .underline(),
+        )
+        .sense(Sense::click()),
+    );
+    if link.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if link.clicked()
+        && let Some(folder) = saved.parent()
+    {
+        let folder = folder.display().to_string();
+        crate::settings::open_with_shell(without_verbatim_prefix(&folder));
+    }
 }
 
 const VAM_METADATA_GROUP_ID: &str = "vkit.vam-metadata.group";
@@ -2368,7 +2398,7 @@ fn draw_vam_export_metadata(ui: &mut Ui, state: &mut AppState) {
             &mut pose_control,
             text(state.locale, TextKey::VaMMetadataPoseMorph),
             text(state.locale, TextKey::VaMMetadataPoseMorphTooltip),
-            None,
+            crate::ui_components::NO_SHORTCUT,
         ) {
             state.dispatch(Action::SetVaMExportIsPoseControl(pose_control));
         }
@@ -2378,7 +2408,7 @@ fn draw_vam_export_metadata(ui: &mut Ui, state: &mut AppState) {
             &mut bone_correction,
             text(state.locale, TextKey::VaMMetadataBoneCorrection),
             text(state.locale, TextKey::VaMMetadataBoneCorrectionTooltip),
-            None,
+            crate::ui_components::NO_SHORTCUT,
         ) {
             state.dispatch(Action::SetVaMExportBoneCorrection(bone_correction));
         }
@@ -2630,7 +2660,7 @@ pub(crate) fn toggle_option_row(
     on: &mut bool,
     label: &str,
     tooltip: &str,
-    shortcut: Option<&str>,
+    shortcut: Option<impl Into<String>>,
 ) -> bool {
     ui.allocate_ui_with_layout(
         vec2(ui.available_width().max(0.0), CONTROL_HEIGHT),
@@ -2729,21 +2759,77 @@ fn draw_export_toast(root: &mut Ui, state: &AppState, viewport: Rect) {
     );
 }
 
-pub(crate) fn title_locale_width(ui: &Ui) -> f32 {
-    let widest = Locale::ALL
-        .iter()
-        .map(|locale| {
-            ui.painter()
-                .layout_no_wrap(
-                    locale.selector_label().to_owned(),
-                    egui::FontId::proportional(crate::theme::FONT_BODY),
-                    COLOR_TEXT,
-                )
-                .size()
-                .x
-        })
-        .fold(0.0_f32, f32::max);
-    (widest + TITLE_LOCALE_CHROME).clamp(TITLE_LOCALE_WIDTH, TITLE_LOCALE_MAX_WIDTH)
+enum ConfirmChoice {
+    Confirmed,
+    Cancelled,
+}
+
+fn confirm_modal(
+    root: &Ui,
+    id: &'static str,
+    max_width: f32,
+    locale: Locale,
+    title: &str,
+    body: impl FnOnce(&mut Ui),
+    confirm: impl FnOnce(&mut Ui, f32) -> Response,
+) -> Option<ConfirmChoice> {
+    let pointer_up = root.ctx().input(|input| !input.pointer.any_down());
+    let armed_id = Id::new(id).with("armed");
+    let armed = root.ctx().data_mut(|data| {
+        let armed: &mut bool = data.get_temp_mut_or(armed_id, false);
+        let listening = *armed;
+        *armed |= pointer_up;
+        listening
+    });
+    let modal = egui::Modal::new(Id::new(id))
+        .frame(
+            Frame::new()
+                .fill(crate::theme::COLOR_MODAL_SURFACE)
+                .stroke(Stroke::NONE)
+                .corner_radius(CONTROL_RADIUS)
+                .inner_margin(Margin::same(18)),
+        )
+        .show(root.ctx(), |ui| {
+            ui.set_width(
+                max_width
+                    .min(root.ctx().content_rect().width() - 48.0)
+                    .max(0.0),
+            );
+            ui.label(
+                RichText::new(title)
+                    .size(SECTION_LABEL_FONT_SIZE)
+                    .strong()
+                    .color(COLOR_TEXT),
+            );
+            body(ui);
+            ui.add_space(SPACE_4);
+            let spacing = ui.spacing().item_spacing.x;
+            let width = ((ui.available_width() - spacing).max(0.0) * 0.5).max(0.0);
+            ui.horizontal(|ui| {
+                let cancel = ui.add_sized(
+                    [width, CONTROL_HEIGHT],
+                    Button::new(text(locale, TextKey::Cancel)).corner_radius(ACTION_RADIUS),
+                );
+                let confirm = confirm(ui, width);
+                (cancel.clicked(), confirm.clicked())
+            })
+            .inner
+        });
+    let (cancelled, confirmed) = modal.inner;
+    if !armed {
+        return None;
+    }
+    let choice = if confirmed {
+        Some(ConfirmChoice::Confirmed)
+    } else if cancelled || modal.should_close() {
+        Some(ConfirmChoice::Cancelled)
+    } else {
+        None
+    };
+    if choice.is_some() {
+        root.ctx().data_mut(|data| data.remove::<bool>(armed_id));
+    }
+    choice
 }
 
 fn draw_recovery_prompt(root: &mut Ui, state: &mut AppState) {
@@ -2803,6 +2889,78 @@ fn draw_recovery_prompt(root: &mut Ui, state: &mut AppState) {
     }
 }
 
+fn draw_hair_overwrite_prompt(root: &mut Ui, state: &mut AppState) {
+    if !state.pending_hair_overwrite {
+        return;
+    }
+    let locale = state.locale;
+    let choice = confirm_modal(
+        root,
+        "vkit.hair.overwrite-modal",
+        380.0,
+        locale,
+        text(locale, TextKey::HairOverwriteTitle),
+        |ui| {
+            ui.add_space(SPACE_3);
+            ui.label(RichText::new(text(locale, TextKey::HairOverwriteBody)).color(COLOR_MUTED));
+        },
+        |ui, width| {
+            ui.add_sized(
+                [width, CONTROL_HEIGHT],
+                Button::new(
+                    RichText::new(text(locale, TextKey::HairOverwriteProceed)).color(COLOR_TEXT),
+                )
+                .fill(COLOR_SURFACE_HOVER)
+                .stroke(Stroke::NONE)
+                .corner_radius(ACTION_RADIUS),
+            )
+        },
+    );
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ConfirmHairOverwrite),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::CancelHairOverwrite),
+        None => {}
+    }
+}
+
+fn draw_history_branch_prompt(root: &mut Ui, state: &mut AppState) {
+    if !state.pending_history_branch {
+        return;
+    }
+    let locale = state.locale;
+    let mut mute = false;
+    let choice = confirm_modal(
+        root,
+        "vkit.history.branch-modal",
+        320.0,
+        locale,
+        text(locale, TextKey::HistoryBranchTitle),
+        |ui| {
+            ui.add_space(SPACE_3);
+            let mut checked = false;
+            if ui
+                .add(egui::Checkbox::new(
+                    &mut checked,
+                    RichText::new(text(locale, TextKey::DoNotShowAgain)).color(COLOR_MUTED),
+                ))
+                .clicked()
+                && checked
+            {
+                mute = true;
+            }
+        },
+        |ui, width| destructive_button(ui, width, text(locale, TextKey::HistoryBranchProceed)),
+    );
+    if mute {
+        state.dispatch(Action::MuteHistoryBranchWarning);
+    }
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ConfirmHistoryBranch),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::CancelHistoryBranch),
+        None => {}
+    }
+}
+
 fn draw_overwrite_confirmation(root: &mut Ui, state: &mut AppState) {
     let Some(path) = state.pending_overwrite_path.clone() else {
         return;
@@ -2812,26 +2970,13 @@ fn draw_overwrite_confirmation(root: &mut Ui, state: &mut AppState) {
         paths.push(path);
     }
     let locale = state.locale;
-    let modal = egui::Modal::new(Id::new("vkit.overwrite.modal"))
-        .frame(
-            Frame::new()
-                .fill(COLOR_SURFACE_RAISED)
-                .stroke(Stroke::NONE)
-                .corner_radius(CONTROL_RADIUS)
-                .inner_margin(Margin::same(18)),
-        )
-        .show(root.ctx(), |ui| {
-            ui.set_width(
-                360.0_f32
-                    .min(root.ctx().content_rect().width() - 48.0)
-                    .max(0.0),
-            );
-            ui.label(
-                RichText::new(text(locale, TextKey::OverwriteTitle))
-                    .size(SECTION_LABEL_FONT_SIZE)
-                    .strong()
-                    .color(COLOR_TEXT),
-            );
+    let choice = confirm_modal(
+        root,
+        "vkit.overwrite.modal",
+        360.0,
+        locale,
+        text(locale, TextKey::OverwriteTitle),
+        |ui| {
             ui.add_space(SPACE_3);
             ui.label(RichText::new(text(locale, TextKey::OverwriteBody)).color(COLOR_MUTED));
             ui.add_space(SPACE_3);
@@ -2847,24 +2992,13 @@ fn draw_overwrite_confirmation(root: &mut Ui, state: &mut AppState) {
                 )
                 .on_hover_text(readable_windows_path(path));
             }
-            ui.add_space(SPACE_4);
-            let spacing = ui.spacing().item_spacing.x;
-            let width = ((ui.available_width() - spacing).max(0.0) * 0.5).max(0.0);
-            ui.horizontal(|ui| {
-                let cancel = ui.add_sized(
-                    [width, CONTROL_HEIGHT],
-                    Button::new(text(locale, TextKey::Cancel)).corner_radius(ACTION_RADIUS),
-                );
-                let overwrite = destructive_button(ui, width, text(locale, TextKey::Overwrite));
-                (cancel.clicked(), overwrite.clicked())
-            })
-            .inner
-        });
-    let (cancel, confirm) = modal.inner;
-    if confirm {
-        state.dispatch(Action::ConfirmOverwrite);
-    } else if cancel || modal.should_close() {
-        state.dispatch(Action::CancelOverwrite);
+        },
+        |ui, width| destructive_button(ui, width, text(locale, TextKey::Overwrite)),
+    );
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ConfirmOverwrite),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::CancelOverwrite),
+        None => {}
     }
 }
 
@@ -2881,48 +3015,24 @@ fn draw_texture_overwrite_confirmation(root: &mut Ui, state: &mut AppState) {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .collect();
-    let modal = egui::Modal::new(Id::new("vkit.texture.overwrite"))
-        .frame(
-            Frame::new()
-                .fill(COLOR_SURFACE_RAISED)
-                .stroke(Stroke::NONE)
-                .corner_radius(CONTROL_RADIUS)
-                .inner_margin(Margin::same(18)),
-        )
-        .show(root.ctx(), |ui| {
-            ui.set_width(
-                420.0_f32
-                    .min(root.ctx().content_rect().width() - 48.0)
-                    .max(0.0),
-            );
-            ui.label(
-                RichText::new(text(locale, TextKey::TextureOverwriteTitle))
-                    .size(SECTION_LABEL_FONT_SIZE)
-                    .strong()
-                    .color(COLOR_TEXT),
-            );
+    let choice = confirm_modal(
+        root,
+        "vkit.texture.overwrite",
+        420.0,
+        locale,
+        text(locale, TextKey::TextureOverwriteTitle),
+        |ui| {
             ui.add_space(SPACE_2);
             for name in doomed.iter().take(8) {
                 ui.label(RichText::new(name).color(COLOR_MUTED).size(FONT_XS));
             }
-            ui.add_space(SPACE_4);
-            let spacing = ui.spacing().item_spacing.x;
-            let width = ((ui.available_width() - spacing).max(0.0) * 0.5).max(0.0);
-            ui.horizontal(|ui| {
-                let cancel = ui.add_sized(
-                    [width, CONTROL_HEIGHT],
-                    Button::new(text(locale, TextKey::Cancel)).corner_radius(ACTION_RADIUS),
-                );
-                let confirm = destructive_button(ui, width, text(locale, TextKey::Save));
-                (cancel.clicked(), confirm.clicked())
-            })
-            .inner
-        });
-    let (cancel, confirm) = modal.inner;
-    if confirm {
-        state.dispatch(Action::ConfirmTextureOverwrite);
-    } else if cancel || modal.should_close() {
-        state.dispatch(Action::CancelTextureOverwrite);
+        },
+        |ui, width| destructive_button(ui, width, text(locale, TextKey::Save)),
+    );
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ConfirmTextureOverwrite),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::CancelTextureOverwrite),
+        None => {}
     }
 }
 
@@ -2931,53 +3041,29 @@ fn draw_symmetry_change_confirmation(root: &mut Ui, state: &mut AppState) {
         return;
     }
     let locale = state.locale;
-    let modal = egui::Modal::new(Id::new("vkit.symmetry.confirm"))
-        .frame(
-            Frame::new()
-                .fill(COLOR_SURFACE_RAISED)
+    let choice = confirm_modal(
+        root,
+        "vkit.symmetry.confirm",
+        380.0,
+        locale,
+        text(locale, TextKey::SymmetryChangeTitle),
+        |_ui| {},
+        |ui, width| {
+            ui.add_sized(
+                [width, CONTROL_HEIGHT],
+                Button::new(
+                    RichText::new(text(locale, TextKey::SymmetryChangeConfirm)).color(COLOR_TEXT),
+                )
+                .fill(COLOR_DESTRUCTIVE)
                 .stroke(Stroke::NONE)
-                .corner_radius(CONTROL_RADIUS)
-                .inner_margin(Margin::same(18)),
-        )
-        .show(root.ctx(), |ui| {
-            ui.set_width(
-                380.0_f32
-                    .min(root.ctx().content_rect().width() - 48.0)
-                    .max(0.0),
-            );
-            ui.label(
-                RichText::new(text(locale, TextKey::SymmetryChangeTitle))
-                    .size(SECTION_LABEL_FONT_SIZE)
-                    .strong()
-                    .color(COLOR_TEXT),
-            );
-            ui.add_space(SPACE_4);
-            let spacing = ui.spacing().item_spacing.x;
-            let width = ((ui.available_width() - spacing).max(0.0) * 0.5).max(0.0);
-            ui.horizontal(|ui| {
-                let cancel = ui.add_sized(
-                    [width, CONTROL_HEIGHT],
-                    Button::new(text(locale, TextKey::Cancel)).corner_radius(ACTION_RADIUS),
-                );
-                let confirm = ui.add_sized(
-                    [width, CONTROL_HEIGHT],
-                    Button::new(
-                        RichText::new(text(locale, TextKey::SymmetryChangeConfirm))
-                            .color(COLOR_TEXT),
-                    )
-                    .fill(COLOR_DESTRUCTIVE)
-                    .stroke(Stroke::NONE)
-                    .corner_radius(ACTION_RADIUS),
-                );
-                (cancel.clicked(), confirm.clicked())
-            })
-            .inner
-        });
-    let (cancel, confirm) = modal.inner;
-    if confirm {
-        state.dispatch(Action::ConfirmScanSymmetry);
-    } else if cancel || modal.should_close() {
-        state.dispatch(Action::CancelScanSymmetry);
+                .corner_radius(ACTION_RADIUS),
+            )
+        },
+    );
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ConfirmScanSymmetry),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::CancelScanSymmetry),
+        None => {}
     }
 }
 
@@ -3027,7 +3113,15 @@ fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
                     ui.add_space(MORPH_FILTER_LIST_GAP);
                     if state.morph_look_find_open {
                         set_capsule_widget_radius(ui);
-                        draw_vam_edit_source_picker(ui, state, None);
+                        let available = ui.available_height().max(0.0);
+                        let list_height = (available * 0.5).max(VAM_EDIT_SOURCE_MIN_LIST_HEIGHT);
+                        draw_vam_edit_source_picker(ui, state, Some(list_height));
+                        ui.add_space(SPACE_2);
+                        crate::appearance_layer_ui::draw_appearance_layers(
+                            ui,
+                            state,
+                            ui.available_height().max(0.0),
+                        );
                     } else {
                         ui.add_space(SPACE_3);
 
@@ -3095,7 +3189,7 @@ fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
             let undo = crate::ui_components::tooltip(
                 undo,
                 text(state.locale, TextKey::Undo),
-                Some(crate::shortcuts::Shortcut::Undo.label()),
+                Some(crate::shortcuts::Shortcut::Undo.label_now(ui)),
             );
             if undo.clicked() {
                 state.dispatch(Action::Undo);
@@ -3253,7 +3347,7 @@ fn draw_face_morph_list(ui: &mut Ui, state: &mut AppState) {
                     .unwrap_or(control.value);
                 (
                     control.id.clone(),
-                    morph_label_for(state.morph_name_locale(), &control.id, &control.label)
+                    morph_label_for(state.vam_name_locale(), &control.id, &control.label)
                         .into_owned(),
                     value,
                     minimum as f32,
@@ -3322,11 +3416,6 @@ pub(crate) fn visible_morph_rows(state: &AppState) -> Vec<VisibleMorphRow> {
             .iter()
             .enumerate()
             .filter_map(|(index, control)| {
-                // Category, the modified-only pile and the left/right side all
-                // live in the library. This list used to decide them again on
-                // its own, which is why the left/right toggle appeared to do
-                // nothing: the flag was set and only the library's own filter
-                // read it, and nothing draws from that.
                 if !state.morph_library.control_passes_non_text_filters(control) {
                     return None;
                 }
@@ -3334,7 +3423,7 @@ pub(crate) fn visible_morph_rows(state: &AppState) -> Vec<VisibleMorphRow> {
                     return Some(VisibleMorphRow::Control(index));
                 }
                 let localized =
-                    morph_label_for(state.morph_name_locale(), &control.id, &control.label);
+                    morph_label_for(state.vam_name_locale(), &control.id, &control.label);
                 let matches = localized_morph_query_matches(
                     &state.morph_library.query,
                     &localized,
@@ -3573,7 +3662,7 @@ fn draw_workspace(root: &mut Ui, state: &mut AppState) -> Rect {
         .show(root, |ui| match state.active_tab {
             Tab::Alignment => draw_alignment_workspace(ui, state),
             Tab::Edit => draw_edit_workspace(ui, state),
-            Tab::Result | Tab::Morph | Tab::Texture => draw_single_workspace(ui, state),
+            Tab::Result | Tab::Morph | Tab::Texture | Tab::Hair => draw_single_workspace(ui, state),
         })
         .response
         .rect
@@ -3598,6 +3687,7 @@ fn draw_single_workspace(ui: &mut Ui, state: &mut AppState) {
         Tab::Result => text(state.locale, TextKey::ResultPreview),
         Tab::Morph => text(state.locale, TextKey::DetailCorrection),
         Tab::Texture => text(state.locale, TextKey::TextureStage),
+        Tab::Hair => text(state.locale, TextKey::HairStage),
 
         Tab::Alignment | Tab::Edit => text(state.locale, TextKey::ResultPreview),
     };
@@ -3605,6 +3695,8 @@ fn draw_single_workspace(ui: &mut Ui, state: &mut AppState) {
 
     if state.is_detail_editing() {
         crate::viewport::draw_detail_workspace(ui, state, rect, title);
+    } else if state.is_hair_editing() {
+        crate::viewport::draw_hair_workspace(ui, state, rect, title);
     } else {
         crate::viewport::draw_result(ui, state, rect, title);
     }
@@ -3629,7 +3721,12 @@ const fn footer_primary_ink(enabled: bool, hovered: bool) -> Color32 {
     }
 }
 
-fn footer_primary_button(ui: &mut Ui, rect: Rect, label: &str, enabled: bool) -> Response {
+pub(crate) fn footer_primary_button(
+    ui: &mut Ui,
+    rect: Rect,
+    label: &str,
+    enabled: bool,
+) -> Response {
     let response = ui.interact(
         rect,
         ui.id().with("footer-primary-action"),
@@ -3671,7 +3768,7 @@ fn next_step_button(ui: &mut Ui, rect: Rect, label: &str, enabled: bool) -> Resp
     response
 }
 
-fn primary_action_rect(footer: Rect) -> Rect {
+pub(crate) fn primary_action_rect(footer: Rect) -> Rect {
     let height = PRIMARY_ACTION_HEIGHT.min((footer.height() - 16.0).max(0.0));
     Rect::from_min_size(
         pos2(footer.left(), footer.bottom() - 8.0 - height),
@@ -3680,7 +3777,9 @@ fn primary_action_rect(footer: Rect) -> Rect {
 }
 
 fn capsule_radius_for(rect: Rect) -> u8 {
-    (rect.height() * 0.5).clamp(0.0, u8::MAX as f32).round() as u8
+    crate::theme::capsule_radius(rect.height())
+        .clamp(0.0, f32::from(u8::MAX))
+        .round() as u8
 }
 
 pub(crate) fn paint_reset_capsule_button(
@@ -3829,12 +3928,6 @@ fn draw_package_contents(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
     let row = ui.available_width().max(0.0);
 
-    // Two routes, one choice. They used to be an independent switch beside an
-    // always-visible file list, so a package could ask for the current head
-    // *and* carry attachments -- and when the head had not been touched the
-    // export refused the whole thing with "identical to the loaded G2
-    // template". Picking one now means not the other, and the failure has
-    // nowhere left to come from.
     let from_head = state.package_from_this_head;
     let choice = crate::ui_components::animated_segmented_group(
         ui,
@@ -3888,11 +3981,6 @@ fn draw_package_contents(ui: &mut Ui, state: &mut AppState) {
     }
 }
 
-/// The attachments, as two lists that look like lists.
-///
-/// A bare run of rows under a button reads as "some rows happened"; a titled
-/// card with a count, a rule, and its own empty line reads as a place things
-/// were put. Same rows, but you can tell whether the file went in.
 fn draw_package_file_lists(ui: &mut Ui, state: &mut AppState, row: f32) {
     let locale = state.locale;
     let mut picked = None;
@@ -4190,41 +4278,15 @@ fn draw_package_section(ui: &mut Ui, state: &mut AppState) {
         }
     }
 
-    if let Some(package) = state.last_package_path.clone() {
-        ui.add_space(SPACE_3);
-        ui.label(
-            RichText::new(text(state.locale, TextKey::PackageSavedTo))
-                .size(FONT_XS)
-                .color(COLOR_MUTED),
-        );
-        let shown = package.display().to_string();
-        let link = ui.add(
-            egui::Label::new(
-                RichText::new(without_verbatim_prefix(&shown))
-                    .size(FONT_XS)
-                    .color(COLOR_WARNING)
-                    .underline(),
-            )
-            .sense(Sense::click()),
-        );
-        if link.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-
+    if state.last_saved_paths.contains_key(&SaveSection::Package) {
+        draw_saved_path_link(ui, state, SaveSection::Package);
         ui.add_space(SPACE_2);
-
         ui.label(
             RichText::new(text(state.locale, TextKey::PackageNeedsVamRestart))
                 .size(FONT_BODY)
                 .strong()
                 .color(COLOR_WARNING),
         );
-        if link.clicked()
-            && let Some(folder) = package.parent()
-        {
-            let folder = folder.display().to_string();
-            crate::settings::open_with_shell(without_verbatim_prefix(&folder));
-        }
     }
     section_end(ui);
 }
@@ -4270,26 +4332,13 @@ fn draw_package_replace_confirmation(root: &mut Ui, state: &mut AppState) {
         return;
     };
     let locale = state.locale;
-    let modal = egui::Modal::new(Id::new("vkit.package.replace"))
-        .frame(
-            Frame::new()
-                .fill(COLOR_SURFACE_RAISED)
-                .stroke(Stroke::NONE)
-                .corner_radius(CONTROL_RADIUS)
-                .inner_margin(Margin::same(18)),
-        )
-        .show(root.ctx(), |ui| {
-            ui.set_width(
-                360.0_f32
-                    .min(root.ctx().content_rect().width() - 48.0)
-                    .max(0.0),
-            );
-            ui.label(
-                RichText::new(text(locale, TextKey::PackageReplaceTitle))
-                    .size(SECTION_LABEL_FONT_SIZE)
-                    .strong()
-                    .color(COLOR_TEXT),
-            );
+    let choice = confirm_modal(
+        root,
+        "vkit.package.replace",
+        360.0,
+        locale,
+        text(locale, TextKey::PackageReplaceTitle),
+        |ui| {
             ui.add_space(SPACE_3);
             ui.label(RichText::new(text(locale, TextKey::PackageReplaceBody)).color(COLOR_MUTED));
             ui.add_space(SPACE_3);
@@ -4307,24 +4356,13 @@ fn draw_package_replace_confirmation(root: &mut Ui, state: &mut AppState) {
                 )
                 .truncate(),
             );
-            ui.add_space(SPACE_4);
-            let spacing = ui.spacing().item_spacing.x;
-            let width = ((ui.available_width() - spacing).max(0.0) * 0.5).max(0.0);
-            ui.horizontal(|ui| {
-                let cancel = ui.add_sized(
-                    [width, CONTROL_HEIGHT],
-                    Button::new(text(locale, TextKey::Cancel)).corner_radius(ACTION_RADIUS),
-                );
-                let replace = destructive_button(ui, width, text(locale, TextKey::Overwrite));
-                (cancel.clicked(), replace.clicked())
-            })
-            .inner
-        });
-    let (cancel, confirm) = modal.inner;
-    if confirm {
-        state.dispatch(Action::ReplacePackage);
-    } else if cancel || modal.should_close() {
-        state.dispatch(Action::KeepPackage);
+        },
+        |ui, width| destructive_button(ui, width, text(locale, TextKey::Overwrite)),
+    );
+    match choice {
+        Some(ConfirmChoice::Confirmed) => state.dispatch(Action::ReplacePackage),
+        Some(ConfirmChoice::Cancelled) => state.dispatch(Action::KeepPackage),
+        None => {}
     }
 }
 
@@ -4418,11 +4456,30 @@ pub(crate) fn capsule_action(ui: &mut Ui, width: f32, label: &str, enabled: bool
     } else {
         crate::theme::disabled(COLOR_TEXT)
     };
-    paint_centred_capsule(ui, rect, label, fill, ink, CAPSULE_RADIUS);
+    let radius = crate::theme::capsule_radius(rect.height());
+    paint_centred_capsule_rounded(ui, rect, label, fill, ink, radius);
     if enabled {
-        control_affordances(ui, &response, rect, f32::from(CAPSULE_RADIUS));
+        control_affordances(ui, &response, rect, radius);
     }
     response
+}
+
+fn paint_centred_capsule_rounded(
+    ui: &Ui,
+    rect: Rect,
+    label: &str,
+    fill: Color32,
+    ink: Color32,
+    radius: f32,
+) {
+    ui.painter().rect_filled(rect, radius, fill);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(FONT_BODY),
+        ink,
+    );
 }
 
 fn paint_centred_capsule(

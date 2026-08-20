@@ -52,8 +52,7 @@ pub(super) const fn viewport_tool_panel_padding_y(panel: ViewportToolPanel) -> O
         | ViewportToolPanel::BaseView
         | ViewportToolPanel::Wireframe
         | ViewportToolPanel::Xray
-        | ViewportToolPanel::Skin
-        | ViewportToolPanel::Hair => Some(MINI_POPUP_CONTENT_INSET_Y),
+        | ViewportToolPanel::Skin => Some(MINI_POPUP_CONTENT_INSET_Y),
     }
 }
 

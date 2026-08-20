@@ -10,6 +10,111 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ResultPreview | TextKey::Save => "저장",
         TextKey::DetailCorrection => "조형",
         TextKey::TextureStage => "텍스처",
+        TextKey::HairStage => "헤어",
+        TextKey::HairUnavailable => "헤어를 편집하려면 먼저 조형 결과가 준비되어야 합니다",
+        TextKey::HairPartsPanel => "헤어 파트",
+        TextKey::AddHairPart => "파트 생성",
+        TextKey::HairScalpMissing => {
+            "두피 프로바이더 메쉬가 없습니다. VaM 루트를 열고 다시 스캔하세요"
+        }
+        TextKey::HairShowPoints => "포인트 보기",
+        TextKey::HairShowPointsHint => {
+            "두피의 심기 포인트를 표시합니다. 헤어만 보고 싶으면 끄면 됩니다 — 브러시는 어느 쪽이든 그대로 동작합니다."
+        }
+        TextKey::HairPartTint => "파트 색상화",
+        TextKey::HairPartTintHint => {
+            "파트마다 다른 틴트를 입혀 통합 스타일에서 어떤 가닥이 어느 파트인지 보이게 합니다. 표시 전용 — 내보내기에는 영향 없습니다."
+        }
+        TextKey::HairSettingsPanel => "헤어 설정",
+        TextKey::HairCreateFirst => "헤어를 생성하세요.",
+        TextKey::HairHideStrands => "머리카락 숨기기",
+        TextKey::HairHideStrandsHint => {
+            "자라난 머리카락을 걷어 스트림만 볼 수 있게 합니다. 켜면 스트림 보기도 함께 켜집니다."
+        }
+        TextKey::HairShowStreams => "헤어 스트림 보기",
+        TextKey::HairShowStreamsHint => {
+            "실제로 편집하는 가닥을, 거기서 자라난 머리카락 위에 그립니다."
+        }
+        TextKey::HairViewportPhysics => "뷰포트 물리효과",
+        TextKey::HairViewportPhysicsHint => {
+            "화면에서 물리효과를 미리보기합니다. 내보내기와는 관련없습니다."
+        }
+        TextKey::HairMirrorEdit => "미러 편집",
+        TextKey::HairMirrorEditHint => "브러시가 좌우 대칭으로 양쪽을 동시에 편집합니다.",
+        TextKey::HairAutoPart => "파트 자동 편집",
+        TextKey::HairAutoPartHint => "활성 레이어 대신, 커서 아래에서 인지된 파트만 편집합니다.",
+        TextKey::HairExportSection => "헤어 저장",
+        TextKey::HairExportBothSexes => "공용",
+        TextKey::HairExportRescanNotice => {
+            "VaM - Hair - Rescan Files를 눌러야 헤어 목록에 반영됩니다"
+        }
+        TextKey::HairExportOverwroteNotice => {
+            "덮어쓴 썸네일은 Hard Reset 또는 VaM 재시작 시 반영됩니다"
+        }
+        TextKey::HairSimToggleHint => {
+            "뷰포트와 게임 양쪽에서 헤어 물리를 돌립니다 -- 중력, 강성, 클링."
+        }
+        TextKey::HairCollisionToggleHint => "시뮬레이션 중 머리카락이 머리·몸을 뚫지 않게 합니다.",
+        TextKey::HairStyleJoints => "스타일 조인트",
+        TextKey::HairStyleJointsHint => {
+            "가까운 가닥끼리 스프링으로 묶어 게임에서 형태를 유지합니다 — 밀착(Cling)이 조절하는 대상입니다. 긴 머리·묶은 머리용이며 파일이 커지므로 짧은 머리는 끄는 게 좋습니다."
+        }
+        TextKey::HairThumbnailPrompt => "카메라 앵글을 맞추고 클릭하세요",
+        TextKey::HairThumbnailShoot => "촬영",
+        TextKey::HairThumbnailSkip => "건너뛰기",
+        TextKey::HairThumbnailSaved => "썸네일 저장됨",
+        TextKey::HairThumbnailFailed => "썸네일 저장 실패",
+        TextKey::HairGameOnly => {
+            "물리 설정: 뷰포트는 시뮬레이션을 돌리지 않아 VaM에서만 반영됩니다. 스타일에는 그대로 내보내집니다."
+        }
+        TextKey::HairPartVisible => "이 헤어 파트 표시/숨김",
+        TextKey::RemoveHairPart => "헤어 파트 제거",
+        TextKey::HairRenamePart => "클릭해서 이름 바꾸기",
+        TextKey::HairToolPlant => "심기",
+        TextKey::HairToolErase => "지우기",
+        TextKey::HairToolGrow => "기르기 (Alt로 줄이기)",
+        TextKey::HairToolComb => "빗질",
+        TextKey::HairToolPlantHint => "브러시 아래 두피 정점에 머리카락을 심습니다",
+        TextKey::HairToolGrowHint => "브러시 아래 가닥을 늘립니다. Alt를 누르면 줄어듭니다",
+        TextKey::HairToolEraseHint => "브러시 아래 가닥을 지웁니다",
+        TextKey::HairToolCombHint => "브러시 아래 가닥을 끌어 다듬습니다. 뿌리는 고정됩니다",
+        TextKey::HairToolPinch => "모으기",
+        TextKey::HairToolPinchHint => "브러시 아래 머리카락을 모읍니다. Alt로 펼칩니다",
+        TextKey::HairToolCut => "자르기",
+        TextKey::HairToolCutHint => "브러시로 그은 자리에서 머리카락을 끊습니다",
+        TextKey::HairToolPuff => "부풀리기",
+        TextKey::HairToolPuffHint => "브러시 아래 머리카락을 피부에서 세웁니다. Alt로 눕힙니다",
+        TextKey::HairCopySettings => "전체 복사",
+        TextKey::HairPasteSettings => "전체 붙여넣기",
+        TextKey::HairGroupPerformance => "성능",
+        TextKey::HairGroupPhysics => "물리",
+        TextKey::HairGroupStiffness => "탄력",
+        TextKey::HairGroupShape => "형태",
+        TextKey::HairGroupCurl => "컬",
+        TextKey::HairGroupLook => "외형",
+        TextKey::HairColorScalp => "두피",
+        TextKey::HairColorRoot => "뿌리",
+        TextKey::HairColorTip => "끝",
+        TextKey::HairColorSpecular => "광택",
+        TextKey::HairScalpMask => "두피 텍스처",
+        TextKey::HairScalpMaskBuiltIn => "기본 제공",
+        TextKey::HairScalpMaskCustom => "파일에서...",
+        TextKey::HairExport => "VaM으로 내보내기",
+        TextKey::HairExportName => "헤어 프리셋 이름",
+        TextKey::HairExportCreator => "제작자",
+        TextKey::HairExportNeedsMetadata => "헤어 프리셋 이름과 제작자를 채워주세요",
+        TextKey::HairOverwriteTitle => "이 스타일을 덮어쓸까요",
+        TextKey::HairOverwriteBody => {
+            "같은 이름과 제작자의 스타일이 이미 설치되어 있습니다. 내보내면 기존 설치를 지우고 새로 씁니다. 썸네일은 Hard Reset 또는 VaM 재시작 시 반영됩니다."
+        }
+        TextKey::HairOverwriteProceed => "덮어쓰기",
+        TextKey::HairExportDone => "헤어 아이템 저장됨",
+        TextKey::HairExportFailed => "헤어 내보내기 실패",
+        TextKey::HairExportNeedsPart => "가닥이 있는 헤어 파트를 먼저 선택하세요",
+        TextKey::HairExportNeedsVaMRoot => "내보내기 전에 VaM 루트를 설정하세요",
+        TextKey::HairMirrorPart => "파트를 반대편으로 반전",
+        TextKey::HairDuplicatePart => "파트 복제",
+        TextKey::HairSegmentsShort => "마디",
         TextKey::MorphCategoryBody => "몸",
         TextKey::TextureNamePlaceholder => "텍스처 이름을 입력하세요",
         TextKey::TextureOverwriteTitle => "같은 이름의 텍스처를 덮어씁니다",
@@ -64,6 +169,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::Undo => "실행 취소",
         TextKey::ResetAllPins => "전체 핀 초기화",
+        TextKey::ResetAll => "전체 초기화",
         TextKey::MorphSave => "모프 저장",
         TextKey::TextureSaveSection => "텍스처 저장",
         TextKey::Generate => "얼굴 맞추기",
@@ -85,7 +191,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ViewportWireframeTooltip => "와이어프레임 오버레이 표시 및 조정",
         TextKey::ViewportXrayTooltip => "X-ray 오버레이 표시 및 조정",
         TextKey::ViewportSkinTooltip => "VaM 스킨 텍스처 선택",
-        TextKey::ViewportHairTooltip => "VaM 헤어 프리셋 선택",
         TextKey::FalloffTooltip => "브러시 영향 곡선을 선택합니다",
         TextKey::FalloffSmooth => "부드럽게",
         TextKey::FalloffSmoother => "더 부드럽게",
@@ -124,6 +229,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::PinPrompt => "각각 핀을 배치하거나, 핀 없이 진행합니다",
         TextKey::TextureNeedsImage => "사이드탭에서 이미지를 추가하세요",
         TextKey::TexturePinPairPrompt => "좌우에 짝이 되는 핀을 찍어 매칭하세요",
+        TextKey::TextureToolNeedsPins => "핀을 먼저 배치해야 쓸 수 있습니다",
         TextKey::SymmetrySuggestion => "원활한 매칭을 위해 좌우대칭을 추천합니다",
         TextKey::SymmetryChangeTitle => "핀이 초기화됩니다",
         TextKey::SymmetryChangeConfirm => "확인",
@@ -157,10 +263,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SkinLoadFailed => "스킨 불러오기 실패",
         TextKey::SkinUvUnavailable => "스킨 UV 사용 불가",
         TextKey::NoMatchingSkins => "일치하는 스킨 없음",
-        TextKey::Hair => "헤어",
-        TextKey::HairNone => "없음",
         TextKey::HairSearch => "헤어 검색",
-        TextKey::HairLoading => "헤어 불러오는 중",
         TextKey::HairReady => "헤어 미리보기 준비됨",
         TextKey::HairLoadFailed => "헤어 불러오기 실패",
         TextKey::HairPartsSkipped => "일부 파트를 제외하고 표시했습니다",
@@ -171,6 +274,12 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsViewport => "뷰포트",
         TextKey::SettingsGeneral => "일반",
         TextKey::SettingsAbout => "정보",
+        TextKey::SettingsShortcuts => "단축키",
+        TextKey::ShortcutsCapturing => "누르세요…",
+        TextKey::ShortcutsResetAll => "모든 단축키 초기화",
+        TextKey::ShortcutsExport => "키맵 파일로 저장",
+        TextKey::ShortcutsImport => "키맵 파일 불러오기",
+        TextKey::ShortcutsTaken => "이미 다른 기능이 쓰는 키입니다",
         TextKey::SettingsAboutBuild => "빌드",
         TextKey::SettingsAboutLicense => "라이선스",
         TextKey::SettingsAboutDiagnostics => "진단",
@@ -210,21 +319,26 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsLanguage => "표시 언어",
         TextKey::SettingsFoldersGroup => "폴더",
         TextKey::SettingsVaMRoot => "VaM 설치 경로",
-        TextKey::HairVisible => "헤어 보기",
         TextKey::HairNeedsFinishedHead => "헤어는 완성된 머리에 착용합니다.",
-        TextKey::HairPreviewCaveat => "헤어 디테일은 실제와 다릅니다.",
         TextKey::NoMatchingHair => "일치하는 헤어 없음",
         TextKey::MorphSearch => "모프 검색",
         TextKey::MorphOneSidedFilter => "좌/우",
         TextKey::MorphOneSidedFilterShow => "한쪽만 움직이는 좌우 모프 보기",
         TextKey::MorphOneSidedFilterHide => "한쪽만 움직이는 좌우 모프 숨기기",
         TextKey::AppearanceSearch => "외모 검색",
+        TextKey::AppearanceLayers => "외형 레이어",
+        TextKey::AddAppearanceLayer => "선택한 외형 추가",
+        TextKey::AppearanceLayersEmpty => "레이어 없음",
+        TextKey::AppearanceLayerRaise => "위로",
+        TextKey::AppearanceLayerLower => "아래로",
         TextKey::LookFind => "외형 불러오기",
-        TextKey::CameraTrackballArmed => {
-            "롤 회전 · 좌우 드래그로 화면 기울이기 · 클릭 또는 R로 종료"
-        }
+        TextKey::CameraTrackballArmed => "트랙볼 회전 · 드래그로 자유 회전 · 클릭 또는 R로 종료",
         TextKey::HelpTrackball => "트랙볼 회전",
         TextKey::ShortcutTrackball => "R",
+        TextKey::SplitModelViewTooltip => "두 각도에서 보기 — 뷰 나누기",
+        TextKey::SplitModelViewName => "화면 분할",
+        TextKey::HelpLevelRoll => "기울기(롤) 초기화",
+        TextKey::ShortcutLevelRoll => "Alt+R",
         TextKey::RecoveryTitle => "지난 세션이 비정상 종료되었습니다",
         TextKey::RecoveryBody => {
             "종료 직전의 모프·조형·텍스처 레이어가 저장되어 있습니다. 복구할지 선택해 주세요."
@@ -235,9 +349,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "그 세션의 외형이 아직 목록에 없습니다 — 텍스처는 복원됐고, 편집 내용은 외형을 선택하면 적용됩니다."
         }
-        TextKey::SettingsOcclusionGroup => "주변광 차폐",
-        TextKey::SettingsOcclusionIntensity => "세기",
-        TextKey::SettingsOcclusionRadius => "범위",
         TextKey::SettingsBloomGroup => "블룸",
         TextKey::SettingsBloomIntensity => "세기",
         TextKey::SettingsBloomThreshold => "임계값",
@@ -250,7 +361,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SculptNotCarried => "조형은 이 외형으로 옮겨오지 못했습니다",
         TextKey::SettingsToneCurve => "톤 커브",
         TextKey::SettingsToneCurveTooltip => "그림자와 하이라이트를 조정합니다",
-        TextKey::SettingsOcclusionTooltip => "맞닿은 면 사이에 그늘을 넣습니다",
         TextKey::SettingsVignetteTooltip => "화면 가장자리를 어둡게 합니다",
         TextKey::SettingsEffectEnabled => "사용",
         TextKey::SettingsInterfaceGroup => "인터페이스",
@@ -351,6 +461,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphUnavailable => "사용 가능한 결과 모프가 없습니다",
         TextKey::AlignmentPending => "스캔용 헤드를 불러오고 VaM 폴더를 지정하세요",
         TextKey::ScanLoaded => "스캔용 헤드 OBJ/GLB/FBX를 불러왔습니다",
+        TextKey::ScanUnloaded => "머리 파일을 뺐습니다. G2 베이스로 편집할 수 있습니다",
+        TextKey::PinPairsMismatched => "핀 개수가 일치하지 않습니다. 짝 없는 핀 번호",
+        TextKey::UnloadScanTooltip => "이 머리 파일 빼기",
         TextKey::TemplateLoaded => "G2를 불러왔습니다",
         TextKey::PinsReset => "전체 핀을 초기화했습니다",
         TextKey::ResultStale => "변경 사항이 있어 결과를 다시 생성해야 합니다",
@@ -406,6 +519,37 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutStandardViews => "넘패드 1~9",
         TextKey::ShortcutCameraProjection => "넘패드 .",
         TextKey::ShortcutUndo => "Ctrl+Z",
+        TextKey::HelpRedo => "다시 실행",
+        TextKey::ShortcutRedo => "Ctrl+Y",
+        TextKey::HairPresetSection => "헤어 프리셋",
+        TextKey::HairPresetLoad => "불러오기",
+        TextKey::HairToolPick => "레이어 고르기",
+        TextKey::HairToolPickHint => {
+            "뷰포트에서 가닥을 클릭하면 그 레이어가 활성으로 바뀝니다. 브러시는 다음 클릭부터 동작합니다."
+        }
+        TextKey::HelpHairPick => "커서 아래 레이어 선택",
+        TextKey::ShortcutHairPick => "V, 또는 아무 브러시에서 Ctrl + 클릭",
+        TextKey::HelpHairSmooth => "빗질 대신 다듬기",
+        TextKey::ShortcutHairSmooth => "빗질 중 Shift",
+        TextKey::HairGroupScalp => "두피",
+        TextKey::HairScalpAlpha => "두피 마스크",
+        TextKey::HairScalpPanel => "두피",
+        TextKey::HairScalpMesh => "두피 메쉬",
+        TextKey::HairScalpCreate => "두피 생성",
+        TextKey::HairScalpAbsent => "이 스타일에는 아직 두피 레이어가 없습니다.",
+        TextKey::HistoryBranchTitle => "앞서 작업한 내역이 사라집니다",
+        TextKey::HistoryBranchProceed => "진행",
+        TextKey::DoNotShowAgain => "다시 표시하지 않기",
+        TextKey::SurfaceBaseUnblended => "PBR 맵 일부를 VaM 스킨과 섞지 못했습니다",
+        TextKey::DetailEditRedone => "되돌린 편집을 다시 적용했습니다",
+        TextKey::ShortcutBrushSmaller => "브러시 크기 줄이기",
+        TextKey::ShortcutBrushLarger => "브러시 크기 키우기",
+        TextKey::ShortcutBrushSizeDrag => "브러시 크기 조절 (누른 채 좌우로)",
+        TextKey::ShortcutBrushStrengthDrag => "브러시 강도 조절 (누른 채 좌우로)",
+        TextKey::ShortcutStencilCancel => "스텐실 배치 취소",
+        TextKey::ShortcutViewOrbit => "뷰 궤도 회전 (드래그)",
+        TextKey::ShortcutViewPan => "뷰 평행 이동 (드래그)",
+        TextKey::ShortcutViewDolly => "뷰 확대·축소 (드래그)",
         TextKey::TemplatePending => "VaM 폴더를 지정하면 G2 베이스가 자동으로 준비됩니다",
         TextKey::ResultEmpty => "준비된 모프가 없습니다",
         TextKey::ScaleLink => "크기 비율 연동",
@@ -439,6 +583,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::SculptBrushSmoothTooltip => "표면 굴곡을 부드럽게 고릅니다",
         TextKey::SculptBrushRestoreTooltip => "베이스 형상으로 복구합니다",
+        TextKey::SculptBrushMask => "마스크",
+        TextKey::SculptBrushMaskTooltip => {
+            "선택한 외형 레이어를 깎아 아래 레이어가 드러나게 합니다. Alt로 되돌립니다"
+        }
         TextKey::TextureLayers => "텍스처 레이어",
         TextKey::PackageSection => "Var 내보내기",
         TextKey::PackageCreatorHint => "제작자",
@@ -579,5 +727,179 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::DialogAddTextureLayer => "텍스처 레이어 추가",
         TextKey::DialogSaveMorphPair => "VaM 모프 VMI + VMB 저장",
         TextKey::DialogChooseVamFolder => "Virt-A-Mate 폴더 선택",
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "Diffuse Color" => Some("두피 확산색"),
+        "Gloss" => Some("두피 광택"),
+        "Specular Intensity" => Some("두피 반사"),
+        "Diffuse Texture Offset" => Some("두피 텍스처 오프셋"),
+        "Alpha Adjust" => Some("두피 불투명도"),
+        "hairMultiplier" => Some("머리카락 개수"),
+        "curveDensity" => Some("머리카락 마디"),
+        "iterations" => Some("물리 정밀도"),
+        "simulationEnabled" => Some("물리효과"),
+        "collisionEnabled" => Some("충돌"),
+        "weight" => Some("무게"),
+        "drag" => Some("공기 저항"),
+        "gravityMultiplier" => Some("중력 배수"),
+        "collisionRadius" => Some("충돌 반경"),
+        "collisionRadiusRoot" => Some("충돌 반경(뿌리)"),
+        "friction" => Some("마찰"),
+        "bendResistance" => Some("굽힘 저항"),
+        "rootRigidity" => Some("뿌리 탄성"),
+        "mainRigidity" => Some("중간 탄성"),
+        "tipRigidity" => Some("끝 탄성"),
+        "jointRigidity" => Some("조인트 탄성"),
+        "rigidityRolloffPower" => Some("탄성 감쇠"),
+        "cling" => Some("스타일 응집"),
+        "clingRolloff" => Some("응집 감쇠"),
+        "snap" => Some("스냅"),
+        "usePaintedRigidity" => Some("칠한 탄성 사용"),
+        "width" => Some("굵기"),
+        "length1" => Some("길이 1"),
+        "length2" => Some("길이 2"),
+        "length3" => Some("길이 3"),
+        "maxSpread" => Some("최대 퍼짐"),
+        "spreadRoot" => Some("퍼짐(뿌리)"),
+        "spreadMid" => Some("퍼짐(중간)"),
+        "spreadTip" => Some("퍼짐(끝)"),
+        "spreadMidpoint" => Some("퍼짐 중점"),
+        "spreadCurvePower" => Some("퍼짐 곡선"),
+        "curlScale" => Some("컬 크기"),
+        "curlFrequency" => Some("컬 빈도"),
+        "curlScaleRandomness" => Some("컬 크기 랜덤"),
+        "curlFrequencyRandomness" => Some("컬 빈도 랜덤"),
+        "curlRoot" => Some("컬(뿌리)"),
+        "curlMid" => Some("컬(중간)"),
+        "curlTip" => Some("컬(끝)"),
+        "curlMidpoint" => Some("컬 중점"),
+        "curlCurvePower" => Some("컬 곡선"),
+        "curlX" => Some("컬 X"),
+        "curlY" => Some("컬 Y"),
+        "curlZ" => Some("컬 Z"),
+        "curlNormalAdjust" => Some("컬 법선 보정"),
+        "curlAllowReverse" => Some("역방향 허용"),
+        "curlAllowFlipAxis" => Some("축 반전 허용"),
+        "rootColor" => Some("뿌리 색"),
+        "tipColor" => Some("끝 색"),
+        "specularColor" => Some("광택 색"),
+        "colorRolloff" => Some("뿌리→끝 색 감쇠"),
+        "randomColorPower" => Some("랜덤 색 강도"),
+        "randomColorOffset" => Some("랜덤 색 오프셋"),
+        "primarySpecularSharpness" => Some("1차 광택"),
+        "secondarySpecularSharpness" => Some("2차 광택"),
+        "specularShift" => Some("2차 광택 이동"),
+        "diffuseSoftness" => Some("확산광 부드러움"),
+        "fresnelPower" => Some("프레넬 강도"),
+        "fresnelAttenuation" => Some("프레넬 감쇠"),
+        "IBLFactor" => Some("간접 조명"),
+        "normalRandomize" => Some("법선 랜덤"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "Diffuse Color" => Some(
+            "캡 자체의 디퓨즈 색. VaM은 흰색으로 내보내며, 그래야 아래의 스킨 시트가 비쳐 보입니다.",
+        ),
+        "Gloss" => Some("두피 캡이 드러나는 곳에서 얼마나 광택이 나는지."),
+        "Specular Intensity" => Some("두피 캡이 하이라이트를 얼마나 강하게 받는지."),
+        "Diffuse Texture Offset" => {
+            Some("캡의 디퓨즈 색에 더해지는 값입니다. 이름과 달리 시트 번호가 아닙니다.")
+        }
+        "Alpha Adjust" => Some(
+            "두피 캡이 얼마나 불투명한지. 대부분의 파트는 남의 캡을 쓰므로 맨 아래에 두어 캡을 감추고, 가르마에서 두피가 보여야 할 때만 올립니다.",
+        ),
+        "hairMultiplier" => Some(
+            "가이드 세 가닥 사이에 몇 가닥이 자라는지. 머리카락의 인상이자, 비용의 대부분입니다.",
+        ),
+        "curveDensity" => Some(
+            "가닥 하나를 몇 마디로 그리는지. 많을수록 매끄럽고 느립니다. 형태는 수가 커지기 훨씬 전에 읽힙니다.",
+        ),
+        "iterations" => Some(
+            "물리를 프레임마다 몇 번 풀어내는지. 높을수록 빠른 움직임에서도 형태가 흐트러지지 않고, 그만큼 무겁습니다.",
+        ),
+        "simulationEnabled" => Some("이 파트가 게임에서 움직이는지. 뷰포트 스위치와는 무관합니다."),
+        "collisionEnabled" => Some("이 파트의 가닥이 몸 밖으로 밀려나는지."),
+        "weight" => {
+            Some("가닥이 얼마나 무겁게 늘어지는지. 중력과, 움직임에 대한 저항을 함께 키웁니다.")
+        }
+        "drag" => Some("공기가 가닥을 얼마나 붙잡는지. 높으면 빨리 가라앉고 적게 흔들립니다."),
+        "gravityMultiplier" => Some("이 파트에 걸리는 중력. 장면 중력의 배수입니다."),
+        "collisionRadius" => Some("가닥이 충돌할 때의 두께, 길이 방향 전체."),
+        "collisionRadiusRoot" => Some("뿌리 부근의 두께. 나머지와 달라야 할 때 씁니다."),
+        "friction" => Some("닿은 것을 미끄러지지 않고 붙잡는 정도."),
+        "bendResistance" => Some("곧은 상태에서 휘어지는 데 저항하는 정도."),
+        "rootRigidity" => Some("뿌리 쪽이 스타일링된 형태를 붙드는 힘."),
+        "mainRigidity" => Some("중간이 스타일링된 형태를 붙드는 힘."),
+        "tipRigidity" => Some("끝이 스타일링된 형태를 붙드는 힘."),
+        "jointRigidity" => {
+            Some("스타일 조인트의 뻣뻣함. 포니테일을 포니테일로 유지하는 스프링입니다.")
+        }
+        "rigidityRolloffPower" => {
+            Some("세 탄성이 가닥을 따라 섞이는 방식. 높을수록 뿌리 값이 아래까지 이어집니다.")
+        }
+        "cling" => Some("스타일 조인트가 가닥끼리 끌어당기는 힘."),
+        "clingRolloff" => {
+            Some("응집이 가닥을 따라 사그라드는 거리. 높을수록 뿌리 가까이에 갇힙니다.")
+        }
+        "snap" => Some("각 마디가 저작된 길이를 얼마나 단단히 유지하는지."),
+        "usePaintedRigidity" => Some("세 슬라이더 대신 칠한 맵에서 탄성을 읽습니다."),
+        "width" => Some("가닥이 그려지는 두께. VaM 슬라이더도 0.1mm에서 끝납니다."),
+        "length1" => Some("삼각형의 첫 번째 가이드에 가까운 가닥의 길이."),
+        "length2" => Some("삼각형의 두 번째 가이드에 가까운 가닥의 길이."),
+        "length3" => Some("삼각형의 세 번째 가이드에 가까운 가닥의 길이."),
+        "maxSpread" => Some(
+            "가닥이 가이드에서 벗어날 수 있는 거리의 천장입니다. 이득이 아니라 상한이라, 가이드 간격을 넘어서면 더 올려도 변하지 않습니다.",
+        ),
+        "spreadRoot" => {
+            Some("뿌리에서 가닥이 얼마나 자유롭게 벌어지는지. 낮으면 가이드 쪽으로 모입니다.")
+        }
+        "spreadMid" => Some("중간에서 가닥이 얼마나 자유롭게 벌어지는지."),
+        "spreadTip" => Some("끝에서 가닥이 얼마나 자유롭게 벌어지는지."),
+        "spreadMidpoint" => Some("가닥의 어느 지점부터 중간 퍼짐이 적용되는지."),
+        "spreadCurvePower" => Some("뿌리·중간·끝 사이에서 퍼짐이 꺾이는 급격함."),
+        "curlScale" => Some("컬의 폭. 감기는 반지름이지 길이가 아닙니다."),
+        "curlFrequency" => Some("가닥 1cm당 감기는 횟수."),
+        "curlScaleRandomness" => Some("가닥마다 컬 폭이 얼마나 달라지는지."),
+        "curlFrequencyRandomness" => Some("가닥마다 감기는 속도가 얼마나 달라지는지."),
+        "curlRoot" => Some("뿌리에 컬이 얼마나 미치는지."),
+        "curlMid" => Some("중간에 컬이 얼마나 미치는지."),
+        "curlTip" => Some("끝에 컬이 얼마나 미치는지."),
+        "curlMidpoint" => Some("가닥의 어느 지점부터 중간 컬이 적용되는지."),
+        "curlCurvePower" => Some("뿌리·중간·끝 사이에서 컬이 꺾이는 급격함."),
+        "curlX" => Some("컬의 X 방향 변위. 회전당하는 벡터이지, 감기는 축이 아닙니다."),
+        "curlY" => Some("컬의 Y 방향 변위."),
+        "curlZ" => Some("컬의 Z 방향 변위."),
+        "curlNormalAdjust" => Some(
+            "컬 오프셋에 법선 방향으로 더해집니다. 축을 기울이는 게 아니라 코일을 머리에서 띄웁니다.",
+        ),
+        "curlAllowReverse" => Some(
+            "일부 가닥이 반대로 감기게 합니다. 곱슬 머리 전체가 한 가닥의 반복으로 보이지 않게.",
+        ),
+        "curlAllowFlipAxis" => Some("일부 가닥이 뒤집힌 축으로 감기게 합니다. 같은 이유입니다."),
+        "rootColor" => Some("뿌리 쪽 색."),
+        "tipColor" => Some("끝 쪽 색."),
+        "specularColor" => Some("하이라이트의 색."),
+        "colorRolloff" => Some("가닥을 따라 뿌리 색이 끝 색으로 넘어가는 방식."),
+        "randomColorPower" => Some("가닥끼리 색이 얼마나 달라지는지."),
+        "randomColorOffset" => Some("그 편차가 밝은 쪽인지 어두운 쪽인지."),
+        "primarySpecularSharpness" => Some("주 하이라이트의 조임. 높을수록 광택이 강합니다."),
+        "secondarySpecularSharpness" => {
+            Some("2차 하이라이트의 조임. 머리카락을 따라 움직이는 색 있는 쪽입니다.")
+        }
+        "specularShift" => Some("2차 하이라이트가 1차에서 가닥을 따라 얼마나 떨어져 앉는지."),
+        "diffuseSoftness" => Some("빛이 가닥을 감싸 도는 부드러움. 낮으면 빛 받는 쪽만 밝습니다."),
+        "fresnelPower" => Some("머리카락이 시선에서 비껴갈 때 가장자리가 밝아지는 급격함."),
+        "fresnelAttenuation" => Some("그 가장자리 밝기의 세기."),
+        "IBLFactor" => Some("장면의 환경광을 머리카락이 얼마나 받는지."),
+        "normalRandomize" => {
+            Some("가닥마다 셰이딩 법선을 얼마나 흔들지. 이웃끼리 똑같이 음영지지 않게 합니다.")
+        }
+        _ => None,
     }
 }

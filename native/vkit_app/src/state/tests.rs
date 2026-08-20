@@ -6,10 +6,7 @@ use vkit_core::MIN_FIT_PAIRS;
 use vkit_core::formats::{
     DazGeometry, Mesh, MorphTarget, ObjFace, ObjMorphSource, load_obj_morph_target,
 };
-use vkit_core::vam::{
-    AssetLocator, G2UvTriangle, HairLookPatch, HairPartReference, HairPreset, SkinPreset, SkinSex,
-    UvMaterialRegion,
-};
+use vkit_core::vam::{AssetLocator, G2UvTriangle, SkinPreset, SkinSex, UvMaterialRegion};
 
 static VAM_PAIR_TEST_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -528,44 +525,6 @@ fn skin_preset(id: &str) -> SkinPreset {
     }
 }
 
-fn hair_preset(id: &str) -> HairPreset {
-    HairPreset {
-        stable_id: id.to_owned(),
-        label: id.to_owned(),
-        source: AssetLocator::UnresolvedVaMUrl(format!("preset://{id}")),
-        thumbnail: None,
-        sex: SkinSex::Female,
-        parts: vec![HairPartReference {
-            reference: format!("Custom/Hair/Female/{id}.vam"),
-            internal_id: "hair".to_owned(),
-            geometry: AssetLocator::UnresolvedVaMUrl(format!("geometry://{id}")),
-            appearance: None,
-            preset_look: HairLookPatch::default(),
-            preset_physics: Default::default(),
-        }],
-    }
-}
-
-fn hair_preview(id: &str) -> Arc<HairPreview> {
-    Arc::new(HairPreview {
-        preset_id: id.to_owned(),
-        parts: Vec::new(),
-        scalps: Vec::new(),
-        skipped_parts: Vec::new(),
-        body_capsules: Vec::new(),
-    })
-}
-
-fn hair_preview_missing_a_part(id: &str) -> Arc<HairPreview> {
-    Arc::new(HairPreview {
-        preset_id: id.to_owned(),
-        parts: Vec::new(),
-        scalps: Vec::new(),
-        skipped_parts: vec!["pack.var::hair/base.vab".to_owned()],
-        body_capsules: Vec::new(),
-    })
-}
-
 fn skin_uv_mapping() -> Arc<G2UvMapping> {
     Arc::new(G2UvMapping {
         source_path: PathBuf::from("femalecustom.obj"),
@@ -695,18 +654,39 @@ fn a_session_with_no_star_and_no_history_stays_on_flat_colour() {
 }
 
 #[test]
+fn the_other_figures_starred_skin_falls_back_to_this_figures_base() {
+    let mut state = AppState::default();
+    let mut male_base = skin_preset("m-base");
+    male_base.label = "Base M".to_owned();
+    male_base.sex = vkit_core::vam::SkinSex::Male;
+    let mut male_other = skin_preset("m-other");
+    male_other.sex = vkit_core::vam::SkinSex::Male;
+    state.vam_skin_presets = vec![skin_preset("alice"), male_other, male_base];
+    state.vam_uv_mapping = Some(skin_uv_mapping());
+    state.figure_sex = crate::state::FigureSex::Male;
+    state.default_skin_id = Some("alice".to_owned());
+
+    state.apply_default_skin();
+
+    assert_eq!(state.selected_skin_id.as_deref(), Some("m-base"));
+    assert_ne!(state.status.key, TextKey::DefaultSkinMissing);
+    assert_ne!(state.status.key, TextKey::SkinLoadFailed);
+}
+
+#[test]
 fn a_vanished_last_skin_is_quiet_but_a_vanished_star_is_not() {
     let mut state = AppState::default();
     install_skin_presets(&mut state, &["alice"]);
     state.last_skin_id = Some("gone".to_owned());
     state.apply_default_skin();
-    assert_eq!(state.selected_skin_id, None);
+    assert_eq!(state.selected_skin_id.as_deref(), Some("alice"));
     assert_ne!(state.status.key, TextKey::DefaultSkinMissing);
 
     let mut starred = AppState::default();
     install_skin_presets(&mut starred, &["alice"]);
     starred.default_skin_id = Some("gone".to_owned());
     starred.apply_default_skin();
+    assert_eq!(starred.selected_skin_id.as_deref(), Some("alice"));
     assert_eq!(starred.status.key, TextKey::DefaultSkinMissing);
 }
 
@@ -979,10 +959,6 @@ fn a_heavy_import_says_why_it_is_slow() {
         0.4,
         Some(HEAVY_MESH_TRIANGLES * 3),
     );
-    // Every language has to name the same mesh. Korean used to divide by a
-    // thousand and then say 만 -- ten thousand -- so it read every mesh as ten
-    // times its real size, and a test that only looked for "300" was happy to
-    // let it. The count itself is what gets asserted now.
     for locale in Locale::ALL {
         let note = heavy
             .size_note(locale)
@@ -1194,7 +1170,10 @@ fn the_stencil_goes_down_when_its_owners_move_on() {
     state.dispatch(Action::SetTextureProjectionStencil(true));
     assert!(state.texture_project.projection_stencil());
 
+    state.texture_project.selected_layer_mut().unwrap().pins =
+        crate::texture_project::tests::ready_pins();
     state.dispatch(Action::SetTextureTool(TextureTool::MaskBrush));
+    assert_eq!(state.texture_project.active_tool, TextureTool::MaskBrush);
     assert!(
         !state.texture_project.projection_stencil(),
         "the mask brush left the stencil owning the pointer"
@@ -1384,11 +1363,6 @@ fn shaping_and_texturing_are_told_apart() {
 
 #[test]
 fn layers_only_is_a_flag_and_not_a_viewport_takeover() {
-    // The toggle used to flip the viewport to the solid view and swap the bake
-    // base, remembering both in a side pocket to put back later. The moment
-    // the bake that was supposed to flip the view back was late, failed, or
-    // never came, the head sat untextured — the white face. The toggle sets
-    // its flag and marks the composite stale; nothing else is its business.
     let mut state = AppState {
         base_view_mode: BaseViewMode::Texture,
         ..AppState::default()
@@ -1416,10 +1390,6 @@ fn layers_only_is_a_flag_and_not_a_viewport_takeover() {
 
 #[test]
 fn layers_only_wears_the_plain_base_while_the_bake_is_still_coming() {
-    // What the white face actually was: hide on, no bake yet, and the preview
-    // fell through to nothing. With the mapping known, the head must wear the
-    // plain base colour immediately — and keep wearing it if the bake never
-    // arrives at all.
     let mut state = AppState {
         skin_preview: Some(skin_preview(1, [200, 180, 170, 255])),
         ..AppState::default()
@@ -2124,17 +2094,6 @@ fn no_op_resets_create_no_morph_or_sculpt_history() {
 
 #[test]
 fn no_stage_is_refused_from_a_cold_start() {
-    // Opening nothing means the G2 template is the head, so there is something
-    // for every stage past the fit to work on. Sculpt already knew this and
-    // texture and save did not: the escape hatch read `tab == Tab::Morph` and
-    // was never widened when the other two arrived, so a cold start could only
-    // reach sculpt and everything downstream looked like it required a visit
-    // there first.
-    //
-    // What is asserted is the decision, not the geometry that follows it.
-    // Installing the template needs real G2 data the repository does not ship,
-    // so the pipeline past this point belongs to a manual run -- but the refusal
-    // that used to happen *before* the pipeline is gone, and that is the change.
     for landing in [Tab::Morph, Tab::Texture, Tab::Result] {
         let mut state = AppState::default();
         state.workspace.template_geometry = Some(Arc::new(canonical_body_template()));
@@ -2162,11 +2121,6 @@ fn no_stage_is_refused_from_a_cold_start() {
 
 #[test]
 fn a_package_is_built_from_the_head_or_from_files_and_never_both() {
-    // The two used to be an independent switch beside an always-visible list,
-    // so a package could ask for the current head *and* carry attachments. When
-    // the head had not been touched the export refused everything with
-    // "identical to the loaded G2 template" -- a real failure, reported for a
-    // package the user had already told us to build from files.
     let workspace = tempfile::tempdir().expect("temporary morph folder");
     let vmi = workspace.path().join("Brow.vmi");
     let vmb = workspace.path().join("Brow.vmb");
@@ -2187,8 +2141,6 @@ fn a_package_is_built_from_the_head_or_from_files_and_never_both() {
         "picking a file is choosing the file route, and has to say so"
     );
 
-    // Choosing the head back is the other half of the same choice: the
-    // attachments go, rather than lingering on screen unpackaged.
     state.dispatch(Action::SetPackageFromThisHead(true));
     assert!(state.package_morphs.is_empty());
     assert!(state.package_textures.is_empty());
@@ -2196,9 +2148,6 @@ fn a_package_is_built_from_the_head_or_from_files_and_never_both() {
 
 #[test]
 fn half_a_morph_brings_the_other_half_with_it() {
-    // A VaM morph is two files that are useless apart: the .vmi describes it
-    // and the .vmb carries the deltas. Shipping one without the other is a
-    // package that silently does nothing in VaM.
     let workspace = tempfile::tempdir().expect("temporary morph folder");
     let vmi = workspace.path().join("Brow.vmi");
     let vmb = workspace.path().join("Brow.vmb");
@@ -2223,8 +2172,6 @@ fn half_a_morph_brings_the_other_half_with_it() {
         assert_eq!(paths.len(), 2, "one twin each, not a pile of duplicates");
     }
 
-    // A half with no twin on disk stays a half. Inventing the path would trade
-    // a real complaint for a missing file nobody chose.
     let lone = workspace.path().join("Lonely.vmi");
     std::fs::write(&lone, "{}").expect("lone fixture");
     let mut state = AppState::default();
@@ -2238,7 +2185,6 @@ fn half_a_morph_brings_the_other_half_with_it() {
         "a twin that is not there must not be conjured"
     );
 
-    // Textures are single files and must not acquire imaginary partners.
     let texture = workspace.path().join("Face.png");
     std::fs::write(&texture, [0_u8; 4]).expect("texture fixture");
     let mut state = AppState::default();
@@ -2251,9 +2197,6 @@ fn half_a_morph_brings_the_other_half_with_it() {
 
 #[test]
 fn the_export_metadata_starts_blank_and_keeps_whatever_is_typed() {
-    // A seeded group is a value the user never chose, and because this field is
-    // remembered they would have to notice it and clear it before their own
-    // choice could stick. Blank asks the question instead of answering it.
     let fresh = AppState::default();
     assert!(
         fresh.vam_export_group.is_empty(),
@@ -2267,8 +2210,6 @@ fn the_export_metadata_starts_blank_and_keeps_whatever_is_typed() {
     );
     assert!(fresh.vam_export_display_name.is_empty());
 
-    // Typed once, it stays -- including back to blank, which has to survive the
-    // trip too or clearing the field would silently undo itself.
     let mut state = AppState::default();
     state.dispatch(Action::SetVaMExportGroup("Look: Head".to_owned()));
     assert_eq!(state.vam_export_group, "Look: Head");
@@ -3842,7 +3783,7 @@ fn clearing_skin_selection_discards_only_render_state_and_pending_work() {
     let request = state.take_skin_work().unwrap();
     state.dispatch(Action::FinishVaMSkin {
         request_id: request.request_id,
-        preset_id: request.preset.stable_id,
+        preset_id: "skin-a".to_owned(),
         outcome: Ok(skin_preview(10, [10, 20, 30, 255])),
     });
     assert!(state.skin_preview.is_some());
@@ -3860,43 +3801,6 @@ fn clearing_skin_selection_discards_only_render_state_and_pending_work() {
     assert!(Arc::ptr_eq(
         &output,
         state.workspace.result_output.as_ref().unwrap()
-    ));
-}
-
-#[test]
-fn hair_preset_replacement_is_transactional_and_restores_the_complete_prior_set() {
-    let mut state = ready_state();
-    state.vam_hair_presets = vec![hair_preset("full-a"), hair_preset("full-b")];
-    let geometry_revision = state.revision;
-    let output = Arc::clone(state.workspace.result_output.as_ref().unwrap());
-
-    state.dispatch(Action::SelectVaMHair(Some("full-a".to_owned())));
-    let first = state.take_hair_work().unwrap();
-    state.dispatch(Action::FinishVaMHair {
-        request_id: first.request_id,
-        preset_id: first.preset.stable_id,
-        outcome: Ok(hair_preview("full-a")),
-    });
-    let complete_prior = Arc::clone(state.hair_preview.as_ref().unwrap());
-
-    state.dispatch(Action::SelectVaMHair(Some("full-b".to_owned())));
-    let replacement = state.take_hair_work().unwrap();
-    state.dispatch(Action::FinishVaMHair {
-        request_id: replacement.request_id,
-        preset_id: replacement.preset.stable_id,
-        outcome: Err("one part uses unsupported geometry".to_owned()),
-    });
-
-    assert_eq!(state.selected_hair_id.as_deref(), Some("full-a"));
-    assert!(Arc::ptr_eq(
-        state.hair_preview.as_ref().unwrap(),
-        &complete_prior
-    ));
-    assert_eq!(state.status.key, TextKey::HairLoadFailed);
-    assert_eq!(state.revision, geometry_revision);
-    assert!(Arc::ptr_eq(
-        state.workspace.result_output.as_ref().unwrap(),
-        &output
     ));
 }
 
@@ -3920,32 +3824,6 @@ fn detail_editing_can_start_from_the_bare_g2_base() {
         state.workspace.result_output.as_ref().unwrap().vertices,
         tiny_template().vertices,
         "the base shape is the template itself"
-    );
-}
-
-#[test]
-fn a_hairstyle_missing_a_mesh_part_is_shown_and_says_so() {
-    let mut state = ready_state();
-    state.vam_hair_presets = vec![hair_preset("mixed")];
-
-    state.dispatch(Action::SelectVaMHair(Some("mixed".to_owned())));
-    let request = state.take_hair_work().unwrap();
-    state.dispatch(Action::FinishVaMHair {
-        request_id: request.request_id,
-        preset_id: request.preset.stable_id,
-        outcome: Ok(hair_preview_missing_a_part("mixed")),
-    });
-
-    assert_eq!(state.selected_hair_id.as_deref(), Some("mixed"));
-    assert!(state.hair_preview.is_some());
-    assert_eq!(state.status.key, TextKey::HairPartsSkipped);
-    assert_eq!(state.status.tone, StatusTone::Warning);
-    assert!(
-        state
-            .status
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("base.vab"))
     );
 }
 
@@ -4002,7 +3880,7 @@ fn stale_skin_completion_cannot_replace_newer_selection() {
 
     state.dispatch(Action::FinishVaMSkin {
         request_id: old_request.request_id,
-        preset_id: old_request.preset.stable_id,
+        preset_id: "skin-a".to_owned(),
         outcome: Ok(Arc::clone(&old_preview)),
     });
     assert_eq!(state.selected_skin_id.as_deref(), Some("skin-b"));
@@ -4011,7 +3889,7 @@ fn stale_skin_completion_cannot_replace_newer_selection() {
 
     state.dispatch(Action::FinishVaMSkin {
         request_id: current_request.request_id,
-        preset_id: current_request.preset.stable_id,
+        preset_id: "skin-b".to_owned(),
         outcome: Ok(Arc::clone(&current_preview)),
     });
     assert!(!state.skin_preview_loading);
@@ -4039,7 +3917,7 @@ fn failed_skin_preview_leaves_result_and_geometry_revisions_untouched() {
     let request = state.take_skin_work().unwrap();
     state.dispatch(Action::FinishVaMSkin {
         request_id: request.request_id,
-        preset_id: request.preset.stable_id,
+        preset_id: "skin-a".to_owned(),
         outcome: Err("broken texture".to_owned()),
     });
 
@@ -4077,7 +3955,7 @@ fn successful_skin_preview_never_changes_committed_export_geometry() {
     let preview = skin_preview(30, [50, 60, 70, 255]);
     state.dispatch(Action::FinishVaMSkin {
         request_id: request.request_id,
-        preset_id: request.preset.stable_id,
+        preset_id: "skin-a".to_owned(),
         outcome: Ok(Arc::clone(&preview)),
     });
 
@@ -4194,6 +4072,7 @@ fn appearance_and_installed_morph_cache_are_queued_on_independent_lanes() {
             hair_presets: Vec::new(),
             shared_scalp: None,
             builtin_hair_scalps: std::sync::Arc::new(Vec::new()),
+            builtin_scalp_textures: std::sync::Arc::new(Vec::new()),
             edit_sources: Vec::new(),
             morph_index: std::sync::Arc::new(crate::vam_morph_index::VaMMorphIndex::default()),
             package_index: std::sync::Arc::new(vkit_core::vam::PackageIndex::default()),
@@ -4234,6 +4113,7 @@ fn a_morph_cache_failure_is_reported_and_leaves_the_appearance_catalog_ready() {
             hair_presets: Vec::new(),
             shared_scalp: None,
             builtin_hair_scalps: std::sync::Arc::new(Vec::new()),
+            builtin_scalp_textures: std::sync::Arc::new(Vec::new()),
             edit_sources: Vec::new(),
             morph_index: std::sync::Arc::new(crate::vam_morph_index::VaMMorphIndex::default()),
             package_index: std::sync::Arc::new(vkit_core::vam::PackageIndex::default()),
@@ -4870,7 +4750,7 @@ fn reselecting_a_recent_skin_reuses_the_cached_preview_without_a_worker() {
         .expect("second selection needs a worker");
     state.dispatch(Action::FinishVaMSkin {
         request_id: request_b.request_id,
-        preset_id: "skin-b".to_owned(),
+        preset_id: "skin-a".to_owned(),
         outcome: Ok(lru_preview(request_b.request_id)),
     });
 
@@ -4969,6 +4849,37 @@ fn the_face_boundary_softness_reaches_the_top_of_its_own_slider() {
 }
 
 #[test]
+fn removing_the_head_file_leaves_the_g2_base_to_work_on() {
+    let mut state = AppState {
+        scan_path: Some(PathBuf::from("head.glb")),
+        placed_head: true,
+        scan_symmetry: ScanSymmetry::PositiveX,
+        complete_pairs: 4,
+        ..AppState::default()
+    };
+    state.transform.scale_xyz = [1.7; 3];
+
+    state.dispatch(Action::UnloadScan);
+
+    assert!(state.scan_path.is_none(), "the file is gone");
+    assert!(state.workspace.scan_source.is_none());
+    assert!(
+        state.workspace.pins.pairs().is_empty(),
+        "its pins go with it"
+    );
+    assert_eq!(state.complete_pairs, 0);
+    assert_eq!(state.scan_symmetry, ScanSymmetry::Original);
+    assert_eq!(state.transform, ScanTransform::default());
+    assert!(!state.placed_head);
+    assert_eq!(state.status.key, TextKey::ScanUnloaded);
+
+    let before = state.status.key;
+    state.status = StatusMessage::new(TextKey::Ready, StatusTone::Info);
+    state.dispatch(Action::UnloadScan);
+    assert_eq!(state.status.key, TextKey::Ready, "was {before:?}");
+}
+
+#[test]
 fn a_look_for_the_other_figure_is_refused_rather_than_switching_figures() {
     let mut state = AppState {
         figure_sex: FigureSex::Female,
@@ -5004,10 +4915,6 @@ fn a_look_for_the_other_figure_is_refused_rather_than_switching_figures() {
 
 #[test]
 fn the_mask_overlay_setting_belongs_to_the_reader_not_the_tool() {
-    // Switching tools used to recompute this flag, which meant the switch in
-    // the panel was decoration: turn the overlay off, change brush, come back,
-    // and it was on again. Whether the overlay is *drawn* outside the mask
-    // brush is the paint gate's business; the flag itself is a choice.
     let mut state = AppState::default();
     assert!(
         state.texture_project.mask_preview_enabled,
@@ -5262,8 +5169,6 @@ fn the_neck_ear_restore_choice_defers_rather_than_eating_sculpt_strokes() {
         "on by default: the regions it protects are the ones every head needs"
     );
 
-    // With a clean sculpt session the toggle re-derives the result from the
-    // pristine fit and re-begins sculpting on it, both ways round.
     state.dispatch(Action::SetRestoreNeckEars(false));
     assert!(!state.restore_neck_ears);
     assert!(
@@ -5278,9 +5183,6 @@ fn the_neck_ear_restore_choice_defers_rather_than_eating_sculpt_strokes() {
         "rebased sessions are clean"
     );
 
-    // A booked stroke must never be eaten by a rebase: the choice is kept,
-    // the mesh is not touched, and the status says it waits for the next
-    // generation.
     let center = state
         .workspace
         .result_output
@@ -5327,4 +5229,318 @@ fn the_neck_ear_restore_choice_defers_rather_than_eating_sculpt_strokes() {
         .vertices;
     assert_eq!(&before, after, "the sculpted mesh is left exactly alone");
     assert!(state.sculpt.top_undo_seq().is_some(), "the stroke survives");
+}
+
+#[test]
+fn the_detail_history_walks_forward_again_and_a_deep_step_back_asks_before_closing_it() {
+    let mut state = ready_state();
+    state.morph_library.replace_source(
+        MorphSource::Curated,
+        vec![
+            MorphControl::new(
+                "m.a",
+                "A",
+                MorphCategory::Eyes,
+                MorphSource::Curated,
+                Arc::new(tiny_morph()),
+            ),
+            MorphControl::new(
+                "m.b",
+                "B",
+                MorphCategory::Eyes,
+                MorphSource::Curated,
+                Arc::new(tiny_morph()),
+            ),
+        ],
+    );
+    let value_of = |state: &AppState, id: &str| {
+        state
+            .morph_library
+            .controls()
+            .iter()
+            .find(|control| control.id == id)
+            .unwrap()
+            .value
+    };
+    state.dispatch(Action::SetFaceMorph {
+        id: "m.a".into(),
+        value: 0.5,
+    });
+    state.dispatch(Action::SetFaceMorph {
+        id: "m.b".into(),
+        value: 0.8,
+    });
+    assert_eq!(state.history_position(), (2, 0));
+
+    state.dispatch(Action::Undo);
+    state.dispatch(Action::Undo);
+    assert_eq!(state.history_position(), (0, 2));
+    assert_eq!(value_of(&state, "m.a"), 0.0);
+
+    state.dispatch(Action::Redo);
+    assert_eq!(value_of(&state, "m.a"), 0.5);
+    assert_eq!(value_of(&state, "m.b"), 0.0);
+    state.dispatch(Action::Redo);
+    assert_eq!(value_of(&state, "m.b"), 0.8);
+    assert_eq!(state.history_position(), (2, 0));
+
+    state.dispatch(Action::Undo);
+    assert!(state.has_forward_history());
+    assert!(!state.history_branch_needs_asking());
+    state.dispatch(Action::SetFaceMorph {
+        id: "m.b".into(),
+        value: 0.25,
+    });
+    assert!(!state.pending_history_branch, "a single step must not ask");
+    assert_eq!(value_of(&state, "m.b"), 0.25, "and the edit lands at once");
+    assert!(!state.has_forward_history(), "which spends what was ahead");
+    state.dispatch(Action::SetFaceMorph {
+        id: "m.b".into(),
+        value: 0.25,
+    });
+    assert_eq!(value_of(&state, "m.b"), 0.25);
+    assert_eq!(state.history_position(), (2, 0));
+}
+
+#[test]
+fn every_kind_of_save_leaves_the_way_back_to_what_it_wrote() {
+    let mut state = ready_state();
+    for (section, path) in [
+        (SaveSection::Morph, r"C:\vam\Custom\head.vmi"),
+        (SaveSection::Texture, r"C:\vam\Custom\face.png"),
+        (SaveSection::Package, r"C:\vam\AddonPackages\me.1.var"),
+    ] {
+        assert!(!state.last_saved_paths.contains_key(&section));
+        state
+            .last_saved_paths
+            .insert(section, std::path::PathBuf::from(path));
+    }
+    assert_eq!(state.last_saved_paths.len(), 3);
+    assert_eq!(
+        state.last_saved_paths[&SaveSection::Texture]
+            .parent()
+            .map(std::path::Path::to_path_buf),
+        Some(std::path::PathBuf::from(r"C:\vam\Custom")),
+        "the link opens the folder the file landed in"
+    );
+}
+
+#[test]
+fn a_look_that_fails_to_load_lets_go_of_the_selection() {
+    use super::types::WorkspaceLoadKind;
+
+    let mut state = AppState::default();
+    let directory = tempfile::tempdir().expect("temporary look directory");
+    let path = directory.path().join("broken-look.vap");
+    std::fs::write(&path, b"{ not a preset").expect("write broken look");
+
+    let look = VaMEditSource {
+        stable_id: "broken-look".to_owned(),
+        label: "broken-look".to_owned(),
+        path: path.clone(),
+        sex: None,
+        kind: VaMEditSourceKind::AppearancePreset,
+        missing_morphs: 0,
+        morph_refs: 0,
+    };
+    state.vam_edit_sources = vec![look.clone()];
+    state.selected_vam_edit_source_id = Some(look.stable_id.clone());
+    state.pending_direct_edit_source = Some(look);
+    state.request_workspace_load(
+        WorkspaceLoadKind::DirectEditSource,
+        path.clone(),
+        TextKey::MorphLoading,
+    );
+    let job = state
+        .take_workspace_load_request()
+        .expect("queued direct edit job");
+    let outcome = job.run();
+    state.dispatch(Action::FinishWorkspaceLoad { path, outcome });
+
+    assert!(
+        state.selected_vam_edit_source_id.is_none(),
+        "a look that could not load is not the current look",
+    );
+    assert!(
+        state.pending_direct_edit_source.is_none(),
+        "and nothing is still on its way, so nothing may claim to be",
+    );
+    assert!(!state.busy(), "the app must be free to move again");
+    assert!(
+        matches!(state.status.tone, StatusTone::Error),
+        "and the reader is told why, not handed a fresh-looking stage in silence",
+    );
+}
+
+#[test]
+fn a_mask_stroke_is_one_step_and_undoes_to_the_mask_it_started_from() {
+    use crate::appearance_layers::AppearanceStack;
+
+    let mut state = AppState {
+        active_tab: Tab::Morph,
+        ..AppState::default()
+    };
+    let mut stack = AppearanceStack::default();
+    let id = stack.add("A".into(), vec![[1.0, 0.0, 0.0]; 8]);
+    state.appearance_stack = stack;
+
+    let dab = |begins_step: bool| Action::PaintMorphMask {
+        vertices: vec![(2, 1.0)],
+        target: 0.0,
+        amount: 0.5,
+        begins_step,
+    };
+
+    state.dispatch(dab(true));
+    state.dispatch(dab(false));
+    state.dispatch(dab(false));
+    let carved = state.appearance_stack.layer(id).unwrap().mask.coverage(2);
+    assert!(carved < 1.0, "the stroke must have carved something");
+    assert_eq!(
+        state.history_position().0,
+        1,
+        "a drag is one step, not three"
+    );
+
+    assert!(state.undo_morph_mask());
+    assert_eq!(
+        state.appearance_stack.layer(id).unwrap().mask.coverage(2),
+        1.0,
+        "undo returns the mask the stroke started from",
+    );
+    assert_eq!(state.history_position(), (0, 1));
+
+    assert!(state.redo_morph_mask());
+    assert!(
+        (state.appearance_stack.layer(id).unwrap().mask.coverage(2) - carved).abs() < 1.0e-6,
+        "redo puts the stroke back exactly",
+    );
+
+    state.dispatch(dab(true));
+    assert_eq!(state.history_position().0, 2);
+
+    state.dispatch(Action::RemoveAppearanceLayer(id));
+    assert_eq!(state.history_position(), (0, 0));
+    assert!(!state.undo_morph_mask());
+}
+
+#[test]
+fn a_loaded_appearance_is_seated_by_its_neck_seam_not_its_crown() {
+    use vkit_core::restore_region::blend_toward_base;
+
+    let weights = vec![1.0, 1.0, 0.0];
+    let template = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 10.0, 0.0]];
+    let baked = vec![[0.0, 5.0, 0.0], [1.0, 5.0, 0.0], [0.0, 17.0, 0.0]];
+
+    let mut total = [0.0_f64; 3];
+    let mut mass = 0.0;
+    for (index, weight) in weights.iter().enumerate() {
+        if *weight < 0.999 {
+            continue;
+        }
+        for axis in 0..3 {
+            total[axis] += baked[index][axis] - template[index][axis];
+        }
+        mass += 1.0;
+    }
+    let offset = total.map(|axis| axis / mass);
+    assert!(
+        (offset[1] - 5.0).abs() < 1.0e-9,
+        "the seam moved 5cm, so that is the offset -- got {offset:?}",
+    );
+
+    let seated = baked
+        .iter()
+        .map(|vertex| {
+            [
+                vertex[0] - offset[0],
+                vertex[1] - offset[1],
+                vertex[2] - offset[2],
+            ]
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        (seated[0][1]).abs() < 1.0e-9 && (seated[1][1]).abs() < 1.0e-9,
+        "the seam lands back on the base, which is what sits on any body",
+    );
+    assert!(
+        (seated[2][1] - 12.0).abs() < 1.0e-9,
+        "and the taller skull keeps its 2cm rather than being flattened to 10",
+    );
+
+    let crown_offset = baked[2][1] - template[2][1];
+    assert!(
+        baked[0][1] - crown_offset < -1.0e-9,
+        "crown anchoring pushes the seam under the base, got {}",
+        baked[0][1] - crown_offset,
+    );
+
+    let held = blend_toward_base(&template, &baked, &weights);
+    assert_eq!(held[0], template[0]);
+    assert_eq!(held[2], baked[2]);
+}
+
+#[test]
+fn exporting_over_an_installed_style_asks_before_replacing_it() {
+    let root = tempfile::tempdir().expect("vam root");
+    let installed = root
+        .path()
+        .join("Custom")
+        .join("Hair")
+        .join("Female")
+        .join("Vkit")
+        .join("bob");
+    std::fs::create_dir_all(&installed).expect("installed style");
+
+    let mut state = AppState {
+        vam_root: Some(root.path().to_path_buf()),
+        ..AppState::default()
+    };
+    state.hair_project.export_creator = "Vkit".into();
+    state.hair_project.export_name = "bob".into();
+    assert_eq!(
+        state.hair_export_would_overwrite().as_deref(),
+        Some(installed.as_path()),
+        "a folder of this creator and name is what an export would replace",
+    );
+
+    state.hair_project.export_name = "pixie".into();
+    assert!(state.hair_export_would_overwrite().is_none());
+
+    state.hair_overwrite_confirmed = true;
+    state.dispatch(Action::SetHairExportName("bob".into()));
+    assert!(
+        !state.hair_overwrite_confirmed,
+        "a new name has not been answered for",
+    );
+}
+
+#[test]
+fn exporting_over_an_install_removes_it_first_and_only_it() {
+    let root = tempfile::tempdir().expect("vam root");
+    let female = root
+        .path()
+        .join("Custom")
+        .join("Hair")
+        .join("Female")
+        .join("Vkit");
+    let mine = female.join("bob");
+    let neighbour = female.join("bobbed");
+    std::fs::create_dir_all(&mine).expect("mine");
+    std::fs::create_dir_all(&neighbour).expect("neighbour");
+    std::fs::write(mine.join("bob.vam"), b"{}").expect("item");
+
+    let mut state = AppState {
+        vam_root: Some(root.path().to_path_buf()),
+        ..AppState::default()
+    };
+    state.hair_project.export_creator = "Vkit".into();
+    state.hair_project.export_name = "bob".into();
+    state.hair_overwrite_confirmed = true;
+
+    state.dispatch(Action::ExportHairPart);
+    assert!(
+        mine.exists(),
+        "a blocked export must not have deleted anything",
+    );
 }

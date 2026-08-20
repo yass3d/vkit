@@ -226,7 +226,6 @@ fn preset_popovers_never_stack_a_second_scrollbar_around_their_library() {
         for (panel, mode) in [
             (ViewportToolPanel::Skin, BaseViewMode::Texture),
             (ViewportToolPanel::Skin, BaseViewMode::Solid),
-            (ViewportToolPanel::Hair, BaseViewMode::Texture),
         ] {
             for pass in 0..2 {
                 let (desired, available) =
@@ -358,14 +357,12 @@ fn a_roll_sweep_write_back_carries_the_linked_pane_along() {
 #[test]
 fn the_press_that_exits_trackball_mode_is_spent_until_its_click_passes() {
     assert!(
-        !camera_exit_spends_press(true, false),
+        !crate::sweep_gesture::sweep_spends_press(true, false),
         "finishing with the key involves no press"
     );
-    assert!(camera_exit_spends_press(true, true));
-    assert!(!camera_exit_spends_press(false, true));
+    assert!(crate::sweep_gesture::sweep_spends_press(true, true));
+    assert!(!crate::sweep_gesture::sweep_spends_press(false, true));
 
-    // Press finishes the sweep, the button is held, and egui reports the
-    // click on the release frame — the flag must survive exactly that long.
     let mut spent = true;
     for (down, clicked, still_spent) in [
         (true, false, true),
@@ -373,7 +370,7 @@ fn the_press_that_exits_trackball_mode_is_spent_until_its_click_passes() {
         (false, true, true),
         (false, false, false),
     ] {
-        if camera_exit_press_settled(down, clicked) {
+        if crate::sweep_gesture::spent_press_settled(down, clicked) {
             spent = false;
         }
         assert_eq!(spent, still_spent, "down={down} clicked={clicked}");
@@ -628,10 +625,6 @@ fn overlay_alpha_and_sculpt_wire_palette_are_explicit() {
 
 #[test]
 fn the_island_names_whatever_a_stroke_would_actually_do() {
-    // The island used to name the selection while a held Shift quietly smoothed
-    // instead. Deriving the label from the stroke's own rule is what keeps the
-    // two from saying different things, so the tie is what gets pinned here —
-    // not the Shift case on its own.
     for brush in SculptBrush::ALL {
         for modifiers in [
             egui::Modifiers::default(),
@@ -650,10 +643,6 @@ fn the_island_names_whatever_a_stroke_would_actually_do() {
                     "{modifiers:?} on {brush:?} smooths, so the island has to say so"
                 );
             }
-            // The reverse cannot be asserted: Inflate has no brush of its own,
-            // so a Ctrl held over a Smooth selection strokes as Inflate while
-            // the island keeps saying Smooth. That gap predates this change and
-            // is named in the notes rather than papered over here.
             assert!(
                 shown == brush || mode == SculptInputMode::Smooth,
                 "{modifiers:?} moved the island off {brush:?} for something other than a held Shift"
@@ -661,9 +650,6 @@ fn the_island_names_whatever_a_stroke_would_actually_do() {
         }
     }
 
-    // Nothing held is the plain case: the island shows the selection, and no
-    // modifier state has been written anywhere that a release would have to
-    // undo.
     for brush in SculptBrush::ALL {
         assert_eq!(
             brush_shown_for(sculpt_input_mode(egui::Modifiers::default(), brush), brush),
@@ -674,7 +660,10 @@ fn the_island_names_whatever_a_stroke_would_actually_do() {
 
 #[test]
 fn sculpt_modifier_shortcuts_override_the_selected_brush() {
-    for brush in SculptBrush::ALL {
+    for brush in SculptBrush::ALL
+        .into_iter()
+        .filter(|brush| brush.edits_geometry())
+    {
         assert_eq!(
             sculpt_input_mode(
                 egui::Modifiers {
@@ -832,7 +821,6 @@ fn viewport_popovers_measure_contents_and_reuse_the_same_hit_rect() {
         (ViewportToolPanel::Xray, BaseViewMode::Texture),
         (ViewportToolPanel::Skin, BaseViewMode::Solid),
         (ViewportToolPanel::Skin, BaseViewMode::Texture),
-        (ViewportToolPanel::Hair, BaseViewMode::Texture),
     ] {
         let (measured, cached) = measured_panel_rect(&mut state, viewport, panel, mode);
         let measured = measured.expect("measured popover must fit the test viewport");
@@ -918,8 +906,9 @@ fn solid_popover_frame_contains_the_final_g2_swatch() {
 
 #[test]
 fn minimum_app_viewport_contains_the_content_derived_sculpt_hud() {
+    let state = AppState::default();
     let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1120.0, 680.0));
-    let plan = detail_hud_plan(viewport).expect("HUD must fit the app minimum");
+    let plan = detail_hud_plan(&state, viewport).expect("HUD must fit the app minimum");
 
     assert!(matches!(
         plan.tier,
@@ -1008,10 +997,11 @@ fn an_open_popover_owns_its_rect_for_hit_testing() {
 
 #[test]
 fn the_header_island_never_reaches_under_the_axis_gizmo() {
+    let state = AppState::default();
     for width in [1600.0, 1400.0, 1212.0, 1120.0, 900.0, 700.0, 500.0, 450.0] {
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(width, 680.0));
         let (Some(plan), Some(gizmo)) = (
-            detail_hud_plan(viewport),
+            detail_hud_plan(&state, viewport),
             crate::viewport_chrome::slot(
                 viewport,
                 crate::viewport_chrome::ChromeAnchor::TopRight,
@@ -1034,49 +1024,50 @@ fn the_header_island_never_reaches_under_the_axis_gizmo() {
 fn detail_hud_degrades_through_compact_and_split_view_rows_before_hiding() {
     let viewport = |width: f32| Rect::from_min_size(pos2(0.0, 0.0), vec2(width, 680.0));
 
+    let state = AppState::default();
     let reserved = {
         let probe = viewport(2000.0);
         2000.0
             - (detail_hud_right_base(probe)
-                - detail_hud_left_base(probe)
+                - detail_hud_row_left(&state, probe)
                 - DETAIL_MODE_CAPSULE_WIDTH
                 - DETAIL_MODE_CAPSULE_GAP)
     };
     let at = |band: f32| viewport(reserved + band);
 
-    let full = detail_hud_plan(at(DETAIL_HUD_OUTER_WIDTH)).unwrap();
+    let full = detail_hud_plan(&state, at(DETAIL_HUD_OUTER_WIDTH)).unwrap();
     assert_eq!(full.tier, DetailHudTier::Full);
     assert_eq!(
         full.rect.size(),
         vec2(DETAIL_HUD_OUTER_WIDTH, DETAIL_HUD_HEIGHT)
     );
 
-    let compact = detail_hud_plan(at(DETAIL_HUD_OUTER_WIDTH - 1.0)).unwrap();
+    let compact = detail_hud_plan(&state, at(DETAIL_HUD_OUTER_WIDTH - 1.0)).unwrap();
     assert_eq!(compact.tier, DetailHudTier::Compact);
     assert_eq!(compact.rect.height(), DETAIL_HUD_HEIGHT);
     assert_eq!(compact.rect.width(), DETAIL_HUD_COMPACT_MAX_OUTER_WIDTH);
 
-    let compact_floor = detail_hud_plan(at(DETAIL_HUD_COMPACT_MIN_WIDTH)).unwrap();
+    let compact_floor = detail_hud_plan(&state, at(DETAIL_HUD_COMPACT_MIN_WIDTH)).unwrap();
     assert_eq!(compact_floor.tier, DetailHudTier::Compact);
     assert_eq!(compact_floor.rect.width(), DETAIL_HUD_COMPACT_MIN_WIDTH);
 
-    let two_row = detail_hud_plan(at(DETAIL_HUD_COMPACT_MIN_WIDTH - 1.0)).unwrap();
+    let two_row = detail_hud_plan(&state, at(DETAIL_HUD_COMPACT_MIN_WIDTH - 1.0)).unwrap();
     assert_eq!(two_row.tier, DetailHudTier::TwoRow);
     assert_eq!(two_row.rect.height(), DETAIL_HUD_TWO_ROW_HEIGHT);
 
-    let two_row_floor = detail_hud_plan(at(DETAIL_HUD_TWO_ROW_MIN_WIDTH)).unwrap();
+    let two_row_floor = detail_hud_plan(&state, at(DETAIL_HUD_TWO_ROW_MIN_WIDTH)).unwrap();
     assert_eq!(two_row_floor.tier, DetailHudTier::TwoRow);
     assert_eq!(two_row_floor.rect.width(), DETAIL_HUD_TWO_ROW_MIN_WIDTH);
 
-    let three_row = detail_hud_plan(at(DETAIL_HUD_TWO_ROW_MIN_WIDTH - 1.0)).unwrap();
+    let three_row = detail_hud_plan(&state, at(DETAIL_HUD_TWO_ROW_MIN_WIDTH - 1.0)).unwrap();
     assert_eq!(three_row.tier, DetailHudTier::ThreeRow);
     assert_eq!(three_row.rect.height(), DETAIL_HUD_THREE_ROW_HEIGHT);
 
-    let narrowest = detail_hud_plan(at(DETAIL_HUD_MIN_WIDTH)).unwrap();
+    let narrowest = detail_hud_plan(&state, at(DETAIL_HUD_MIN_WIDTH)).unwrap();
     assert_eq!(narrowest.tier, DetailHudTier::ThreeRow);
     assert_eq!(narrowest.rect.width(), DETAIL_HUD_MIN_WIDTH);
 
-    assert!(detail_hud_plan(at(DETAIL_HUD_MIN_WIDTH - 1.0)).is_none());
+    assert!(detail_hud_plan(&state, at(DETAIL_HUD_MIN_WIDTH - 1.0)).is_none());
 
     for band in [
         DETAIL_HUD_OUTER_WIDTH,
@@ -1087,7 +1078,7 @@ fn detail_hud_degrades_through_compact_and_split_view_rows_before_hiding() {
         DETAIL_HUD_TWO_ROW_MIN_WIDTH - 1.0,
         DETAIL_HUD_MIN_WIDTH,
     ] {
-        let plan = detail_hud_plan(at(band)).unwrap();
+        let plan = detail_hud_plan(&state, at(band)).unwrap();
         assert!(at(band).contains(plan.rect.min));
         assert!(at(band).contains(plan.rect.max));
     }
@@ -1098,7 +1089,7 @@ fn header_band_covers_the_two_row_sculpt_hud() {
     let mut state = AppState::default();
     state.active_tab = Tab::Morph;
     let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(600.0, 680.0));
-    let plan = detail_hud_plan(viewport).unwrap();
+    let plan = detail_hud_plan(&state, viewport).unwrap();
     assert_eq!(plan.tier, DetailHudTier::TwoRow);
     let second_row_point = pos2(
         plan.rect.center().x,
@@ -1124,8 +1115,8 @@ fn header_band_covers_the_three_row_sculpt_hud_in_a_split_view() {
     let mut state = AppState::default();
     state.active_tab = Tab::Morph;
 
-    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(442.0, 680.0));
-    let plan = detail_hud_plan(viewport).unwrap();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(474.0, 680.0));
+    let plan = detail_hud_plan(&state, viewport).unwrap();
     assert_eq!(plan.tier, DetailHudTier::ThreeRow);
     let third_row_point = pos2(
         plan.rect.center().x,
@@ -1424,7 +1415,8 @@ fn orientation_triad_foreshortens_and_orders_by_depth() {
 
 #[test]
 fn help_tables_are_tab_specific_and_keep_documented_pin_inputs() {
-    assert_eq!(PIN_HELP_ROWS.len(), 15);
+    assert_eq!(PIN_HELP_ROWS.len(), 17);
+    assert!(PIN_HELP_ROWS.contains(&(TextKey::HelpLevelRoll, TextKey::ShortcutLevelRoll)));
 
     for rows in [
         ALIGN_HELP_ROWS.as_slice(),
@@ -1434,9 +1426,6 @@ fn help_tables_are_tab_specific_and_keep_documented_pin_inputs() {
     ] {
         assert!(rows.contains(&(TextKey::HelpSnapView, TextKey::ShortcutSnapView)));
         assert!(rows.contains(&(TextKey::HelpStandardViews, TextKey::ShortcutStandardViews)));
-        // The projection toggle travels with the standard views: both are the
-        // numpad, and a card that names one without the other reads as though
-        // the other does not exist.
         assert!(rows.contains(&(
             TextKey::HelpCameraProjection,
             TextKey::ShortcutCameraProjection
@@ -1641,9 +1630,6 @@ fn the_texture_brush_ring_tracks_the_camera_because_its_dab_is_measured_in_uv() 
     let near = measure_texture_brush_points_per_uv(&state, viewport, camera, viewport.center())
         .expect("the cursor sits on the face");
 
-    // The dab is a fraction of the square G2 mask, so its screen footprint doubles when the
-    // camera halves its distance. The ring the user sees has to do the same; the old
-    // viewport-relative ring was this same number at both distances.
     assert!(
         (near / far - 2.0).abs() < 1.0e-3,
         "halving the distance must double the screen span of a UV unit: {far} then {near}"
@@ -1913,6 +1899,7 @@ fn clearing_sculpt_pointer_stroke_removes_the_egui_drag_anchor() {
         data.insert_temp(
             stroke_id,
             SculptViewportStroke {
+                mask_step_open: false,
                 center_local: [1.0, 2.0, 3.0],
                 last_pointer: pos2(10.0, 20.0),
                 last_sample_pointer: pos2(10.0, 20.0),
@@ -1972,10 +1959,6 @@ fn sculpt_visibility_mask_is_independent_from_result_attachment_toggles() {
 
 #[test]
 fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
-    // The texture prompt was handed only the model half of the workspace, so
-    // it centred itself inside that and read as pinned to the top-left corner
-    // of the window while the create tab's sat on the divider. One rule now
-    // decides both; this holds them to it.
     let workspace = Rect::from_min_size(pos2(100.0, 40.0), vec2(900.0, 600.0));
     let split_x = 610.0;
     let centre = crate::viewport::prompt_island_centre(workspace, split_x);
@@ -1985,7 +1968,6 @@ fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
     );
     assert!((centre.y - workspace.center().y).abs() < f32::EPSILON);
 
-    // Moving the divider carries it along; the height does not follow.
     let dragged = crate::viewport::prompt_island_centre(workspace, 300.0);
     assert!((dragged.x - 300.0).abs() < f32::EPSILON);
     assert!((dragged.y - centre.y).abs() < f32::EPSILON);
@@ -1993,12 +1975,10 @@ fn both_tabs_float_their_prompt_on_the_divider_at_the_same_height() {
 
 #[test]
 fn the_help_card_names_the_brush_gestures_nobody_finds_alone() {
-    // Size and strength are on every brush in both tabs and are the two people
-    // report not knowing about. If they are not in the card, they are nowhere.
-    for (card, rows) in crate::viewport::BRUSH_HELP_CARDS {
+    for (card, rows, second_sweep) in crate::viewport::BRUSH_HELP_CARDS {
         for wanted in [
             TextKey::HelpBrushSize,
-            TextKey::HelpBrushStrength,
+            second_sweep,
             TextKey::ShortcutBrushSize,
             TextKey::ShortcutBrushStrength,
         ] {
@@ -2016,4 +1996,1939 @@ fn the_help_card_names_the_brush_gestures_nobody_finds_alone() {
             "{locale:?} does not name the F key: {strength}"
         );
     }
+}
+
+fn mirror_sheet() -> SurfaceMesh {
+    const COLUMNS: usize = 21;
+    const ROWS: usize = 11;
+    let mut vertices = Vec::new();
+    for row in 0..ROWS {
+        for column in 0..COLUMNS {
+            vertices.push([column as f64 - 10.0, row as f64 - 5.0, 0.0]);
+        }
+    }
+    let mut triangles = Vec::new();
+    for row in 0..ROWS - 1 {
+        for column in 0..COLUMNS - 1 {
+            let base = row * COLUMNS + column;
+            triangles.push([base as u32, (base + 1) as u32, (base + COLUMNS) as u32]);
+            triangles.push([
+                (base + 1) as u32,
+                (base + COLUMNS + 1) as u32,
+                (base + COLUMNS) as u32,
+            ]);
+        }
+    }
+    SurfaceMesh::new(Mesh::new(vertices, triangles).unwrap()).unwrap()
+}
+
+fn sheet_pin(mesh: &SurfaceMesh, x: f64, y: f64) -> SurfaceEndpoint {
+    let (triangle, barycentric) = mesh
+        .mesh
+        .triangles
+        .iter()
+        .enumerate()
+        .find_map(|(index, corners)| {
+            let [a, b, c] = corners.map(|corner| mesh.mesh.vertices[corner as usize]);
+            let area = |p: [f64; 3], q: [f64; 3], r: [f64; 3]| {
+                (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+            };
+            let total = area(a, b, c);
+            if total.abs() < 1.0e-12 {
+                return None;
+            }
+            let point = [x, y, 0.0];
+            let u = area(point, b, c) / total;
+            let v = area(a, point, c) / total;
+            let w = 1.0 - u - v;
+            (u >= -1.0e-9 && v >= -1.0e-9 && w >= -1.0e-9).then_some((index as u32, [u, v, w]))
+        })
+        .expect("the point lies on the sheet");
+    SurfaceEndpoint {
+        triangle,
+        barycentric,
+    }
+}
+
+#[test]
+fn a_mirrored_pin_finds_its_partner_across_the_plane() {
+    let mesh = mirror_sheet();
+    let mut state = AppState::default();
+    state.workspace.scan = Some(std::sync::Arc::new(mirror_sheet()));
+    state.workspace.scan_source = state.workspace.scan.clone();
+
+    let left = sheet_pin(&mesh, -4.0, 1.0);
+    let right = sheet_pin(&mesh, 4.0, 1.0);
+    let lone = sheet_pin(&mesh, -9.0, -4.0);
+    state.add_surface_pins(MeshSide::Scan, [left, right, lone]);
+    assert_eq!(state.workspace.pins.pairs().len(), 3);
+
+    assert_eq!(
+        mirrored_pin_index(&state, MeshSide::Scan, &mesh, 0),
+        Some(1),
+        "the pair should find each other"
+    );
+    assert_eq!(
+        mirrored_pin_index(&state, MeshSide::Scan, &mesh, 1),
+        Some(0),
+        "and the relation runs both ways"
+    );
+    assert_eq!(
+        mirrored_pin_index(&state, MeshSide::Scan, &mesh, 2),
+        None,
+        "a pin with nothing across from it has no partner"
+    );
+
+    let mut nudged = AppState::default();
+    nudged.workspace.scan = state.workspace.scan.clone();
+    nudged.workspace.scan_source = state.workspace.scan_source.clone();
+    nudged.add_surface_pins(MeshSide::Scan, [left, sheet_pin(&mesh, 4.4, 1.3)]);
+    assert_eq!(
+        mirrored_pin_index(&nudged, MeshSide::Scan, &mesh, 0),
+        Some(1),
+        "a pair that drifted a little is still a pair"
+    );
+
+    let mut centred = AppState::default();
+    centred.workspace.scan = state.workspace.scan.clone();
+    centred.workspace.scan_source = state.workspace.scan_source.clone();
+    centred.add_surface_pins(MeshSide::Scan, [sheet_pin(&mesh, 0.0, 2.0), left]);
+    assert_eq!(
+        mirrored_pin_index(&centred, MeshSide::Scan, &mesh, 0),
+        None,
+        "a centreline pin has no other side"
+    );
+}
+
+#[test]
+fn a_moved_pane_divider_keeps_the_two_panes_and_the_gap_filling_the_half() {
+    use super::detail_hud::{PANE_SPLIT_GAP, pane_rects};
+
+    let half = Rect::from_min_size(pos2(10.0, 20.0), vec2(900.0, 600.0));
+    for stacked in [false, true] {
+        for ratio in [0.2_f32, 0.35, 0.5, 0.68, 0.8] {
+            let (first, second) = pane_rects(half, stacked, ratio);
+            let (leading, trailing, extent) = if stacked {
+                (first.height(), second.height(), half.height())
+            } else {
+                (first.width(), second.width(), half.width())
+            };
+            assert!(
+                (leading + trailing + PANE_SPLIT_GAP - extent).abs() < 1.0e-3,
+                "stacked={stacked} ratio={ratio}: {leading} + {trailing} + gap must be {extent}"
+            );
+            assert!(leading > 0.0 && trailing > 0.0);
+            if stacked {
+                assert!((second.top() - first.bottom() - PANE_SPLIT_GAP).abs() < 1.0e-3);
+                assert_eq!(first.width(), half.width());
+            } else {
+                assert!((second.left() - first.right() - PANE_SPLIT_GAP).abs() < 1.0e-3);
+                assert_eq!(first.height(), half.height());
+            }
+        }
+    }
+}
+
+fn probe_hair_scalp() -> vkit_core::vam::BuiltinHairScalp {
+    let mut vertices_cm = Vec::new();
+    let mut triangles = Vec::new();
+    const N: usize = 8;
+    for row in 0..N {
+        for col in 0..N {
+            let x = (col as f32 / (N - 1) as f32 - 0.5) * 10.0;
+            let z = (row as f32 / (N - 1) as f32 - 0.5) * 10.0;
+            vertices_cm.push([x, 10.0, z]);
+        }
+    }
+    for row in 0..N - 1 {
+        for col in 0..N - 1 {
+            let a = (row * N + col) as u32;
+            let b = a + 1;
+            let c = a + N as u32;
+            let d = c + 1;
+            triangles.push([a, c, b]);
+            triangles.push([b, c, d]);
+        }
+    }
+    vkit_core::vam::BuiltinHairScalp {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+        geometry: vkit_core::vam::HairScalpGeometry {
+            materials: vec!["scalp".into()],
+            uvs: vec![[0.0, 0.0]; vertices_cm.len()],
+            vertices_cm,
+            triangles,
+        },
+    }
+}
+
+fn probe_hair_state() -> AppState {
+    let mut state = AppState::default();
+    state.builtin_hair_scalps = std::sync::Arc::new(vec![probe_hair_scalp()]);
+    state.active_tab = crate::state::Tab::Hair;
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    state
+}
+
+fn probe_strand_at(state: &mut AppState, part_index: usize, at: [f32; 3]) {
+    let strand = crate::hair_project::HairStrand {
+        points_cm: vec![at, [at[0], at[1] + 2.0, at[2]]],
+    };
+    let key = state.hair_project.parts[part_index].strands.len() as u32;
+    state.hair_project.parts[part_index]
+        .strands
+        .insert(key, strand);
+}
+
+#[test]
+fn the_auto_part_ray_prefers_the_part_nearer_the_camera() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let near = state.hair_project.parts[0].id;
+    probe_strand_at(&mut state, 0, [0.4, 10.0, 5.0]);
+    probe_strand_at(&mut state, 1, [0.1, 10.0, -5.0]);
+
+    let picked = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0)),
+        glam::Vec3::new(0.0, 10.0, 30.0),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+        1.0e4,
+    );
+    assert_eq!(picked, Some(near), "depth decides, not sideways distance");
+}
+
+#[test]
+fn the_auto_part_ray_refuses_what_the_ring_does_not_cover() {
+    let mut state = probe_hair_state();
+    probe_strand_at(&mut state, 0, [100.0, 10.0, 0.0]);
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+
+    let tiny_ring = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        glam::Vec3::new(0.0, 10.0, 30.0),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+        1.0,
+    );
+    assert_eq!(tiny_ring, None, "a metre off-axis is not under a 1pt brush");
+
+    let behind = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        glam::Vec3::new(100.0, 10.0, -30.0),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+        1.0e4,
+    );
+    assert_eq!(behind, None, "hair behind the ray origin never counts");
+}
+
+#[test]
+fn the_auto_part_ray_skips_hidden_parts() {
+    let mut state = probe_hair_state();
+    let only = state.hair_project.parts[0].id;
+    probe_strand_at(&mut state, 0, [0.0, 10.0, 0.0]);
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+    let ray_origin = glam::Vec3::new(0.0, 10.0, 30.0);
+    let ray = glam::Vec3::new(0.0, 0.0, -1.0);
+
+    let seen = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        ray_origin,
+        ray,
+        1.0e4,
+    );
+    assert_eq!(seen, Some(only));
+
+    state.dispatch(crate::state::Action::ToggleHairPartVisible(only));
+    let hidden = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        ray_origin,
+        ray,
+        1.0e4,
+    );
+    assert_eq!(hidden, None, "a hidden lock cannot take the brush");
+}
+
+#[test]
+fn relaxing_segment_lengths_restores_spacing_and_pins_the_root() {
+    let mut points = vec![
+        [0.0, 0.0, 0.0],
+        [0.0, 2.0, 0.0],
+        [0.0, 4.0, 0.0],
+        [0.0, 6.0, 0.0],
+    ];
+    let spacing = vec![2.0, 2.0, 2.0];
+    points[2] = [3.0, 4.5, 1.0];
+
+    super::hair_input::relax_segment_lengths(&mut points, &spacing);
+
+    assert_eq!(points[0], [0.0, 0.0, 0.0], "the root belongs to the scalp");
+    for (index, pair) in points.windows(2).enumerate() {
+        let d = [
+            pair[1][0] - pair[0][0],
+            pair[1][1] - pair[0][1],
+            pair[1][2] - pair[0][2],
+        ];
+        let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        assert!(
+            (length - spacing[index]).abs() < 1.0e-3,
+            "segment {index} came back {length}, wanted {}",
+            spacing[index],
+        );
+    }
+}
+
+#[test]
+fn the_hair_island_yields_to_the_capture_frame() {
+    let mut state = probe_hair_state();
+    let wide = Rect::from_min_size(pos2(0.0, 0.0), vec2(1600.0, 900.0));
+    assert!(
+        super::hair_hud::hair_hud_plan(&state, wide).is_some(),
+        "a selected part earns the island"
+    );
+
+    let selected = state.hair_project.selected_part_id.take();
+    state.hair_project.active_part_ids.clear();
+    assert!(
+        super::hair_hud::hair_hud_plan(&state, wide).is_some(),
+        "the toggles on this row steer the viewport, not a layer, so the island          must outlast the selection"
+    );
+    state.hair_project.selected_part_id = selected;
+
+    state.hair_thumbnail = Some(crate::state::HairThumbnailJob {
+        target: crate::state::HairThumbnailTarget::Preset,
+        square: None,
+        shoot: false,
+    });
+    assert!(
+        super::hair_hud::hair_hud_plan(&state, wide).is_none(),
+        "framing clears the stage"
+    );
+    state.hair_thumbnail = None;
+
+    let sliver = Rect::from_min_size(pos2(0.0, 0.0), vec2(120.0, 900.0));
+    assert!(
+        super::hair_hud::hair_hud_plan(&state, sliver).is_none(),
+        "no room, no island"
+    );
+}
+
+#[test]
+fn the_toolbox_rect_tracks_its_column_count() {
+    let mut state = probe_hair_state();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1600.0, 900.0));
+
+    state.hair_toolbox_columns = 2;
+    let two = super::hair_hud::hair_toolbox_rect(&state, viewport)
+        .expect("two columns fit a full viewport");
+    state.hair_toolbox_columns = 1;
+    let one = super::hair_hud::hair_toolbox_rect(&state, viewport)
+        .expect("one column fits a full viewport");
+
+    assert!(
+        (two.width() - one.width() - (DETAIL_HUD_TOGGLE_SIZE + crate::theme::SPACE_2)).abs() < 0.01,
+        "the second column costs one cell and one gap"
+    );
+    assert!(one.height() > two.height(), "fewer columns stack taller");
+}
+
+#[test]
+fn the_stream_switch_draws_the_active_strands_and_nothing_when_off() {
+    let painted = |state: &mut AppState| -> usize {
+        let pane = Rect::from_min_max(pos2(0.0, 0.0), pos2(900.0, 700.0));
+        let context = egui::Context::default();
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        let output = context.run_ui(raw, |ui| {
+            draw_result(ui, state, pane, "hair");
+        });
+        output.shapes.len()
+    };
+
+    let mut state = probe_hair_state();
+    let part = state.hair_project.parts[0].id;
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id: part,
+        scalp_indices: (0..12).collect(),
+    });
+
+    state.hair_show_streams = false;
+    let quiet = painted(&mut state);
+    state.hair_show_streams = true;
+    let shown = painted(&mut state);
+    assert!(
+        shown > quiet,
+        "turning the switch on added nothing: {quiet} -> {shown}"
+    );
+
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let second = state.hair_project.parts[1].id;
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id: second,
+        scalp_indices: (12..24).collect(),
+    });
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: part,
+        additive: false,
+    });
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: second,
+        additive: false,
+    });
+    let one_active = painted(&mut state);
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: part,
+        additive: true,
+    });
+    let both_active = painted(&mut state);
+    assert!(
+        both_active > one_active,
+        "gathering a second layer drew no more streams: {one_active} -> {both_active}"
+    );
+
+    state.hair_show_streams = false;
+    let quiet_again = painted(&mut state);
+    assert!(
+        quiet_again < one_active,
+        "the switch stopped switching: {quiet_again} vs {one_active}"
+    );
+}
+
+#[test]
+fn framing_a_layers_portrait_puts_that_layer_alone_on_the_head() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let (first, second) = (
+        state.hair_project.parts[0].id,
+        state.hair_project.parts[1].id,
+    );
+
+    assert_eq!(
+        state.hair_isolated_part(),
+        None,
+        "nothing is isolated while no portrait is being framed"
+    );
+
+    state.begin_hair_thumbnail(crate::state::HairThumbnailTarget::Part(first));
+    assert_eq!(state.hair_isolated_part(), Some(first));
+
+    state.hair_thumbnail = None;
+    state.begin_hair_thumbnail(crate::state::HairThumbnailTarget::Part(second));
+    assert_eq!(state.hair_isolated_part(), Some(second));
+
+    state.hair_thumbnail = None;
+    state.begin_hair_thumbnail(crate::state::HairThumbnailTarget::Preset);
+    assert_eq!(state.hair_isolated_part(), None);
+
+    state.hair_thumbnail = None;
+    assert_eq!(state.hair_isolated_part(), None);
+}
+
+#[test]
+fn a_new_or_duplicated_layer_arrives_on_its_own() {
+    let mut state = probe_hair_state();
+    let first = state.hair_project.parts[0].id;
+    assert_eq!(state.hair_project.active_parts(), vec![first]);
+
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let second = state.hair_project.parts[1].id;
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![second],
+        "creating a layer left the previous one active"
+    );
+    assert_eq!(state.hair_project.selected_part_id, Some(second));
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: true,
+    });
+    assert_eq!(state.hair_project.active_parts(), vec![first, second]);
+
+    state.dispatch(crate::state::Action::DuplicateHairPart(second));
+    let copy = state
+        .hair_project
+        .parts
+        .last()
+        .expect("a duplicated layer")
+        .id;
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![copy],
+        "duplicating left the gathered layers active alongside the copy"
+    );
+    assert_eq!(state.hair_project.selected_part_id, Some(copy));
+}
+
+#[test]
+fn the_hair_reset_restores_shape_without_touching_where_or_which() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let (active, idle) = (
+        state.hair_project.parts[0].id,
+        state.hair_project.parts[1].id,
+    );
+    for part_id in [active, idle] {
+        state.dispatch(crate::state::Action::PlantHairStrands {
+            part_id,
+            scalp_indices: (0..6).collect(),
+        });
+    }
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: active,
+        additive: false,
+    });
+
+    let planted_tip = |state: &AppState, id: u64| -> [f32; 3] {
+        *state
+            .hair_project
+            .part(id)
+            .and_then(|part| part.strands.values().next())
+            .and_then(|strand| strand.points_cm.last())
+            .expect("a planted strand")
+    };
+    let (was_active, was_idle) = (planted_tip(&state, active), planted_tip(&state, idle));
+
+    for part_id in [active, idle] {
+        let strands: Vec<(u32, Vec<[f32; 3]>)> = state
+            .hair_project
+            .part(part_id)
+            .expect("part")
+            .strands
+            .iter()
+            .map(|(index, strand)| {
+                let mut points = strand.points_cm.clone();
+                if let Some(tip) = points.last_mut() {
+                    tip[0] += 5.0;
+                }
+                (*index, points)
+            })
+            .collect();
+        state.dispatch(crate::state::Action::SetHairStrandPoints { part_id, strands });
+    }
+    assert!(
+        (planted_tip(&state, active)[0] - was_active[0]).abs() > 1.0,
+        "the styling did not take"
+    );
+
+    let roots_before = state.hair_project.part(active).expect("part").strands.len();
+    state.dispatch(crate::state::Action::ResetHairShapes);
+
+    assert_eq!(
+        planted_tip(&state, active),
+        was_active,
+        "the active layer goes back to the way it was planted"
+    );
+    assert_eq!(
+        state.hair_project.part(active).expect("part").strands.len(),
+        roots_before,
+        "the reset restores shape, it does not unplant"
+    );
+    assert_ne!(
+        planted_tip(&state, idle),
+        was_idle,
+        "a layer nobody is working on is not reset"
+    );
+}
+
+#[test]
+fn a_click_activates_one_part_and_shift_gathers_several() {
+    let mut state = probe_hair_state();
+    let first = state.hair_project.parts[0].id;
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let second = state.hair_project.parts[1].id;
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![second],
+        "a new layer arrives alone, the way a plain click leaves one"
+    );
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: false,
+    });
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![first],
+        "a plain click leaves only the clicked part active"
+    );
+    assert_eq!(state.hair_project.selected_part_id, Some(first));
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: false,
+    });
+    assert!(
+        state.hair_project.active_parts().is_empty(),
+        "re-clicking the only active part puts it out, so nothing is highlighted"
+    );
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: false,
+    });
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: second,
+        additive: true,
+    });
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![first, second],
+        "shift gathers a second part into the set"
+    );
+    assert_eq!(state.hair_project.selected_part_id, Some(second));
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: second,
+        additive: true,
+    });
+    assert_eq!(state.hair_project.active_parts(), vec![first]);
+    assert_eq!(
+        state.hair_project.selected_part_id,
+        Some(first),
+        "primacy hands over when the primary shifts off"
+    );
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: true,
+    });
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![first],
+        "the last active part cannot be shifted off"
+    );
+
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: second,
+        additive: false,
+    });
+    assert_eq!(
+        state.hair_project.active_parts(),
+        vec![second],
+        "a plain click on another part swaps the whole set for it"
+    );
+    assert_eq!(state.hair_project.selected_part_id, Some(second));
+}
+
+#[test]
+fn a_deep_rewind_in_hair_warns_before_an_edit_drops_the_road_ahead() {
+    let mut state = probe_hair_state();
+    let part_id = state.hair_project.parts[0].id;
+    for start in 0..6u32 {
+        state.dispatch(crate::state::Action::PlantHairStrands {
+            part_id,
+            scalp_indices: vec![start],
+        });
+        state.dispatch(crate::state::Action::EndHairStroke);
+    }
+    for _ in 0..5 {
+        state.dispatch(crate::state::Action::Undo);
+    }
+    let (_, forward) = state.history_position();
+    assert_eq!(forward, 5, "five steps stand ahead");
+
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id,
+        scalp_indices: vec![7],
+    });
+    assert!(state.pending_history_branch, "the edit must ask first");
+    let (_, forward) = state.history_position();
+    assert_eq!(forward, 5, "a refused edit drops nothing");
+
+    state.dispatch(crate::state::Action::ConfirmHistoryBranch);
+    assert!(!state.pending_history_branch);
+    let (_, forward) = state.history_position();
+    assert_eq!(forward, 0, "confirming is what clears the road ahead");
+
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id,
+        scalp_indices: vec![7],
+    });
+    state.dispatch(crate::state::Action::EndHairStroke);
+    assert!(
+        !state.pending_history_branch,
+        "the second attempt goes through"
+    );
+}
+
+fn hair_overlay_dot_count(state: &mut AppState, viewport: Rect) -> usize {
+    let context = egui::Context::default();
+    let raw = egui::RawInput {
+        screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+        ..Default::default()
+    };
+    let output = context.run_ui(raw, |ui| {
+        draw_result(ui, state, viewport, "hair");
+    });
+    output
+        .shapes
+        .iter()
+        .filter(|clipped| matches!(clipped.shape, egui::Shape::Circle(_)))
+        .count()
+}
+
+#[test]
+fn the_hair_tab_draws_its_scalp_without_a_result_mesh() {
+    let viewport = test_rect();
+    let framed = |state: &mut AppState| {
+        let mut camera = state.workspace.result_camera;
+        camera.frame(crate::scene::Bounds3 {
+            min: glam::Vec3::new(-6.0, 4.0, -6.0),
+            max: glam::Vec3::new(6.0, 16.0, 6.0),
+        });
+        state.workspace.result_camera = camera;
+    };
+
+    let mut bare = AppState::default();
+    bare.active_tab = crate::state::Tab::Hair;
+    framed(&mut bare);
+    let chrome = hair_overlay_dot_count(&mut bare, viewport);
+
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id: state.hair_project.parts[0].id,
+        scalp_indices: (0..12).collect(),
+    });
+    assert!(
+        !state.hair_project.parts[0].strands.is_empty(),
+        "seeded strands"
+    );
+    framed(&mut state);
+    assert!(
+        state.workspace.result.is_none(),
+        "this test is about the no-result case",
+    );
+
+    let painted = hair_overlay_dot_count(&mut state, viewport);
+    assert!(
+        painted > chrome,
+        "the Hair tab painted no scalp of its own without a result mesh          ({painted} dots vs {chrome} of bare viewport chrome): the scalp, its          vertex dots and every planted strand are invisible, so the tab reads          as completely broken",
+    );
+}
+
+#[test]
+fn arming_a_brush_sweep_never_latches_the_viewport_shut() {
+    let mut state = probe_hair_state();
+    let viewport = test_rect();
+    let context = egui::Context::default();
+    let center = viewport.center();
+
+    let frame = |state: &mut AppState, press_f: bool| -> (bool, bool) {
+        let mut raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        raw.events.push(egui::Event::PointerMoved(center));
+        if press_f {
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::F,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            });
+            raw.events.push(egui::Event::Key {
+                key: egui::Key::F,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: Default::default(),
+            });
+        }
+        let mut owned = false;
+        let mut camera_ran = false;
+        let _ = context.run_ui(raw, |ui| {
+            draw_result(ui, state, viewport, "hair");
+            owned = brush_sweep_owns_pointer(ui);
+            camera_ran = !(state.import_progress.is_some()
+                || camera_mode_owns_pointer(state)
+                || crate::sweep_gesture::press_spent(ui)
+                || viewport_tools_pointer_blocked(ui, state, viewport));
+        });
+        (owned, camera_ran)
+    };
+
+    let _ = frame(&mut state, true);
+    let (armed, _) = frame(&mut state, false);
+    assert!(
+        armed,
+        "the F press did not arm the sweep; test is not exercising the latch"
+    );
+
+    let _ = frame(&mut state, true);
+    let (still_owned, camera_ran) = frame(&mut state, false);
+    assert!(
+        !still_owned,
+        "the sweep survived its own finish keypress: the viewport is latched shut          and camera orbit is dead in every tab until the process restarts",
+    );
+    assert!(
+        camera_ran,
+        "the camera is still blocked after the sweep finished"
+    );
+}
+
+#[test]
+fn planting_lands_strands_under_the_pointer() {
+    let mut state = probe_hair_state();
+    let viewport = test_rect();
+    let mut camera = state.workspace.result_camera;
+    camera.frame(crate::scene::Bounds3 {
+        min: glam::Vec3::new(-6.0, 4.0, -6.0),
+        max: glam::Vec3::new(6.0, 16.0, 6.0),
+    });
+    state.workspace.result_camera = camera;
+
+    let context = egui::Context::default();
+    let center = viewport.center();
+    for frame in 0..4 {
+        let mut raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        raw.events.push(egui::Event::PointerMoved(center));
+        if frame >= 2 {
+            raw.events.push(egui::Event::PointerButton {
+                pos: center,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            });
+        }
+        let _ = context.run_ui(raw, |ui| {
+            draw_result(ui, &mut state, viewport, "hair");
+        });
+    }
+
+    let planted = state.hair_project.parts[0].strands.len();
+    assert!(
+        planted > 0,
+        "the plant brush pressed on the scalp and nothing grew",
+    );
+    let scalp = state.hair_scalps.values().next().cloned().expect("scalp");
+    for (index, strand) in &state.hair_project.parts[0].strands {
+        let root = scalp.vertices_cm[*index as usize];
+        assert_eq!(
+            strand.points_cm[0], root,
+            "strand {index} left its scalp vertex"
+        );
+        assert!(strand.points_cm.len() >= 2, "strand {index} has no length");
+    }
+}
+
+#[test]
+fn hair_undo_walks_the_tabs_own_history_one_stroke_at_a_time() {
+    let mut state = probe_hair_state();
+    let part_id = state.hair_project.parts[0].id;
+    let pins_before = state.workspace.pins.pairs().len();
+
+    for chunk in [0..4u32, 4..8, 8..12] {
+        state.dispatch(crate::state::Action::PlantHairStrands {
+            part_id,
+            scalp_indices: chunk.collect(),
+        });
+    }
+    state.dispatch(crate::state::Action::EndHairStroke);
+    assert_eq!(state.hair_project.parts[0].strands.len(), 12);
+
+    state.dispatch(crate::state::Action::Undo);
+    assert_eq!(
+        state.hair_project.parts[0].strands.len(),
+        0,
+        "one drag should cost exactly one undo",
+    );
+    assert_eq!(
+        state.workspace.pins.pairs().len(),
+        pins_before,
+        "hair undo reached into another stage's history",
+    );
+
+    state.dispatch(crate::state::Action::Redo);
+    assert_eq!(
+        state.hair_project.parts[0].strands.len(),
+        12,
+        "redo did not return the stroke"
+    );
+
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id,
+        scalp_indices: (12..16).collect(),
+    });
+    state.dispatch(crate::state::Action::EndHairStroke);
+    state.dispatch(crate::state::Action::Undo);
+    assert_eq!(state.hair_project.parts[0].strands.len(), 12);
+}
+
+#[test]
+fn the_click_that_commits_a_sweep_does_not_reach_the_brush() {
+    let mut state = probe_hair_state();
+    let viewport = test_rect();
+    let mut camera = state.workspace.result_camera;
+    camera.frame(crate::scene::Bounds3 {
+        min: glam::Vec3::new(-6.0, 4.0, -6.0),
+        max: glam::Vec3::new(6.0, 16.0, 6.0),
+    });
+    state.workspace.result_camera = camera;
+
+    let context = egui::Context::default();
+    let center = viewport.center();
+    let step = |state: &mut AppState, f: bool, press: bool, release: bool| {
+        let mut raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        raw.events.push(egui::Event::PointerMoved(center));
+        if f {
+            for pressed in [true, false] {
+                raw.events.push(egui::Event::Key {
+                    key: egui::Key::F,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Default::default(),
+                });
+            }
+        }
+        for (button_pressed, wanted) in [(true, press), (false, release)] {
+            if wanted {
+                raw.events.push(egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Primary,
+                    pressed: button_pressed,
+                    modifiers: Default::default(),
+                });
+            }
+        }
+        let _ = context.run_ui(raw, |ui| {
+            draw_result(ui, state, viewport, "hair");
+        });
+    };
+
+    step(&mut state, false, false, false);
+    step(&mut state, true, false, false);
+    step(&mut state, false, true, false);
+    assert_eq!(
+        state.hair_project.parts[0].strands.len(),
+        0,
+        "the committing click planted hair",
+    );
+    step(&mut state, false, false, false);
+    assert_eq!(
+        state.hair_project.parts[0].strands.len(),
+        0,
+        "the spent press leaked into the next frame and planted hair",
+    );
+    step(&mut state, false, false, true);
+    step(&mut state, false, false, false);
+    step(&mut state, false, true, false);
+    assert!(
+        !state.hair_project.parts[0].strands.is_empty(),
+        "the brush stayed dead after the sweep let go of the pointer",
+    );
+}
+
+#[test]
+fn combing_holds_the_length_without_swinging_the_untouched_tip() {
+    let rest = 1.0_f32;
+    let mut points: Vec<[f32; 3]> = (0..10)
+        .map(|i| [0.0, 10.0 - i as f32 * rest, 0.0])
+        .collect();
+    let spacing = vec![rest; points.len() - 1];
+    let before = points.clone();
+
+    points[4][0] += 0.6;
+    hair_input::relax_segment_lengths(&mut points, &spacing);
+
+    assert_eq!(points[0], before[0], "the root left its scalp vertex");
+
+    for (index, window) in points.windows(2).enumerate() {
+        let d = [
+            window[1][0] - window[0][0],
+            window[1][1] - window[0][1],
+            window[1][2] - window[0][2],
+        ];
+        let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        assert!(
+            (length - rest).abs() < 0.02,
+            "segment {index} is {length}, not {rest}",
+        );
+    }
+
+    let tip_shift = (points[9][0] - before[9][0]).abs();
+    assert!(
+        tip_shift < 0.35,
+        "the untouched tip moved {tip_shift} cm sideways from a dab in the middle",
+    );
+}
+
+#[test]
+fn the_history_strip_counts_hair_steps() {
+    let mut state = probe_hair_state();
+    let (baseline, _) = state.history_position();
+
+    let part_id = state.hair_project.parts[0].id;
+    for chunk in [0..4u32, 4..8] {
+        state.dispatch(crate::state::Action::PlantHairStrands {
+            part_id,
+            scalp_indices: chunk.collect(),
+        });
+        state.dispatch(crate::state::Action::EndHairStroke);
+    }
+    let (back, forward) = state.history_position();
+    assert_eq!((back - baseline, forward), (2, 0), "two strokes, two steps");
+
+    state.dispatch(crate::state::Action::Undo);
+    let (back, forward) = state.history_position();
+    assert_eq!(
+        (back - baseline, forward),
+        (1, 1),
+        "undo moves along the strip",
+    );
+}
+
+#[test]
+fn the_split_toggle_sits_in_the_same_place_in_every_splitting_stage() {
+    let viewport = test_rect();
+    let mut state = AppState::default();
+    let mut slot_for = |tab| {
+        state.active_tab = tab;
+        detail_hud::detail_split_slot_rect(&state, viewport)
+    };
+    let morph = slot_for(crate::state::Tab::Morph).expect("morph splits");
+    let hair = slot_for(crate::state::Tab::Hair).expect("hair splits");
+    assert_eq!(morph, hair, "the split toggle moved between tabs");
+}
+
+#[test]
+fn the_hair_overlay_never_paints_outside_its_own_pane() {
+    let pane = Rect::from_min_max(pos2(40.0, 70.0), pos2(440.0, 670.0));
+    let framed = |state: &mut AppState, shove: f32| {
+        let mut camera = state.workspace.result_camera;
+        camera.frame(crate::scene::Bounds3 {
+            min: glam::Vec3::new(-6.0, 4.0, -6.0),
+            max: glam::Vec3::new(6.0, 16.0, 6.0),
+        });
+        camera.target.x += shove;
+        state.workspace.result_camera = camera;
+    };
+    let escaped = |state: &mut AppState| -> usize {
+        let context = egui::Context::default();
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        let output = context.run_ui(raw, |ui| {
+            draw_result(ui, state, pane, "hair");
+        });
+        output
+            .shapes
+            .iter()
+            .filter(|clipped| !pane.contains_rect(clipped.clip_rect))
+            .count()
+    };
+
+    let planted = |shove: f32| -> AppState {
+        let mut state = probe_hair_state();
+        let part_id = state.hair_project.parts[0].id;
+        state.dispatch(crate::state::Action::PlantHairStrands {
+            part_id,
+            scalp_indices: (0..24).collect(),
+        });
+        framed(&mut state, shove);
+        state
+    };
+
+    let mut centred = planted(0.0);
+    let chrome = escaped(&mut centred);
+
+    let mut state = planted(40.0);
+    let with_hair = escaped(&mut state);
+
+    assert_eq!(
+        with_hair,
+        chrome,
+        "shoving the head past the pane edge added {} painted shapes that escape          it; the overlay is spilling its dots and strands into the          neighbouring view",
+        with_hair.saturating_sub(chrome),
+    );
+}
+
+#[test]
+fn combing_keeps_the_strand_exactly_as_long_as_it_was() {
+    let rest = 1.0_f32;
+    let mut points: Vec<[f32; 3]> = (0..16)
+        .map(|i| [0.0, 10.0 - i as f32 * rest, 0.0])
+        .collect();
+    let spacing = vec![rest; points.len() - 1];
+    let before_total: f32 = spacing.iter().sum();
+
+    for point in &mut points[5..11] {
+        point[0] += 2.5;
+    }
+    hair_input::relax_segment_lengths(&mut points, &spacing);
+
+    let after_total: f32 = points
+        .windows(2)
+        .map(|pair| {
+            let d = [
+                pair[1][0] - pair[0][0],
+                pair[1][1] - pair[0][1],
+                pair[1][2] - pair[0][2],
+            ];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })
+        .sum();
+    assert!(
+        (after_total - before_total).abs() < 1.0e-3,
+        "the strand went from {before_total} to {after_total}; a comb must not stretch it",
+    );
+}
+
+#[test]
+fn shift_smoothing_takes_the_kinks_out_and_keeps_the_length() {
+    let rest = 1.0_f32;
+    let mut points: Vec<[f32; 3]> = (0..16)
+        .map(|i| {
+            let side = if i % 2 == 0 { 0.4 } else { -0.4 };
+            [side, 10.0 - i as f32 * rest, 0.0]
+        })
+        .collect();
+    let spacing: Vec<f32> = points
+        .windows(2)
+        .map(|pair| {
+            let d = [
+                pair[1][0] - pair[0][0],
+                pair[1][1] - pair[0][1],
+                pair[1][2] - pair[0][2],
+            ];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })
+        .collect();
+    let total_before: f32 = spacing.iter().sum();
+    let kink = |points: &[[f32; 3]]| -> f32 {
+        points
+            .windows(3)
+            .map(|w| ((w[0][0] + w[2][0]) * 0.5 - w[1][0]).abs())
+            .sum()
+    };
+    let before = kink(&points);
+
+    let weights = vec![1.0_f32; points.len()];
+    for _ in 0..200 {
+        hair_input::relax_bending(&mut points, &weights, &spacing, 0.3);
+    }
+
+    assert!(
+        kink(&points) < before * 0.05,
+        "smoothing left {} of {before} of the zigzag",
+        kink(&points),
+    );
+    let total_after: f32 = points
+        .windows(2)
+        .map(|pair| {
+            let d = [
+                pair[1][0] - pair[0][0],
+                pair[1][1] - pair[0][1],
+                pair[1][2] - pair[0][2],
+            ];
+            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+        })
+        .sum();
+    assert!(
+        (total_after - total_before).abs() < 1.0e-3,
+        "smoothing changed the length from {total_before} to {total_after}",
+    );
+    assert_eq!(
+        points[0],
+        [0.4, 10.0, 0.0],
+        "the root left its scalp vertex"
+    );
+}
+
+#[test]
+fn the_mask_brush_carves_coverage_without_touching_the_sculpt_stack() {
+    use crate::appearance_layers::AppearanceStack;
+
+    let mut state = AppState::default();
+    state.sculpt_brush = crate::sculpt::SculptBrush::Mask;
+    assert!(
+        !crate::sculpt::SculptBrush::Mask.edits_geometry(),
+        "the mask brush must not be treated as a geometry edit",
+    );
+
+    let mut stack = AppearanceStack::default();
+    let id = stack.add("A".into(), Vec::new());
+    state.appearance_stack = stack;
+
+    state.dispatch(crate::state::Action::PaintMorphMask {
+        vertices: vec![(3, 1.0), (4, 1.0), (5, 1.0)],
+        target: 0.0,
+        amount: 1.0,
+        begins_step: true,
+    });
+    let layer = state.appearance_stack.layer(id).expect("layer");
+    assert_eq!(layer.mask.coverage(4), 0.0);
+    assert_eq!(
+        layer.mask.coverage(9),
+        1.0,
+        "an untouched vertex stays claimed"
+    );
+
+    state.dispatch(crate::state::Action::PaintMorphMask {
+        vertices: vec![(4, 1.0)],
+        target: 1.0,
+        amount: 1.0,
+        begins_step: true,
+    });
+    assert_eq!(
+        state.appearance_stack.layer(id).unwrap().mask.coverage(4),
+        1.0
+    );
+
+    state.appearance_stack.selected_id = None;
+    state.dispatch(crate::state::Action::PaintMorphMask {
+        vertices: vec![(0, 1.0)],
+        target: 0.0,
+        amount: 1.0,
+        begins_step: true,
+    });
+    assert_eq!(
+        state.appearance_stack.layer(id).unwrap().mask.coverage(0),
+        1.0
+    );
+}
+
+#[test]
+fn the_blend_stands_aside_until_a_layer_is_on_the_stack() {
+    use crate::appearance_layers::AppearanceStack;
+
+    let mut state = AppState::default();
+    assert!(
+        state.appearance_blend(8).is_none(),
+        "with no layers the morph library must still do the applying",
+    );
+
+    let mut stack = AppearanceStack::default();
+    stack.add("A".into(), vec![[1.0, 0.0, 0.0]; 8]);
+    state.appearance_stack = stack;
+    let blended = state.appearance_blend(8).expect("layers");
+    assert_eq!(blended.len(), 8);
+    assert!(blended.iter().all(|delta| delta == &[1.0, 0.0, 0.0]));
+
+    let id = state.appearance_stack.layers[0].id;
+    state.dispatch(crate::state::Action::SetAppearanceLayerVisible { id, visible: false });
+    assert!(state.appearance_blend(8).is_none());
+}
+
+#[test]
+fn the_mask_brush_stays_a_mask_brush_under_every_modifier() {
+    for modifiers in [
+        egui::Modifiers::default(),
+        egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        },
+        egui::Modifiers {
+            alt: true,
+            ..Default::default()
+        },
+        egui::Modifiers {
+            ctrl: true,
+            ..Default::default()
+        },
+        egui::Modifiers {
+            alt: true,
+            ctrl: true,
+            shift: true,
+            ..Default::default()
+        },
+    ] {
+        assert_eq!(
+            sculpt_input_mode(modifiers, SculptBrush::Mask),
+            SculptInputMode::Mask,
+            "the mask brush must never edit geometry, held keys included",
+        );
+    }
+}
+
+#[test]
+fn a_strand_is_drawn_at_its_authored_width_and_widened_when_sub_pixel() {
+    let width_cm = 0.0001_f64 * 100.0;
+    assert!(
+        (width_cm - 0.01).abs() < 1.0e-12,
+        "VaM authors width in metres"
+    );
+
+    let drawn = |per_point: f64, t: f32| {
+        let taper = 0.06 + (1.0 - 0.06) * (1.0 - t.clamp(0.0, 1.0)).powf(0.55);
+        let half_pixels = (width_cm * f64::from(taper) * 0.5 / per_point) as f32;
+        let widening = if half_pixels > 0.02 && half_pixels < 0.35 {
+            (0.35 / half_pixels).min(8.0)
+        } else {
+            1.0
+        };
+        ((half_pixels * widening * 2.0).max(0.1), widening)
+    };
+
+    let (far, _) = drawn(0.01, 0.0);
+    let (near, _) = drawn(0.001, 0.0);
+    assert!(
+        near > far,
+        "{near} should exceed {far} as the camera closes in"
+    );
+
+    let (_, near_widening) = drawn(0.05, 0.0);
+    assert!(
+        near_widening > 1.0,
+        "a sub-pixel strand must be widened, got {near_widening}",
+    );
+    let (_, capped) = drawn(0.15, 0.0);
+    assert!(
+        (capped - 8.0).abs() < 1.0e-4,
+        "the widening must stop at the shader's cap, got {capped}",
+    );
+    let (_, abandoned) = drawn(1.0, 0.0);
+    assert!(
+        (abandoned - 1.0).abs() < 1.0e-4,
+        "below the floor the widening is left alone, got {abandoned}",
+    );
+
+    let root = 0.06 + 0.94 * 1.0_f32.powf(0.55);
+    let middle = 0.06 + 0.94 * 0.5_f32.powf(0.55);
+    let tip = 0.06_f32;
+    assert!(
+        middle > root * 0.6,
+        "the shaft stays full: {middle} of {root}"
+    );
+    assert!(
+        tip < root * 0.1,
+        "the tip comes to a point: {tip} of {root}"
+    );
+    assert!(tip > 0.0, "but never to nothing, or the end disappears");
+}
+
+#[test]
+fn curve_density_fills_in_the_curve_without_moving_the_guides() {
+    let guides: Vec<[f32; 3]> = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 2.0, 0.0],
+        [0.0, 4.0, 0.0],
+        [1.0, 6.0, 0.0],
+    ];
+    let sample = |points: &[[f32; 3]], density: usize| -> Vec<[f32; 3]> {
+        if points.len() < 3 || density <= points.len() {
+            return points.to_vec();
+        }
+        let last = points.len() - 1;
+        let at = |index: isize| points[index.clamp(0, last as isize) as usize];
+        (0..density)
+            .map(|step| {
+                let along = step as f32 / (density - 1) as f32 * last as f32;
+                let segment = (along.floor() as isize).min(last as isize - 1);
+                let t = along - segment as f32;
+                let (p0, p1, p2, p3) = (
+                    at(segment - 1),
+                    at(segment),
+                    at(segment + 1),
+                    at(segment + 2),
+                );
+                let mut point = [0.0_f32; 3];
+                for (axis, point) in point.iter_mut().enumerate() {
+                    let (a, b, c, d) = (p0[axis], p1[axis], p2[axis], p3[axis]);
+                    *point = 0.5
+                        * ((2.0 * b)
+                            + (-a + c) * t
+                            + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t
+                            + (-a + 3.0 * b - 3.0 * c + d) * t * t * t);
+                }
+                point
+            })
+            .collect()
+    };
+
+    let coarse = sample(&guides, 4);
+    assert_eq!(
+        coarse, guides,
+        "at or below the guide count, nothing is added"
+    );
+
+    let fine = sample(&guides, 31);
+    assert_eq!(fine.len(), 31, "the slider is the point count");
+    for guide in &guides {
+        assert!(
+            fine.iter().any(|point| {
+                (point[0] - guide[0]).abs() < 1.0e-4
+                    && (point[1] - guide[1]).abs() < 1.0e-4
+                    && (point[2] - guide[2]).abs() < 1.0e-4
+            }),
+            "guide {guide:?} is not on the curve drawn through it",
+        );
+    }
+    assert_eq!(fine[0], guides[0]);
+    assert_eq!(fine[fine.len() - 1], guides[guides.len() - 1]);
+}
+
+#[test]
+fn the_hair_sliders_reach_the_look_the_renderer_is_built_from() {
+    let mut state = probe_hair_state();
+    let part_id = state.hair_project.parts[0].id;
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id,
+        scalp_indices: (0..24).collect(),
+    });
+
+    let look_now = |state: &AppState| {
+        let part = state.hair_project.part(part_id).expect("part");
+        crate::hair_export::authoring_look(part)
+    };
+    let set = |state: &mut AppState, key: &'static str, value: f32| {
+        let param = crate::hair_settings::HAIR_PARAMS
+            .iter()
+            .find(|param| param.key == key)
+            .unwrap_or_else(|| panic!("{key} is not a hair parameter"));
+        state.dispatch(crate::state::Action::SetHairParam {
+            id: part_id,
+            key: param.key,
+            value,
+        });
+    };
+
+    set(&mut state, "hairMultiplier", 4.0);
+    let few = look_now(&state).hair_multiplier;
+    set(&mut state, "hairMultiplier", 32.0);
+    let many = look_now(&state).hair_multiplier;
+    assert!(
+        many > few,
+        "the multiplier did not reach the look: {few:?} -> {many:?}",
+    );
+
+    set(&mut state, "curlScale", 0.0);
+    let straight = look_now(&state).waviness_settings();
+    set(&mut state, "curlScale", 0.8);
+    let curled = look_now(&state).waviness_settings();
+    assert!(
+        curled.scale > straight.scale,
+        "the curl slider did not reach the look: {straight:?} -> {curled:?}",
+    );
+}
+
+#[test]
+fn planting_hair_can_be_undone_and_redone() {
+    assert!(
+        crate::ui::routes_global_undo(crate::state::Tab::Hair, true, true, false),
+        "Ctrl+Z must route to undo while the hair tab is open",
+    );
+
+    let mut state = probe_hair_state();
+    state.active_tab = crate::state::Tab::Hair;
+    let part_id = state.hair_project.parts[0].id;
+    let planted = |state: &AppState| {
+        state
+            .hair_project
+            .part(part_id)
+            .map_or(0, |part| part.strands.len())
+    };
+    assert_eq!(planted(&state), 0);
+
+    state.dispatch(crate::state::Action::PlantHairStrands {
+        part_id,
+        scalp_indices: (0..8).collect(),
+    });
+    state.dispatch(crate::state::Action::EndHairStroke);
+    let after = planted(&state);
+    assert!(after > 0, "nothing was planted");
+
+    state.dispatch(crate::state::Action::Undo);
+    assert_eq!(planted(&state), 0, "Ctrl+Z did not take the planting back");
+
+    state.dispatch(crate::state::Action::Redo);
+    assert_eq!(planted(&state), after, "redo did not put it back");
+}
+
+#[test]
+fn pinching_pulls_across_the_strand_and_favours_the_tip() {
+    let centre = [0.0_f32, 0.0, 0.0];
+    let points: Vec<[f32; 3]> = (0..9).map(|i| [2.0, i as f32, 0.0]).collect();
+
+    let pull_at = |index: usize| -> [f32; 3] {
+        let last = points.len() - 1;
+        let along_strand = index as f32 / last as f32;
+        let weight = along_strand.powi(3);
+        let ahead = points[(index + 1).min(last)];
+        let behind = points[index.saturating_sub(1)];
+        let raw = [
+            ahead[0] - behind[0],
+            ahead[1] - behind[1],
+            ahead[2] - behind[2],
+        ];
+        let length = raw.iter().map(|a| a * a).sum::<f32>().sqrt();
+        let direction = raw.map(|a| a / length);
+        let mut delta = [0.0_f32; 3];
+        for (axis, delta) in delta.iter_mut().enumerate() {
+            *delta = centre[axis] - points[index][axis];
+        }
+        let along: f32 = delta.iter().zip(direction).map(|(d, u)| d * u).sum();
+        for (axis, delta) in delta.iter_mut().enumerate() {
+            *delta -= along * direction[axis];
+        }
+        delta.map(|d| d * weight)
+    };
+
+    let magnitude = |v: [f32; 3]| v.iter().map(|a| a * a).sum::<f32>().sqrt();
+    let tip = pull_at(points.len() - 1);
+    let middle = pull_at(points.len() / 2);
+    let root = pull_at(1);
+
+    assert!(
+        magnitude(tip) > magnitude(middle) * 4.0,
+        "the tip must lead by a wide margin: {} vs {}",
+        magnitude(tip),
+        magnitude(middle),
+    );
+    assert!(
+        magnitude(root) < magnitude(tip) * 0.05,
+        "the root barely moves, or the whole head of hair drags",
+    );
+    assert!(
+        tip[1].abs() < 1.0e-5,
+        "the pull must be across the strand, got {tip:?}",
+    );
+    assert!(tip[0] < 0.0, "and it must close on the brush, got {tip:?}");
+}
+
+#[test]
+fn cutting_shortens_in_proportion_and_keeps_every_point() {
+    let root = [0.0_f32, 0.0, 0.0];
+    let points: Vec<[f32; 3]> = (0..11).map(|i| [0.0, i as f32, 0.0]).collect();
+
+    let cut_at = |index: usize| -> Vec<[f32; 3]> {
+        let last = points.len() - 1;
+        let keep = (index as f32 / last as f32).max(0.05);
+        points
+            .iter()
+            .map(|point| {
+                [
+                    root[0] + (point[0] - root[0]) * keep,
+                    root[1] + (point[1] - root[1]) * keep,
+                    root[2] + (point[2] - root[2]) * keep,
+                ]
+            })
+            .collect()
+    };
+
+    let cut = cut_at(5);
+    assert_eq!(
+        cut.len(),
+        points.len(),
+        "a cut strand keeps every point; only the length changes",
+    );
+    assert_eq!(cut[0], points[0], "the root does not move");
+    assert!(
+        (cut[cut.len() - 1][1] - 5.0).abs() < 1.0e-5,
+        "the tip should land where the line was drawn, got {:?}",
+        cut[cut.len() - 1],
+    );
+    let spacing: Vec<f32> = cut.windows(2).map(|pair| pair[1][1] - pair[0][1]).collect();
+    for gap in &spacing {
+        assert!(
+            (gap - spacing[0]).abs() < 1.0e-5,
+            "the points bunched: {spacing:?}",
+        );
+    }
+
+    let stub = cut_at(0);
+    assert!(
+        stub[stub.len() - 1][1] > 0.0,
+        "cutting to the root must leave something to work with",
+    );
+}
+
+#[test]
+fn the_hair_strength_slot_follows_the_tool() {
+    use crate::hair_project::HairTool;
+    use crate::viewport::hair_hud::shapes_existing_hair;
+
+    for tool in [
+        HairTool::Comb,
+        HairTool::Pinch,
+        HairTool::Cut,
+        HairTool::Grow,
+    ] {
+        assert!(
+            shapes_existing_hair(tool),
+            "{tool:?} reshapes hair, so it wants a strength",
+        );
+    }
+    for tool in [HairTool::Plant, HairTool::Erase] {
+        assert!(
+            !shapes_existing_hair(tool),
+            "{tool:?} makes or removes hair, so it wants the segment count",
+        );
+    }
+
+    let mut state = probe_hair_state();
+    let before = state.hair_brush_strength;
+    state.dispatch(crate::state::Action::SetHairBrushStrength(1.0));
+    assert!(state.hair_brush_strength > before);
+    state.dispatch(crate::state::Action::SetHairBrushStrength(0.0));
+    assert!(
+        state.hair_brush_strength > 0.0,
+        "a brush of zero strength is a brush that does nothing at all",
+    );
+}
+
+#[test]
+fn combing_drops_the_part_of_the_pull_that_points_away_from_the_head() {
+    let normal = glam::Vec3::new(0.0, 1.0, 0.0);
+    let sweep = |translation: glam::Vec3| translation - normal * translation.dot(normal);
+
+    let outward = sweep(glam::Vec3::new(0.0, 3.0, 0.0));
+    assert!(
+        outward.length() < 1.0e-6,
+        "outward pull survived: {outward:?}"
+    );
+
+    let across = glam::Vec3::new(2.0, 0.0, -1.0);
+    assert!(
+        (sweep(across) - across).length() < 1.0e-6,
+        "a sideways sweep must arrive whole",
+    );
+
+    let oblique = glam::Vec3::new(2.0, 2.0, 0.0);
+    let combed = sweep(oblique);
+    assert!(
+        (combed.x - 2.0).abs() < 1.0e-6,
+        "the sweep was weakened: {combed:?}"
+    );
+    assert!(combed.y.abs() < 1.0e-6, "the lift survived: {combed:?}");
+    assert!(
+        combed.length() < oblique.length(),
+        "and the stroke carries less than it arrived with",
+    );
+}
+
+#[test]
+fn dragging_a_hair_slider_is_one_history_step_not_one_per_frame() {
+    let mut state = probe_hair_state();
+    state.active_tab = crate::state::Tab::Hair;
+    let part_id = state.hair_project.parts[0].id;
+    let multiplier = crate::hair_settings::HAIR_PARAMS
+        .iter()
+        .find(|param| param.key == "hairMultiplier")
+        .expect("multiplier");
+    let curl = crate::hair_settings::HAIR_PARAMS
+        .iter()
+        .find(|param| param.key == "curlScale")
+        .expect("curl");
+
+    let before = state.hair_project.history_position().0;
+    for step in 1..=20 {
+        state.dispatch(crate::state::Action::SetHairParam {
+            id: part_id,
+            key: multiplier.key,
+            value: step as f32,
+        });
+    }
+    assert_eq!(
+        state.hair_project.history_position().0,
+        before + 1,
+        "twenty frames of one drag is one step",
+    );
+
+    state.dispatch(crate::state::Action::SetHairParam {
+        id: part_id,
+        key: curl.key,
+        value: 0.4,
+    });
+    assert_eq!(state.hair_project.history_position().0, before + 2);
+
+    state.hair_project.end_control();
+    state.dispatch(crate::state::Action::SetHairParam {
+        id: part_id,
+        key: curl.key,
+        value: 0.6,
+    });
+    assert_eq!(state.hair_project.history_position().0, before + 3);
+
+    state.dispatch(crate::state::Action::Undo);
+    state.dispatch(crate::state::Action::Undo);
+    state.dispatch(crate::state::Action::Undo);
+    let part = state.hair_project.part(part_id).expect("part");
+    assert!(
+        (part.settings.get(multiplier) - 20.0).abs() > 1.0e-6,
+        "the drag survived its own undo",
+    );
+}
+
+#[test]
+fn combing_weights_by_distance_alone_and_pins_only_the_root() {
+    let radius = 4.0_f32;
+    let weight_at = |position: usize, distance: f32| -> f32 {
+        if position == 0 {
+            return 0.0;
+        }
+        let inside = (1.0 - (distance / radius).min(1.0)).clamp(0.0, 1.0);
+        inside * inside * (3.0 - 2.0 * inside)
+    };
+
+    assert_eq!(weight_at(0, 0.0), 0.0);
+    assert!(
+        (weight_at(1, 0.0) - 1.0).abs() < 1.0e-6,
+        "the second point must take the full pull, got {}",
+        weight_at(1, 0.0),
+    );
+    assert!((weight_at(1, 2.0) - weight_at(9, 2.0)).abs() < 1.0e-6);
+    assert_eq!(weight_at(5, radius), 0.0);
+    let shoulder = weight_at(5, radius * 0.95);
+    assert!(shoulder > 0.0 && shoulder < 0.05, "got {shoulder}");
+}
+
+#[test]
+fn a_settled_head_stops_asking_for_frames() {
+    use crate::hair_physics::HairSimulation;
+    use crate::viewport::render_callbacks::hair_pump_wanted;
+
+    assert!(
+        hair_pump_wanted(HairSimulation::Every, 3.0),
+        "a disturbed part is worth stepping"
+    );
+    assert!(hair_pump_wanted(HairSimulation::Every, 0.1));
+    assert!(
+        !hair_pump_wanted(HairSimulation::Every, 0.0),
+        "a spent budget means the drape has settled and the head does not move"
+    );
+    assert!(
+        !hair_pump_wanted(HairSimulation::Off, 3.0),
+        "physics off never pumps, however fresh the budget"
+    );
+}
+
+#[test]
+fn a_tinted_stream_wears_the_same_colour_as_the_part_it_belongs_to() {
+    use crate::viewport::hair_overlays::{part_tint_color, part_tint_ink};
+
+    for part_id in [1_u64, 2, 3, 7, 40] {
+        let [r, g, b] = part_tint_color(part_id);
+        let ink = part_tint_ink(part_id);
+        assert_eq!(
+            [ink.r(), ink.g(), ink.b()],
+            [
+                (r * 255.0).round() as u8,
+                (g * 255.0).round() as u8,
+                (b * 255.0).round() as u8
+            ],
+            "part {part_id}: the stream must not drift from the strands it stands for"
+        );
+        assert_ne!(
+            ink,
+            crate::theme::COLOR_PRIMARY,
+            "part {part_id}: a tint that lands on the untinted colour tells the reader nothing"
+        );
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    for part_id in 1_u64..=8 {
+        assert!(
+            seen.insert(part_tint_ink(part_id).to_array()),
+            "two parts share a tint, so the streams cannot be told apart"
+        );
+    }
+}
+
+#[test]
+fn a_lit_layer_gains_saturation_without_inventing_a_hue_on_plain_hair() {
+    use crate::viewport::hair_overlays::lift_active_layer;
+
+    for grey in [[0.0_f32, 0.0, 0.0], [0.08, 0.08, 0.08], [0.6, 0.6, 0.6]] {
+        let lit = lift_active_layer(Some(grey));
+        let span = lit.iter().copied().fold(f32::MIN, f32::max)
+            - lit.iter().copied().fold(f32::MAX, f32::min);
+        assert!(
+            span < 1.0e-3,
+            "plain hair must stay colourless when lit: {grey:?} became {lit:?}"
+        );
+        assert!(
+            lit[0] > grey[0] || grey[0] >= 1.0,
+            "and it must still brighten: {grey:?} became {lit:?}"
+        );
+    }
+
+    let tinted = [0.45_f32, 0.18, 0.12];
+    let lit = lift_active_layer(Some(tinted));
+    let saturation = |c: [f32; 3]| {
+        let high = c.iter().copied().fold(f32::MIN, f32::max);
+        let low = c.iter().copied().fold(f32::MAX, f32::min);
+        if high <= 0.0 {
+            0.0
+        } else {
+            (high - low) / high
+        }
+    };
+    assert!(
+        saturation(lit) > saturation(tinted),
+        "a tinted layer must read MORE coloured when lit, not washed out:          {tinted:?} became {lit:?}"
+    );
+}
+
+#[test]
+fn one_depth_field_answers_for_the_points_and_the_streams_alike() {
+    use super::hair_overlays::HairDepthField;
+
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
+    let mut field = HairDepthField::probe(rect);
+    let at = pos2(120.0, 90.0);
+    field.probe_mark(at, 30.0);
+
+    assert!(
+        !field.hides(at, 30.0),
+        "whatever drew the field has to survive its own shadow"
+    );
+    assert!(
+        !field.hides(at, 31.5),
+        "a centimetre behind is the same lock of hair, not the far side"
+    );
+    assert!(
+        field.hides(at, 45.0),
+        "fifteen centimetres further away is across the head"
+    );
+    assert!(
+        field.hides(at + vec2(3.0, 0.0), 45.0),
+        "the query dilates by a cell, so a pinhole between marks does not leak"
+    );
+    assert!(
+        !field.hides(pos2(300.0, 40.0), 200.0),
+        "nothing was drawn there, so nothing can be hidden by it"
+    );
+    assert!(
+        !field.hides(pos2(-5.0, 90.0), 200.0),
+        "a point off the viewport is not behind anything"
+    );
+}
+
+#[test]
+fn picking_answers_to_the_cursor_rather_than_to_the_brush() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    probe_strand_at(&mut state, 0, [0.0, 10.0, 0.0]);
+    probe_strand_at(&mut state, 1, [40.0, 10.0, 0.0]);
+    let under_cursor = state.hair_project.parts[0].id;
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+
+    let picked = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        glam::Vec3::new(0.0, 10.0, 30.0),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+        super::hair_input::PART_PICK_REACH_POINTS,
+    );
+    assert_eq!(
+        picked,
+        Some(under_cursor),
+        "the layer far to the side must not answer a click at the centre"
+    );
+
+    let brush_wide = super::hair_input::ray_part_target(
+        &state,
+        TurntableCamera::default(),
+        viewport,
+        glam::Vec3::new(0.0, 10.0, 30.0),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+        400.0,
+    );
+    assert!(
+        brush_wide.is_some(),
+        "a brush still sweeps as wide as it is told to; only the pick is tight"
+    );
+}
+
+#[test]
+fn a_layer_being_worked_on_reads_apart_from_one_that_is_not() {
+    use crate::hair_settings::rgb_to_hsv;
+    use crate::viewport::hair_overlays::{lift_active_layer, rest_layer};
+
+    let base = [0.35, 0.18, 0.12];
+    let [_, base_saturation, base_value] = rgb_to_hsv(base);
+    let [_, lit_saturation, lit_value] = rgb_to_hsv(lift_active_layer(Some(base)));
+    let [_, resting_saturation, resting_value] = rgb_to_hsv(rest_layer(Some(base)));
+
+    assert!(
+        lit_value > base_value,
+        "the layer under the brush has to come forward"
+    );
+    assert!(
+        resting_value < base_value,
+        "a resting layer has to fall back, not merely stay put"
+    );
+    assert!(
+        resting_value > base_value * 0.6,
+        "and it must stay visible while it waits: {resting_value} against {base_value}"
+    );
+    assert!(
+        lit_value > resting_value * 1.6,
+        "at a glance the two must not read the same: {lit_value} against {resting_value}"
+    );
+    assert!(
+        lit_saturation > resting_saturation * 1.5,
+        "colour is what separates them: {lit_saturation} against {resting_saturation}"
+    );
+    assert!(
+        resting_saturation > base_saturation * 0.6,
+        "a resting layer keeps enough colour to say which layer it is"
+    );
+}
+
+#[test]
+fn a_preset_portrait_holds_every_layer_and_a_layer_portrait_holds_one() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let first = state.hair_project.parts[0].id;
+    probe_strand_at(&mut state, 0, [0.0, 10.0, 0.0]);
+    probe_strand_at(&mut state, 1, [60.0, 10.0, 0.0]);
+
+    let Some(whole) = state.hair_portrait_bounds(None) else {
+        return;
+    };
+    let alone = state
+        .hair_portrait_bounds(Some(first))
+        .expect("a layer frames on itself");
+
+    assert!(
+        whole.max.x > alone.max.x,
+        "the preset portrait has to reach the layer standing off to the side, or it          is just a picture of the first one"
+    );
+
+    let wanted = state.hair_portraits_wanted();
+    assert_eq!(
+        wanted.len(),
+        3,
+        "two layers and the preset each want their own portrait"
+    );
 }

@@ -17,10 +17,16 @@ pub enum SculptBrush {
     Smooth,
 
     Restore,
+
+    Mask,
 }
 
 impl SculptBrush {
-    pub const ALL: [Self; 3] = [Self::Move, Self::Smooth, Self::Restore];
+    pub const ALL: [Self; 4] = [Self::Move, Self::Smooth, Self::Restore, Self::Mask];
+
+    pub const fn edits_geometry(self) -> bool {
+        !matches!(self, Self::Mask)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -105,6 +111,8 @@ pub struct SculptSession {
     solo: Option<(SculptTarget, SculptTargets)>,
 
     history: VecDeque<(u64, SculptUndoStep)>,
+
+    redo_history: VecDeque<(u64, SculptUndoStep)>,
     active_stroke: Option<ActiveStroke>,
 
     smooth_reference_areas: BTreeMap<u32, f64>,
@@ -138,6 +146,7 @@ impl Default for SculptSession {
             visible_targets: SculptTargets::ALL,
             solo: None,
             history: VecDeque::new(),
+            redo_history: VecDeque::new(),
             active_stroke: None,
             smooth_reference_areas: BTreeMap::new(),
             falloff: SculptFalloff::default(),
@@ -294,13 +303,6 @@ impl SculptSession {
         enabled
     }
 
-    /// Switches one group off, or back on, in the view.
-    ///
-    /// Switching a group off also stops the brush reaching it. The two masks
-    /// are otherwise independent — a group can be turned back on for editing
-    /// while it stays hidden, which is how you shape a part behind another —
-    /// but that has to be asked for, because nobody hides something in order
-    /// to keep deforming it blind.
     pub fn set_visible_target_enabled(&mut self, target: SculptTarget, enabled: bool) {
         self.visible_targets = if enabled {
             self.visible_targets.with(target)
@@ -334,6 +336,28 @@ impl SculptSession {
                 self.solo = Some((target, restore));
             }
         }
+    }
+
+    pub fn vertices_within(&self, center: [f64; 3], radius: f64) -> Vec<(u32, f64)> {
+        let Some(working) = self.working.as_ref() else {
+            return Vec::new();
+        };
+        if !radius.is_finite() || radius <= 0.0 {
+            return Vec::new();
+        }
+        let radius_squared = radius * radius;
+        working
+            .vertices
+            .iter()
+            .enumerate()
+            .filter_map(|(index, vertex)| {
+                let dx = vertex[0] - center[0];
+                let dy = vertex[1] - center[1];
+                let dz = vertex[2] - center[2];
+                let squared = dx * dx + dy * dy + dz * dz;
+                (squared <= radius_squared).then(|| (index as u32, squared.sqrt()))
+            })
+            .collect()
     }
 
     pub fn working_mesh(&self) -> Option<&OrderedObjMesh> {
@@ -417,6 +441,14 @@ impl SculptSession {
             return Some(u64::MAX);
         }
         self.history.back().map(|(seq, _)| *seq)
+    }
+
+    #[must_use]
+    pub fn top_redo_seq(&self) -> Option<u64> {
+        if self.active_stroke.is_some() {
+            return None;
+        }
+        self.redo_history.back().map(|(seq, _)| *seq)
     }
 
     pub fn begin_stroke(&mut self) -> Result<(), SculptError> {
@@ -814,9 +846,80 @@ impl SculptSession {
             )?;
             return Ok(true);
         }
-        let Some((_, step)) = self.history.pop_back() else {
+        let Some((seq, step)) = self.history.pop_back() else {
             return Ok(false);
         };
+        let inverse = self.inverse_of(&step)?;
+        self.apply_step(step)?;
+        self.redo_history.push_back((seq, inverse));
+        Ok(true)
+    }
+
+    pub fn redo(&mut self) -> Result<bool, SculptError> {
+        if self.active_stroke.is_some() {
+            return Ok(false);
+        }
+        let Some((seq, step)) = self.redo_history.pop_back() else {
+            return Ok(false);
+        };
+        let inverse = self.inverse_of(&step)?;
+        self.apply_step(step)?;
+        self.history.push_back((seq, inverse));
+        Ok(true)
+    }
+
+    #[must_use]
+    pub fn history_position(&self) -> (usize, usize) {
+        (self.history.len(), self.redo_history.len())
+    }
+
+    #[must_use]
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "history inspection, test-asserted")
+    )]
+    pub fn has_forward_history(&self) -> bool {
+        !self.redo_history.is_empty()
+    }
+
+    pub fn clear_forward_history(&mut self) {
+        self.redo_history.clear();
+    }
+
+    fn inverse_of(&self, step: &SculptUndoStep) -> Result<SculptUndoStep, SculptError> {
+        let working = self.working.as_ref().ok_or(SculptError::NotInitialized)?;
+        Ok(match step {
+            SculptUndoStep::Stroke {
+                before,
+                smooth_reference_before,
+            } => SculptUndoStep::Stroke {
+                before: before
+                    .iter()
+                    .map(|(index, _)| (*index, working.vertices[*index as usize]))
+                    .collect(),
+                smooth_reference_before: smooth_reference_before
+                    .iter()
+                    .map(|(triangle, _)| {
+                        (
+                            *triangle,
+                            self.smooth_reference_areas.get(triangle).copied(),
+                        )
+                    })
+                    .collect(),
+            },
+            SculptUndoStep::Reset { .. } => SculptUndoStep::Reset {
+                working: working.clone(),
+                smooth_reference_areas: self.smooth_reference_areas.clone(),
+                last_hit_triangle: self.last_hit_triangle.get(),
+                last_hit_view_direction: self.last_hit_view_direction.get(),
+                last_hit_anchor: self.last_hit_anchor.get(),
+                applied: self.applied,
+                changed: self.changed,
+            },
+        })
+    }
+
+    fn apply_step(&mut self, step: SculptUndoStep) -> Result<(), SculptError> {
         match step {
             SculptUndoStep::Stroke {
                 before,
@@ -852,7 +955,7 @@ impl SculptSession {
                 self.changed = changed;
             }
         }
-        Ok(true)
+        Ok(())
     }
 
     fn restore_stroke(
@@ -887,6 +990,7 @@ impl SculptSession {
     }
 
     fn push_history(&mut self, step: SculptUndoStep) {
+        self.redo_history.clear();
         if self.history.len() == MAX_SCULPT_HISTORY {
             self.history.pop_front();
         }

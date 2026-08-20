@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("Penghalusan mesh"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,113 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("Simpan"),
         TextKey::DetailCorrection => Some("Sculpt"),
         TextKey::TextureStage => Some("Tekstur"),
+        TextKey::HairStage => Some("Rambut"),
+        TextKey::HairUnavailable => Some("Selesaikan hasil sculpt sebelum menyunting rambut"),
+        TextKey::HairPartsPanel => Some("Bagian rambut"),
+        TextKey::AddHairPart => Some("Tambah bagian rambut"),
+        TextKey::HairScalpMissing => {
+            Some("Mesh kulit kepala tidak tersedia; buka root VaM dan pindai ulang")
+        }
+        TextKey::HairShowPoints => Some("Tampilkan titik"),
+        TextKey::HairShowPointsHint => Some(
+            "Menampilkan titik tanam di kulit kepala. Matikan untuk melihat rambutnya saja; kuas tetap bekerja.",
+        ),
+        TextKey::HairPartTint => Some("Warnai bagian"),
+        TextKey::HairPartTintHint => Some(
+            "Memberi tiap bagian rona berbeda di viewport agar mudah dibedakan. Hanya tampilan; ekspor tidak berubah.",
+        ),
+        TextKey::HairSettingsPanel => Some("Pengaturan rambut"),
+        TextKey::HairCreateFirst => Some("Buat rambut dulu."),
+        TextKey::HairHideStrands => Some("Sembunyikan rambut"),
+        TextKey::HairHideStrandsHint => Some(
+            "Melepas rambut yang tumbuh agar untai utama terbaca sendiri. Menyalakannya menyalakan untai juga.",
+        ),
+        TextKey::HairShowStreams => Some("Tampilkan untai utama"),
+        TextKey::HairShowStreamsHint => {
+            Some("Menggambar untai yang Anda edit, di atas rambut yang tumbuh darinya.")
+        }
+        TextKey::HairViewportPhysics => Some("Fisika viewport"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("Melihat pratinjau fisika di layar. Tidak ada hubungannya dengan ekspor.")
+        }
+        TextKey::HairMirrorEdit => Some("Edit cermin"),
+        TextKey::HairMirrorEditHint => Some("Kuas mengedit kedua sisi sekaligus secara simetris."),
+        TextKey::HairAutoPart => Some("Part otomatis"),
+        TextKey::HairAutoPartHint => {
+            Some("Kuas hanya mengedit part yang dikenali di bawah kursor, bukan layer aktif.")
+        }
+        TextKey::HairExportSection => Some("Simpan rambut"),
+        TextKey::HairExportBothSexes => Some("Keduanya"),
+        TextKey::HairExportRescanNotice => {
+            Some("Klik VaM - Hair - Rescan Files agar muncul di daftar")
+        }
+        TextKey::HairExportOverwroteNotice => {
+            Some("Thumbnail yang ditimpa tampil setelah Hard Reset atau restart VaM")
+        }
+        TextKey::HairSimToggleHint => Some("Menjalankan fisika rambut di sini dan dalam gim."),
+        TextKey::HairCollisionToggleHint => Some("Mencegah rambut menembus kepala dan tubuh."),
+        TextKey::HairStyleJoints => Some("Sendi gaya"),
+        TextKey::HairStyleJointsHint => Some(
+            "Mengikat helai berdekatan agar gaya rambut mempertahankan bentuk di game -- yang diskalakan Cling. Untuk rambut panjang atau terikat; memperbesar file.",
+        ),
+        TextKey::HairThumbnailPrompt => Some("Atur sudut lalu klik untuk memotret"),
+        TextKey::HairThumbnailShoot => Some("Ambil"),
+        TextKey::HairThumbnailSkip => Some("Lewati"),
+        TextKey::HairThumbnailSaved => Some("Thumbnail tersimpan"),
+        TextKey::HairThumbnailFailed => Some("Thumbnail gagal disimpan"),
+        TextKey::HairGameOnly => Some(
+            "Pengaturan fisika: viewport tidak menjalankan simulasi, jadi hanya berlaku di VaM. Diekspor bersama gaya.",
+        ),
+        TextKey::HairPartVisible => Some("Tampilkan atau sembunyikan bagian rambut ini"),
+        TextKey::RemoveHairPart => Some("Hapus bagian rambut"),
+        TextKey::HairRenamePart => Some("Klik untuk mengganti nama"),
+        TextKey::HairToolPlant => Some("Tanam"),
+        TextKey::HairToolErase => Some("Hapus"),
+        TextKey::HairToolGrow => Some("Tumbuhkan (Alt memendekkan)"),
+        TextKey::HairToolComb => Some("Sisir"),
+        TextKey::HairToolPlantHint => Some("Menanam helai pada titik kulit kepala di bawah kuas"),
+        TextKey::HairToolGrowHint => {
+            Some("Memanjangkan helai di bawah kuas; tahan Alt untuk memendekkan")
+        }
+        TextKey::HairToolEraseHint => Some("Menghapus helai di bawah kuas"),
+        TextKey::HairToolCombHint => Some("Menyisir helai di bawah kuas; akarnya tetap di tempat"),
+        TextKey::HairToolPinch => Some("Kumpulkan"),
+        TextKey::HairToolPinchHint => Some("Mengumpulkan helai di bawah kuas. Alt menyebarkannya"),
+        TextKey::HairToolCut => Some("Potong"),
+        TextKey::HairToolCutHint => Some("Memotong helai di tempat kuas melintasinya"),
+        TextKey::HairToolPuff => Some("Mengembang"),
+        TextKey::HairToolPuffHint => Some("Menegakkan helai di bawah kuas. Alt merebahkannya"),
+        TextKey::HairCopySettings => Some("Salin semua"),
+        TextKey::HairPasteSettings => Some("Tempel semua"),
+        TextKey::HairGroupPerformance => Some("Kinerja"),
+        TextKey::HairGroupPhysics => Some("Fisika"),
+        TextKey::HairGroupStiffness => Some("Kekakuan"),
+        TextKey::HairGroupShape => Some("Bentuk"),
+        TextKey::HairGroupCurl => Some("Ikal"),
+        TextKey::HairGroupLook => Some("Tampilan"),
+        TextKey::HairColorScalp => Some("Kulit"),
+        TextKey::HairColorRoot => Some("Akar"),
+        TextKey::HairColorTip => Some("Ujung"),
+        TextKey::HairColorSpecular => Some("Kilau"),
+        TextKey::HairScalpMask => Some("Tekstur kulit kepala"),
+        TextKey::HairScalpMaskBuiltIn => Some("Bawaan"),
+        TextKey::HairScalpMaskCustom => Some("Dari berkas..."),
+        TextKey::HairExport => Some("Ekspor ke VaM"),
+        TextKey::HairExportName => Some("Nama item"),
+        TextKey::HairExportCreator => Some("Pembuat"),
+        TextKey::HairExportNeedsMetadata => Some("Isi nama dan pembuat sebelum mengekspor"),
+        TextKey::HairOverwriteTitle => Some("Ganti gaya ini?"),
+        TextKey::HairOverwriteBody => {
+            Some("Gaya dengan nama dan pembuat ini sudah ada. Mengekspor akan mengganti berkasnya.")
+        }
+        TextKey::HairOverwriteProceed => Some("Ganti"),
+        TextKey::HairExportDone => Some("Item rambut tersimpan"),
+        TextKey::HairExportFailed => Some("Ekspor rambut gagal"),
+        TextKey::HairExportNeedsPart => Some("Pilih dulu bagian rambut yang berisi helai"),
+        TextKey::HairExportNeedsVaMRoot => Some("Atur root VaM sebelum mengekspor"),
+        TextKey::HairMirrorPart => Some("Cerminkan bagian ke sisi lain"),
+        TextKey::HairDuplicatePart => Some("Duplikasi bagian"),
+        TextKey::HairSegmentsShort => Some("Seg"),
         TextKey::MorphCategoryBody => Some("Badan"),
         TextKey::TextureNamePlaceholder => Some("Masukkan nama tekstur"),
         TextKey::TextureOverwriteTitle => Some("Ini akan mengganti tekstur bernama sama"),
@@ -68,6 +175,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("Urungkan"),
         TextKey::ResetAllPins => Some("Atur Ulang Semua Pin"),
+        TextKey::ResetAll => Some("Atur ulang semua"),
         TextKey::MorphSave => Some("Simpan morph"),
         TextKey::TextureSaveSection => Some("Simpan tekstur"),
         TextKey::Generate => Some("Fit Wajah"),
@@ -89,7 +197,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("Tampilkan dan atur hamparan Wireframe"),
         TextKey::ViewportXrayTooltip => Some("Tampilkan dan atur hamparan X-ray"),
         TextKey::ViewportSkinTooltip => Some("Pilih tekstur kulit VaM"),
-        TextKey::ViewportHairTooltip => Some("Pilih preset rambut VaM"),
         TextKey::FalloffTooltip => Some("Pilih kurva pengaruh kuas"),
         TextKey::FalloffSmooth => Some("Halus"),
         TextKey::FalloffSmoother => Some("Lebih Halus"),
@@ -134,6 +241,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("Tempatkan pin pada masing-masing, atau lanjut tanpa pin"),
         TextKey::TextureNeedsImage => Some("Tambahkan gambar dari panel samping"),
         TextKey::TexturePinPairPrompt => Some("Tempatkan pin berpasangan di kiri dan kanan"),
+        TextKey::TextureToolNeedsPins => Some("Pasang pin dulu untuk memakainya"),
         TextKey::SymmetrySuggestion => Some("Pencerminan disarankan agar hasilnya lebih rapi"),
         TextKey::SymmetryChangeTitle => Some("Pin akan diatur ulang"),
         TextKey::SymmetryChangeConfirm => Some("Konfirmasi"),
@@ -169,10 +277,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("Gagal memuat kulit"),
         TextKey::SkinUvUnavailable => Some("UV kulit tidak tersedia"),
         TextKey::NoMatchingSkins => Some("Tidak ada kulit yang cocok"),
-        TextKey::Hair => Some("Rambut"),
-        TextKey::HairNone => Some("Tidak ada"),
         TextKey::HairSearch => Some("Cari Rambut"),
-        TextKey::HairLoading => Some("Memuat rambut"),
         TextKey::HairReady => Some("Pratinjau rambut siap"),
         TextKey::HairLoadFailed => Some("Gagal memuat rambut"),
         TextKey::HairPartsSkipped => Some("Ditampilkan tanpa beberapa bagian"),
@@ -183,6 +288,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("Viewport"),
         TextKey::SettingsGeneral => Some("Umum"),
         TextKey::SettingsAbout => Some("Tentang"),
+        TextKey::SettingsShortcuts => Some("Pintasan"),
+        TextKey::ShortcutsCapturing => Some("Tekan…"),
+        TextKey::ShortcutsResetAll => Some("Setel ulang semua pintasan"),
+        TextKey::ShortcutsExport => Some("Simpan peta tombol ke berkas"),
+        TextKey::ShortcutsImport => Some("Muat berkas peta tombol"),
+        TextKey::ShortcutsTaken => Some("Tindakan lain sudah memakainya"),
         TextKey::SettingsAboutBuild => Some("Build"),
         TextKey::SettingsAboutLicense => Some("Lisensi"),
         TextKey::SettingsAboutDiagnostics => Some("Diagnostik"),
@@ -222,9 +333,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("Bahasa tampilan"),
         TextKey::SettingsFoldersGroup => Some("Folder"),
         TextKey::SettingsVaMRoot => Some("Jalur instalasi VaM"),
-        TextKey::HairVisible => Some("Tampilkan rambut"),
         TextKey::HairNeedsFinishedHead => Some("Rambut dipakai pada kepala yang sudah jadi."),
-        TextKey::HairPreviewCaveat => Some("Detail rambut berbeda dari aslinya."),
         TextKey::NoMatchingHair => Some("Tidak ada preset rambut yang cocok"),
         TextKey::MorphSearch => Some("Cari Morph"),
         TextKey::MorphOneSidedFilter => Some("K/Ka"),
@@ -235,12 +344,21 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("Sembunyikan morph yang menggerakkan satu sisi saja")
         }
         TextKey::AppearanceSearch => Some("Cari Look"),
+        TextKey::AppearanceLayers => Some("Lapisan penampilan"),
+        TextKey::AddAppearanceLayer => Some("Tambahkan penampilan terpilih"),
+        TextKey::AppearanceLayersEmpty => Some("Belum ada lapisan"),
+        TextKey::AppearanceLayerRaise => Some("Naik"),
+        TextKey::AppearanceLayerLower => Some("Turun"),
         TextKey::LookFind => Some("Muat Look"),
         TextKey::CameraTrackballArmed => {
-            Some("Roll aktif · seret menyamping untuk memiringkan · klik atau R untuk selesai")
+            Some("Trackball · seret untuk memutar bebas · klik atau R untuk keluar")
         }
         TextKey::HelpTrackball => Some("Rotasi trackball"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("Lihat dari dua sudut — bagi tampilan"),
+        TextKey::SplitModelViewName => Some("Tampilan terbagi"),
+        TextKey::HelpLevelRoll => Some("Ratakan cakrawala"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("Sesi terakhir berakhir tak terduga"),
         TextKey::RecoveryBody => Some(
             "Morph, sculpting, dan lapisan tekstur Anda tersimpan tepat sebelum berhenti. Kembalikan?",
@@ -251,9 +369,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Look sesi itu belum terdaftar — tekstur dipulihkan, dan suntingan akan diterapkan saat look dipilih.",
         ),
-        TextKey::SettingsOcclusionGroup => Some("Ambient occlusion"),
-        TextKey::SettingsOcclusionIntensity => Some("Kekuatan"),
-        TextKey::SettingsOcclusionRadius => Some("Jangkauan"),
         TextKey::SettingsBloomGroup => Some("Bloom"),
         TextKey::SettingsBloomIntensity => Some("Intensitas"),
         TextKey::SettingsBloomThreshold => Some("Ambang"),
@@ -266,7 +381,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("Sculpting tidak bisa mengikuti look ini"),
         TextKey::SettingsToneCurve => Some("Kurva tone"),
         TextKey::SettingsToneCurveTooltip => Some("Menyesuaikan bayangan dan sorotan"),
-        TextKey::SettingsOcclusionTooltip => Some("Menggelapkan lipatan tempat permukaan bertemu"),
         TextKey::SettingsVignetteTooltip => Some("Menggelapkan tepi bingkai"),
         TextKey::SettingsEffectEnabled => Some("Aktif"),
         TextKey::SettingsInterfaceGroup => Some("Antarmuka"),
@@ -367,6 +481,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("Tidak ada morph hasil yang kompatibel"),
         TextKey::AlignmentPending => Some("Muat kepala pindaian dan pilih folder VaM Anda"),
         TextKey::ScanLoaded => Some("OBJ, GLB, atau FBX kepala kustom dimuat"),
+        TextKey::ScanUnloaded => Some("Berkas kepala dilepas; basis G2 siap disunting"),
+        TextKey::PinPairsMismatched => Some("Jumlah pin tidak cocok; pin tanpa pasangan"),
+        TextKey::UnloadScanTooltip => Some("Lepas berkas kepala ini"),
         TextKey::TemplateLoaded => Some("G2 dimuat"),
         TextKey::PinsReset => Some("Semua pin telah diatur ulang"),
         TextKey::ResultStale => Some("Ada perubahan, hasilnya perlu dibuat ulang"),
@@ -424,6 +541,39 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutCameraProjection => Some("Numpad ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("Ulangi"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("Praatur rambut"),
+        TextKey::HairPresetLoad => Some("Muat"),
+        TextKey::HairToolPick => Some("Pilih lapisan"),
+        TextKey::HairToolPickHint => Some(
+            "Klik untai di viewport untuk mengaktifkan lapisannya. Kuas menunggu klik berikutnya.",
+        ),
+        TextKey::HelpHairPick => Some("Pilih lapisan di bawah kursor"),
+        TextKey::ShortcutHairPick => Some("V, atau Ctrl + klik dengan kuas apa pun"),
+        TextKey::HelpHairSmooth => Some("Haluskan alih-alih menyisir"),
+        TextKey::ShortcutHairSmooth => Some("Shift saat menyisir"),
+        TextKey::HairGroupScalp => Some("Kulit kepala"),
+        TextKey::HairScalpAlpha => Some("Masker kulit kepala"),
+        TextKey::HairScalpPanel => Some("Kulit kepala"),
+        TextKey::HairScalpMesh => Some("Mesh kulit kepala"),
+        TextKey::HairScalpCreate => Some("Buat kulit kepala"),
+        TextKey::HairScalpAbsent => Some("Gaya ini belum punya lapisan kulit kepala."),
+        TextKey::HistoryBranchTitle => Some("Langkah setelah ini akan hilang"),
+        TextKey::HistoryBranchProceed => Some("Tetap edit"),
+        TextKey::DoNotShowAgain => Some("Jangan tampilkan lagi"),
+        TextKey::SurfaceBaseUnblended => {
+            Some("Sebagian peta PBR tidak dapat dipadukan dengan kulit VaM")
+        }
+        TextKey::DetailEditRedone => Some("Suntingan yang dibatalkan diterapkan lagi"),
+        TextKey::ShortcutBrushSmaller => Some("Perkecil kuas"),
+        TextKey::ShortcutBrushLarger => Some("Perbesar kuas"),
+        TextKey::ShortcutBrushSizeDrag => Some("Ukuran kuas dengan menyeret"),
+        TextKey::ShortcutBrushStrengthDrag => Some("Kekuatan kuas dengan menyeret"),
+        TextKey::ShortcutStencilCancel => Some("Batalkan penempatan stensil"),
+        TextKey::ShortcutViewOrbit => Some("Orbit tampilan"),
+        TextKey::ShortcutViewPan => Some("Geser tampilan"),
+        TextKey::ShortcutViewDolly => Some("Dekatkan dan jauhkan tampilan"),
         TextKey::TemplatePending => Some("Pilih folder VaM Anda agar basis G2 disiapkan otomatis"),
         TextKey::ResultEmpty => Some("Tidak ada morph siap"),
         TextKey::ScaleLink => Some("Tautkan Skala"),
@@ -457,6 +607,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::SculptBrushSmoothTooltip => Some("Menghaluskan detail permukaan"),
         TextKey::SculptBrushRestoreTooltip => Some("Mengembalikan ke arah bentuk dasar"),
+        TextKey::SculptBrushMask => Some("Masker"),
+        TextKey::SculptBrushMaskTooltip => Some(
+            "Mengikis lapisan penampilan terpilih agar yang di bawah tampak. Alt mengembalikan",
+        ),
         TextKey::TextureLayers => Some("Lapisan Tekstur"),
         TextKey::PackageSection => Some("Ekspor VAR"),
         TextKey::PackageCreatorHint => Some("Kreator"),
@@ -634,6 +788,208 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("Tambah lapisan tekstur"),
         TextKey::DialogSaveMorphPair => Some("Simpan morph VaM VMI + VMB"),
         TextKey::DialogChooseVamFolder => Some("Pilih folder Virt-A-Mate"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("Jumlah rambut"),
+        "curveDensity" => Some("Kerapatan kurva"),
+        "iterations" => Some("Iterasi"),
+        "simulationEnabled" => Some("Fisika"),
+        "collisionEnabled" => Some("Tumbukan"),
+        "weight" => Some("Berat"),
+        "drag" => Some("Hambatan udara"),
+        "gravityMultiplier" => Some("Pengali gravitasi"),
+        "collisionRadius" => Some("Radius tumbukan"),
+        "collisionRadiusRoot" => Some("Radius tumbukan (akar)"),
+        "friction" => Some("Gesekan"),
+        "bendResistance" => Some("Ketahanan tekuk"),
+        "rootRigidity" => Some("Kekakuan akar"),
+        "mainRigidity" => Some("Kekakuan tengah"),
+        "tipRigidity" => Some("Kekakuan ujung"),
+        "jointRigidity" => Some("Kekakuan sambungan"),
+        "rigidityRolloffPower" => Some("Peluruhan kekakuan"),
+        "cling" => Some("Kohesi gaya"),
+        "clingRolloff" => Some("Peluruhan kohesi"),
+        "snap" => Some("Kancing"),
+        "usePaintedRigidity" => Some("Pakai kekakuan yang dilukis"),
+        "width" => Some("Ketebalan"),
+        "length1" => Some("Panjang 1"),
+        "length2" => Some("Panjang 2"),
+        "length3" => Some("Panjang 3"),
+        "maxSpread" => Some("Sebaran maksimum"),
+        "spreadRoot" => Some("Sebaran (akar)"),
+        "spreadMid" => Some("Sebaran (tengah)"),
+        "spreadTip" => Some("Sebaran (ujung)"),
+        "spreadMidpoint" => Some("Titik tengah sebaran"),
+        "spreadCurvePower" => Some("Kurva sebaran"),
+        "curlScale" => Some("Ukuran ikal"),
+        "curlFrequency" => Some("Frekuensi ikal"),
+        "curlScaleRandomness" => Some("Acak ukuran ikal"),
+        "curlFrequencyRandomness" => Some("Acak frekuensi ikal"),
+        "curlRoot" => Some("Ikal (akar)"),
+        "curlMid" => Some("Ikal (tengah)"),
+        "curlTip" => Some("Ikal (ujung)"),
+        "curlMidpoint" => Some("Titik tengah ikal"),
+        "curlCurvePower" => Some("Kurva ikal"),
+        "curlX" => Some("Ikal X"),
+        "curlY" => Some("Ikal Y"),
+        "curlZ" => Some("Ikal Z"),
+        "curlNormalAdjust" => Some("Koreksi normal ikal"),
+        "curlAllowReverse" => Some("Izinkan arah terbalik"),
+        "curlAllowFlipAxis" => Some("Izinkan sumbu terbalik"),
+        "Alpha Adjust" => Some("Kelegapan kulit kepala"),
+        "Diffuse Color" => Some("Warna difus kulit kepala"),
+        "Gloss" => Some("Kilau kulit kepala"),
+        "Specular Intensity" => Some("Spekular kulit kepala"),
+        "Diffuse Texture Offset" => Some("Geser tekstur kulit kepala"),
+        "rootColor" => Some("Warna akar"),
+        "tipColor" => Some("Warna ujung"),
+        "specularColor" => Some("Warna spekular"),
+        "colorRolloff" => Some("Peluruhan warna akar→ujung"),
+        "randomColorPower" => Some("Kekuatan warna acak"),
+        "randomColorOffset" => Some("Geser warna acak"),
+        "primarySpecularSharpness" => Some("Kilau primer"),
+        "secondarySpecularSharpness" => Some("Kilau sekunder"),
+        "specularShift" => Some("Geser kilau sekunder"),
+        "diffuseSoftness" => Some("Kelembutan difus"),
+        "fresnelPower" => Some("Kekuatan Fresnel"),
+        "fresnelAttenuation" => Some("Peluruhan Fresnel"),
+        "IBLFactor" => Some("Cahaya tak langsung"),
+        "normalRandomize" => Some("Acak normal"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some(
+            "Berapa untai tumbuh di antara setiap tiga pemandu. Inilah rupa rambutnya, sekaligus sebagian besar biayanya.",
+        ),
+        "curveDensity" => Some(
+            "Titik yang digambar sepanjang tiap untai. Lebih banyak berarti lebih halus dan lebih lambat; bentuknya terbaca jauh sebelum angkanya tinggi.",
+        ),
+        "iterations" => Some(
+            "Lintasan solver per bingkai. Lebih banyak menahan kendala lebih erat saat gerakan cepat.",
+        ),
+        "simulationEnabled" => Some(
+            "Apakah bagian ini bergerak di dalam game. Tidak ada hubungannya dengan sakelar viewport.",
+        ),
+        "collisionEnabled" => Some("Apakah untai bagian ini didorong keluar dari tubuh."),
+        "weight" => Some(
+            "Seberapa berat untai terjuntai. Menskalakan gravitasi sekaligus ketahanannya digerakkan.",
+        ),
+        "drag" => Some(
+            "Seberapa kuat udara menahan untai. Tinggi berarti cepat tenang dan sedikit berayun.",
+        ),
+        "gravityMultiplier" => {
+            Some("Gravitasi pada bagian ini, sebagai kelipatan gravitasi adegan.")
+        }
+        "collisionRadius" => {
+            Some("Ketebalan untai saat bertumbukan, sepanjang seluruh panjangnya.")
+        }
+        "collisionRadiusRoot" => Some("Ketebalan di dekat akar, bila harus berbeda dari sisanya."),
+        "friction" => Some("Seberapa kuat untai mencengkeram yang disentuhnya alih-alih meluncur."),
+        "bendResistance" => Some("Seberapa kuat untai menolak ditekuk dari garis lurus."),
+        "rootRigidity" => Some("Seberapa kuat ujung akar menahan bentuk yang ditata."),
+        "mainRigidity" => Some("Seberapa kuat bagian tengah menahan bentuk yang ditata."),
+        "tipRigidity" => Some("Seberapa kuat ujung menahan bentuk yang ditata."),
+        "jointRigidity" => {
+            Some("Kekakuan sambungan gaya: pegas yang membuat ekor kuda tetap ekor kuda.")
+        }
+        "rigidityRolloffPower" => Some(
+            "Bagaimana ketiga kekakuan berbaur sepanjang untai. Makin tinggi, nilai akar terbawa makin jauh.",
+        ),
+        "cling" => Some("Seberapa kuat sambungan gaya menarik untai saling mendekat."),
+        "clingRolloff" => Some(
+            "Seberapa jauh kohesi memudar sepanjang untai. Makin tinggi makin terkurung dekat akar.",
+        ),
+        "snap" => Some("Seberapa teguh tiap ruas menahan panjang yang dibuatkan untuknya."),
+        "usePaintedRigidity" => {
+            Some("Ambil kekakuan dari peta yang dilukis, bukan dari tiga penggeser.")
+        }
+        "width" => Some(
+            "Ketebalan gambar sebuah untai. Penggeser VaM sendiri juga berhenti di sepersepuluh milimeter.",
+        ),
+        "length1" => Some("Panjang untai terdekat ke pemandu pertama segitiganya."),
+        "length2" => Some("Panjang untai terdekat ke pemandu kedua segitiganya."),
+        "length3" => Some("Panjang untai terdekat ke pemandu ketiga segitiganya."),
+        "maxSpread" => Some(
+            "Batas atas seberapa jauh untai boleh menyimpang dari pemandunya, bukan penguat. Begitu melampaui jarak antar pemandu, menaikkannya tidak berpengaruh.",
+        ),
+        "spreadRoot" => {
+            Some("Seberapa bebas untai memisah di akar. Rendah mengumpulkannya ke arah pemandu.")
+        }
+        "spreadMid" => Some("Seberapa bebas untai memisah di tengah."),
+        "spreadTip" => Some("Seberapa bebas untai memisah di ujung."),
+        "spreadMidpoint" => Some("Dari titik mana pada untai sebaran tengah berlaku."),
+        "spreadCurvePower" => {
+            Some("Seberapa tajam sebaran berbelok antara akar, tengah dan ujung.")
+        }
+        "curlScale" => Some("Lebar ikal: jari-jari lingkarannya, bukan panjangnya."),
+        "curlFrequency" => Some("Putaran per sentimeter untai."),
+        "curlScaleRandomness" => Some("Seberapa besar lebar ikal berbeda antar untai."),
+        "curlFrequencyRandomness" => Some("Seberapa besar laju putaran berbeda antar untai."),
+        "curlRoot" => Some("Seberapa banyak ikal sampai ke akar."),
+        "curlMid" => Some("Seberapa banyak ikal sampai ke tengah."),
+        "curlTip" => Some("Seberapa banyak ikal sampai ke ujung."),
+        "curlMidpoint" => Some("Dari titik mana pada untai ikal tengah berlaku."),
+        "curlCurvePower" => Some("Seberapa tajam ikal berbelok antara akar, tengah dan ujung."),
+        "curlX" => {
+            Some("Perpindahan ikal sepanjang X. Vektor yang diputar, bukan sumbu untuk melingkar.")
+        }
+        "curlY" => Some("Perpindahan ikal sepanjang Y."),
+        "curlZ" => Some("Perpindahan ikal sepanjang Z."),
+        "curlNormalAdjust" => Some(
+            "Ditambahkan ke geseran ikal sepanjang normal. Ia mengangkat lilitan dari kepala, bukan memiringkannya.",
+        ),
+        "curlAllowReverse" => Some(
+            "Biarkan sebagian untai melingkar terbalik, agar kepala berikal tidak terbaca sebagai satu untai berulang.",
+        ),
+        "curlAllowFlipAxis" => {
+            Some("Biarkan sebagian untai melingkar pada sumbu terbalik, dengan alasan yang sama.")
+        }
+        "Alpha Adjust" => Some(
+            "Seberapa legap tudung kulit kepala. Kebanyakan bagian memakai tudung milik orang lain dan menahannya di paling bawah agar tersembunyi; naikkan hanya bila belahan harus memperlihatkan kulit kepala.",
+        ),
+        "Diffuse Color" => Some(
+            "Warna difus tudung itu sendiri. VaM mengirimkannya putih, agar lembar kulit di bawahnya tembus pandang.",
+        ),
+        "Gloss" => Some("Seberapa berkilau tudung di tempat ia terlihat."),
+        "Specular Intensity" => Some("Seberapa kuat tudung menangkap kilau."),
+        "Diffuse Texture Offset" => {
+            Some("Ditambahkan ke warna difus tudung. Meski namanya begitu, ini bukan nomor lembar.")
+        }
+        "rootColor" => Some("Warna di akar."),
+        "tipColor" => Some("Warna di ujung."),
+        "specularColor" => Some("Warna kilau."),
+        "colorRolloff" => Some("Bagaimana warna akar beralih ke warna ujung sepanjang untai."),
+        "randomColorPower" => Some("Seberapa kuat warna antar untai berbeda."),
+        "randomColorOffset" => {
+            Some("Ke arah mana perbedaan itu condong, lebih terang atau lebih gelap.")
+        }
+        "primarySpecularSharpness" => {
+            Some("Seberapa rapat kilau utama. Makin tinggi makin mengilap.")
+        }
+        "secondarySpecularSharpness" => {
+            Some("Seberapa rapat kilau kedua: yang berwarna dan ikut bergerak bersama rambut.")
+        }
+        "specularShift" => {
+            Some("Seberapa jauh kilau kedua duduk dari yang pertama sepanjang untai.")
+        }
+        "diffuseSoftness" => Some(
+            "Seberapa lembut cahaya membungkus untai alih-alih hanya menyinari sisi yang menghadapnya.",
+        ),
+        "fresnelPower" => {
+            Some("Seberapa tajam tepi menyala di tempat rambut berpaling dari pandangan.")
+        }
+        "fresnelAttenuation" => Some("Seberapa kuat penyalaan tepi itu."),
+        "IBLFactor" => Some("Seberapa banyak cahaya sekitar adegan yang diterima rambut."),
+        "normalRandomize" => Some(
+            "Seberapa besar normal bayangan tiap untai digoyang, agar tetangga tidak berbayang serupa.",
+        ),
         _ => None,
     }
 }

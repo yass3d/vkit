@@ -69,22 +69,12 @@ impl AppState {
                 outcome.edits = true;
             }
             Some(_) => {
-                // Unresolvable covers two cases that look identical from here:
-                // the look is gone, or the catalog scan has not produced it
-                // yet. Either way the carry is the only copy of the work, so
-                // it stays pending -- selecting the look once it appears (or
-                // entering the base face) installs it.
                 if carry_has_work {
                     self.pending_edit_carry = Some(carry);
                 }
                 outcome.missing_look = true;
             }
             None => {
-                // No look was ever part of this session -- base-face and
-                // scan-head editing both run with no look selected -- so a
-                // missing-look warning would be false. The carry lands on the
-                // base head: immediately when the template is already in,
-                // otherwise on the next install.
                 if carry_has_work {
                     self.pending_edit_carry = Some(carry);
                     outcome.edits = true;
@@ -129,9 +119,6 @@ impl AppState {
 
     fn restore_texture_layers(&mut self, records: &[TextureLayerRecord]) -> usize {
         let mut restored = 0;
-        // Records are stored top-first while add_image_layer stacks each new
-        // layer on top of the previous one, so the walk runs bottom-first to
-        // rebuild the stack the way it composited before the crash.
         for record in records.iter().rev() {
             let Some(path) = record.source_path.clone() else {
                 continue;

@@ -1,0 +1,20 @@
+<!-- Vkit original, drawn in the lucide grid: strands rising from skin, one more to come -->
+<svg
+  class="lucide lucide-hair-plant"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M2 20h15" />
+  <path d="M6 20v-5" />
+  <path d="M10 20v-7c0-3 .6-5 2-7" />
+  <path d="M14 20v-3c0-1.6.8-2.7 2-3.5" />
+  <path d="M17.5 6.5h5" />
+  <path d="M20 4v5" />
+</svg>

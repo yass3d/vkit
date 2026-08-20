@@ -446,9 +446,6 @@ fn decode_locator(
         let decoded = vkit_core::vam::load_builtin_texture_rgba(reference, max_edge)
             .map_err(|error| error.to_string())?;
         let mut image = SkinImage::new(revision, decoded.width, decoded.height, decoded.rgba8)?;
-        // Stated rather than inherited from the default: the bundle decoder
-        // has already turned Unity's bottom-up rows the right way up, so this
-        // is an ordinary image, unlike the VaM cache above.
         image.uv_orientation = SkinUvOrientation::ObjFlipV;
         return Ok(image);
     }

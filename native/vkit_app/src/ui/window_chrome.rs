@@ -61,7 +61,6 @@ pub(super) struct CaptionLayout {
     pub(super) vam_rect: Rect,
     pub(super) tabs_rect: Rect,
     pub(super) tab_width: f32,
-    pub(super) locale_rect: Rect,
     pub(super) settings_rect: Rect,
     pub(super) controls_rect: Rect,
     pub(super) update_rect: Option<Rect>,
@@ -74,7 +73,6 @@ pub(super) fn publish_non_client_layout(ui: &Ui, bar: CaptionLayout) {
         vam_rect,
         tabs_rect,
         tab_width,
-        locale_rect,
         settings_rect,
         controls_rect,
         update_rect,
@@ -87,12 +85,9 @@ pub(super) fn publish_non_client_layout(ui: &Ui, bar: CaptionLayout) {
     for index in 0..TOP_TABS.len() {
         carve_outs.push(NcRect::from_egui(top_tab_cell(tabs_rect, tab_width, index)));
     }
-    // Without this the title bar's own drag handling swallows the press and
-    // the capsule can be clicked all day without opening anything.
     if let Some(update_rect) = update_rect {
         carve_outs.push(NcRect::from_egui(update_rect));
     }
-    carve_outs.push(NcRect::from_egui(locale_rect));
     carve_outs.push(NcRect::from_egui(settings_rect));
     window_control::publish_nc_layout(NcLayout {
         pixels_per_point: ui.ctx().pixels_per_point(),
@@ -102,31 +97,21 @@ pub(super) fn publish_non_client_layout(ui: &Ui, bar: CaptionLayout) {
     });
 }
 
-/// The floor a tab cell may not be pushed below.
-///
-/// At the smallest window the app allows, with the longest language name in the
-/// picker, a tab already gets around 73pt — well under the 112 it wants. The
-/// update capsule takes another 74 off the strip, and something optional must
-/// not make the thing you navigate with worse than it already is at its worst.
-/// Below this the capsule yields and the strip keeps the room.
-pub(super) const TOP_TAB_FLOOR: f32 = 70.0;
+pub(super) const TOP_TAB_FLOOR: f32 = 56.0;
 
-/// Every horizontal band of the title bar, worked out from three numbers.
-///
-/// This used to live inline in `draw_top_bar`, where the only way to ask what
-/// happens at the minimum window width was to run the program and look. It is
-/// pure now, so the answer is a test.
-pub(super) fn caption_layout(bar: Rect, locale_width: f32, update_width: f32) -> CaptionLayout {
-    let layout = caption_layout_for(bar, locale_width, update_width);
+pub(super) fn caption_layout(
+    bar: Rect,
+    update_width: f32,
+    title_end: Option<f32>,
+) -> CaptionLayout {
+    let layout = caption_layout_for(bar, update_width, title_end);
     if update_width > 0.0 && layout.tab_width < TOP_TAB_FLOOR {
-        // No room for both. The tabs are the application; the capsule is a
-        // notice that will still be there next launch.
-        return caption_layout_for(bar, locale_width, 0.0);
+        return caption_layout_for(bar, 0.0, title_end);
     }
     layout
 }
 
-fn caption_layout_for(bar: Rect, locale_width: f32, update_width: f32) -> CaptionLayout {
+fn caption_layout_for(bar: Rect, update_width: f32, title_end: Option<f32>) -> CaptionLayout {
     let controls_rect = Rect::from_min_max(
         pos2(
             bar.right() - TITLE_WINDOW_BUTTON_WIDTH * 3.0,
@@ -141,15 +126,7 @@ fn caption_layout_for(bar: Rect, locale_width: f32, update_width: f32) -> Captio
         ),
         Vec2::splat(crate::theme::TITLE_SETTINGS_SIZE),
     );
-    let locale_rect = Rect::from_min_size(
-        pos2(settings_rect.left() - locale_width - 8.0, bar.top() + 8.0),
-        vec2(locale_width, TITLE_LOCALE_HEIGHT),
-    );
-
-    let brand_rect = Rect::from_min_size(
-        pos2(bar.left() + 10.0, bar.top() + 6.0),
-        vec2(TITLE_BRAND_WIDTH + update_width, TOP_TAB_HEIGHT),
-    );
+    let brand_rect = brand_cell(bar, update_width);
     let vam_rect = Rect::from_min_size(
         pos2(brand_rect.right() + 8.0, bar.top() + 6.0),
         vec2(TITLE_VAM_FIELD_WIDTH, TOP_TAB_HEIGHT),
@@ -158,7 +135,7 @@ fn caption_layout_for(bar: Rect, locale_width: f32, update_width: f32) -> Captio
     let tabs_left = vam_rect.right() + crate::theme::TITLE_VAM_TAB_GAP;
     let tabs_area = Rect::from_min_max(
         pos2(tabs_left, bar.top()),
-        pos2((locale_rect.left() - 8.0).max(tabs_left), bar.bottom()),
+        pos2((settings_rect.left() - 8.0).max(tabs_left), bar.bottom()),
     );
     let tab_count = TOP_TABS.len() as f32;
     let total_gap = TOP_TAB_GAP * (tab_count - 1.0);
@@ -181,54 +158,76 @@ fn caption_layout_for(bar: Rect, locale_width: f32, update_width: f32) -> Captio
         vam_rect,
         tabs_rect,
         tab_width,
-        locale_rect,
         settings_rect,
         controls_rect,
-        update_rect: title_update_rect(brand_rect, update_width),
+        update_rect: title_update_rect_after(brand_rect, update_width, title_end),
     }
 }
 
-/// Room the update capsule needs beside the title, or nothing at all when
-/// there is no newer release.
-///
-/// This is the **collapsed** width — a circle, and nothing more. The expansion
-/// on hover is painted over its neighbours rather than shoving them aside,
-/// because a title bar that rearranges itself under the pointer is worse than
-/// one thing briefly overlapping another.
-pub(super) fn title_update_width(_ui: &Ui, _locale: crate::i18n::Locale) -> f32 {
+pub(super) fn title_update_width(ui: &Ui, locale: crate::i18n::Locale) -> f32 {
     if crate::update_check::newer_release().is_none() {
         return 0.0;
     }
-    TITLE_UPDATE_GAP + TITLE_UPDATE_DIAMETER
+    TITLE_UPDATE_GAP + TITLE_UPDATE_DIAMETER + title_update_grown_width(ui, locale)
 }
 
-/// Where that room sits: the right end of the brand cell it just widened.
+fn title_update_grown_width(ui: &Ui, locale: crate::i18n::Locale) -> f32 {
+    let label = text(locale, TextKey::UpdateAvailable);
+    ui.painter()
+        .layout_no_wrap(label.to_owned(), FontId::proportional(FONT_SM), COLOR_TEXT)
+        .size()
+        .x
+        + TITLE_UPDATE_PADDING
+}
+
+#[cfg(test)]
 pub(super) fn title_update_rect(brand: Rect, width: f32) -> Option<Rect> {
+    title_update_rect_after(brand, width, None)
+}
+
+pub(super) fn title_update_rect_after(
+    brand: Rect,
+    width: f32,
+    title_end: Option<f32>,
+) -> Option<Rect> {
     (width > 0.0).then(|| {
-        Rect::from_center_size(
-            pos2(
-                brand.right() - TITLE_UPDATE_DIAMETER * 0.5,
-                brand.center().y,
-            ),
+        let left = title_end.map_or(brand.right() - width + TITLE_UPDATE_GAP, |end| {
+            (end + TITLE_UPDATE_GAP).min(brand.right() - width + TITLE_UPDATE_GAP)
+        });
+        Rect::from_min_size(
+            pos2(left, brand.center().y - TITLE_UPDATE_DIAMETER * 0.5),
             Vec2::splat(TITLE_UPDATE_DIAMETER),
         )
     })
+}
+
+pub(super) fn brand_cell(bar: Rect, update_width: f32) -> Rect {
+    Rect::from_min_size(
+        pos2(bar.left() + 10.0, bar.top() + 6.0),
+        vec2(TITLE_BRAND_WIDTH + update_width, TOP_TAB_HEIGHT),
+    )
+}
+
+pub(super) fn title_text_end(ui: &Ui, brand: Rect) -> f32 {
+    let mark_right = brand.left() + 14.0 + 12.0;
+    let text = ui.painter().layout_no_wrap(
+        crate::APP_TITLE.to_owned(),
+        FontId::proportional(FONT_BODY),
+        COLOR_TEXT,
+    );
+    mark_right + 8.0 + text.size().x
 }
 
 pub(super) const TITLE_UPDATE_GAP: f32 = 10.0;
 
 const TITLE_UPDATE_DIAMETER: f32 = 22.0;
 
+const TITLE_UPDATE_GLYPH: f32 = 20.0;
+
 const TITLE_UPDATE_PADDING: f32 = 9.0;
 
 const TITLE_UPDATE_EXPAND_SECONDS: f32 = 0.14;
 
-/// A quiet circle beside the version, which grows a word when the pointer finds
-/// it. It opens the release page and does nothing else — this is not an
-/// updater, and clicking it never touches a file on the machine.
-///
-/// Deliberately unassertive: it appears only when there is something to say, so
-/// it does not need to shout to be believed. No pulse, no white fill.
 pub(super) fn draw_title_update_capsule(ui: &mut Ui, state: &AppState, collapsed: Rect) {
     let Some(tag) = crate::update_check::newer_release() else {
         return;
@@ -239,20 +238,16 @@ pub(super) fn draw_title_update_capsule(ui: &mut Ui, state: &AppState, collapsed
         ui.painter()
             .layout_no_wrap(label.to_owned(), FontId::proportional(FONT_SM), COLOR_TEXT);
 
-    // Hover is read against the collapsed circle, never the expanded pill.
-    // Otherwise the widened shape keeps itself hovered and it can never close.
     let hovered = ui.rect_contains_pointer(collapsed);
     let openness =
         ui.ctx()
             .animate_bool_with_time(id.with("open"), hovered, TITLE_UPDATE_EXPAND_SECONDS);
 
-    let grown = galley.size().x + TITLE_UPDATE_PADDING;
+    let grown = title_update_grown_width(ui, state.locale);
     let rect = Rect::from_min_size(
         collapsed.min,
         vec2(collapsed.width() + grown * openness, collapsed.height()),
     );
-    // The pill lifts above the title bar only while it is open, so the closed
-    // circle stays in the ordinary paint order with everything around it.
     let painter = if openness > 0.0 {
         ui.painter().clone().with_layer_id(egui::LayerId::new(
             egui::Order::Foreground,
@@ -264,16 +259,18 @@ pub(super) fn draw_title_update_capsule(ui: &mut Ui, state: &AppState, collapsed
 
     let response = ui.interact(rect, id, Sense::click());
     let radius = rect.height() * 0.5;
-    let fill = if hovered {
-        COLOR_SURFACE_HOVER
-    } else {
-        COLOR_SURFACE_RAISED
-    };
-    painter.rect_filled(rect, radius, fill);
+    if openness > 0.0 {
+        let fill = if hovered {
+            COLOR_SURFACE_HOVER
+        } else {
+            COLOR_SURFACE_RAISED
+        };
+        painter.rect_filled(rect, radius, fill);
+    }
     let ink = if hovered { COLOR_TEXT } else { COLOR_MUTED };
     paint_icon(
         &painter,
-        Rect::from_center_size(collapsed.center(), Vec2::splat(14.0)),
+        Rect::from_center_size(collapsed.center(), Vec2::splat(TITLE_UPDATE_GLYPH)),
         Icon::UpdateAvailable,
         ink,
     );
@@ -320,7 +317,7 @@ pub(super) fn title_logo_texture(ui: &Ui) -> TextureHandle {
     if let Some(texture) = ui.ctx().data(|data| data.get_temp::<TextureHandle>(id)) {
         return texture;
     }
-    let decoded = image::load_from_memory(include_bytes!("../../../../design/logo.png"))
+    let decoded = image::load_from_memory(include_bytes!("../../resources/logo.png"))
         .expect("embedded Vkit logo must be a valid image")
         .to_rgba8();
     let size = [decoded.width() as usize, decoded.height() as usize];

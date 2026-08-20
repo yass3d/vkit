@@ -448,10 +448,7 @@ fn reconstruct_template_anatomy_groups(mesh: &mut OrderedObjMesh) -> Result<(), 
     }
     let jaw_faces = matching_material_faces(&mesh.faces, TEMPLATE_JAW_MATERIALS);
     if jaw_faces.is_empty() {
-        return Err(format!(
-            "FBX anatomy reconstruction requires jaw faces using DAZ materials {:?}",
-            TEMPLATE_JAW_MATERIALS
-        ));
+        return Err(missing_jaw_faces());
     }
     if !mesh.faces.iter().any(|face| {
         face.material
@@ -468,12 +465,12 @@ fn reconstruct_template_anatomy_groups(mesh: &mut OrderedObjMesh) -> Result<(), 
         .iter()
         .map(|&face_index| centroids[face_index][1])
         .min_by(f64::total_cmp)
-        .expect("jaw faces are non-empty");
+        .ok_or_else(missing_jaw_faces)?;
     let jaw_maximum_y = jaw_faces
         .iter()
         .map(|&face_index| centroids[face_index][1])
         .max_by(f64::total_cmp)
-        .expect("jaw faces are non-empty");
+        .ok_or_else(missing_jaw_faces)?;
     let jaw_height = jaw_maximum_y - jaw_minimum_y;
     if !jaw_height.is_finite() || jaw_height <= f64::EPSILON {
         return Err(
@@ -569,6 +566,13 @@ fn vertex_bounds(vertices: &[[f64; 3]]) -> Result<([f64; 3], [f64; 3]), String> 
         }
     }
     Ok((minimum, maximum))
+}
+
+fn missing_jaw_faces() -> String {
+    format!(
+        "FBX anatomy reconstruction requires jaw faces using DAZ materials {:?}",
+        TEMPLATE_JAW_MATERIALS
+    )
 }
 
 fn matching_material_faces(faces: &[ObjFace], materials: &[&str]) -> Vec<usize> {
@@ -1319,11 +1323,6 @@ fn write_material_library(
     })
 }
 
-/// Copies one diffuse texture into the import workspace, or says why it could not.
-///
-/// Every failure in here used to refuse the whole FBX, which is the same violation the glTF reader
-/// carried: a texture that is unreadable, permission-denied, or larger than the workspace ceiling
-/// costs the material its map and nothing else. The mesh was already parsed by the time this runs.
 fn copy_diffuse_texture(
     source: &Path,
     material_id: u64,
@@ -1585,24 +1584,25 @@ fn inherit_transform(
     local: LocalTransform,
 ) -> Result<ResolvedTransform, String> {
     let rotation = multiply(parent.rotation, local.rotation);
-    let scale = match local.inheritance {
-        0 | 1 => multiply(parent.scale, local.scale),
-        2 => local.scale,
+    let (scale, linear) = match local.inheritance {
+        0 => {
+            let scale = multiply(parent.scale, local.scale);
+            (scale, multiply(rotation, scale))
+        }
+        1 => (
+            multiply(parent.scale, local.scale),
+            multiply(
+                multiply(multiply(parent.rotation, parent.scale), local.rotation),
+                local.scale,
+            ),
+        ),
+        2 => (local.scale, multiply(rotation, local.scale)),
         _ => {
             return Err(format!(
                 "FBX transform inheritance {} is invalid",
                 local.inheritance
             ));
         }
-    };
-    let linear = match local.inheritance {
-        0 => multiply(rotation, scale),
-        1 => multiply(
-            multiply(multiply(parent.rotation, parent.scale), local.rotation),
-            local.scale,
-        ),
-        2 => multiply(rotation, local.scale),
-        _ => unreachable!(),
     };
     let local_origin = [local.matrix[0][3], local.matrix[1][3], local.matrix[2][3]];
     let translation = transform_point(parent.matrix, local_origin);
@@ -2172,5 +2172,22 @@ mod tests {
         let error = reconstruct_template_anatomy_groups(&mut mesh).unwrap_err();
         assert!(error.contains("no vertical span"), "{error}");
         assert_eq!(mesh.faces, before);
+    }
+
+    #[test]
+    fn a_head_with_no_jaw_materials_is_an_error_not_an_abort() {
+        let mut mesh = anatomy_fixture();
+        for face in &mut mesh.faces {
+            if face
+                .material
+                .as_deref()
+                .is_some_and(|material| ["Teeth", "Gums", "InnerMouth"].contains(&material))
+            {
+                face.material = Some("Face".to_owned());
+            }
+        }
+        let error = reconstruct_template_anatomy_groups(&mut mesh).unwrap_err();
+        assert!(error.contains("requires jaw faces"), "{error}");
+        assert!(error.contains("Teeth"), "{error}");
     }
 }

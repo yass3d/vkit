@@ -1,13 +1,3 @@
-//! Cross-validation of the hand-written `EXT_meshopt_compression` decoders against an
-//! independent implementation.
-//!
-//! `meshopt-rs` is a separate pure-Rust port of meshoptimizer and is a **dev**-dependency only,
-//! so nothing here reaches the shipped binary. Its encoders are the reference: bytes it
-//! produces must decode, through our decoder, back to exactly the values that went in. A
-//! codec that is 99% correct is more damaging than one that is 0% correct, because a slightly
-//! wrong mesh still fits and still looks plausible — this file is the gate that makes such a
-//! regression fail loudly instead.
-
 use meshopt_rs::index::IndexEncodingVersion;
 use meshopt_rs::index::buffer::{
     decode_index_buffer, encode_index_buffer, encode_index_buffer_bound,
@@ -133,10 +123,6 @@ fn encode_triangles_with_reference(indices: &[u32], version: IndexEncodingVersio
     buffer
 }
 
-/// The TRIANGLES encoder is free to rotate a triangle — it picks whichever of the three
-/// rotations lets the leading edge hit the edge FIFO — so the decoded list is not the encoded
-/// list index for index. The winding must survive, which is what actually matters to geometry,
-/// so this is the identity the test asserts against the source.
 fn assert_same_triangles_up_to_rotation(decoded: &[u32], source: &[u32], label: &str) {
     assert_eq!(decoded.len(), source.len(), "{label} length");
     for (triangle, (decoded, source)) in decoded
@@ -191,10 +177,6 @@ fn triangles_codec_matches_the_reference_decoder_at_both_index_versions() {
     }
 }
 
-/// Index codec v1 can restart the fresh-index counter mid-stream, and it encodes strip steps as
-/// `last - 1` / `last + 1` instead of spending data bytes. This is the shortest sequence that
-/// exercises both, taken from the reference implementation's own regression case; a decoder
-/// missing either feature desynchronises here and never resynchronises.
 #[test]
 fn triangles_codec_survives_a_version_one_restart() {
     let indices: Vec<u32> = vec![0, 1, 2, 2, 1, 3, 0, 1, 2, 2, 1, 5, 2, 1, 4];

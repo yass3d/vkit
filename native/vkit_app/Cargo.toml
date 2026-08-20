@@ -10,7 +10,7 @@ name = "Vkit"
 path = "src/main.rs"
 
 [dependencies]
-vkit-core = { path = "../vkit_core", features = ["rig"] }
+vkit-core = { path = "../vkit_core" }
 base64 = "0.22.1"
 bytemuck.workspace = true
 crc32fast = "1.5"

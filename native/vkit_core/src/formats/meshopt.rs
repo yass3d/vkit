@@ -1,29 +1,13 @@
-//! Decoders for `EXT_meshopt_compression` buffer views.
-//!
-//! The codecs are reimplemented here rather than bound to meshoptimizer's C library because
-//! the shipped executable is declared pure Rust; a C dependency would make that claim false.
-//! Every read is bounds checked and every produced length is derived from the caller's
-//! `count`/`byte_stride`, so a hostile buffer can only ever produce an `Err`.
-//!
-//! All three extension modes decode here. Vertex codec version 1 stays refused because no
-//! independent encoder for it is available to check a decoder against, and a nearly-correct
-//! geometry decoder is worse than a named refusal: the error survives to the user, a
-//! misplaced vertex does not.
-
 use thiserror::Error;
 
 const VERTEX_HEADER: u8 = 0xa0;
 const INDEX_HEADER: u8 = 0xe0;
 const SEQUENCE_HEADER: u8 = 0xd0;
 
-/// Trailing zero padding meshoptimizer writes after an index sequence stream. The decode must
-/// stop exactly on it, which is what turns a desynchronised stream into an error.
 const SEQUENCE_TAIL_BYTES: usize = 4;
 
 const BYTE_GROUP_SIZE: usize = 16;
 
-/// Largest number of bytes a single byte group can consume: eight packed nibble bytes plus
-/// sixteen escape bytes. Checked before each group so the inner reads cannot run off the end.
 const BYTE_GROUP_DECODE_LIMIT: usize = 24;
 
 const VERTEX_BLOCK_SIZE_BYTES: usize = 8192;
@@ -34,8 +18,6 @@ const MAX_VERTEX_STRIDE: usize = 256;
 const FIFO_SIZE: usize = 16;
 const CODEAUX_TABLE_BYTES: usize = 16;
 
-/// Ceiling on a single decoded buffer view, so a forged `count` cannot ask for an unbounded
-/// allocation before any of the payload has been validated.
 pub const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug, Error)]
@@ -165,10 +147,6 @@ impl Filter {
     }
 }
 
-/// Decodes one `EXT_meshopt_compression` buffer view into its plain glTF bytes.
-///
-/// `count` and `byte_stride` come from the extension JSON; the returned buffer is always
-/// exactly `count * byte_stride` bytes so the caller can splice it in place of the view.
 pub fn decode_buffer_view(
     encoded: &[u8],
     mode: Mode,
@@ -423,8 +401,6 @@ fn decode_byte_group(
     }
 }
 
-/// Unpacks sixteen values held at `bits` bits each; the all-ones code escapes to a literal
-/// byte taken from the overflow run that follows the packed codes.
 fn decode_packed_group(
     encoded: &[u8],
     position: usize,
@@ -484,8 +460,6 @@ impl IndexReader<'_> {
         Ok(byte)
     }
 
-    /// Reads meshoptimizer's variable byte encoding: seven payload bits per byte, at most
-    /// five bytes, so malformed data cannot spin this loop.
     fn next_vbyte(&mut self) -> Result<u32> {
         let lead = self.next_byte()?;
         if lead < 128 {
@@ -520,14 +494,6 @@ fn write_index(output: &mut [u8], slot: usize, index_size: usize, value: u32) {
     }
 }
 
-/// Decodes the `TRIANGLES` mode, meshoptimizer's triangle-list index codec.
-///
-/// Version 1 of the codec adds two things version 0 lacks, and both must be honoured or a v1
-/// stream desynchronises partway through and yields a hairball: the fec codes 13 and 14 encode
-/// `last - 1` and `last + 1` so strips cost no data bytes, and a slow-path codeaux of exactly
-/// zero is a *restart* that resets the fresh-index counter rather than a triangle of vertices
-/// 0/1/2. The codeaux table is read from the stream's own trailing sixteen bytes, not from a
-/// table compiled in here, so a producer that ships a different table still decodes.
 fn decode_index_buffer(encoded: &[u8], count: usize, index_size: usize) -> Result<Vec<u8>> {
     const CODEC: &str = "index";
 
@@ -746,14 +712,6 @@ fn decode_index_buffer(encoded: &[u8], count: usize, index_size: usize) -> Resul
     Ok(output)
 }
 
-/// Decodes the `INDICES` mode, meshoptimizer's index *sequence* codec.
-///
-/// Unlike `TRIANGLES` this codec carries no topology at all: it is a flat list of indices, so
-/// it is what a non-triangle primitive (a line set, a strip, a fan) compresses to. Each value
-/// is a zigzag delta against one of two running baselines; the low bit of the decoded varint
-/// selects which baseline the delta applies to and which one the result then replaces. Two
-/// baselines exist so that an encoder meeting a large jump can park it on the spare lane and
-/// keep the common small deltas in one varint byte.
 fn decode_index_sequence(encoded: &[u8], count: usize, index_size: usize) -> Result<Vec<u8>> {
     const CODEC: &str = "index sequence";
 
@@ -849,8 +807,6 @@ fn round_to_int(value: f32) -> i32 {
     if biased.is_nan() { 0 } else { biased as i32 }
 }
 
-/// Rebuilds a unit vector from its octahedral projection. The third stored component carries
-/// the encoded 1.0, so z falls out of the L1 identity and folds when it goes negative.
 fn octahedral_element(x_in: f32, y_in: f32, w_in: f32, max: f32) -> [f32; 3] {
     let mut x = x_in;
     let mut y = y_in;
@@ -910,8 +866,6 @@ fn filter_octahedral(data: &mut [u8], count: usize, stride: usize) -> Result<()>
     }
 }
 
-/// Rebuilds a unit quaternion from its three smallest components; the low two bits of the
-/// fourth slot say which component was dropped, and therefore where each one is written back.
 fn filter_quaternion(data: &mut [u8], count: usize, stride: usize) -> Result<()> {
     if stride != 8 {
         return Err(MeshoptError::InvalidStride {
@@ -959,9 +913,6 @@ fn filter_quaternion(data: &mut [u8], count: usize, stride: usize) -> Result<()>
     Ok(())
 }
 
-/// Expands the packed mantissa/exponent pair back into an IEEE float. The exponent is applied
-/// by construction rather than by `powf` so the result is exact, and out-of-range exponents
-/// fall back to `powi` instead of forming a bogus bit pattern.
 fn filter_exponential(data: &mut [u8], count: usize, stride: usize) -> Result<()> {
     if stride == 0 || !stride.is_multiple_of(4) {
         return Err(MeshoptError::InvalidStride {
@@ -1150,11 +1101,6 @@ mod tests {
             })
         }
 
-        /// Emits one triangle the way a conforming encoder would.
-        ///
-        /// The zero codeaux must go through the table code rather than the escape code: a
-        /// literal codeaux of zero is the version 1 restart marker, so an encoder that spells
-        /// "three fresh vertices" that way is telling the decoder to reset its counter.
         fn push(&mut self, triangle: [u32; 3]) {
             let [a, b, c] = triangle;
 

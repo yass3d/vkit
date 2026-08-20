@@ -284,14 +284,6 @@ impl EyelidConformationPlan {
         conform_eyelids_to_globes_with_plan(self, reference, vertices, true)
     }
 
-    pub fn conform_bound(
-        &self,
-        reference: &DazGeometry,
-        vertices: &mut [Vec3],
-    ) -> Result<EyelidConformationReceipt, AnatomyError> {
-        conform_eyelids_to_globes_with_plan(self, reference, vertices, false)
-    }
-
     pub fn conform_bound_vertices(
         &self,
         reference_vertices: &[Vec3],
@@ -339,11 +331,6 @@ impl EyelidConformationPlan {
 
     pub const fn vertex_count(&self) -> usize {
         self.vertex_count
-    }
-
-    pub fn matches_reference(&self, reference: &DazGeometry) -> bool {
-        self.vertex_count == reference.vertices.len()
-            && self.topology_fingerprint == eyelid_topology_fingerprint(reference)
     }
 }
 

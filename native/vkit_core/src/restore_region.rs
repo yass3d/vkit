@@ -1,42 +1,11 @@
-//! The parts of a head a scan should never be allowed to move.
-//!
-//! Ears, nape and the back of the skull are almost never usable in a scan, so
-//! a fit that moves them only makes work: the same restore brushwork over the
-//! same fixed regions, every head. This computes, once per template, a
-//! per-vertex weight — 1 keeps the G2 base exactly, 0 keeps the fit — with a
-//! geodesic falloff that runs *outward only*: a seeded vertex sits at distance
-//! zero and holds weight 1.0 exactly, so nothing ever bleeds inward past the
-//! ears or the nape. That one-sidedness is the half of the bargain that must
-//! never soften; the other half is that the falloff toward crown, forehead,
-//! cheeks and chin is wide enough to read as skin, not a seam.
-
 use std::collections::HashMap;
 
 use crate::formats::OrderedObjMesh;
 
-/// Geodesic distance inside which the base is kept in full, beyond the seed.
 pub const RESTORE_FULL_CM: f64 = 1.0;
 
-/// Width of the smoothstep from full base to full fit.
-///
-/// Chosen to carry the ear-to-cheekbone strip and the chin-to-throat band in
-/// one soft gradient; narrower reads as a crease along the jaw.
 pub const RESTORE_SPAN_CM: f64 = 8.0;
 
-/// Per-vertex keep-the-base weights for the neck-and-ears restore.
-///
-/// The template must be the canonical G2 head export, which names its
-/// materials; the regions are found by name where a name exists and cut
-/// geometrically where one does not:
-/// - the whole `Ears` material;
-/// - `Neck`, except its upper front quarter — under the chin the face's own
-///   likeness reaches down, so that band is left for the falloff to blend;
-/// - `Head` behind the vertical line of the ears — the back of the skull —
-///   leaving crown and forehead to take the fit softly.
-///
-/// Returns one weight per vertex of the template. An empty result means the
-/// template does not carry the expected materials and the restore should be
-/// skipped rather than guessed.
 #[must_use]
 pub fn neck_ear_restore_weights(template: &OrderedObjMesh) -> Vec<f64> {
     let mut by_material: HashMap<&str, Vec<usize>> = HashMap::new();
@@ -73,11 +42,6 @@ pub fn neck_ear_restore_weights(template: &OrderedObjMesh) -> Vec<f64> {
     geodesic_keep_weights(&template.vertices, edges, &seed)
 }
 
-/// The vertices held at the base outright, before any falloff.
-///
-/// Canonical space: centimetres, Y up, +Z out of the face. Cuts are taken
-/// from the template's own extents rather than absolute numbers, so a
-/// template variant with a different stature still cuts in proportion.
 fn seed_from_regions(
     ears: &[usize],
     neck: &[usize],
@@ -101,15 +65,11 @@ fn seed_from_regions(
     let neck_y_mid = f64::midpoint(neck_y_low, neck_y_high);
 
     let mut seed = ears.to_vec();
-    // The nape at any height, and the whole lower neck; the upper front —
-    // throat to chin — is where the face's likeness still matters, so it is
-    // left out of the seed and receives the falloff instead.
     seed.extend(
         neck.iter().copied().filter(|&vertex| {
             vertices[vertex][2] <= neck_z_mid || vertices[vertex][1] <= neck_y_mid
         }),
     );
-    // The skull behind the vertical line of the ears.
     seed.extend(
         head.iter()
             .copied()
@@ -120,10 +80,6 @@ fn seed_from_regions(
     seed
 }
 
-/// Smoothstepped keep-the-base weights from geodesic distance to a seed set.
-///
-/// Every seed vertex is at distance zero and therefore weighs exactly 1.0 —
-/// the falloff exists only outside the seed, never inside it.
 pub fn geodesic_keep_weights(
     vertices: &[[f64; 3]],
     edges: impl Iterator<Item = (usize, usize)>,
@@ -182,8 +138,6 @@ pub fn geodesic_keep_weights(
         .collect()
 }
 
-/// One position per vertex: the base where the weight says base, the fit
-/// where it says fit, and the straight line between elsewhere.
 #[must_use]
 pub fn blend_toward_base(base: &[[f64; 3]], fitted: &[[f64; 3]], weights: &[f64]) -> Vec<[f64; 3]> {
     fitted
@@ -207,14 +161,7 @@ mod tests {
     use super::*;
     use crate::formats::ObjFace;
 
-    /// A toy head: a strip of vertices along +Z (chin to nose) in "Face", a
-    /// neck column spanning front and back, ears at the sides, and a skull
-    /// strip along -Z in "Head". Canonical axes: Y up, +Z forward, cm.
     fn toy_template() -> OrderedObjMesh {
-        // indices 0..4  : Face strip, z = 2..10 (front)
-        // indices 4..8  : Head strip, z = 1..-11 (crown to back)
-        // indices 8..12 : Neck column, (y,z) quadrants
-        // indices 12..14: Ears at z = 0
         let vertices = vec![
             [0.0, 0.0, 2.0],
             [0.0, 0.0, 5.0],
@@ -246,7 +193,6 @@ mod tests {
                 face(&[8, 9, 10], "Neck"),
                 face(&[10, 11, 8], "Neck"),
                 face(&[12, 13, 4], "Ears"),
-                // stitch the islands so distances propagate
                 face(&[0, 4, 12], "Face"),
                 face(&[0, 8, 9], "Face"),
             ],
@@ -259,14 +205,10 @@ mod tests {
         let weights = neck_ear_restore_weights(&template);
         assert_eq!(weights.len(), template.vertices.len());
 
-        // Ears: always seed, weight exactly 1 — the inward side never softens.
         assert_eq!(weights[12], 1.0);
         assert_eq!(weights[13], 1.0);
-        // Skull behind the ear line: seed.
         assert_eq!(weights[6], 1.0, "back of the skull is held");
         assert_eq!(weights[7], 1.0);
-        // Neck: nape and lower front are seed; the upper front — throat to
-        // chin — is not, so the chin band can blend.
         assert_eq!(weights[10], 1.0, "nape");
         assert_eq!(weights[8], 1.0, "lower front neck");
         assert!(
@@ -274,13 +216,11 @@ mod tests {
             "upper front neck is the flexible band, got {}",
             weights[9]
         );
-        // The far face follows the fit outright.
         assert!(
             weights[3] < 1.0e-9,
             "the nose tip keeps the fit, got {}",
             weights[3]
         );
-        // And the falloff decays monotonically along the face strip.
         assert!(weights[0] >= weights[1] && weights[1] >= weights[2]);
     }
 

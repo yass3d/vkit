@@ -25,55 +25,6 @@ pub struct EmbeddedSparseMorph {
 }
 
 impl EmbeddedSparseMorph {
-    pub fn from_morph_target(geometry: &DazGeometry, morph: &MorphTarget) -> Result<Self> {
-        geometry.validate()?;
-        morph.validate()?;
-        if morph.compatibility.vertex_count != geometry.vertices.len()
-            || morph.reference_faces() != geometry.faces
-        {
-            return Err(resource_error(
-                "morph topology does not exactly match the supplied geometry",
-            ));
-        }
-        let vertex_count = u32::try_from(geometry.vertices.len())
-            .map_err(|_| resource_error("vertex count exceeds u32"))?;
-        if vertex_count > u16::MAX.into() {
-            return Err(resource_error(
-                "sparse v1 resource supports at most 65535 vertices",
-            ));
-        }
-        let face_count = u32::try_from(geometry.faces.len())
-            .map_err(|_| resource_error("face count exceeds u32"))?;
-        let mut deltas = Vec::with_capacity(morph.compatibility.active_vertex_count);
-        for (vertex_id, delta) in morph.deltas.iter().copied().enumerate() {
-            if delta == [0.0; 3] {
-                continue;
-            }
-            let narrowed = [delta[0] as f32, delta[1] as f32, delta[2] as f32];
-            if !narrowed.iter().all(|value| value.is_finite())
-                || narrowed.iter().all(|value| *value == 0.0)
-            {
-                return Err(resource_error(format!(
-                    "delta {vertex_id} cannot be represented as a finite nonzero f32 vector"
-                )));
-            }
-            deltas.push(EmbeddedMorphDelta {
-                vertex_id: u16::try_from(vertex_id)
-                    .map_err(|_| resource_error("vertex ID exceeds u16"))?,
-                delta_cm: narrowed,
-            });
-        }
-        let result = Self {
-            vertex_count,
-            face_count,
-            topology_sha256: topology_digest(geometry.vertices.len(), &geometry.faces)?,
-            zero_tolerance_cm: morph.compatibility.zero_tolerance as f32,
-            deltas,
-        };
-        result.validate()?;
-        Ok(result)
-    }
-
     pub fn validate(&self) -> Result<()> {
         if self.vertex_count == 0 || self.vertex_count > u16::MAX.into() {
             return Err(resource_error("invalid v1 vertex count"));

@@ -310,7 +310,6 @@ pub enum SkinDiffuseSource {
 
     BuiltInSelectorUnavailable(String),
 
-    /// Supplied by this tool because the look named nothing for this region.
     FigureDefault,
 }
 
@@ -531,8 +530,6 @@ pub fn scan_skin_library_with_report(root: &VaMRoot) -> Result<SkinScanReport> {
         }
     }
 
-    // Scanned before the defaults are chosen, because the base figure's own
-    // materials are those defaults.
     let builtin = match super::unity_textures::scan_builtin_skins(
         root,
         default_texture_cache_dir().as_deref(),
@@ -552,28 +549,11 @@ pub fn scan_skin_library_with_report(root: &VaMRoot) -> Result<SkinScanReport> {
     let defaults = discover_default_auxiliary(root, &builtin)?;
     for preset in presets.values_mut() {
         let fallback = defaults.for_sex(preset.sex);
-        // Spread first so the look's own eye wins the regions it left silent,
-        // then take stand-ins for everything still unnamed, then spread once
-        // more: an iris the stand-in refused would otherwise be the one blank
-        // island in an otherwise complete eye, which reads as a white eye.
         preset.auxiliary.spread_own_eye_atlas();
         preset
             .auxiliary
             .fill_missing_from(&fallback.auxiliary, fallback.iris_stands_in);
         preset.auxiliary.spread_own_eye_atlas();
-        // A look that named a built-in eye colour is not warned about. VaM
-        // paints those as an extra layer over the shared eye atlas, and this
-        // tool shows the atlas underneath instead — a whole, ordinary eye,
-        // just not the shade that look's author picked. That is a settled
-        // decision, not a failure, and 160 looks produced twenty warnings a
-        // scan about work that had gone correctly.
-        //
-        // `unavailable_builtin_selectors` is kept for the day that decision
-        // changes: eyes and inner mouth are fixed here today because the tool
-        // reshapes heads and reskins them, but if eye colour ever becomes
-        // something a reader chooses, this is where the gap is visible again.
-        // Resolving the colours themselves would mean reading Cache/Textures,
-        // which is the runtime folder this release stopped depending on.
     }
     let mut result: Vec<_> = presets.into_values().collect();
     result.sort_by(|left, right| {
@@ -616,13 +596,6 @@ impl SkinAuxiliary {
         .collect()
     }
 
-    /// Takes, for every region this look left unnamed, the stand-in's version.
-    ///
-    /// `iris_stands_in` says whether the stand-in iris is the figure's own
-    /// default colour. A look that asked for a built-in colour this
-    /// installation does not have may borrow that one, because it is what VaM
-    /// would have shown underneath — but never some other colour, which would
-    /// be a substitution the reader could only catch by eye.
     fn fill_missing_from(&mut self, fallback: &Self, iris_stands_in: bool) {
         for (region, target, fallback) in [
             ("sclera", &mut self.sclera, &fallback.sclera),
@@ -651,14 +624,6 @@ impl SkinAuxiliary {
         }
     }
 
-    /// Puts this look's own eye image across all three eye regions.
-    ///
-    /// VaM paints sclera, iris and lacrimal from one atlas, and a look
-    /// normally names it once — most often as the sclera. Spreading that one
-    /// image over the regions it left silent is what keeps an eye whole:
-    /// filling them from the stand-in instead would set a stranger's iris in
-    /// the look's own eye. Regions the look did name are left alone, and
-    /// regions no one named are left for the stand-in.
     fn spread_own_eye_atlas(&mut self) {
         let atlas = self
             .sclera
@@ -675,7 +640,6 @@ impl SkinAuxiliary {
         }
     }
 
-    /// Every region a look can name its own texture for.
     fn materials_mut(&mut self) -> [&mut SkinAuxMaterial; 8] {
         [
             &mut self.sclera,
@@ -696,13 +660,10 @@ struct DefaultAuxiliary {
     unknown: SexDefaults,
 }
 
-/// One sex's stand-in eye, mouth and lash materials.
 #[derive(Default)]
 struct SexDefaults {
     auxiliary: SkinAuxiliary,
 
-    /// Whether `auxiliary.iris` is the figure's own default colour, and so a
-    /// safe stand-in for a look whose named colour is not installed.
     iris_stands_in: bool,
 }
 
@@ -716,13 +677,6 @@ impl DefaultAuxiliary {
     }
 }
 
-/// The materials a look inherits for the regions it names nothing for.
-///
-/// They come from the base figure's own material bundle, which is part of
-/// every installation. `Cache/Textures` only fills what the bundle does not
-/// carry: VaM writes that folder as it renders, so on an installation that
-/// has not yet displayed these textures it is empty — and empty is exactly
-/// what leaves eyes and inner mouth white.
 fn discover_default_auxiliary(root: &VaMRoot, builtin: &[SkinPreset]) -> Result<DefaultAuxiliary> {
     let entries = cache_texture_entries(root)?;
     let for_sex = |sex: SkinSex| -> SexDefaults {
@@ -743,14 +697,8 @@ fn discover_default_auxiliary(root: &VaMRoot, builtin: &[SkinPreset]) -> Result<
     })
 }
 
-/// Whether an iris image is the figure's own default colour.
-///
-/// Only that one may stand in for a built-in colour this installation does
-/// not have. Anything else — another look's iris, a differently numbered
-/// preset — would be a silent substitution.
 fn iris_is_the_default_color(diffuse: Option<&AssetLocator>) -> bool {
     match diffuse {
-        // The base figure's own iris is its default colour by construction.
         Some(AssetLocator::BuiltinTexture(_)) => true,
         Some(AssetLocator::File(path)) => {
             builtin_iris_cache_color_number(path) == Some(DEFAULT_BUILTIN_IRIS_COLOR)
@@ -2893,20 +2841,6 @@ mod tests {
         ))
     }
 
-    /// What someone who has just installed VaM and never run it actually has.
-    ///
-    /// Both defects this guards against looked like quality problems and were
-    /// really availability ones: the UV mapping came from a loose OBJ and the
-    /// eye, mouth and lash textures from `Cache/Textures`, and neither exists
-    /// until VaM has been used. Point `VKIT_FRESH_ROOT` at a directory holding
-    /// nothing but `VaM_Data/StreamingAssets` — hard links to the real ones
-    /// are enough, and cost nothing:
-    ///
-    /// ```text
-    /// Get-ChildItem -File <VaM>\VaM_Data\StreamingAssets | ForEach-Object {
-    ///     New-Item -ItemType HardLink -Path (Join-Path $dst $_.Name) -Target $_.FullName
-    /// }
-    /// ```
     #[test]
     #[ignore = "reads a stripped copy of a VaM installation"]
     fn a_first_run_installation_still_dresses_the_eyes_and_mouth() {
@@ -2966,8 +2900,6 @@ mod tests {
                 mapping.faces.len(),
                 mapping.uncovered_triangles
             );
-            // The whole point: the mapping came out of the figure bundle, not
-            // out of a loose file this installation may not have.
             assert_eq!(
                 mapping.source_path,
                 root.neutral_base_bundle_path(geometry_sex),
@@ -2975,8 +2907,6 @@ mod tests {
             );
             assert_eq!(mapping.uncovered_triangles, 0);
 
-            // The morphs a face is actually shaped with, from the same kind of
-            // place: a bundle that is part of the installation.
             let bank =
                 super::super::unity_morph_bank::BuiltinMorphSession::open_for_sex(&root, sex)
                     .unwrap();
@@ -2985,9 +2915,6 @@ mod tests {
                 bank.morph_count(),
                 bank.bundle_path().display()
             );
-            // The floor is low on purpose: the point is that the bank decodes
-            // to real morphs out of the installation rather than to an empty
-            // list, not that either figure carries some particular number.
             assert!(
                 bank.morph_count() > 100,
                 "{figure} decoded {} morphs",
@@ -3002,9 +2929,6 @@ mod tests {
         }
     }
 
-    /// The report behind routing these defaults through the bundle: on a real
-    /// installation every eye, mouth and lash texture is present before VaM has
-    /// ever rendered, which is exactly what `Cache/Textures` cannot promise.
     #[test]
     #[ignore = "reads the reader's own VaM installation"]
     fn every_stand_in_region_resolves_from_the_installation_alone() {
@@ -3036,7 +2960,6 @@ mod tests {
                 iris_is_the_default_color(defaults.iris.diffuse.as_ref()),
                 "{sex:?} iris must be able to stand in"
             );
-            // Surface maps ride along wherever the figure paints them.
             assert!(defaults.teeth.surface.specular.is_some());
             assert!(defaults.inner_mouth.surface.specular.is_some());
             assert!(defaults.sclera.surface.normal.is_some());
@@ -3067,8 +2990,6 @@ mod tests {
             );
             assert_eq!(material.diffuse_source, SkinDiffuseSource::FigureDefault);
         }
-        // A figure this installation does not carry leaves the stand-ins empty
-        // rather than borrowing another figure's.
         assert!(
             base_figure_auxiliary(&others, SkinSex::Male)
                 .materials_mut()
@@ -3100,7 +3021,6 @@ mod tests {
             "the iris takes the look's own eye, not the base figure's"
         );
         assert_eq!(look.lacrimal.diffuse.as_ref(), Some(&own));
-        // Regions it named nothing for still come from the stand-in.
         assert_eq!(look.teeth.diffuse, stand_in.teeth.diffuse);
     }
 
@@ -3194,10 +3114,6 @@ mod tests {
 
         let root = VaMRoot::open(&temporary).unwrap();
         let report = scan_skin_library_with_report(&root).unwrap();
-        // Silent by design: showing the eye underneath is the decision, so a
-        // look that named a colour this installation lacks is not a warning.
-        // The selector is still recorded on the preset, which is what a future
-        // eye-colour feature would read.
         assert!(
             !report
                 .diagnostics

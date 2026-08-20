@@ -126,6 +126,7 @@ pub struct VaMCatalogPayload {
     pub shared_scalp: Option<Box<HairPartReference>>,
 
     pub builtin_hair_scalps: Arc<Vec<BuiltinHairScalp>>,
+    pub builtin_scalp_textures: Arc<Vec<vkit_core::vam::BuiltinScalpTextureSet>>,
     pub edit_sources: Vec<VaMEditSource>,
 
     pub morph_index: Arc<VaMMorphIndex>,
@@ -253,7 +254,9 @@ fn execute_with_progress(
                 report_appearance_progress(sender, wake, catalog_revision, 0.08);
                 let mut appearance_warnings = Vec::new();
 
+                let scan_started = std::time::Instant::now();
                 let fingerprint = appearance_sources_fingerprint(root.path());
+                let fingerprint_ms = scan_started.elapsed().as_millis();
                 report_appearance_progress(sender, wake, catalog_revision, 0.12);
                 let cached = if force_rescan {
                     None
@@ -297,15 +300,23 @@ fn execute_with_progress(
                         &appearance_warnings,
                     );
                 }
-                let builtin_hair_scalps = match load_builtin_hair_scalps(&root) {
+                let library_ms = scan_started.elapsed().as_millis() - fingerprint_ms;
+                let scalps_started = std::time::Instant::now();
+                let builtin_hair_scalps = match load_builtin_hair_scalps_cached(&root) {
                     Ok(scalps) => Arc::new(scalps),
                     Err(error) => {
                         appearance_warnings.push(format!("built-in hair scalps: {error}"));
                         Arc::new(Vec::new())
                     }
                 };
+                let builtin_scalp_textures = Arc::new(vkit_core::vam::scan_builtin_scalp_textures(
+                    &root,
+                    vkit_core::cache_root().as_deref(),
+                ));
+                let scalps_ms = scalps_started.elapsed().as_millis();
                 report_appearance_progress(sender, wake, catalog_revision, 0.55);
                 report_appearance_progress(sender, wake, catalog_revision, 0.60);
+                let edit_sources_started = std::time::Instant::now();
                 let (edit_sources, morph_groups, morph_regions) =
                     match scan_edit_sources(root.path()) {
                         Ok(report) => {
@@ -317,10 +328,14 @@ fn execute_with_progress(
                             (Vec::new(), Vec::new(), Vec::new())
                         }
                     };
+                let edit_sources_ms = edit_sources_started.elapsed().as_millis();
                 report_appearance_progress(sender, wake, catalog_revision, 0.84);
 
+                let morphs_started = std::time::Instant::now();
                 let morph_index = Arc::new(VaMMorphIndex::load_or_build(root.path(), force_rescan));
+                let morphs_ms = morphs_started.elapsed().as_millis();
                 report_appearance_progress(sender, wake, catalog_revision, 0.88);
+                let packages_started = std::time::Instant::now();
                 let package_index = Arc::new(load_or_build_package_index(
                     &root,
                     force_rescan,
@@ -334,6 +349,16 @@ fn execute_with_progress(
                         );
                     },
                 ));
+                let _ = crate::diagnostics::record(
+                    crate::diagnostics::Severity::Info,
+                    "catalog",
+                    "appearance_scan_timing",
+                    &format!(
+                        "from_cache={from_cache}; fingerprint_ms={fingerprint_ms}; library_ms={library_ms}; scalps_ms={scalps_ms}; edit_sources_ms={edit_sources_ms}; morphs_ms={morphs_ms}; packages_ms={}; total_ms={}",
+                        packages_started.elapsed().as_millis(),
+                        scan_started.elapsed().as_millis(),
+                    ),
+                );
                 report_appearance_progress(sender, wake, catalog_revision, 0.92);
                 let uv_mapping = template_geometry.as_deref().and_then(|geometry| {
                     match load_g2_uv_mapping_for_sex(&root, geometry, figure_sex) {
@@ -351,6 +376,7 @@ fn execute_with_progress(
                     hair_presets,
                     shared_scalp,
                     builtin_hair_scalps,
+                    builtin_scalp_textures,
                     edit_sources,
                     morph_index,
                     package_index,
@@ -487,6 +513,9 @@ fn load_or_build_package_index(
 }
 
 fn package_index_cache_path(root: &Path) -> Option<PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
     let key = crate::cache_paths::cache_key_for_root(root);
     Some(
         vkit_core::cache_root()?
@@ -498,12 +527,79 @@ fn package_index_cache_path(root: &Path) -> Option<PathBuf> {
 const APPEARANCE_CACHE_VERSION: u32 = 4;
 
 fn appearance_cache_path(root: &Path) -> Option<PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
     let key = crate::cache_paths::cache_key_for_root(root);
     Some(
         vkit_core::cache_root()?
             .join("appearance")
             .join(format!("catalog-{key}.json")),
     )
+}
+
+fn load_builtin_hair_scalps_cached(
+    root: &vkit_core::vam::VaMRoot,
+) -> Result<Vec<vkit_core::vam::BuiltinHairScalp>, String> {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct ScalpCache {
+        version: u32,
+        bundle_len: u64,
+        bundle_mtime: u64,
+        scalps: Vec<vkit_core::vam::BuiltinHairScalp>,
+    }
+    const SCALP_CACHE_VERSION: u32 = 1;
+
+    let bundle = root
+        .path()
+        .join("VaM_Data")
+        .join("StreamingAssets")
+        .join("a_per");
+    let stamp = fs::metadata(&bundle).ok().map(|meta| {
+        (
+            meta.len(),
+            meta.modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |value| value.as_secs()),
+        )
+    });
+    let cache_path = (!cfg!(test))
+        .then(|| {
+            vkit_core::cache_root().map(|base| {
+                base.join("hair-scalps").join(format!(
+                    "scalps-{}.json",
+                    crate::cache_paths::cache_key_for_root(root.path())
+                ))
+            })
+        })
+        .flatten();
+    if let (Some(path), Some((len, mtime))) = (cache_path.as_deref(), stamp)
+        && let Some(cache) = fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<ScalpCache>(&bytes).ok())
+        && cache.version == SCALP_CACHE_VERSION
+        && cache.bundle_len == len
+        && cache.bundle_mtime == mtime
+    {
+        return Ok(cache.scalps);
+    }
+    let scalps = load_builtin_hair_scalps(root).map_err(|error| error.to_string())?;
+    if let (Some(path), Some((len, mtime))) = (cache_path.as_deref(), stamp) {
+        let cache = ScalpCache {
+            version: SCALP_CACHE_VERSION,
+            bundle_len: len,
+            bundle_mtime: mtime,
+            scalps: scalps.clone(),
+        };
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(bytes) = serde_json::to_vec(&cache) {
+            let _ = fs::write(path, bytes);
+        }
+    }
+    Ok(scalps)
 }
 
 fn appearance_sources_fingerprint(root: &Path) -> String {

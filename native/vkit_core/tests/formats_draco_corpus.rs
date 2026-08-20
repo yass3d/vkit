@@ -1,15 +1,3 @@
-//! Measures the Draco decoder against an uncompressed answer key.
-//!
-//! The corpus is a set of glTF files exported from one source mesh by a real Blender install:
-//! `01_plain.glb` carries the geometry uncompressed, `04_draco.glb` carries the same geometry
-//! Draco-compressed at the exporter's defaults, and `06_draco_max.glb` at its maximum
-//! compression level. That makes the plain file a literal answer key, and it is the only way
-//! to tell a decoder that is right from one that is nearly right — a face count matching
-//! proves the connectivity survived and says nothing at all about where the vertices went.
-//!
-//! Point `VKIT_GLTF_CORPUS` at the directory to run it; the files are large enough that they
-//! live outside the repository, so the test skips silently when the variable is unset.
-
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -103,23 +91,12 @@ fn bounding_box(positions: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) {
     (min, max)
 }
 
-/// Draco quantizes positions on a uniform grid across the whole bounding box, so one grid step
-/// is the largest error a *correct* decode can show on any axis. The reference numbers below
-/// are stated against that step rather than against an absolute epsilon, because the step is
-/// the only figure that scales with the model.
 fn quantization_step(positions: &[[f32; 3]], bits: u32) -> f32 {
     let (min, max) = bounding_box(positions);
     let extent = (0..3).fold(0.0f32, |widest, lane| widest.max(max[lane] - min[lane]));
     extent / ((1u32 << bits) - 1) as f32
 }
 
-/// The tolerance a correct decode must meet: one quantization step, but never finer than the
-/// float format itself can hold.
-///
-/// Past roughly 21 bits over this model the grid step drops below one `f32` ULP, so the grid
-/// stops being the limiting error and rounding in the dequantization multiply takes over — the
-/// answer key is `f32` too, and neither side can represent the difference. Holding the assert
-/// at the grid step there would fail a decode that is as exact as the format permits.
 fn position_tolerance(positions: &[[f32; 3]], bits: u32) -> f32 {
     let (min, max) = bounding_box(positions);
     let magnitude = (0..3).fold(0.0f32, |widest, lane| {
@@ -128,11 +105,6 @@ fn position_tolerance(positions: &[[f32; 3]], bits: u32) -> f32 {
     quantization_step(positions, bits).max(8.0 * f32::EPSILON * magnitude)
 }
 
-/// Largest per-axis deviation, matching each decoded point to its nearest answer-key point.
-///
-/// The match has to be by proximity: Draco reorders vertices as a consequence of its traversal,
-/// so decoded index `i` is not source index `i` and comparing them positionally would report a
-/// correct decode as catastrophically wrong.
 fn worst_axis_deviation(decoded: &[[f32; 3]], answer: &[[f32; 3]]) -> (f32, usize) {
     let mut worst = 0.0f32;
     let mut worst_point = 0usize;
@@ -217,10 +189,6 @@ fn plain_texcoords(glb: &Glb) -> Vec<[f32; 2]> {
         .collect()
 }
 
-/// A UV seam puts two source vertices at the same position with different texture coordinates,
-/// so a texcoord check cannot pair vertices by position first and then compare UVs — on a
-/// sphere it would compare against the wrong twin half the time. Pairing on both at once, and
-/// requiring some single source vertex to match both, is the check that means something.
 #[test]
 fn draco_defaults_preserve_texture_coordinates_on_the_same_vertex() {
     let Some(dir) = corpus_dir() else {

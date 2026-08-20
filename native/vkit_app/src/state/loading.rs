@@ -20,6 +20,29 @@ impl AppState {
         }
     }
 
+    pub(super) fn report_import_progress(&mut self, path: PathBuf, progress: ImportProgress) {
+        if self.scan_import.active_path() == Some(path.as_path()) {
+            let progress = ImportProgress::with_size(
+                progress.phase,
+                progress.fraction,
+                progress.source_triangles,
+            );
+            let fraction = self.import_progress.map_or(progress.fraction, |current| {
+                current.fraction.max(progress.fraction)
+            });
+
+            let triangles = progress.source_triangles.or_else(|| {
+                self.import_progress
+                    .and_then(|current| current.source_triangles)
+            });
+            self.import_progress = Some(ImportProgress::with_size(
+                progress.phase,
+                fraction,
+                triangles,
+            ));
+        }
+    }
+
     pub(super) fn finish_scan_import(
         &mut self,
         path: PathBuf,
@@ -208,6 +231,7 @@ impl AppState {
                     prepared.missing_morphs,
                     prepared.resolved_morphs,
                 ) {
+                    self.release_failed_direct_edit_source();
                     self.status = StatusMessage::with_detail(
                         TextKey::GenerationFailed,
                         StatusTone::Error,
@@ -216,6 +240,7 @@ impl AppState {
                 }
             }
             WorkspaceLoadOutcome::DirectEditSource(Err(detail)) => {
+                self.release_failed_direct_edit_source();
                 self.status = StatusMessage::with_detail(
                     TextKey::VaMMorphPairRejected,
                     StatusTone::Error,
@@ -873,7 +898,7 @@ impl AppState {
                         missing_morphs.push(format!("{} [{}]: {reason}", entry.name, entry.uid));
                         continue;
                     };
-                    let target = MorphTarget::from_sparse_deltas(
+                    let target = match MorphTarget::from_sparse_deltas(
                         format!("appearance:{}", descriptor.internal_name),
                         geometry.vertices.len(),
                         descriptor.deltas.as_slice(),
@@ -883,8 +908,13 @@ impl AppState {
                             descriptor.maximum,
                             descriptor.default,
                         ),
-                    )
-                    .map_err(|error| error.to_string())?;
+                    ) {
+                        Ok(target) => target,
+                        Err(error) => {
+                            missing_morphs.push(format!("{} [{}]: {error}", entry.name, entry.uid));
+                            continue;
+                        }
+                    };
                     let control = MorphControl::new(
                         format!("appearance:{}", descriptor.internal_name),
                         descriptor.label.clone(),
@@ -943,7 +973,7 @@ impl AppState {
                         continue;
                     };
                     let target_id = format!("appearance:{}", descriptor.internal_name);
-                    let morph_target = MorphTarget::from_sparse_deltas(
+                    let morph_target = match MorphTarget::from_sparse_deltas(
                         target_id.clone(),
                         geometry.vertices.len(),
                         descriptor.deltas.as_slice(),
@@ -953,8 +983,13 @@ impl AppState {
                             descriptor.maximum,
                             descriptor.default,
                         ),
-                    )
-                    .map_err(|error| error.to_string())?;
+                    ) {
+                        Ok(target) => target,
+                        Err(error) => {
+                            missing_morphs.push(format!("{target}: {error}"));
+                            continue;
+                        }
+                    };
                     library.upsert_imported_vam(MorphControl::new(
                         target_id.clone(),
                         descriptor.label.clone(),
@@ -985,13 +1020,327 @@ impl AppState {
             resolved_morphs,
         })
     }
+
+    pub(super) fn capture_edit_carry(&self) -> Option<CarriedEdit> {
+        let morph_values = self.morph_library.snapshot_values();
+        let sculpt = self
+            .sculpt
+            .displacement()
+            .filter(|delta| delta.iter().flatten().any(|axis| *axis != 0.0));
+        if sculpt.is_none() && !self.morph_library.has_modified_controls() {
+            return None;
+        }
+        Some(CarriedEdit {
+            morph_values,
+            sculpt,
+            eye_closure: self.eye_closure,
+        })
+    }
+
+    pub(super) fn select_vam_edit_source(&mut self, id: &str) {
+        let Some(source) = self
+            .vam_edit_sources
+            .iter()
+            .find(|source| source.stable_id == id)
+            .cloned()
+        else {
+            self.status = StatusMessage::with_detail(
+                TextKey::VaMMorphPairRejected,
+                StatusTone::Error,
+                format!("VaM edit source is unavailable: {id}"),
+            );
+            return;
+        };
+
+        if !self.look_suits_current_figure(&source) {
+            self.status = StatusMessage::with_detail(
+                TextKey::LookBelongsToOtherFigure,
+                StatusTone::Warning,
+                source.label.clone(),
+            );
+            return;
+        }
+
+        if let Some(carry) = self.capture_edit_carry() {
+            self.pending_edit_carry = Some(carry);
+        }
+        self.set_edit_source_mode(EditSourceMode::CustomMorph);
+        self.selected_vam_edit_source_id = Some(source.stable_id.clone());
+        self.pending_direct_edit_source = Some(source.clone());
+        self.clear_generated_buffers();
+        self.result = ResultState::Empty;
+        self.start_pending_direct_edit_source_if_ready();
+    }
+
+    pub fn look_suits_current_figure(&self, source: &VaMEditSource) -> bool {
+        match source.sex {
+            Some(vkit_core::vam::SkinSex::Female) => self.figure_sex == FigureSex::Female,
+            Some(vkit_core::vam::SkinSex::Male) => self.figure_sex == FigureSex::Male,
+            Some(vkit_core::vam::SkinSex::Unknown) | None => true,
+        }
+    }
+
+    pub(super) fn start_pending_direct_edit_source_if_ready(&mut self) {
+        if self.edit_source_mode != EditSourceMode::CustomMorph {
+            return;
+        }
+        let Some(source) = self.pending_direct_edit_source.as_ref() else {
+            return;
+        };
+        if self.workspace_load.is_active() || self.workspace.template_geometry.is_none() {
+            return;
+        }
+        if source.kind == VaMEditSourceKind::AppearancePreset
+            && matches!(self.vam_morph_cache_status, VaMMorphCacheStatus::Loading)
+        {
+            return;
+        }
+        let source = self
+            .pending_direct_edit_source
+            .take()
+            .expect("direct edit source checked above");
+        self.request_workspace_load(
+            WorkspaceLoadKind::DirectEditSource,
+            source.path.clone(),
+            TextKey::MorphLoading,
+        );
+        self.pending_direct_edit_source = Some(source);
+    }
+
+    pub(super) fn enter_direct_edit(&mut self, landing: Tab) {
+        if self.edit_source_mode != EditSourceMode::CustomMorph {
+            return;
+        }
+        self.begin_template_edit(false, landing);
+    }
+
+    pub(super) fn release_failed_direct_edit_source(&mut self) {
+        self.selected_vam_edit_source_id = None;
+        self.pending_direct_edit_source = None;
+        self.begin_template_edit(true, Tab::Morph);
+    }
+
+    pub(super) fn select_base_face(&mut self) {
+        if self.busy() {
+            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
+            return;
+        }
+        self.selected_vam_edit_source_id = None;
+        self.pending_direct_edit_source = None;
+        self.clear_morph_reset_undo();
+        self.morph_value_history.clear();
+        self.morph_edit_open = None;
+        self.morph_library.reset();
+        self.custom_morph_origin = None;
+        self.morph_compare_blend = 1.0;
+        self.begin_template_edit(true, Tab::Morph);
+    }
+
+    pub(super) fn begin_template_edit(&mut self, force_reinstall: bool, landing: Tab) {
+        if self.busy() {
+            self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
+            return;
+        }
+        let started = std::time::Instant::now();
+        let mut install_ms = 0.0;
+        if force_reinstall || !self.tab_available(Tab::Morph) {
+            if self.pending_direct_edit_source.is_some() {
+                self.status = StatusMessage::new(TextKey::MorphLoading, StatusTone::Warning);
+                return;
+            }
+
+            let output = match self.workspace.template_ordered_obj() {
+                Some(cached) => cached,
+                None => {
+                    let Some(template) = self.workspace.template_geometry.as_deref() else {
+                        self.status =
+                            StatusMessage::new(TextKey::TemplatePending, StatusTone::Warning);
+                        return;
+                    };
+                    match template.to_ordered_obj(None) {
+                        Ok(output) => Arc::new(output),
+                        Err(error) => {
+                            self.status = StatusMessage::with_detail(
+                                TextKey::GenerationFailed,
+                                StatusTone::Error,
+                                error.to_string(),
+                            );
+                            return;
+                        }
+                    }
+                }
+            };
+            let install_started = std::time::Instant::now();
+            if let Err(detail) = self.install_direct_edit_output(output, None, Vec::new(), 0) {
+                self.status = StatusMessage::with_detail(
+                    TextKey::GenerationFailed,
+                    StatusTone::Error,
+                    detail,
+                );
+                return;
+            }
+            install_ms = install_started.elapsed().as_secs_f64() * 1000.0;
+        }
+        let compose_started = std::time::Instant::now();
+        if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
+            self.status =
+                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
+            return;
+        }
+        self.active_tab = landing;
+        if landing == Tab::Result
+            && let Err(detail) = self.commit_save_preview()
+        {
+            self.status =
+                StatusMessage::with_detail(TextKey::GenerationFailed, StatusTone::Error, detail);
+        }
+
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Debug,
+            "runtime",
+            "direct_edit_timing",
+            &format!(
+                "install_ms={install_ms:.3}; compose_ms={:.3}; total_ms={:.3}",
+                compose_started.elapsed().as_secs_f64() * 1000.0,
+                started.elapsed().as_secs_f64() * 1000.0,
+            ),
+        );
+    }
+
+    pub(super) fn set_edit_source_mode(&mut self, mode: EditSourceMode) {
+        if self.edit_source_mode == mode {
+            return;
+        }
+        self.edit_source_mode = mode;
+        self.active_tab = Tab::Alignment;
+        self.custom_morph_origin = None;
+        self.morph_compare_blend = 1.0;
+        self.clear_generated_buffers();
+        self.result = ResultState::Empty;
+        self.clear_morph_reset_undo();
+        self.morph_value_history.clear();
+        self.morph_edit_open = None;
+        self.morph_library.reset();
+        match mode {
+            EditSourceMode::ScanHead => {
+                self.selected_vam_edit_source_id = None;
+                self.pending_direct_edit_source = None;
+            }
+            EditSourceMode::CustomMorph => {
+                self.scan_path = None;
+                self.workspace.clear_scan();
+                self.complete_pairs = 0;
+                self.transform = ScanTransform::default();
+                self.clear_alignment_history();
+            }
+        }
+    }
+
+    pub(super) fn unload_scan(&mut self) {
+        if self.scan_path.is_none() && self.workspace.scan_source.is_none() {
+            return;
+        }
+        self.scan_path = None;
+        self.workspace.clear_scan();
+        self.workspace.pins.clear_for_mesh_change();
+        self.complete_pairs = 0;
+        self.scan_symmetry = ScanSymmetry::Original;
+        self.pending_symmetry_change = None;
+        self.transform = ScanTransform::default();
+        self.clear_alignment_history();
+        self.placed_head = false;
+        self.texture_project.invalidate_scan_projection();
+        self.clear_generated_buffers();
+        self.result = ResultState::Empty;
+        self.status = StatusMessage::new(TextKey::ScanUnloaded, StatusTone::Info);
+        self.settle_active_tab();
+    }
+
+    pub(super) fn install_direct_edit_output(
+        &mut self,
+        output: Arc<OrderedObjMesh>,
+        source_path: Option<&Path>,
+        missing_morphs: Vec<String>,
+        resolved_morphs: usize,
+    ) -> Result<(), String> {
+        let carry = self.pending_edit_carry.take();
+        self.clear_generated_buffers();
+        self.clear_morph_reset_undo();
+        self.morph_value_history.clear();
+        self.morph_edit_open = None;
+        self.morph_library.reset();
+        let carried_morphs = carry
+            .as_ref()
+            .is_some_and(|carry| self.morph_library.restore_values(&carry.morph_values));
+        self.custom_morph_origin = Some(Arc::new(output.vertices.clone()));
+        self.workspace
+            .install_result(output)
+            .map_err(|error| error.to_string())?;
+        self.morph_compare_blend = 1.0;
+        self.result = ResultState::Ready {
+            source_revision: self.revision,
+            morph_available: self.workspace.eye_morph.is_some(),
+        };
+        self.fit_reference_value = Some(0.0);
+        self.eye_closure = carry.as_ref().map_or(0.0, |carry| carry.eye_closure);
+        self.begin_sculpt_stage()?;
+        if let Some(delta) = carry.and_then(|carry| carry.sculpt) {
+            match self.sculpt.graft_displacement(&delta) {
+                Ok(_) => {}
+                Err(_) => {
+                    self.status =
+                        StatusMessage::new(TextKey::SculptNotCarried, StatusTone::Warning);
+                }
+            }
+        }
+        self.result_preview_phase = ResultPreviewPhase::Sculpt;
+        self.morph_preview_dirty = false;
+        self.output_topology = OutputTopology::VaM;
+
+        self.vam_export_display_name.clear();
+        self.clear_output_destination();
+        if let Some(path) = source_path.filter(|path| {
+            path.extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case("vmi"))
+        }) {
+            self.output_path = path.to_string_lossy().into_owned();
+        } else {
+            self.set_default_vam_output_path_if_empty();
+        }
+        if !missing_morphs.is_empty() {
+            let _ = crate::diagnostics::record(
+                crate::diagnostics::Severity::Warning,
+                "appearance",
+                "missing_morphs",
+                &format!(
+                    "resolved={resolved_morphs}; missing={}; {}",
+                    missing_morphs.len(),
+                    missing_morphs.join(" | ")
+                ),
+            );
+        }
+        self.status = if missing_morphs.is_empty() || resolved_morphs > 0 {
+            StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Success)
+        } else {
+            StatusMessage::new(TextKey::SourceMorphMissing, StatusTone::Warning)
+        };
+        if carried_morphs {
+            self.morph_preview_dirty = true;
+            if let Err(detail) = self.compose_current_morphs(ResultPreviewPhase::Morph) {
+                self.morph_preview_dirty = false;
+                self.result_preview_phase = ResultPreviewPhase::Sculpt;
+                self.status = StatusMessage::with_detail(
+                    TextKey::MorphPreviewUpdated,
+                    StatusTone::Warning,
+                    detail,
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Each importer layer wraps the layer beneath it in its own "…failed" sentence, so the sentence
-/// that names what the file actually did wrong sits behind restatements of the headline the status
-/// line already shows, and the one clipped line runs out before reaching it. Only the exact
-/// prefixes this app writes are peeled; an unrecognised chain is passed through whole rather than
-/// cut at a guess. The unpeeled chain stays in the diagnostics log the status line opens.
 const IMPORT_FAILURE_RESTATEMENTS: &[&str] = &[
     "failed to import mesh container: ",
     "failed to read mesh data: ",

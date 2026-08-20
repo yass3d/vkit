@@ -1,19 +1,3 @@
-//! Decoder for `KHR_draco_mesh_compression` payloads.
-//!
-//! Draco is not hand-written here the way meshopt is. Its EdgeBreaker traversal, rANS entropy
-//! layer and constrained-multi-parallelogram predictors are several thousand lines in which a
-//! subtle error produces plausible topology with displaced vertices — silently wrong geometry,
-//! the worst failure this importer can have. `draco-core` is a pure-Rust decoder for the same
-//! bitstream, so the executable stays free of C, and this module is the guard rail around it:
-//! the bitstream version is checked against what the glTF extension pins before a decode is
-//! attempted, the decode itself runs inside `catch_unwind`, and the decoded size is bounded
-//! before any of it is copied out.
-//!
-//! `catch_unwind` earns its place in debug and test builds, where a panic in third-party code
-//! becomes an `Err` a caller can report. Release builds use `panic = "abort"` and nothing can
-//! catch anything there, which is exactly why the checks below run *before* the decode rather
-//! than relying on the net underneath it.
-
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use draco_core::{
@@ -22,20 +6,12 @@ use draco_core::{
 };
 use thiserror::Error;
 
-/// The bitstream version `KHR_draco_mesh_compression` pins. The extension says nothing about
-/// what a decoder should do with a newer stream, so anything past this is refused by name
-/// rather than fed to a decoder that would interpret it under the older rules.
 pub const MAX_BITSTREAM_VERSION: (u8, u8) = (2, 2);
 
-/// Ceiling on the geometry a single Draco payload may expand to, counting the float attribute
-/// values and the index list. Draco's own header numbers are attacker-controlled, so this is
-/// applied to what the decoder reports before any of it is copied into our own buffers.
 pub const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
 
 const DRACO_MAGIC: &[u8; 5] = b"DRACO";
 
-/// Byte layout of the Draco header this module parses itself: magic, major, minor, geometry
-/// type, encoding method, flags.
 const HEADER_BYTES: usize = 11;
 
 #[derive(Debug, Error)]
@@ -88,7 +64,6 @@ pub enum DracoError {
 
 type Result<T> = std::result::Result<T, DracoError>;
 
-/// What a decoded attribute is for, in glTF's vocabulary rather than Draco's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttributeKind {
     Position,
@@ -111,18 +86,11 @@ impl AttributeKind {
     }
 }
 
-/// One decoded attribute, expanded so that value `point * components + lane` belongs to the
-/// point that the index list refers to. Draco stores unique values plus a point map; glTF
-/// wants one value per point, and doing that expansion here is what lets a caller treat the
-/// result exactly like an ordinary accessor.
 #[derive(Clone, Debug)]
 pub struct DracoAttribute {
     pub unique_id: u32,
     pub kind: AttributeKind,
     pub components: usize,
-    /// Draco's declared storage type, before this module widened every value to `f32`. A
-    /// caller that must honour glTF normalization needs it; one that only wants geometry
-    /// does not, because positions and texcoords from every mainstream exporter are floats.
     pub integral: bool,
     pub normalized: bool,
     pub values: Vec<f32>,
@@ -135,7 +103,6 @@ impl DracoAttribute {
     }
 }
 
-/// A decoded Draco triangle mesh.
 #[derive(Clone, Debug)]
 pub struct DracoMesh {
     pub num_points: usize,
@@ -144,9 +111,6 @@ pub struct DracoMesh {
 }
 
 impl DracoMesh {
-    /// Looks an attribute up the way `KHR_draco_mesh_compression` addresses it: the extension
-    /// JSON maps each glTF semantic to a Draco unique id, not to a semantic name, because one
-    /// mesh may carry several generic attributes that only the JSON can tell apart.
     pub fn attribute_by_unique_id(&self, unique_id: u32) -> Option<&DracoAttribute> {
         self.attributes
             .iter()
@@ -170,11 +134,6 @@ impl DracoMesh {
     }
 }
 
-/// Reads the Draco header without handing the bytes to the decoder first.
-///
-/// The version gate has to happen here: `KHR_draco_mesh_compression` pins bitstream 2.2 and is
-/// silent about newer ones, and a decoder written against 2.2 will happily reinterpret a 2.3
-/// stream under the old rules rather than refuse it.
 fn check_header(encoded: &[u8]) -> Result<()> {
     let header = encoded.get(..HEADER_BYTES).ok_or(DracoError::TooShort {
         available: encoded.len(),
@@ -302,11 +261,6 @@ fn expand_attribute(attribute: &PointAttribute, num_points: usize) -> Result<Dra
     })
 }
 
-/// Decodes one `KHR_draco_mesh_compression` payload into plain glTF-shaped geometry.
-///
-/// Refuses only when the geometry cannot be recovered. Every refusal here is a case where
-/// there is nothing to hand back: a payload that is not Draco, a bitstream version whose
-/// meaning is undefined, a decode that failed, or a mesh larger than the process will hold.
 pub fn decode_mesh(encoded: &[u8]) -> Result<DracoMesh> {
     check_header(encoded)?;
 

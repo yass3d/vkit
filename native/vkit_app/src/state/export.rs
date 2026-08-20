@@ -232,6 +232,10 @@ impl AppState {
     fn write_texture_snapshot(&mut self, snapshot: &crate::texture_project::TextureExportSnapshot) {
         match crate::workflow::write_texture_bundle(snapshot) {
             Ok(paths) => {
+                if let Some(first) = paths.first() {
+                    self.last_saved_paths
+                        .insert(SaveSection::Texture, first.clone());
+                }
                 let detail = paths
                     .first()
                     .and_then(|path| path.parent())
@@ -282,6 +286,8 @@ impl AppState {
             ExportOutcome::Success { receipt } => {
                 if let Some(path) = receipt.primary_path() {
                     self.output_path = path.to_string_lossy().into_owned();
+                    self.last_saved_paths
+                        .insert(SaveSection::Morph, path.to_path_buf());
                 }
                 self.active_tab = Tab::Result;
                 self.raise_toast(TextKey::MorphSave, StatusTone::Success);
@@ -326,6 +332,61 @@ impl AppState {
         }
     }
 
+    pub(super) fn var_metadata_slot(&mut self, field: VarMetadataField) -> Option<&mut String> {
+        match field {
+            VarMetadataField::Version => None,
+            VarMetadataField::Creator => {
+                self.missing_package_fields.creator = false;
+                Some(&mut self.var_metadata.creator)
+            }
+            VarMetadataField::Package => {
+                self.missing_package_fields.package = false;
+                Some(&mut self.var_metadata.package)
+            }
+            VarMetadataField::License => Some(&mut self.var_metadata.license),
+            VarMetadataField::Description => Some(&mut self.var_metadata.description),
+            VarMetadataField::Credits => Some(&mut self.var_metadata.credits),
+            VarMetadataField::Instructions => Some(&mut self.var_metadata.instructions),
+            VarMetadataField::PromotionalLink => Some(&mut self.var_metadata.promotional_link),
+        }
+    }
+
+    pub(super) fn set_package_from_this_head(&mut self, value: bool) {
+        self.package_from_this_head = value;
+        if value {
+            self.package_morphs.clear();
+            self.package_textures.clear();
+        }
+    }
+
+    pub(super) fn add_package_files(&mut self, slot: PackageSlot, paths: Vec<PathBuf>) {
+        self.package_from_this_head = false;
+        let paths = match slot {
+            PackageSlot::Morph => with_morph_twins(paths),
+            PackageSlot::Texture => paths,
+        };
+        let list = match slot {
+            PackageSlot::Morph => &mut self.package_morphs,
+            PackageSlot::Texture => &mut self.package_textures,
+        };
+
+        for path in paths {
+            if !list.iter().any(|existing| existing.path == path) {
+                list.push(PackageFile::new(path));
+            }
+        }
+    }
+
+    pub(super) fn remove_package_file(&mut self, slot: PackageSlot, index: usize) {
+        let list = match slot {
+            PackageSlot::Morph => &mut self.package_morphs,
+            PackageSlot::Texture => &mut self.package_textures,
+        };
+        if index < list.len() {
+            list.remove(index);
+        }
+    }
+
     fn write_package(&mut self, existing: vkit_core::vam::ExistingPackage) {
         if self.block_mutation_while_busy() {
             return;
@@ -348,10 +409,6 @@ impl AppState {
             return;
         };
 
-        // Whatever bake is lying around after an edit is the 1024-pixel
-        // preview, not the chosen export resolution. The texture panel's own
-        // Save refuses to ship it; a package embedding the same snapshot has
-        // to hold the same line, or the .var quietly carries preview pixels.
         if self.package_from_this_head
             && self.texture_project.baked.is_some()
             && self.texture_export_bake_pending()
@@ -426,7 +483,8 @@ impl AppState {
                         package.contents.len()
                     ),
                 );
-                self.last_package_path = Some(package.path.clone());
+                self.last_saved_paths
+                    .insert(SaveSection::Package, package.path.clone());
                 self.raise_toast(TextKey::PackageSection, StatusTone::Success);
                 self.status = StatusMessage::with_detail(
                     TextKey::ExportComplete,
@@ -499,6 +557,7 @@ mod tests {
         let preview =
             crate::texture_project::neutral_preview(1, &mapping, [128, 128, 128]).unwrap();
         TextureBakedSet {
+            unblended_surface_channels: std::collections::BTreeSet::new(),
             request_id: 1,
             source_revision: 0,
             images: BTreeMap::from([(
@@ -539,7 +598,8 @@ mod tests {
 
         assert_eq!(state.status.key, TextKey::ExportFailed);
         assert!(
-            state.last_package_path.is_none() && !root.path().join("AddonPackages").exists(),
+            !state.last_saved_paths.contains_key(&SaveSection::Package)
+                && !root.path().join("AddonPackages").exists(),
             "refusing means no .var reaches the disk"
         );
     }
@@ -554,7 +614,7 @@ mod tests {
         state.save_package();
 
         assert!(
-            state.last_package_path.is_some(),
+            state.last_saved_paths.contains_key(&SaveSection::Package),
             "an export-quality bake packages as before: {:?}",
             state.status
         );

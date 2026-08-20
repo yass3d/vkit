@@ -59,7 +59,7 @@ pub enum SymmetryReason {
     NoBaseSurface,
     InsufficientCounterpartCoverage,
     Symmetrized,
-    SymmetrizedWithSkippedVertices,
+    SymmetrizedBeyondTolerance,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -157,6 +157,12 @@ pub enum SymmetryError {
     InvalidSeamWidth,
     #[error("tolerance must be positive")]
     InvalidTolerance,
+    #[error("the mesh has no surface on the side being kept")]
+    NothingToMirror,
+    #[error("the mirrored mesh could not be assembled: {0}")]
+    Rebuild(String),
+    #[error("the mirrored mesh needs more vertices than an index can hold")]
+    MeshTooLarge,
     #[error(transparent)]
     Projector(#[from] SurfaceProjectorError),
 }
@@ -288,6 +294,209 @@ pub fn project_mirrored_surface_pin_x(
 
 fn reflect_point_x(point: [f64; 3], center_x: f64) -> [f64; 3] {
     [2.0 * center_x - point[0], point[1], point[2]]
+}
+
+fn relax_seam(mesh: &mut Mesh, center_x: f64, seam_width: f64, plane_epsilon: f64) {
+    if seam_width <= plane_epsilon || !seam_width.is_finite() {
+        return;
+    }
+    let mut neighbours: Vec<Vec<u32>> = vec![Vec::new(); mesh.vertices.len()];
+    let mut incident: Vec<Vec<u32>> = vec![Vec::new(); mesh.vertices.len()];
+    for (index, triangle) in mesh.triangles.iter().enumerate() {
+        for corner in 0..3 {
+            let here = triangle[corner] as usize;
+            let next = triangle[(corner + 1) % 3];
+            if !neighbours[here].contains(&next) {
+                neighbours[here].push(next);
+            }
+            if !neighbours[next as usize].contains(&triangle[corner]) {
+                neighbours[next as usize].push(triangle[corner]);
+            }
+            #[expect(clippy::cast_possible_truncation, reason = "triangle ids fit u32")]
+            incident[here].push(index as u32);
+        }
+    }
+
+    let weights: Vec<f64> = mesh
+        .vertices
+        .iter()
+        .map(|vertex| {
+            let distance = (vertex[0] - center_x).abs();
+            if distance >= seam_width {
+                return 0.0;
+            }
+            let t = (distance / seam_width).clamp(0.0, 1.0);
+            1.0 - ((3.0 - 2.0 * t) * t * t)
+        })
+        .collect();
+
+    for _ in 0..SEAM_RELAX_PASSES {
+        let previous = mesh.vertices.clone();
+        for (index, weight) in weights.iter().copied().enumerate() {
+            if weight <= 0.0 || neighbours[index].is_empty() {
+                continue;
+            }
+            let mut average = [0.0_f64; 3];
+            for &neighbour in &neighbours[index] {
+                for axis in 0..3 {
+                    average[axis] += previous[neighbour as usize][axis];
+                }
+            }
+            #[expect(clippy::cast_precision_loss, reason = "neighbour counts")]
+            let count = neighbours[index].len() as f64;
+            let delta = [0, 1, 2].map(|axis| average[axis] / count - previous[index][axis]);
+
+            let normal = vertex_normal(&previous, &mesh.triangles, &incident[index]);
+            let Some(normal) = normal else {
+                continue;
+            };
+            let along = (0..3).map(|axis| delta[axis] * normal[axis]).sum::<f64>();
+            let strength = weight * SEAM_RELAX_RATE;
+            for axis in 0..3 {
+                mesh.vertices[index][axis] =
+                    (along * normal[axis]).mul_add(strength, previous[index][axis]);
+            }
+        }
+    }
+
+    for vertex in &mut mesh.vertices {
+        if (vertex[0] - center_x).abs() <= plane_epsilon {
+            vertex[0] = center_x;
+        }
+    }
+}
+
+fn vertex_normal(
+    vertices: &[[f64; 3]],
+    triangles: &[[u32; 3]],
+    incident: &[u32],
+) -> Option<[f64; 3]> {
+    let mut sum = [0.0_f64; 3];
+    for &triangle_id in incident {
+        let triangle = triangles[triangle_id as usize];
+        let [a, b, c] = triangle.map(|index| vertices[index as usize]);
+        let first = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let second = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        sum[0] += first[1] * second[2] - first[2] * second[1];
+        sum[1] += first[2] * second[0] - first[0] * second[2];
+        sum[2] += first[0] * second[1] - first[1] * second[0];
+    }
+    let length = sum[2]
+        .mul_add(sum[2], sum[1].mul_add(sum[1], sum[0] * sum[0]))
+        .sqrt();
+    (length > f64::EPSILON).then(|| [sum[0] / length, sum[1] / length, sum[2] / length])
+}
+
+const SEAM_RELAX_PASSES: usize = 8;
+const SEAM_RELAX_RATE: f64 = 0.6;
+
+fn mirror_mesh_x(mesh: &Mesh, center_x: f64, keep_sign: f64) -> Result<Mesh, SymmetryError> {
+    let epsilon = (characteristic_diagonal(&mesh.vertices) * 1e-7).max(f64::EPSILON * 64.0);
+    let side = |vertex: [f64; 3]| {
+        let offset = (vertex[0] - center_x) * keep_sign;
+        if offset > epsilon {
+            1_i8
+        } else if offset < -epsilon {
+            -1
+        } else {
+            0
+        }
+    };
+
+    let mut kept_vertices: Vec<[f64; 3]> = Vec::new();
+    let mut kept_triangles: Vec<[u32; 3]> = Vec::new();
+    let mut remap = vec![u32::MAX; mesh.vertices.len()];
+    let keep_vertex = |index: usize,
+                       kept_vertices: &mut Vec<[f64; 3]>,
+                       remap: &mut Vec<u32>|
+     -> Result<u32, SymmetryError> {
+        if remap[index] != u32::MAX {
+            return Ok(remap[index]);
+        }
+        let mut point = mesh.vertices[index];
+        if side(point) == 0 {
+            point[0] = center_x;
+        }
+        let id = u32::try_from(kept_vertices.len()).map_err(|_| SymmetryError::MeshTooLarge)?;
+        kept_vertices.push(point);
+        remap[index] = id;
+        Ok(id)
+    };
+
+    for triangle in &mesh.triangles {
+        let points = triangle.map(|index| mesh.vertices[index as usize]);
+        let sides = points.map(side);
+        if sides.iter().all(|&value| value <= 0) {
+            continue;
+        }
+        if sides.iter().all(|&value| value >= 0) {
+            let mut corners = [0_u32; 3];
+            for (slot, &index) in corners.iter_mut().zip(triangle.iter()) {
+                *slot = keep_vertex(index as usize, &mut kept_vertices, &mut remap)?;
+            }
+            kept_triangles.push(corners);
+            continue;
+        }
+
+        let mut polygon: Vec<u32> = Vec::with_capacity(4);
+        for corner in 0..3 {
+            let next = (corner + 1) % 3;
+            if sides[corner] >= 0 {
+                polygon.push(keep_vertex(
+                    triangle[corner] as usize,
+                    &mut kept_vertices,
+                    &mut remap,
+                )?);
+            }
+            if sides[corner] * sides[next] < 0 {
+                let (from, to) = (points[corner], points[next]);
+                let span = to[0] - from[0];
+                let ratio = if span.abs() <= f64::MIN_POSITIVE {
+                    0.5
+                } else {
+                    ((center_x - from[0]) / span).clamp(0.0, 1.0)
+                };
+                let mut cut = [0.0_f64; 3];
+                for axis in 0..3 {
+                    cut[axis] = (to[axis] - from[axis]).mul_add(ratio, from[axis]);
+                }
+                cut[0] = center_x;
+                let id =
+                    u32::try_from(kept_vertices.len()).map_err(|_| SymmetryError::MeshTooLarge)?;
+                kept_vertices.push(cut);
+                polygon.push(id);
+            }
+        }
+        for corner in 1..polygon.len().saturating_sub(1) {
+            kept_triangles.push([polygon[0], polygon[corner], polygon[corner + 1]]);
+        }
+    }
+
+    if kept_triangles.is_empty() {
+        return Err(SymmetryError::NothingToMirror);
+    }
+
+    let mut vertices = kept_vertices.clone();
+    let mut mirrored_of = vec![u32::MAX; kept_vertices.len()];
+    for (index, point) in kept_vertices.iter().enumerate() {
+        if (point[0] - center_x).abs() <= epsilon {
+            mirrored_of[index] = u32::try_from(index).map_err(|_| SymmetryError::MeshTooLarge)?;
+            continue;
+        }
+        let id = u32::try_from(vertices.len()).map_err(|_| SymmetryError::MeshTooLarge)?;
+        vertices.push([2.0 * center_x - point[0], point[1], point[2]]);
+        mirrored_of[index] = id;
+    }
+    let mut triangles = kept_triangles.clone();
+    for triangle in &kept_triangles {
+        triangles.push([
+            mirrored_of[triangle[2] as usize],
+            mirrored_of[triangle[1] as usize],
+            mirrored_of[triangle[0] as usize],
+        ]);
+    }
+
+    Mesh::new(vertices, triangles).map_err(|error| SymmetryError::Rebuild(error.to_string()))
 }
 
 pub fn symmetrize_mesh_x(
@@ -422,20 +631,18 @@ pub fn symmetrize_mesh_x(
         Some(&base_triangle_ids),
         0.0,
     )?;
-    let mut projections = Vec::with_capacity(target_ids.len());
     let mut errors = Vec::with_capacity(target_ids.len());
     let mut accepted_count = 0usize;
     for &target_id in &target_ids {
         let mut reflected = mesh.vertices[target_id];
         reflected[0] = 2.0 * options.center_x - reflected[0];
-        let projection = projector.project(reflected)?;
-        let error = projection.distance_squared.sqrt();
+        let error = projector.project(reflected)?.distance_squared.sqrt();
         if error <= tolerance {
             accepted_count += 1;
         }
         errors.push(error);
-        projections.push(projection);
     }
+    #[expect(clippy::cast_precision_loss, reason = "vertex counts")]
     let coverage = accepted_count as f64 / target_ids.len() as f64;
     if coverage < options.minimum_coverage {
         return Ok(result_without_change(
@@ -452,34 +659,13 @@ pub fn symmetrize_mesh_x(
         ));
     }
 
-    let mut result = mesh.clone();
-    for ((&target_id, projection), error) in target_ids
-        .iter()
-        .zip(projections.iter())
-        .zip(errors.iter().copied())
-    {
-        if error > tolerance {
-            continue;
-        }
-        let original = mesh.vertices[target_id];
-        let mut candidate = projection.point;
-        candidate[0] = 2.0 * options.center_x - candidate[0];
-        let distance_from_plane = (original[0] - options.center_x).abs();
-        let blend = if seam_width <= plane_epsilon {
-            1.0
-        } else {
-            let linear = (distance_from_plane / seam_width).clamp(0.0, 1.0);
-            linear * linear * (3.0 - 2.0 * linear)
-        };
-        for axis in 0..3 {
-            result.vertices[target_id][axis] =
-                original[axis] * (1.0 - blend) + candidate[axis] * blend;
-        }
-    }
+    let mut result = mirror_mesh_x(mesh, options.center_x, base_sign)?;
+    relax_seam(&mut result, options.center_x, seam_width, plane_epsilon);
+
     let reason = if accepted_count == target_ids.len() {
         SymmetryReason::Symmetrized
     } else {
-        SymmetryReason::SymmetrizedWithSkippedVertices
+        SymmetryReason::SymmetrizedBeyondTolerance
     };
     Ok(SymmetrizedMesh {
         mesh: result,
@@ -620,6 +806,69 @@ mod tests {
         .unwrap()
     }
 
+    fn asymmetric_grid(bump: f64) -> Mesh {
+        const COLUMNS: usize = 21;
+        const ROWS: usize = 11;
+        let mut vertices = Vec::new();
+        for row in 0..ROWS {
+            for column in 0..COLUMNS {
+                #[expect(clippy::cast_precision_loss, reason = "small grid")]
+                let x = column as f64 - 10.0;
+                #[expect(clippy::cast_precision_loss, reason = "small grid")]
+                let y = row as f64;
+                let z = if x < -0.5 && row == 5 && column == 4 {
+                    bump
+                } else {
+                    0.0
+                };
+                vertices.push([x, y, z]);
+            }
+        }
+        let mut triangles = Vec::new();
+        for row in 0..ROWS - 1 {
+            for column in 0..COLUMNS - 1 {
+                let base = row * COLUMNS + column;
+                triangles.push([base as u32, (base + 1) as u32, (base + COLUMNS) as u32]);
+                triangles.push([
+                    (base + 1) as u32,
+                    (base + COLUMNS + 1) as u32,
+                    (base + COLUMNS) as u32,
+                ]);
+            }
+        }
+        Mesh::new(vertices, triangles).unwrap()
+    }
+
+    #[test]
+    fn mirroring_leaves_no_vertex_behind_on_the_half_it_replaced() {
+        let bump = 2.0;
+        let mesh = asymmetric_grid(bump);
+        let result = symmetrize_mesh_x(
+            &mesh,
+            SymmetryOptions {
+                mode: SymmetryMode::PositiveX,
+                center_x: 0.0,
+                seam_width: Some(0.0),
+                ..Default::default()
+            },
+        )
+        .expect("the grid symmetrizes");
+
+        assert!(result.receipt.accepted, "{:?}", result.receipt);
+        let worst = result
+            .mesh
+            .vertices
+            .iter()
+            .filter(|vertex| vertex[0] < 0.0)
+            .map(|vertex| vertex[2].abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            worst <= 1e-9,
+            "the replaced half kept {worst} of its own ridge; \
+             it should be a copy of the side that had none"
+        );
+    }
+
     #[test]
     fn mirror_pin_projects_to_symmetric_counterpart() {
         let mesh = paired_x_planes(3.0, 1.0);
@@ -755,8 +1004,107 @@ mod tests {
         assert!(!result.receipt.applied);
     }
 
+    fn sloped_grid(slope: f64) -> Mesh {
+        const COLUMNS: usize = 21;
+        const ROWS: usize = 5;
+        let mut vertices = Vec::new();
+        for row in 0..ROWS {
+            for column in 0..COLUMNS {
+                #[expect(clippy::cast_precision_loss, reason = "small grid")]
+                let x = column as f64 - 10.0;
+                #[expect(clippy::cast_precision_loss, reason = "small grid")]
+                let y = row as f64;
+                vertices.push([x, y, x * slope]);
+            }
+        }
+        let mut triangles = Vec::new();
+        for row in 0..ROWS - 1 {
+            for column in 0..COLUMNS - 1 {
+                let base = row * COLUMNS + column;
+                triangles.push([base as u32, (base + 1) as u32, (base + COLUMNS) as u32]);
+                triangles.push([
+                    (base + 1) as u32,
+                    (base + COLUMNS + 1) as u32,
+                    (base + COLUMNS) as u32,
+                ]);
+            }
+        }
+        Mesh::new(vertices, triangles).unwrap()
+    }
+
+    fn seam_turn(mesh: &Mesh, center_x: f64) -> f64 {
+        let mut row: Vec<[f64; 3]> = mesh
+            .vertices
+            .iter()
+            .copied()
+            .filter(|vertex| (vertex[1] - 2.0).abs() < 0.25)
+            .collect();
+        row.sort_by(|left, right| left[0].partial_cmp(&right[0]).unwrap());
+        let seam = row
+            .iter()
+            .position(|vertex| (vertex[0] - center_x).abs() < 1.0e-9)
+            .expect("the row crosses the plane");
+        let before = row[seam - 1];
+        let after = row[seam + 1];
+        let arm = |from: [f64; 3], to: [f64; 3]| {
+            let delta = [to[0] - from[0], to[2] - from[2]];
+            let length = delta[0].hypot(delta[1]).max(f64::EPSILON);
+            [delta[0] / length, delta[1] / length]
+        };
+        let incoming = arm(before, row[seam]);
+        let outgoing = arm(row[seam], after);
+        incoming
+            .iter()
+            .zip(outgoing)
+            .map(|(left, right)| left * right)
+            .sum::<f64>()
+            .clamp(-1.0, 1.0)
+            .acos()
+    }
+
     #[test]
-    fn positive_side_reconstructs_negative_without_index_pairing() {
+    fn the_seam_is_rounded_rather_than_left_as_a_ridge() {
+        let mesh = sloped_grid(0.6);
+        let mirror = |seam_width: f64| {
+            symmetrize_mesh_x(
+                &mesh,
+                SymmetryOptions {
+                    mode: SymmetryMode::PositiveX,
+                    center_x: 0.0,
+                    seam_width: Some(seam_width),
+                    minimum_coverage: 0.0,
+                    tolerance: Some(1.0e6),
+                },
+            )
+            .expect("it mirrors")
+            .mesh
+        };
+
+        let sharp = seam_turn(&mirror(0.0), 0.0);
+        let rounded = seam_turn(&mirror(4.0), 0.0);
+        assert!(
+            sharp > 0.9,
+            "the wedge should close on a real ridge, got {sharp} rad"
+        );
+        assert!(
+            rounded < sharp * 0.5,
+            "the seam is still {rounded} rad against {sharp} unsmoothed"
+        );
+
+        let smoothed = mirror(4.0);
+        for vertex in &smoothed.vertices {
+            let reflected = [-vertex[0], vertex[1], vertex[2]];
+            assert!(
+                smoothed.vertices.iter().any(|candidate| {
+                    (0..3).all(|axis| (candidate[axis] - reflected[axis]).abs() < 1.0e-9)
+                }),
+                "{vertex:?} lost its counterpart to the smoothing"
+            );
+        }
+    }
+
+    #[test]
+    fn the_result_is_the_kept_half_and_its_reflection() {
         let mesh = Mesh::new(
             vec![
                 [1.0, 0.0, 0.0],
@@ -779,9 +1127,25 @@ mod tests {
         )
         .unwrap();
         assert!(result.receipt.applied);
-        assert!((result.mesh.vertices[3][0] + 1.0).abs() < 1e-12);
-        assert!((result.mesh.vertices[3][1] - 0.2).abs() < 1e-12);
-        assert!((result.mesh.vertices[3][2] - 0.1).abs() < 1e-12);
-        assert_eq!(result.mesh.triangles, mesh.triangles);
+
+        for vertex in &result.mesh.vertices {
+            let reflected = [-vertex[0], vertex[1], vertex[2]];
+            assert!(
+                result.mesh.vertices.iter().any(|candidate| {
+                    (0..3).all(|axis| (candidate[axis] - reflected[axis]).abs() < 1e-9)
+                }),
+                "{vertex:?} has no counterpart across the plane"
+            );
+        }
+        assert!(
+            result
+                .mesh
+                .vertices
+                .iter()
+                .filter(|vertex| vertex[0] < 0.0)
+                .all(|vertex| (vertex[0] + 1.0).abs() < 1e-9),
+            "the replaced half should be a mirror of the plane at x = 1"
+        );
+        assert!(!result.mesh.triangles.is_empty());
     }
 }

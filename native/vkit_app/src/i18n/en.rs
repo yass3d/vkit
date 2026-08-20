@@ -10,6 +10,121 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ResultPreview | TextKey::Save => "Save",
         TextKey::DetailCorrection => "Sculpt",
         TextKey::TextureStage => "Texture",
+        TextKey::HairStage => "Hair",
+        TextKey::HairUnavailable => "Finish the sculpt result before editing hair",
+        TextKey::HairPartsPanel => "Hair Parts",
+        TextKey::AddHairPart => "Create Part",
+        TextKey::HairScalpMissing => {
+            "Scalp provider mesh is not available; open a VaM root and rescan"
+        }
+        TextKey::HairShowPoints => "Show points",
+        TextKey::HairShowPointsHint => {
+            "Shows the scalp planting points on the cap. Turn it off to look at the hair itself; brushes keep working either way."
+        }
+        TextKey::HairPartTint => "Tint parts",
+        TextKey::HairPartTintHint => {
+            "Gives each part a distinct viewport tint so a combined style reads as its parts. Display only -- exports are untouched."
+        }
+        TextKey::HairSettingsPanel => "Hair Settings",
+        TextKey::HairCreateFirst => "Create some hair first.",
+        TextKey::HairHideStrands => "Hide hair",
+        TextKey::HairHideStrandsHint => {
+            "Takes the grown hair off so the streams can be read on their own. Turning this on turns the streams on."
+        }
+        TextKey::HairShowStreams => "Show hair streams",
+        TextKey::HairShowStreamsHint => {
+            "Draws the strand you actually edit, over the hair it grows into."
+        }
+        TextKey::HairViewportPhysics => "Viewport physics",
+        TextKey::HairViewportPhysicsHint => {
+            "Previews the physics on screen. Nothing to do with the export."
+        }
+        TextKey::HairMirrorEdit => "Mirror Edit",
+        TextKey::HairMirrorEditHint => {
+            "Brushes edit both sides of the head at once, left-right symmetric."
+        }
+        TextKey::HairAutoPart => "Auto Part",
+        TextKey::HairAutoPartHint => {
+            "The brush edits only the part it recognizes under the cursor, instead of the active layers."
+        }
+        TextKey::HairExportSection => "Save hair",
+        TextKey::HairExportBothSexes => "Both",
+        TextKey::HairExportRescanNotice => {
+            "Click VaM - Hair - Rescan Files to see it in the hair list"
+        }
+        TextKey::HairExportOverwroteNotice => {
+            "An overwritten thumbnail shows after Hard Reset or a VaM restart"
+        }
+        TextKey::HairSimToggleHint => {
+            "Runs the hair solver here and in the game -- gravity, rigidity, cling."
+        }
+        TextKey::HairCollisionToggleHint => {
+            "Keeps strands out of the head and body while simulating."
+        }
+        TextKey::HairStyleJoints => "Style joints",
+        TextKey::HairStyleJointsHint => {
+            "Ties nearby strands together so the style holds its shape in the game -- what Cling scales. For long or tied hair; adds file weight, so short styles leave it off."
+        }
+        TextKey::HairThumbnailPrompt => "Frame your angle, then click to capture",
+        TextKey::HairThumbnailShoot => "Capture",
+        TextKey::HairThumbnailSkip => "Skip",
+        TextKey::HairThumbnailSaved => "Thumbnail saved",
+        TextKey::HairThumbnailFailed => "Thumbnail failed",
+        TextKey::HairGameOnly => {
+            "Physics setting: the viewport does not simulate, so it takes effect in VaM only.              Exported with the style."
+        }
+        TextKey::HairPartVisible => "Show or hide this hair part",
+        TextKey::RemoveHairPart => "Remove hair part",
+        TextKey::HairRenamePart => "Click to rename",
+        TextKey::HairToolPlant => "Plant",
+        TextKey::HairToolErase => "Erase",
+        TextKey::HairToolGrow => "Grow (Alt shortens)",
+        TextKey::HairToolComb => "Comb",
+        TextKey::HairToolPlantHint => "Grow strands on the scalp vertices under the brush",
+        TextKey::HairToolGrowHint => "Lengthen the strands under the brush; hold Alt to shorten",
+        TextKey::HairToolEraseHint => "Remove the strands under the brush",
+        TextKey::HairToolCombHint => {
+            "Drag the strands under the brush into shape; the roots stay put"
+        }
+        TextKey::HairToolPinch => "Pinch",
+        TextKey::HairToolPinchHint => "Gather the strands under the brush. Alt spreads them apart",
+        TextKey::HairToolCut => "Cut",
+        TextKey::HairToolCutHint => "End the strands under the brush where you draw across them",
+        TextKey::HairToolPuff => "Puff",
+        TextKey::HairToolPuffHint => {
+            "Stand the strands under the brush up off the skin. Alt lays them down"
+        }
+        TextKey::HairCopySettings => "Copy All",
+        TextKey::HairPasteSettings => "Paste All",
+        TextKey::HairGroupPerformance => "Performance",
+        TextKey::HairGroupPhysics => "Physics",
+        TextKey::HairGroupStiffness => "Stiffness",
+        TextKey::HairGroupShape => "Shape",
+        TextKey::HairGroupCurl => "Curl",
+        TextKey::HairGroupLook => "Look",
+        TextKey::HairColorScalp => "Scalp",
+        TextKey::HairColorRoot => "Root",
+        TextKey::HairColorTip => "Tip",
+        TextKey::HairColorSpecular => "Shine",
+        TextKey::HairScalpMask => "Scalp Texture",
+        TextKey::HairScalpMaskBuiltIn => "Built-in",
+        TextKey::HairScalpMaskCustom => "From file...",
+        TextKey::HairExport => "Export to VaM",
+        TextKey::HairExportName => "Item name",
+        TextKey::HairExportCreator => "Creator",
+        TextKey::HairExportNeedsMetadata => "Name the item and its creator before exporting",
+        TextKey::HairOverwriteTitle => "Replace this style?",
+        TextKey::HairOverwriteBody => {
+            "A style with this name and creator is already installed. Exporting removes the old install and writes anew. The thumbnail updates on Hard Reset or a VaM restart."
+        }
+        TextKey::HairOverwriteProceed => "Replace",
+        TextKey::HairExportDone => "Hair item saved",
+        TextKey::HairExportFailed => "Hair export failed",
+        TextKey::HairExportNeedsPart => "Select a hair part with strands first",
+        TextKey::HairExportNeedsVaMRoot => "Set a VaM root before exporting",
+        TextKey::HairMirrorPart => "Mirror part to the other side",
+        TextKey::HairDuplicatePart => "Duplicate part",
+        TextKey::HairSegmentsShort => "Seg",
         TextKey::MorphCategoryBody => "Body",
         TextKey::TextureNamePlaceholder => "Enter a texture name",
         TextKey::TextureOverwriteTitle => "This replaces textures of the same name",
@@ -64,6 +179,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::Undo => "Undo",
         TextKey::ResetAllPins => "Reset All Pins",
+        TextKey::ResetAll => "Reset all",
         TextKey::MorphSave => "Save morph",
         TextKey::TextureSaveSection => "Save textures",
         TextKey::Generate => "Fit Face",
@@ -85,7 +201,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ViewportWireframeTooltip => "Show and adjust the Wireframe overlay",
         TextKey::ViewportXrayTooltip => "Show and adjust the X-ray overlay",
         TextKey::ViewportSkinTooltip => "Choose a VaM skin texture",
-        TextKey::ViewportHairTooltip => "Choose a VaM hair preset",
         TextKey::FalloffTooltip => "Choose the brush influence curve",
         TextKey::FalloffSmooth => "Smooth",
         TextKey::FalloffSmoother => "Smoother",
@@ -126,6 +241,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::PinPrompt => "Place a pin on each, or fit without them",
         TextKey::TextureNeedsImage => "Add an image from the side panel",
         TextKey::TexturePinPairPrompt => "Place matching pins on the left and the right",
+        TextKey::TextureToolNeedsPins => "Place the pins first to use this",
         TextKey::SymmetrySuggestion => "Mirroring is recommended for a cleaner match",
         TextKey::SymmetryChangeTitle => "The pins will be reset",
         TextKey::SymmetryChangeConfirm => "Confirm",
@@ -159,10 +275,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SkinLoadFailed => "Skin load failed",
         TextKey::SkinUvUnavailable => "Skin UV unavailable",
         TextKey::NoMatchingSkins => "No matching skins",
-        TextKey::Hair => "Hair",
-        TextKey::HairNone => "None",
         TextKey::HairSearch => "Search Hair",
-        TextKey::HairLoading => "Loading hair",
         TextKey::HairReady => "Hair preview ready",
         TextKey::HairLoadFailed => "Hair load failed",
         TextKey::HairPartsSkipped => "Showing without some parts",
@@ -173,6 +286,12 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsViewport => "Viewport",
         TextKey::SettingsGeneral => "General",
         TextKey::SettingsAbout => "About",
+        TextKey::SettingsShortcuts => "Shortcuts",
+        TextKey::ShortcutsCapturing => "Press…",
+        TextKey::ShortcutsResetAll => "Reset every shortcut",
+        TextKey::ShortcutsExport => "Save keymap to a file",
+        TextKey::ShortcutsImport => "Load a keymap file",
+        TextKey::ShortcutsTaken => "Another action already answers to that",
         TextKey::SettingsAboutBuild => "Build",
         TextKey::SettingsAboutLicense => "License",
         TextKey::SettingsAboutDiagnostics => "Diagnostics",
@@ -212,21 +331,26 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsLanguage => "Display language",
         TextKey::SettingsFoldersGroup => "Folders",
         TextKey::SettingsVaMRoot => "VaM install path",
-        TextKey::HairVisible => "Show hair",
         TextKey::HairNeedsFinishedHead => "Hair is worn on a finished head.",
-        TextKey::HairPreviewCaveat => "Hair detail differs from the real thing.",
         TextKey::NoMatchingHair => "No matching hair presets",
         TextKey::MorphSearch => "Search Morphs",
         TextKey::MorphOneSidedFilter => "L/R",
         TextKey::MorphOneSidedFilterShow => "Show morphs that move one side only",
         TextKey::MorphOneSidedFilterHide => "Hide morphs that move one side only",
         TextKey::AppearanceSearch => "Search Looks",
+        TextKey::AppearanceLayers => "Appearance layers",
+        TextKey::AddAppearanceLayer => "Add the selected appearance",
+        TextKey::AppearanceLayersEmpty => "No layers yet",
+        TextKey::AppearanceLayerRaise => "Move up",
+        TextKey::AppearanceLayerLower => "Move down",
         TextKey::LookFind => "Load Look",
-        TextKey::CameraTrackballArmed => {
-            "Roll armed · drag sideways to roll · click or R to finish"
-        }
+        TextKey::CameraTrackballArmed => "Trackball · drag to turn freely · click or R to leave",
         TextKey::HelpTrackball => "Trackball rotate",
         TextKey::ShortcutTrackball => "R",
+        TextKey::SplitModelViewTooltip => "See it from two angles — split the view",
+        TextKey::SplitModelViewName => "Split View",
+        TextKey::HelpLevelRoll => "Level the horizon",
+        TextKey::ShortcutLevelRoll => "Alt+R",
         TextKey::RecoveryTitle => "The last session ended unexpectedly",
         TextKey::RecoveryBody => {
             "Your morphs, sculpting and texture layers were saved just before it stopped. Bring them back?"
@@ -237,9 +361,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "That session's look is not installed yet — textures were restored, and the edits will apply when the look is selected."
         }
-        TextKey::SettingsOcclusionGroup => "Ambient occlusion",
-        TextKey::SettingsOcclusionIntensity => "Strength",
-        TextKey::SettingsOcclusionRadius => "Reach",
         TextKey::SettingsBloomGroup => "Bloom",
         TextKey::SettingsBloomIntensity => "Intensity",
         TextKey::SettingsBloomThreshold => "Threshold",
@@ -252,7 +373,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SculptNotCarried => "Sculpting could not follow this look",
         TextKey::SettingsToneCurve => "Tone curve",
         TextKey::SettingsToneCurveTooltip => "Adjusts the shadows and the highlights",
-        TextKey::SettingsOcclusionTooltip => "Shades the creases where surfaces meet",
         TextKey::SettingsVignetteTooltip => "Darkens the edges of the frame",
         TextKey::SettingsEffectEnabled => "Enabled",
         TextKey::SettingsInterfaceGroup => "Interface",
@@ -355,6 +475,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphUnavailable => "No compatible result morph is available",
         TextKey::AlignmentPending => "Load a scan head and select your VaM folder",
         TextKey::ScanLoaded => "Custom head OBJ, GLB, or FBX loaded",
+        TextKey::ScanUnloaded => "Head file removed; the G2 base is ready to edit",
+        TextKey::PinPairsMismatched => "Pin counts do not match; pins without a partner",
+        TextKey::UnloadScanTooltip => "Remove this head file",
         TextKey::TemplateLoaded => "G2 loaded",
         TextKey::PinsReset => "All pins were reset",
         TextKey::ResultStale => "Changes require a regenerated result",
@@ -412,6 +535,37 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutStandardViews => "Numpad 1-9",
         TextKey::ShortcutCameraProjection => "Numpad .",
         TextKey::ShortcutUndo => "Ctrl+Z",
+        TextKey::HelpRedo => "Redo",
+        TextKey::ShortcutRedo => "Ctrl+Y",
+        TextKey::HairPresetSection => "Hair presets",
+        TextKey::HairPresetLoad => "Load",
+        TextKey::HairToolPick => "Pick layer",
+        TextKey::HairToolPickHint => {
+            "Click a strand in the viewport to make its layer the active one. The brush waits for the next click."
+        }
+        TextKey::HelpHairPick => "Pick the layer under the cursor",
+        TextKey::ShortcutHairPick => "V, or Ctrl + click with any brush",
+        TextKey::HelpHairSmooth => "Smooth instead of comb",
+        TextKey::ShortcutHairSmooth => "Shift while combing",
+        TextKey::HairGroupScalp => "Scalp",
+        TextKey::HairScalpAlpha => "Scalp Cutout",
+        TextKey::HairScalpPanel => "Scalp",
+        TextKey::HairScalpMesh => "Scalp mesh",
+        TextKey::HairScalpCreate => "Create scalp",
+        TextKey::HairScalpAbsent => "This style has no scalp layer yet.",
+        TextKey::HistoryBranchTitle => "The steps ahead will be lost",
+        TextKey::HistoryBranchProceed => "Edit anyway",
+        TextKey::DoNotShowAgain => "Don't show this again",
+        TextKey::SurfaceBaseUnblended => "Some PBR maps could not be blended with the VaM skin",
+        TextKey::DetailEditRedone => "Stepped forward again",
+        TextKey::ShortcutBrushSmaller => "Smaller brush",
+        TextKey::ShortcutBrushLarger => "Larger brush",
+        TextKey::ShortcutBrushSizeDrag => "Brush size, dragged",
+        TextKey::ShortcutBrushStrengthDrag => "Brush strength, dragged",
+        TextKey::ShortcutStencilCancel => "Cancel stencil placement",
+        TextKey::ShortcutViewOrbit => "Orbit the view",
+        TextKey::ShortcutViewPan => "Pan the view",
+        TextKey::ShortcutViewDolly => "Dolly the view in and out",
         TextKey::TemplatePending => "Select your VaM folder to prepare the G2 base automatically",
         TextKey::ResultEmpty => "No prepared morph",
         TextKey::ScaleLink => "Link Scale",
@@ -445,6 +599,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::SculptBrushSmoothTooltip => "Smooths out surface detail",
         TextKey::SculptBrushRestoreTooltip => "Restores toward the base shape",
+        TextKey::SculptBrushMask => "Mask",
+        TextKey::SculptBrushMaskTooltip => {
+            "Carve the selected appearance layer away so the one below shows. Alt paints it back"
+        }
         TextKey::TextureLayers => "Texture Layers",
         TextKey::PackageSection => "Export VAR",
         TextKey::PackageCreatorHint => "Creator",
@@ -596,5 +754,128 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::DialogAddTextureLayer => "Add texture layer",
         TextKey::DialogSaveMorphPair => "Save VaM VMI + VMB morph pair",
         TextKey::DialogChooseVamFolder => "Choose Virt-A-Mate folder",
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "Diffuse Color" => Some(
+            "The cap's own diffuse colour. White is what VaM ships, letting the skin sheet underneath show through.",
+        ),
+        "Gloss" => Some("How glossy the scalp cap is where it shows."),
+        "Specular Intensity" => Some("How strongly the scalp cap catches a highlight."),
+        "Diffuse Texture Offset" => {
+            Some("Added to the cap's diffuse colour. Not a sheet index, despite the name.")
+        }
+        "Alpha Adjust" => Some(
+            "How opaque the scalp cap is. Most parts wear somebody else's cap and keep this at the bottom, where the cap is invisible; raise it only when a parting should show scalp.",
+        ),
+        "hairMultiplier" => Some(
+            "How many strands grow between each triple of guides. The look of the hair, and most of its cost.",
+        ),
+        "curveDensity" => Some(
+            "Points drawn along each strand. More is smoother and slower; the shape reads long before the count is high.",
+        ),
+        "iterations" => {
+            Some("Solver passes per frame. More holds the constraints tighter under fast motion.")
+        }
+        "simulationEnabled" => {
+            Some("Whether this part moves in the game. Nothing to do with the viewport switch.")
+        }
+        "collisionEnabled" => Some("Whether this part's strands are pushed out of the body."),
+        "weight" => {
+            Some("How heavily a strand hangs. Scales gravity and its resistance to being moved.")
+        }
+        "drag" => Some(
+            "How much the air holds a strand back. High drag settles quickly and swings little.",
+        ),
+        "gravityMultiplier" => Some("Gravity on this part, as a multiple of the scene's."),
+        "collisionRadius" => Some("The thickness a strand collides with, along its length."),
+        "collisionRadiusRoot" => {
+            Some("The thickness near the root, when it should differ from the rest.")
+        }
+        "friction" => Some("How much a strand grips what it touches instead of sliding along it."),
+        "bendResistance" => Some("How much a strand resists being bent away from straight."),
+        "rootRigidity" => Some("How strongly the root end holds the shape it was styled into."),
+        "mainRigidity" => Some("How strongly the middle holds the shape it was styled into."),
+        "tipRigidity" => Some("How strongly the tip holds the shape it was styled into."),
+        "jointRigidity" => {
+            Some("How stiff the style joints are, the springs that keep a ponytail a ponytail.")
+        }
+        "rigidityRolloffPower" => Some(
+            "How the three rigidities blend along the strand. Higher carries the root's value further down.",
+        ),
+        "cling" => Some("How strongly style joints pull strands back toward each other."),
+        "clingRolloff" => {
+            Some("How far along the strand the cling fades. Higher confines it nearer the root.")
+        }
+        "snap" => Some("How firmly each segment is held to its authored length."),
+        "usePaintedRigidity" => {
+            Some("Take rigidity from the painted map rather than from the three sliders.")
+        }
+        "width" => Some(
+            "How thick a strand is drawn. VaM's own slider tops out at a tenth of a millimetre.",
+        ),
+        "length1" => Some("Length for strands nearest the first guide of their triangle."),
+        "length2" => Some("Length for strands nearest the second guide of their triangle."),
+        "length3" => Some("Length for strands nearest the third guide of their triangle."),
+        "maxSpread" => Some(
+            "A ceiling on how far a strand may drift from its guide, not a gain. Once it clears the guide spacing, raising it does nothing.",
+        ),
+        "spreadRoot" => {
+            Some("How freely strands separate at the root. Low gathers them toward the guide.")
+        }
+        "spreadMid" => Some("How freely strands separate at the middle."),
+        "spreadTip" => Some("How freely strands separate at the tip."),
+        "spreadMidpoint" => Some("Where along the strand the middle spread applies."),
+        "spreadCurvePower" => Some("How sharply the spread turns between root, middle and tip."),
+        "curlScale" => Some("How wide the curl is: the radius it coils about, not its length."),
+        "curlFrequency" => Some("Turns per centimetre of strand."),
+        "curlScaleRandomness" => Some("How much the curl width varies from strand to strand."),
+        "curlFrequencyRandomness" => Some("How much the turn rate varies from strand to strand."),
+        "curlRoot" => Some("How much curl reaches the root."),
+        "curlMid" => Some("How much curl reaches the middle."),
+        "curlTip" => Some("How much curl reaches the tip."),
+        "curlMidpoint" => Some("Where along the strand the middle curl applies."),
+        "curlCurvePower" => Some("How sharply the curl turns between root, middle and tip."),
+        "curlX" => Some(
+            "The curl's displacement along X. A vector that gets rotated, not an axis to coil about.",
+        ),
+        "curlY" => Some("The curl's displacement along Y."),
+        "curlZ" => Some("The curl's displacement along Z."),
+        "curlNormalAdjust" => Some(
+            "Added to the curl offset along the surface normal. It lifts the coil off the head rather than leaning it.",
+        ),
+        "curlAllowReverse" => Some(
+            "Let some strands coil the other way, so a head of curls does not read as one strand repeated.",
+        ),
+        "curlAllowFlipAxis" => {
+            Some("Let some strands coil about a flipped axis, for the same reason.")
+        }
+        "rootColor" => Some("The colour at the root."),
+        "tipColor" => Some("The colour at the tip."),
+        "specularColor" => Some("The colour of the highlight."),
+        "colorRolloff" => Some("How the root colour gives way to the tip colour along the strand."),
+        "randomColorPower" => Some("How strongly strands vary in colour from one another."),
+        "randomColorOffset" => Some("Which way that variation leans, lighter or darker."),
+        "primarySpecularSharpness" => Some("How tight the main highlight is. Higher is glossier."),
+        "secondarySpecularSharpness" => {
+            Some("How tight the second highlight is, the coloured one that travels with the hair.")
+        }
+        "specularShift" => {
+            Some("How far the second highlight sits from the first along the strand.")
+        }
+        "diffuseSoftness" => Some(
+            "How softly light wraps around a strand rather than lighting only the side facing it.",
+        ),
+        "fresnelPower" => {
+            Some("How sharply the rim brightens where the hair turns away from the eye.")
+        }
+        "fresnelAttenuation" => Some("How strong that rim brightening is."),
+        "IBLFactor" => Some("How much of the scene's ambient light the hair takes."),
+        "normalRandomize" => Some(
+            "How much each strand's shading normal is jittered, so neighbours do not shade identically.",
+        ),
+        _ => None,
     }
 }

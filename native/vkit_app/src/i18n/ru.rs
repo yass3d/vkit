@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("Сглаживание меша"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,113 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("Сохранить"),
         TextKey::DetailCorrection => Some("Скульптинг"),
         TextKey::TextureStage => Some("Текстура"),
+        TextKey::HairStage => Some("Волосы"),
+        TextKey::HairUnavailable => {
+            Some("Сначала завершите результат скульптинга, затем редактируйте волосы")
+        }
+        TextKey::HairPartsPanel => Some("Части волос"),
+        TextKey::AddHairPart => Some("Добавить часть волос"),
+        TextKey::HairScalpMissing => {
+            Some("Меш скальпа недоступен; откройте корень VaM и пересканируйте")
+        }
+        TextKey::HairShowPoints => Some("Показать точки"),
+        TextKey::HairShowPointsHint => Some(
+            "Показывает точки посадки на коже головы. Выключите, чтобы видеть только волосы; кисти работают в любом случае.",
+        ),
+        TextKey::HairPartTint => Some("Подкраска частей"),
+        TextKey::HairPartTintHint => Some(
+            "Даёт каждой части свой оттенок во вьюпорте, чтобы различать их. Только отображение; экспорт не меняется.",
+        ),
+        TextKey::HairSettingsPanel => Some("Настройки волос"),
+        TextKey::HairCreateFirst => Some("Сначала создайте волосы."),
+        TextKey::HairHideStrands => Some("Скрыть волосы"),
+        TextKey::HairHideStrandsHint => Some(
+            "Убирает выросшие волосы, оставляя только направляющие пряди. Включение включает и показ прядей.",
+        ),
+        TextKey::HairShowStreams => Some("Показать направляющие пряди"),
+        TextKey::HairShowStreamsHint => {
+            Some("Рисует прядь, которую вы правите, поверх волос, выросших из неё.")
+        }
+        TextKey::HairViewportPhysics => Some("Физика вьюпорта"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("Показывает физику на экране. К экспорту отношения не имеет.")
+        }
+        TextKey::HairMirrorEdit => Some("Зеркальное редактирование"),
+        TextKey::HairMirrorEditHint => Some("Кисти правят обе стороны сразу, симметрично."),
+        TextKey::HairAutoPart => Some("Автовыбор части"),
+        TextKey::HairAutoPartHint => {
+            Some("Кисть правит только часть, распознанную под курсором, вместо активных слоёв.")
+        }
+        TextKey::HairExportSection => Some("Сохранить волосы"),
+        TextKey::HairExportBothSexes => Some("Оба"),
+        TextKey::HairExportRescanNotice => {
+            Some("Нажмите VaM - Hair - Rescan Files, чтобы увидеть в списке")
+        }
+        TextKey::HairExportOverwroteNotice => {
+            Some("Перезаписанная миниатюра появится после Hard Reset или перезапуска VaM")
+        }
+        TextKey::HairSimToggleHint => Some("Запускает физику волос здесь и в игре."),
+        TextKey::HairCollisionToggleHint => Some("Не даёт волосам проходить сквозь голову и тело."),
+        TextKey::HairStyleJoints => Some("Стилевые связи"),
+        TextKey::HairStyleJointsHint => Some(
+            "Связывает соседние пряди, чтобы причёска держала форму в игре — именно это масштабирует Cling. Для длинных или собранных волос; утяжеляет файл.",
+        ),
+        TextKey::HairThumbnailPrompt => Some("Выберите ракурс и кликните для съёмки"),
+        TextKey::HairThumbnailShoot => Some("Снять"),
+        TextKey::HairThumbnailSkip => Some("Пропустить"),
+        TextKey::HairThumbnailSaved => Some("Миниатюра сохранена"),
+        TextKey::HairThumbnailFailed => Some("Не удалось сохранить миниатюру"),
+        TextKey::HairGameOnly => Some(
+            "Настройка физики: вьюпорт не симулирует, поэтому она действует только в VaM. Экспортируется вместе со стилем.",
+        ),
+        TextKey::HairPartVisible => Some("Показать или скрыть эту часть волос"),
+        TextKey::RemoveHairPart => Some("Удалить часть волос"),
+        TextKey::HairRenamePart => Some("Нажмите, чтобы переименовать"),
+        TextKey::HairToolPlant => Some("Посадить"),
+        TextKey::HairToolErase => Some("Стереть"),
+        TextKey::HairToolGrow => Some("Отрастить (Alt укорачивает)"),
+        TextKey::HairToolComb => Some("Расчесать"),
+        TextKey::HairToolPlantHint => Some("Высаживает пряди на вершинах скальпа под кистью"),
+        TextKey::HairToolGrowHint => Some("Удлиняет пряди под кистью; с Alt — укорачивает"),
+        TextKey::HairToolEraseHint => Some("Удаляет пряди под кистью"),
+        TextKey::HairToolCombHint => Some("Расчёсывает пряди под кистью; корни остаются на месте"),
+        TextKey::HairToolPinch => Some("Собрать"),
+        TextKey::HairToolPinchHint => Some("Собирает пряди под кистью. Alt раздвигает их"),
+        TextKey::HairToolCut => Some("Стрижка"),
+        TextKey::HairToolCutHint => Some("Обрезает пряди там, где кисть их пересекает"),
+        TextKey::HairToolPuff => Some("Объём"),
+        TextKey::HairToolPuffHint => Some("Приподнимает пряди под кистью. Alt прижимает их"),
+        TextKey::HairCopySettings => Some("Копировать всё"),
+        TextKey::HairPasteSettings => Some("Вставить всё"),
+        TextKey::HairGroupPerformance => Some("Производительность"),
+        TextKey::HairGroupPhysics => Some("Физика"),
+        TextKey::HairGroupStiffness => Some("Жёсткость"),
+        TextKey::HairGroupShape => Some("Форма"),
+        TextKey::HairGroupCurl => Some("Завиток"),
+        TextKey::HairGroupLook => Some("Вид"),
+        TextKey::HairColorScalp => Some("Кожа"),
+        TextKey::HairColorRoot => Some("Корни"),
+        TextKey::HairColorTip => Some("Кончики"),
+        TextKey::HairColorSpecular => Some("Блеск"),
+        TextKey::HairScalpMask => Some("Текстура скальпа"),
+        TextKey::HairScalpMaskBuiltIn => Some("Встроенная"),
+        TextKey::HairScalpMaskCustom => Some("Из файла..."),
+        TextKey::HairExport => Some("Экспорт в VaM"),
+        TextKey::HairExportName => Some("Имя предмета"),
+        TextKey::HairExportCreator => Some("Автор"),
+        TextKey::HairExportNeedsMetadata => Some("Укажите имя и автора перед экспортом"),
+        TextKey::HairOverwriteTitle => Some("Заменить эту причёску?"),
+        TextKey::HairOverwriteBody => {
+            Some("Причёска с таким именем и автором уже установлена. Экспорт заменит её файлы.")
+        }
+        TextKey::HairOverwriteProceed => Some("Заменить"),
+        TextKey::HairExportDone => Some("Предмет волос сохранён"),
+        TextKey::HairExportFailed => Some("Экспорт волос не удался"),
+        TextKey::HairExportNeedsPart => Some("Сначала выберите часть с прядями"),
+        TextKey::HairExportNeedsVaMRoot => Some("Перед экспортом задайте корень VaM"),
+        TextKey::HairMirrorPart => Some("Отразить часть на другую сторону"),
+        TextKey::HairDuplicatePart => Some("Дублировать часть"),
+        TextKey::HairSegmentsShort => Some("Сег"),
         TextKey::MorphCategoryBody => Some("Тело"),
         TextKey::TextureNamePlaceholder => Some("Введите имя текстуры"),
         TextKey::TextureOverwriteTitle => Some("Текстуры с таким же именем будут заменены"),
@@ -70,6 +177,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("Отменить"),
         TextKey::ResetAllPins => Some("Сбросить все точки"),
+        TextKey::ResetAll => Some("Сбросить всё"),
         TextKey::MorphSave => Some("Сохранить морф"),
         TextKey::TextureSaveSection => Some("Сохранить текстуры"),
         TextKey::Generate => Some("Подогнать лицо"),
@@ -91,7 +199,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("Показать и настроить наложение каркаса"),
         TextKey::ViewportXrayTooltip => Some("Показать и настроить рентген-наложение"),
         TextKey::ViewportSkinTooltip => Some("Выбрать текстуру кожи VaM"),
-        TextKey::ViewportHairTooltip => Some("Выбрать пресет волос VaM"),
         TextKey::FalloffTooltip => Some("Выбрать кривую влияния кисти"),
         TextKey::FalloffSmooth => Some("Плавный"),
         TextKey::FalloffSmoother => Some("Плавнее"),
@@ -134,6 +241,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("Поставьте по метке на каждом или обойдитесь без них"),
         TextKey::TextureNeedsImage => Some("Добавьте изображение на боковой панели"),
         TextKey::TexturePinPairPrompt => Some("Расставьте парные точки слева и справа"),
+        TextKey::TextureToolNeedsPins => Some("Сначала расставьте точки"),
         TextKey::SymmetrySuggestion => {
             Some("Для более чистого совпадения рекомендуется зеркалирование")
         }
@@ -173,10 +281,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("Не удалось загрузить кожу"),
         TextKey::SkinUvUnavailable => Some("UV кожи недоступна"),
         TextKey::NoMatchingSkins => Some("Подходящей кожи нет"),
-        TextKey::Hair => Some("Волосы"),
-        TextKey::HairNone => Some("Нет"),
         TextKey::HairSearch => Some("Поиск волос"),
-        TextKey::HairLoading => Some("Загрузка волос"),
         TextKey::HairReady => Some("Предпросмотр волос готов"),
         TextKey::HairLoadFailed => Some("Не удалось загрузить волосы"),
         TextKey::HairPartsSkipped => Some("Показано без некоторых частей"),
@@ -187,6 +292,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("Вьюпорт"),
         TextKey::SettingsGeneral => Some("Общие"),
         TextKey::SettingsAbout => Some("О программе"),
+        TextKey::SettingsShortcuts => Some("Горячие клавиши"),
+        TextKey::ShortcutsCapturing => Some("Нажмите…"),
+        TextKey::ShortcutsResetAll => Some("Сбросить все сочетания"),
+        TextKey::ShortcutsExport => Some("Сохранить раскладку в файл"),
+        TextKey::ShortcutsImport => Some("Загрузить файл раскладки"),
+        TextKey::ShortcutsTaken => Some("Это сочетание уже занято"),
         TextKey::SettingsAboutBuild => Some("Сборка"),
         TextKey::SettingsAboutLicense => Some("Лицензия"),
         TextKey::SettingsAboutDiagnostics => Some("Диагностика"),
@@ -228,21 +339,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("Язык интерфейса"),
         TextKey::SettingsFoldersGroup => Some("Папки"),
         TextKey::SettingsVaMRoot => Some("Путь установки VaM"),
-        TextKey::HairVisible => Some("Показывать волосы"),
         TextKey::HairNeedsFinishedHead => Some("Волосы надеваются на готовую голову."),
-        TextKey::HairPreviewCaveat => Some("Детализация волос отличается от настоящей."),
         TextKey::NoMatchingHair => Some("Подходящих пресетов волос нет"),
         TextKey::MorphSearch => Some("Поиск морфов"),
         TextKey::MorphOneSidedFilter => Some("Л/П"),
         TextKey::MorphOneSidedFilterShow => Some("Показать морфы, двигающие одну сторону"),
         TextKey::MorphOneSidedFilterHide => Some("Скрыть морфы, двигающие одну сторону"),
         TextKey::AppearanceSearch => Some("Поиск образов"),
+        TextKey::AppearanceLayers => Some("Слои внешности"),
+        TextKey::AddAppearanceLayer => Some("Добавить выбранную внешность"),
+        TextKey::AppearanceLayersEmpty => Some("Слоёв пока нет"),
+        TextKey::AppearanceLayerRaise => Some("Вверх"),
+        TextKey::AppearanceLayerLower => Some("Вниз"),
         TextKey::LookFind => Some("Загрузить образ"),
         TextKey::CameraTrackballArmed => {
-            Some("Крен включён · горизонтальное перетаскивание наклоняет · клик или R — выход")
+            Some("Трекбол · перетаскивайте для свободного вращения · клик или R для выхода")
         }
         TextKey::HelpTrackball => Some("Вращение трекболом"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("Смотреть с двух сторон — разделить вид"),
+        TextKey::SplitModelViewName => Some("Разделённый вид"),
+        TextKey::HelpLevelRoll => Some("Выровнять горизонт"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("Прошлый сеанс завершился неожиданно"),
         TextKey::RecoveryBody => Some(
             "Ваши морфы, скульптинг и слои текстур были сохранены прямо перед остановкой. Восстановить их?",
@@ -253,9 +371,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Образ той сессии ещё не в списке — текстуры восстановлены, правки применятся при его выборе.",
         ),
-        TextKey::SettingsOcclusionGroup => Some("Затенение (AO)"),
-        TextKey::SettingsOcclusionIntensity => Some("Сила"),
-        TextKey::SettingsOcclusionRadius => Some("Охват"),
         TextKey::SettingsBloomGroup => Some("Свечение"),
         TextKey::SettingsBloomIntensity => Some("Интенсивность"),
         TextKey::SettingsBloomThreshold => Some("Порог"),
@@ -268,7 +383,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("Скульптинг не удалось перенести на этот образ"),
         TextKey::SettingsToneCurve => Some("Тоновая кривая"),
         TextKey::SettingsToneCurveTooltip => Some("Настраивает тени и света"),
-        TextKey::SettingsOcclusionTooltip => Some("Затеняет складки в местах стыка поверхностей"),
         TextKey::SettingsVignetteTooltip => Some("Затемняет края кадра"),
         TextKey::SettingsEffectEnabled => Some("Включено"),
         TextKey::SettingsInterfaceGroup => Some("Интерфейс"),
@@ -375,6 +489,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("Совместимый итоговый морф недоступен"),
         TextKey::AlignmentPending => Some("Загрузите скан головы и выберите папку VaM"),
         TextKey::ScanLoaded => Some("Пользовательская голова OBJ, GLB или FBX загружена"),
+        TextKey::ScanUnloaded => Some("Файл головы удалён; основа G2 готова к правке"),
+        TextKey::PinPairsMismatched => Some("Число пинов не совпадает; пины без пары"),
+        TextKey::UnloadScanTooltip => Some("Убрать этот файл головы"),
         TextKey::TemplateLoaded => Some("G2 загружен"),
         TextKey::PinsReset => Some("Все точки сброшены"),
         TextKey::ResultStale => Some("После изменений результат нужно создать заново"),
@@ -432,6 +549,39 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("Numpad 1-9"),
         TextKey::ShortcutCameraProjection => Some("Numpad ."),
         TextKey::ShortcutUndo => Some("Ctrl+Z"),
+        TextKey::HelpRedo => Some("Повторить"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("Пресеты волос"),
+        TextKey::HairPresetLoad => Some("Загрузить"),
+        TextKey::HairToolPick => Some("Выбрать слой"),
+        TextKey::HairToolPickHint => Some(
+            "Щёлкните по пряди во вьюпорте, чтобы сделать её слой активным. Кисть сработает со следующего щелчка.",
+        ),
+        TextKey::HelpHairPick => Some("Выбрать слой под курсором"),
+        TextKey::ShortcutHairPick => Some("V или Ctrl + щелчок любой кистью"),
+        TextKey::HelpHairSmooth => Some("Сглаживать вместо расчёсывания"),
+        TextKey::ShortcutHairSmooth => Some("Shift во время расчёсывания"),
+        TextKey::HairGroupScalp => Some("Кожа головы"),
+        TextKey::HairScalpAlpha => Some("Маска кожи головы"),
+        TextKey::HairScalpPanel => Some("Кожа головы"),
+        TextKey::HairScalpMesh => Some("Меш кожи головы"),
+        TextKey::HairScalpCreate => Some("Создать кожу головы"),
+        TextKey::HairScalpAbsent => Some("У этой причёски ещё нет слоя кожи головы."),
+        TextKey::HistoryBranchTitle => Some("Шаги после этого места будут потеряны"),
+        TextKey::HistoryBranchProceed => Some("Всё равно править"),
+        TextKey::DoNotShowAgain => Some("Больше не показывать"),
+        TextKey::SurfaceBaseUnblended => {
+            Some("Некоторые PBR-карты не удалось смешать со скином VaM")
+        }
+        TextKey::DetailEditRedone => Some("Отменённая правка возвращена"),
+        TextKey::ShortcutBrushSmaller => Some("Уменьшить кисть"),
+        TextKey::ShortcutBrushLarger => Some("Увеличить кисть"),
+        TextKey::ShortcutBrushSizeDrag => Some("Размер кисти перетаскиванием"),
+        TextKey::ShortcutBrushStrengthDrag => Some("Сила кисти перетаскиванием"),
+        TextKey::ShortcutStencilCancel => Some("Отменить размещение трафарета"),
+        TextKey::ShortcutViewOrbit => Some("Облёт вида"),
+        TextKey::ShortcutViewPan => Some("Сдвиг вида"),
+        TextKey::ShortcutViewDolly => Some("Приближение и удаление вида"),
         TextKey::TemplatePending => {
             Some("Выберите папку VaM, чтобы база G2 подготовилась автоматически")
         }
@@ -467,6 +617,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Сглаживает детали поверхности"),
         TextKey::SculptBrushRestoreTooltip => Some("Возвращает поверхность к базовой форме"),
+        TextKey::SculptBrushMask => Some("Маска"),
+        TextKey::SculptBrushMaskTooltip => {
+            Some("Срезает выбранный слой внешности, открывая нижний. Alt возвращает")
+        }
         TextKey::TextureLayers => Some("Слои текстур"),
         TextKey::PackageSection => Some("Экспорт VAR"),
         TextKey::PackageCreatorHint => Some("Автор"),
@@ -638,6 +792,204 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("Добавить слой текстуры"),
         TextKey::DialogSaveMorphPair => Some("Сохранить морф VaM VMI + VMB"),
         TextKey::DialogChooseVamFolder => Some("Выбрать папку Virt-A-Mate"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("Количество волос"),
+        "curveDensity" => Some("Плотность кривой"),
+        "iterations" => Some("Итерации"),
+        "simulationEnabled" => Some("Физика"),
+        "collisionEnabled" => Some("Столкновения"),
+        "weight" => Some("Вес"),
+        "drag" => Some("Сопротивление воздуха"),
+        "gravityMultiplier" => Some("Множитель гравитации"),
+        "collisionRadius" => Some("Радиус столкновения"),
+        "collisionRadiusRoot" => Some("Радиус столкновения (корень)"),
+        "friction" => Some("Трение"),
+        "bendResistance" => Some("Сопротивление изгибу"),
+        "rootRigidity" => Some("Жёсткость у корня"),
+        "mainRigidity" => Some("Жёсткость в середине"),
+        "tipRigidity" => Some("Жёсткость на кончике"),
+        "jointRigidity" => Some("Жёсткость соединений"),
+        "rigidityRolloffPower" => Some("Спад жёсткости"),
+        "cling" => Some("Сцепление укладки"),
+        "clingRolloff" => Some("Спад сцепления"),
+        "snap" => Some("Привязка"),
+        "usePaintedRigidity" => Some("Использовать нарисованную жёсткость"),
+        "width" => Some("Толщина"),
+        "length1" => Some("Длина 1"),
+        "length2" => Some("Длина 2"),
+        "length3" => Some("Длина 3"),
+        "maxSpread" => Some("Максимальный разброс"),
+        "spreadRoot" => Some("Разброс (корень)"),
+        "spreadMid" => Some("Разброс (середина)"),
+        "spreadTip" => Some("Разброс (кончик)"),
+        "spreadMidpoint" => Some("Середина разброса"),
+        "spreadCurvePower" => Some("Кривая разброса"),
+        "curlScale" => Some("Размер завитка"),
+        "curlFrequency" => Some("Частота завитка"),
+        "curlScaleRandomness" => Some("Случайность размера"),
+        "curlFrequencyRandomness" => Some("Случайность частоты"),
+        "curlRoot" => Some("Завиток (корень)"),
+        "curlMid" => Some("Завиток (середина)"),
+        "curlTip" => Some("Завиток (кончик)"),
+        "curlMidpoint" => Some("Середина завитка"),
+        "curlCurvePower" => Some("Кривая завитка"),
+        "curlX" => Some("Завиток X"),
+        "curlY" => Some("Завиток Y"),
+        "curlZ" => Some("Завиток Z"),
+        "curlNormalAdjust" => Some("Коррекция нормали завитка"),
+        "curlAllowReverse" => Some("Разрешить обратное направление"),
+        "curlAllowFlipAxis" => Some("Разрешить отражение оси"),
+        "Alpha Adjust" => Some("Непрозрачность кожи головы"),
+        "Diffuse Color" => Some("Диффузный цвет кожи"),
+        "Gloss" => Some("Блеск кожи головы"),
+        "Specular Intensity" => Some("Блик кожи головы"),
+        "Diffuse Texture Offset" => Some("Смещение текстуры кожи"),
+        "rootColor" => Some("Цвет у корня"),
+        "tipColor" => Some("Цвет на кончике"),
+        "specularColor" => Some("Цвет блика"),
+        "colorRolloff" => Some("Спад цвета корень→кончик"),
+        "randomColorPower" => Some("Сила случайного цвета"),
+        "randomColorOffset" => Some("Смещение случайного цвета"),
+        "primarySpecularSharpness" => Some("Первичный блик"),
+        "secondarySpecularSharpness" => Some("Вторичный блик"),
+        "specularShift" => Some("Смещение вторичного блика"),
+        "diffuseSoftness" => Some("Мягкость рассеяния"),
+        "fresnelPower" => Some("Сила Френеля"),
+        "fresnelAttenuation" => Some("Затухание Френеля"),
+        "IBLFactor" => Some("Непрямой свет"),
+        "normalRandomize" => Some("Случайность нормалей"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some(
+            "Сколько прядей растёт между каждой тройкой направляющих. Это и есть вид волос, и большая часть их стоимости.",
+        ),
+        "curveDensity" => Some(
+            "Точек вдоль каждой пряди. Больше — глаже и медленнее; форма читается задолго до высоких значений.",
+        ),
+        "iterations" => Some(
+            "Проходов решателя за кадр. Больше — крепче держит ограничения при быстром движении.",
+        ),
+        "simulationEnabled" => {
+            Some("Движется ли эта часть в игре. К переключателю вьюпорта отношения не имеет.")
+        }
+        "collisionEnabled" => Some("Выталкиваются ли пряди этой части из тела."),
+        "weight" => Some(
+            "Насколько тяжело свисает прядь. Масштабирует гравитацию и сопротивление смещению.",
+        ),
+        "drag" => Some(
+            "Насколько воздух удерживает прядь. Высокое значение быстро успокаивает и почти не даёт качаться.",
+        ),
+        "gravityMultiplier" => Some("Гравитация для этой части, как множитель гравитации сцены."),
+        "collisionRadius" => Some("Толщина, которой прядь сталкивается, по всей её длине."),
+        "collisionRadiusRoot" => {
+            Some("Толщина у корня, когда она должна отличаться от остального.")
+        }
+        "friction" => Some("Насколько прядь цепляется за то, чего касается, вместо скольжения."),
+        "bendResistance" => Some("Насколько прядь сопротивляется изгибу из прямой."),
+        "rootRigidity" => Some("Насколько сильно корень держит уложенную форму."),
+        "mainRigidity" => Some("Насколько сильно середина держит уложенную форму."),
+        "tipRigidity" => Some("Насколько сильно кончик держит уложенную форму."),
+        "jointRigidity" => {
+            Some("Жёсткость соединений укладки: пружин, которые держат хвост хвостом.")
+        }
+        "rigidityRolloffPower" => {
+            Some("Как три жёсткости смешиваются вдоль пряди. Выше — значение корня доходит дальше.")
+        }
+        "cling" => Some("Насколько сильно соединения укладки притягивают пряди друг к другу."),
+        "clingRolloff" => {
+            Some("Насколько далеко сцепление угасает вдоль пряди. Выше — держит его ближе к корню.")
+        }
+        "snap" => Some("Насколько твёрдо каждый сегмент держит заданную длину."),
+        "usePaintedRigidity" => {
+            Some("Брать жёсткость с нарисованной карты, а не с трёх ползунков.")
+        }
+        "width" => Some(
+            "Толщина отрисовки пряди. Ползунок самой VaM тоже заканчивается на десятой доле миллиметра.",
+        ),
+        "length1" => Some("Длина прядей, ближайших к первой направляющей их треугольника."),
+        "length2" => Some("Длина прядей, ближайших ко второй направляющей их треугольника."),
+        "length3" => Some("Длина прядей, ближайших к третьей направляющей их треугольника."),
+        "maxSpread" => Some(
+            "Потолок того, насколько прядь может отойти от направляющей, а не усиление. Как только он превысит расстояние между направляющими, поднимать его бесполезно.",
+        ),
+        "spreadRoot" => {
+            Some("Насколько свободно пряди расходятся у корня. Низкое собирает их к направляющей.")
+        }
+        "spreadMid" => Some("Насколько свободно пряди расходятся в середине."),
+        "spreadTip" => Some("Насколько свободно пряди расходятся на кончике."),
+        "spreadMidpoint" => Some("С какого места пряди действует средний разброс."),
+        "spreadCurvePower" => {
+            Some("Насколько резко разброс поворачивает между корнем, серединой и кончиком.")
+        }
+        "curlScale" => Some("Ширина завитка: радиус, вокруг которого он вьётся, а не длина."),
+        "curlFrequency" => Some("Витков на сантиметр пряди."),
+        "curlScaleRandomness" => Some("Насколько ширина завитка различается от пряди к пряди."),
+        "curlFrequencyRandomness" => {
+            Some("Насколько скорость витков различается от пряди к пряди.")
+        }
+        "curlRoot" => Some("Сколько завитка доходит до корня."),
+        "curlMid" => Some("Сколько завитка доходит до середины."),
+        "curlTip" => Some("Сколько завитка доходит до кончика."),
+        "curlMidpoint" => Some("С какого места пряди действует средний завиток."),
+        "curlCurvePower" => {
+            Some("Насколько резко завиток поворачивает между корнем, серединой и кончиком.")
+        }
+        "curlX" => Some(
+            "Смещение завитка по X. Это поворачиваемый вектор, а не ось, вокруг которой он вьётся.",
+        ),
+        "curlY" => Some("Смещение завитка по Y."),
+        "curlZ" => Some("Смещение завитка по Z."),
+        "curlNormalAdjust" => Some(
+            "Прибавляется к смещению завитка вдоль нормали. Поднимает спираль от головы, а не наклоняет ось.",
+        ),
+        "curlAllowReverse" => Some(
+            "Позволяет части прядей виться в другую сторону, чтобы кудрявая голова не читалась как одна повторённая прядь.",
+        ),
+        "curlAllowFlipAxis" => {
+            Some("Позволяет части прядей виться вокруг отражённой оси, по той же причине.")
+        }
+        "Alpha Adjust" => Some(
+            "Насколько непрозрачна шапочка кожи головы. Большинство частей носят чужую шапочку и держат это в самом низу, чтобы скрыть её; поднимайте только если пробор должен показать кожу.",
+        ),
+        "Diffuse Color" => Some(
+            "Собственный диффузный цвет шапочки. VaM поставляет её белой, чтобы кожа под ней просвечивала.",
+        ),
+        "Gloss" => Some("Насколько блестит шапочка там, где она видна."),
+        "Specular Intensity" => Some("Насколько сильно шапочка ловит блик."),
+        "Diffuse Texture Offset" => {
+            Some("Прибавляется к диффузному цвету шапочки. Вопреки названию, это не номер листа.")
+        }
+        "rootColor" => Some("Цвет у корня."),
+        "tipColor" => Some("Цвет на кончике."),
+        "specularColor" => Some("Цвет блика."),
+        "colorRolloff" => Some("Как цвет корня уступает цвету кончика вдоль пряди."),
+        "randomColorPower" => Some("Насколько сильно пряди различаются по цвету."),
+        "randomColorOffset" => Some("В какую сторону клонится это различие — светлее или темнее."),
+        "primarySpecularSharpness" => Some("Насколько узок главный блик. Выше — глянцевее."),
+        "secondarySpecularSharpness" => {
+            Some("Насколько узок второй блик: цветной, который движется вместе с волосами.")
+        }
+        "specularShift" => Some("Насколько далеко второй блик отстоит от первого вдоль пряди."),
+        "diffuseSoftness" => Some(
+            "Насколько мягко свет огибает прядь, а не освещает лишь обращённую к нему сторону.",
+        ),
+        "fresnelPower" => {
+            Some("Насколько резко светлеет край там, где волосы отворачиваются от взгляда.")
+        }
+        "fresnelAttenuation" => Some("Насколько сильно это высветление края."),
+        "IBLFactor" => Some("Сколько окружающего света сцены принимают волосы."),
+        "normalRandomize" => Some(
+            "Насколько дрожит нормаль затенения каждой пряди, чтобы соседние не затенялись одинаково.",
+        ),
         _ => None,
     }
 }

@@ -1,5 +1,5 @@
 use egui::{Pos2, Rect, Vec2};
-use glam::{DVec3, Mat4, Vec3, Vec4};
+use glam::{DVec3, EulerRot, Mat4, Quat, Vec3, Vec4};
 
 use crate::scene::{Bounds3, Ray3};
 
@@ -12,6 +12,8 @@ pub const DEFAULT_VIEW_PITCH_RADIANS: f32 = 15.0_f32.to_radians();
 const DEFAULT_FOV_Y_RADIANS: f32 = DEFAULT_FOV_Y_DEGREES.to_radians();
 
 const ORBIT_RADIANS_PER_POINT: f32 = 0.0035;
+
+const TRACKBALL_RADIANS_PER_POINT: f32 = ORBIT_RADIANS_PER_POINT;
 
 const PITCH_LIMIT_RADIANS: f32 = 1.553_343;
 
@@ -28,12 +30,6 @@ pub enum ProjectionMode {
     Orthographic,
 }
 
-/// The views the numpad jumps to.
-///
-/// A face is worked from the front, so the four diagonals are quarter turns off
-/// the front rather than free orbits, and each sits on the numpad key that
-/// already points that way: 7 and 9 above, 1 and 3 below, and the front itself
-/// in the middle of them at 5.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StandardView {
     Front,
@@ -61,10 +57,6 @@ pub struct TurntableCamera {
     pub distance: f32,
     pub frame_radius: f32,
 
-    /// The box the camera was last framed against, kept so the fit can use the extent the camera
-    /// actually looks along instead of the bounding sphere. `frame_radius` must go on meaning
-    /// "scene scale" for lighting, ambient occlusion and near/far, so the tighter fit needs its
-    /// own input.
     pub frame_bounds: Option<Bounds3>,
     pub fov_y_radians: f32,
     pub projection_mode: ProjectionMode,
@@ -369,9 +361,6 @@ impl TurntableCamera {
 
     pub fn look_from_standard_view(&mut self, view: StandardView) {
         use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
-        // The diagonals lift by a quarter turn rather than the pitch limit: at
-        // the limit the camera is overhead and the face is edge on, which is
-        // exactly the framing these keys exist to avoid.
         const DIAGONAL_PITCH: f32 = FRAC_PI_4 * 0.65;
         let (yaw, pitch) = match view {
             StandardView::Front => (0.0, 0.0),
@@ -421,6 +410,26 @@ impl TurntableCamera {
             .clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
     }
 
+    pub fn apply_trackball(&mut self, drag_points: Vec2) {
+        if !drag_points.is_finite() || drag_points == Vec2::ZERO {
+            return;
+        }
+        let orientation =
+            Quat::from_euler(EulerRot::YXZ, self.yaw, -self.pitch, self.effective_roll());
+        let step = Quat::from_rotation_y(-drag_points.x * TRACKBALL_RADIANS_PER_POINT)
+            * Quat::from_rotation_x(-drag_points.y * TRACKBALL_RADIANS_PER_POINT);
+        let (yaw, pitch, roll) = (orientation * step).normalize().to_euler(EulerRot::YXZ);
+        if [yaw, pitch, roll].into_iter().all(f32::is_finite) {
+            self.yaw = yaw;
+            self.pitch = -pitch;
+            self.roll = roll.rem_euclid(std::f32::consts::TAU);
+        }
+    }
+
+    pub const fn level_roll(&mut self) {
+        self.roll = 0.0;
+    }
+
     fn view_forward(&self) -> DVec3 {
         let (forward_from_target, _, _) = self.basis();
         (-forward_from_target).as_dvec3()
@@ -460,7 +469,7 @@ impl TurntableCamera {
         point.is_finite().then_some(point)
     }
 
-    fn basis(&self) -> (Vec3, Vec3, Vec3) {
+    pub(crate) fn basis(&self) -> (Vec3, Vec3, Vec3) {
         let (yaw, pitch) = self.effective_angles();
         let cos_pitch = pitch.cos();
         let forward_from_target =
@@ -499,9 +508,6 @@ impl TurntableCamera {
         self.orthographic_scale = half_height * 2.0 * FRAME_MARGIN;
     }
 
-    /// How much of the framed box has to fit vertically, measured along the axes the camera is
-    /// actually looking down. Falls back to the bounding-sphere radius when no box is on record,
-    /// and is clamped to it so the fit is never looser than it used to be.
     fn framed_half_height(&self) -> f32 {
         let Some(bounds) = self.frame_bounds else {
             return self.frame_radius;
@@ -577,9 +583,6 @@ mod tests {
         assert!(axis(StandardView::Top).y > 0.99);
         assert!(axis(StandardView::Bottom).y < -0.99);
 
-        // The diagonals are checked by sign rather than by angle, because a
-        // wrong yaw sign is the mistake that reads correctly in the source and
-        // wrong on screen: the view swings to the far side of the face.
         for (view, side, height) in [
             (StandardView::FrontUpperLeft, -1.0, 1.0),
             (StandardView::FrontUpperRight, 1.0, 1.0),
@@ -1037,7 +1040,6 @@ mod tests {
         let mut tight = TurntableCamera::default();
         tight.frame(bounds);
 
-        // The old fit, reproduced: no box on record, so the bounding sphere is all there is.
         let mut sphere = TurntableCamera {
             target: bounds.center(),
             frame_radius: bounds.radius(),

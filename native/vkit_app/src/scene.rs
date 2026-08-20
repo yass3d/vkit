@@ -487,19 +487,9 @@ pub struct SurfaceMesh {
 
     pub smoothing_topology: Arc<SurfaceSmoothingTopology>,
 
-    #[allow(
-        dead_code,
-        reason = "retained for full-geometry diagnostics and regression tests"
-    )]
     pub bounds: Bounds3,
 
     pub visible_bounds: Bounds3,
-    /// Where the face is, for a scan that carries a body under it.
-    ///
-    /// Held rather than derived: the viewport asks for this about ten times a
-    /// frame, and for a tall scan the answer costs a pass over every visible
-    /// vertex. The mesh does not change under a `SurfaceMesh`, so once is
-    /// enough — deriving it per call was a whole-mesh allocation per draw.
     facial_focus_bounds: Bounds3,
 
     pub revision: u64,
@@ -1124,11 +1114,6 @@ fn visible_bounds(mesh: &Mesh, visible_triangle_ids: &[u32]) -> Bounds3 {
     }))
 }
 
-/// The bounds of the face alone on a scan that arrived with a body attached.
-///
-/// A head crop is its own answer and returns immediately. Anything much taller
-/// than it is deep is a bust or a full body, and framing on all of it would put
-/// the face in the top eighth of the view, so the top band is measured instead.
 fn facial_focus_bounds(mesh: &Mesh, visible_triangle_ids: &[u32], visible: Bounds3) -> Bounds3 {
     let extent = visible.max - visible.min;
     if extent.y <= extent.z.max(1.0e-4) * 3.0 {
@@ -1389,6 +1374,7 @@ impl PinSet {
 pub struct ActivePinDrag {
     pub side: MeshSide,
     pub pair_index: usize,
+    pub mirror_index: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -1469,9 +1455,6 @@ pub struct WorkspaceScene {
     pub template_geometry: Option<Arc<DazGeometry>>,
 
     template_ordered: Option<Arc<OrderedObjMesh>>,
-    /// Keep-the-base weights for the neck-and-ears restore, one per template
-    /// vertex. Computed once per template — the Dijkstra pass is a few
-    /// milliseconds nobody should pay on every toggle.
     neck_ear_weights: Option<Arc<Vec<f64>>>,
 
     template_surfaces: Option<TemplateResultSurfaces>,
@@ -1494,6 +1477,8 @@ pub struct WorkspaceScene {
     pub scan_camera: TurntableCamera,
     pub template_camera: TurntableCamera,
     pub result_camera: TurntableCamera,
+
+    pub result_camera_split: TurntableCamera,
 
     pub figure_camera: TurntableCamera,
     pub pins: PinSet,
@@ -1528,8 +1513,6 @@ impl WorkspaceScene {
         self.template_ordered.as_ref().map(Arc::clone)
     }
 
-    /// The neck-and-ears keep weights for the current template, or None when
-    /// the template does not carry the named materials to seed them from.
     pub fn neck_ear_restore_weights(&mut self) -> Option<Arc<Vec<f64>>> {
         if let Some(weights) = self.neck_ear_weights.as_ref() {
             return Some(Arc::clone(weights));
@@ -1634,8 +1617,6 @@ impl WorkspaceScene {
                 .point_to_local(DVec3::from_array(*vertex))
                 .to_array();
         }
-        debug_assert_eq!(local_mesh.vertices.len(), source.mesh.vertices.len());
-        debug_assert_eq!(local_mesh.triangles, source.mesh.triangles);
         self.scan = Some(Arc::new(SurfaceMesh::new(local_mesh)?));
         Ok(())
     }
@@ -2083,7 +2064,7 @@ impl WorkspaceScene {
                     self.scan_camera
                 }
             }
-            Tab::Morph | Tab::Texture | Tab::Result => self.result_camera,
+            Tab::Morph | Tab::Texture | Tab::Hair | Tab::Result => self.result_camera,
         }
     }
 
@@ -2091,7 +2072,7 @@ impl WorkspaceScene {
         use crate::state::Tab;
         match tab {
             Tab::Alignment | Tab::Edit => None,
-            Tab::Morph | Tab::Texture | Tab::Result => Some(&mut self.result_camera),
+            Tab::Morph | Tab::Texture | Tab::Hair | Tab::Result => Some(&mut self.result_camera),
         }
     }
 }

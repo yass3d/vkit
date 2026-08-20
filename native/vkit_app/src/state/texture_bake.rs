@@ -104,6 +104,7 @@ impl AppState {
                     cached_layer_rasters: self.texture_project.cached_layer_rasters(resolution),
                     cached_base_face: self.texture_project.cached_base_face(resolution),
                     base_face_source: self.selected_skin_face_diffuse(),
+                    base_surface_sources: self.selected_skin_surface_maps(),
                 },
             )));
     }
@@ -123,6 +124,17 @@ impl AppState {
         }
         self.expected_texture_bake_request = None;
         let succeeded = outcome.is_ok();
+        let unblended = outcome.as_ref().map_or_else(
+            |_| String::new(),
+            |baked| {
+                baked
+                    .unblended_surface_channels
+                    .iter()
+                    .map(|channel| crate::texture_ui::channel_display(*channel))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        );
         let first_bake = self.texture_project.baked.is_none();
         let result_matches_request = match outcome.as_ref() {
             Ok(baked) => baked.source_revision == project_revision,
@@ -137,13 +149,17 @@ impl AppState {
             if request_is_current {
                 self.texture_project.baked_resolution = resolution;
             }
-            // Only the first bake pulls the viewport over to the textured
-            // view: someone who has not seen their layers yet should. After
-            // that the mode is the reader's own choice, and a background bake
-            // finishing is no reason to change it under them.
             if first_bake {
                 self.base_view_mode = BaseViewMode::Texture;
             }
+        }
+
+        if !unblended.is_empty() {
+            self.status = StatusMessage::with_detail(
+                TextKey::SurfaceBaseUnblended,
+                StatusTone::Warning,
+                unblended,
+            );
         }
 
         if let Some(queued) = self.texture_project.bake_queued.take() {
@@ -151,14 +167,6 @@ impl AppState {
         }
     }
 
-    /// Builds the plain-colour stand-in the head wears while "layers only"
-    /// waits for a bake.
-    ///
-    /// The revision is derived from the colour, so the same colour keeps the
-    /// same GPU upload and a changed colour forces one. The colour sits above
-    /// the low byte because the preview derives its sub-images by small
-    /// offsets from this base — packed into the low bits, two colours one
-    /// blue-unit apart handed each other their sub-images.
     pub(crate) fn refresh_neutral_skin_preview(&mut self) {
         let Some(mapping) = self.vam_uv_mapping.as_ref() else {
             self.neutral_skin_preview = None;
@@ -182,6 +190,41 @@ impl AppState {
                 .map(Arc::new);
     }
 
+    pub(super) fn edit_texture_layer(
+        &mut self,
+        id: u64,
+        edit: impl FnOnce(&mut crate::texture_project::TextureLayer),
+    ) {
+        if let Some(layer) = self
+            .texture_project
+            .layers
+            .iter_mut()
+            .find(|layer| layer.id == id)
+        {
+            edit(layer);
+            self.texture_project.mark_dirty();
+        }
+    }
+
+    pub(super) fn warn_skin_preset_required(&mut self) {
+        self.status = StatusMessage::new(TextKey::SkinPresetRequired, StatusTone::Warning);
+        self.flash_attention(
+            if self.viewport_tool_panel == Some(ViewportToolPanel::Skin) {
+                AttentionTarget::SkinTextureMode
+            } else {
+                AttentionTarget::SkinPanel
+            },
+        );
+    }
+
+    pub(super) fn set_texture_hide_vam_skin(&mut self, value: bool) {
+        self.texture_project.hide_vam_skin_preview = value;
+        if value {
+            self.refresh_neutral_skin_preview();
+        }
+        self.texture_project.mark_dirty();
+    }
+
     fn selected_skin_face_diffuse(&self) -> Option<vkit_core::vam::AssetLocator> {
         if self.texture_project.bake_base != TextureBakeBase::CurrentSkin
             || self.texture_project.hide_vam_skin_preview
@@ -197,6 +240,41 @@ impl AppState {
             .diffuse(vkit_core::vam::SkinRegion::Face)
             .or_else(|| preset.diffuse(vkit_core::vam::SkinRegion::Torso))
             .cloned()
+    }
+
+    fn selected_skin_surface_maps(
+        &self,
+    ) -> std::collections::BTreeMap<
+        crate::texture_project::TextureChannel,
+        vkit_core::vam::AssetLocator,
+    > {
+        use crate::texture_project::TextureChannel;
+
+        let mut sources = std::collections::BTreeMap::new();
+        if self.texture_project.bake_base != TextureBakeBase::CurrentSkin
+            || self.texture_project.hide_vam_skin_preview
+        {
+            return sources;
+        }
+        let Some(preset) = self.selected_skin_id.as_deref().and_then(|selected| {
+            self.vam_skin_presets
+                .iter()
+                .find(|preset| preset.stable_id == selected)
+        }) else {
+            return sources;
+        };
+        let face = preset.surface(vkit_core::vam::SkinRegion::Face);
+        let torso = preset.surface(vkit_core::vam::SkinRegion::Torso);
+        for (channel, locator) in [
+            (TextureChannel::Normal, face.normal.or(torso.normal)),
+            (TextureChannel::Specular, face.specular.or(torso.specular)),
+            (TextureChannel::Glossiness, face.gloss.or(torso.gloss)),
+        ] {
+            if let Some(locator) = locator {
+                sources.insert(channel, locator);
+            }
+        }
+        sources
     }
 
     pub fn texture_composite_is_empty(&self) -> bool {

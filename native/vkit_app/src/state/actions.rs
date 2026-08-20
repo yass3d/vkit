@@ -18,6 +18,7 @@ pub enum Action {
     SetLocale(Locale),
     RequestTab(Tab),
     RequestOpenScan,
+    UnloadScan,
     RequestTextureImageBrowse(TextureSourceMode),
 
     RequestVaMRootBrowse,
@@ -26,6 +27,97 @@ pub enum Action {
     SelectVaMEditSource(String),
 
     SelectBaseFace,
+
+    AddHairPart {
+        provider_name: String,
+    },
+    RemoveHairPart(u64),
+    SetHairPartName {
+        id: u64,
+        name: String,
+    },
+    SetHairPartStyleJoints {
+        id: u64,
+        on: bool,
+    },
+    SetHairExportSexes(crate::hair_project::HairExportSexes),
+    ActivateHairPart {
+        id: u64,
+        additive: bool,
+    },
+    ToggleHairPartVisible(u64),
+    SetHairTool(crate::hair_project::HairTool),
+    SetHairBrushRadius(f32),
+    SetHairBrushStrength(f32),
+    SelectHairParamGroup(crate::hair_settings::HairParamGroup),
+    PlantHairStrands {
+        part_id: u64,
+        scalp_indices: Vec<u32>,
+    },
+    UnplantHairStrands {
+        part_id: u64,
+        scalp_indices: Vec<u32>,
+    },
+    SetHairPartSegments {
+        id: u64,
+        segments: usize,
+    },
+    ScaleHairStrands {
+        part_id: u64,
+        scalp_indices: Vec<u32>,
+        factor: f32,
+    },
+    SetHairStrandPoints {
+        part_id: u64,
+        strands: Vec<(u32, Vec<[f32; 3]>)>,
+    },
+    PaintMorphMask {
+        vertices: Vec<(u32, f32)>,
+        target: f32,
+        amount: f32,
+        begins_step: bool,
+    },
+    AddAppearanceLayer,
+    SelectAppearanceLayer(u64),
+    SetAppearanceLayerVisible {
+        id: u64,
+        visible: bool,
+    },
+    RaiseAppearanceLayer(u64),
+    LowerAppearanceLayer(u64),
+    RemoveAppearanceLayer(u64),
+    ExportHairPart,
+    ConfirmHairOverwrite,
+    CancelHairOverwrite,
+    SetHairParam {
+        id: u64,
+        key: &'static str,
+        value: f32,
+    },
+    SetHairColorChannel {
+        id: u64,
+        key: &'static str,
+        channel: usize,
+        value: f32,
+    },
+    ResetHairParams(u64),
+    ResetHairShapes,
+    AddHairScalp(String),
+    SetHairScalpMesh {
+        id: u64,
+        mesh: String,
+    },
+    SetHairScalpTexture {
+        id: u64,
+        texture: crate::hair_project::HairScalpTexture,
+    },
+    CopyHairSettings(u64),
+    PasteHairSettings(u64),
+    SetHairExportName(String),
+    EndHairStroke,
+    SetHairExportCreator(String),
+    MirrorHairPart(u64),
+    DuplicateHairPart(u64),
 
     FreezeEyeGaze([f32; 2]),
     BeginDirectEdit,
@@ -112,7 +204,6 @@ pub enum Action {
     SetCameraControl(crate::camera_control::ControlMode),
     RestoreSession,
     DiscardSession,
-    SetAmbientOcclusion(AmbientOcclusionSettings),
     SetBloom(BloomSettings),
     SetVignette(VignetteSettings),
     ToggleHelp,
@@ -145,6 +236,15 @@ pub enum Action {
     SetSculptBrushRadius(f32),
     SetSculptStrength(f32),
     SetSculptXSymmetry(bool),
+    SetSplitModelView(bool),
+    SetModelSplitRatio(f32),
+    RebindShortcut(crate::shortcuts::Shortcut, crate::shortcuts::Binding),
+    ResetKeymap,
+    Redo,
+    ImportHairPreset(String),
+    ConfirmHistoryBranch,
+    CancelHistoryBranch,
+    MuteHistoryBranchWarning,
     SetSculptConnectedTopologyOnly(bool),
     ToggleSculptEyeTracking(bool),
     ToggleSculptBackfaceMasking(bool),
@@ -284,7 +384,6 @@ pub enum Action {
         source_revision: u64,
         fraction: f32,
     },
-    ToggleHairVisible(bool),
 
     SetScanFidelity(f32),
     SetRestoreNeckEars(bool),
@@ -315,12 +414,6 @@ pub enum Action {
         preset_id: String,
         outcome: Result<Arc<SkinPreview>, String>,
     },
-    SelectVaMHair(Option<String>),
-    FinishVaMHair {
-        request_id: u64,
-        preset_id: String,
-        outcome: Result<Arc<HairPreview>, String>,
-    },
     ReportVaMCatalogProgress {
         catalog_revision: u64,
         fraction: f32,
@@ -350,6 +443,31 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn branches_hair_history(&self) -> bool {
+        matches!(
+            self,
+            Self::AddHairPart { .. }
+                | Self::RemoveHairPart(_)
+                | Self::ToggleHairPartVisible(_)
+                | Self::PlantHairStrands { .. }
+                | Self::UnplantHairStrands { .. }
+                | Self::SetHairPartSegments { .. }
+                | Self::ScaleHairStrands { .. }
+                | Self::SetHairStrandPoints { .. }
+                | Self::SetHairParam { .. }
+                | Self::SetHairColorChannel { .. }
+                | Self::ResetHairParams(_)
+                | Self::ResetHairShapes
+                | Self::SetHairPartName { .. }
+                | Self::SetHairPartStyleJoints { .. }
+                | Self::SetHairScalpMesh { .. }
+                | Self::SetHairScalpTexture { .. }
+                | Self::PasteHairSettings(_)
+                | Self::MirrorHairPart(_)
+                | Self::DuplicateHairPart(_)
+        )
+    }
+
     pub(super) const fn records_texture_undo(&self) -> bool {
         matches!(
             self,
@@ -383,8 +501,44 @@ impl Action {
             | Self::ReplacePackage
             | Self::KeepPackage
             | Self::RequestOpenScan
+            | Self::UnloadScan
             | Self::SelectVaMEditSource(_)
             | Self::SelectBaseFace
+            | Self::AddHairPart { .. }
+            | Self::RemoveHairPart(_)
+            | Self::ToggleHairPartVisible(_)
+            | Self::PlantHairStrands { .. }
+            | Self::UnplantHairStrands { .. }
+            | Self::SetHairPartSegments { .. }
+            | Self::ScaleHairStrands { .. }
+            | Self::SetHairStrandPoints { .. }
+            | Self::PaintMorphMask { .. }
+            | Self::AddAppearanceLayer
+            | Self::SelectAppearanceLayer(..)
+            | Self::SetAppearanceLayerVisible { .. }
+            | Self::RaiseAppearanceLayer(..)
+            | Self::LowerAppearanceLayer(..)
+            | Self::RemoveAppearanceLayer(..)
+            | Self::ExportHairPart
+            | Self::ConfirmHairOverwrite
+            | Self::CancelHairOverwrite
+            | Self::SetHairPartName { .. }
+            | Self::SetHairPartStyleJoints { .. }
+            | Self::SetHairExportSexes(_)
+            | Self::SetHairParam { .. }
+            | Self::SetHairColorChannel { .. }
+            | Self::ResetHairParams(_)
+            | Self::ResetHairShapes
+            | Self::ImportHairPreset(_)
+            | Self::AddHairScalp(_)
+            | Self::SetHairScalpMesh { .. }
+            | Self::SetHairScalpTexture { .. }
+            | Self::PasteHairSettings(_)
+            | Self::SetHairExportName(_)
+            | Self::EndHairStroke
+            | Self::SetHairExportCreator(_)
+            | Self::MirrorHairPart(_)
+            | Self::DuplicateHairPart(_)
             | Self::FreezeEyeGaze(_)
             | Self::BeginDirectEdit
             | Self::SetFigureSex(_)
@@ -465,7 +619,6 @@ impl Action {
             | Self::SetDefaultSkin(_)
             | Self::SetLastSkin(_)
             | Self::SelectVaMSkin(_)
-            | Self::SelectVaMHair(_)
             | Self::ResetMorphs => true,
             Self::SetRestoreNeckEars(_) => true,
             #[cfg(test)]
@@ -518,13 +671,26 @@ impl Action {
             | Self::SetCameraControl(_)
             | Self::RestoreSession
             | Self::DiscardSession
-            | Self::SetAmbientOcclusion(_)
             | Self::SetBloom(_)
             | Self::SetVignette(_)
             | Self::ToggleHelp
             | Self::SetSculptBrushRadius(_)
+            | Self::SetHairBrushRadius(_)
+            | Self::SetHairBrushStrength(_)
+            | Self::SelectHairParamGroup(_)
+            | Self::SetHairTool(_)
+            | Self::ActivateHairPart { .. }
+            | Self::CopyHairSettings(_)
             | Self::SetSculptStrength(_)
             | Self::SetSculptXSymmetry(_)
+            | Self::SetSplitModelView(_)
+            | Self::SetModelSplitRatio(_)
+            | Self::RebindShortcut(..)
+            | Self::ResetKeymap
+            | Self::Redo
+            | Self::ConfirmHistoryBranch
+            | Self::CancelHistoryBranch
+            | Self::MuteHistoryBranchWarning
             | Self::SetSculptConnectedTopologyOnly(_)
             | Self::SetSculptGroupsCollapsed(_)
             | Self::SetTextureWorkspaceSplit(_)
@@ -538,7 +704,6 @@ impl Action {
             | Self::FinishGeneration { .. }
             | Self::FinishExport { .. }
             | Self::ReportExportProgress { .. }
-            | Self::ToggleHairVisible(_)
             | Self::OpenSettings
             | Self::CloseSettings
             | Self::SpendHairSettle(_)
@@ -553,7 +718,6 @@ impl Action {
             | Self::FinishVaMSkin { .. }
             | Self::FinishTextureDecode { .. }
             | Self::FinishTextureBake { .. }
-            | Self::FinishVaMHair { .. }
             | Self::ReportVaMCatalogProgress { .. }
             | Self::FinishVaMCatalog { .. }
             | Self::FinishVaMMorphCatalog { .. }

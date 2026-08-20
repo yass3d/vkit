@@ -1,7 +1,7 @@
 use super::TextKey;
 
 pub(super) const fn label(key: TextKey) -> Option<&'static str> {
-    #[allow(unreachable_patterns)]
+    #[allow(unreachable_patterns, reason = "the fallback outlives today's key set")]
     match key {
         TextKey::SurfaceSmooth => Some("Mesh-Glättung"),
         TextKey::SurfaceSmoothTooltip => Some(
@@ -12,6 +12,127 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Save => Some("Speichern"),
         TextKey::DetailCorrection => Some("Sculpting"),
         TextKey::TextureStage => Some("Textur"),
+        TextKey::HairStage => Some("Haar"),
+        TextKey::HairUnavailable => {
+            Some("Schließe zuerst das Sculpt-Ergebnis ab, bevor du Haare bearbeitest")
+        }
+        TextKey::HairPartsPanel => Some("Haarteile"),
+        TextKey::AddHairPart => Some("Haarteil hinzufügen"),
+        TextKey::HairScalpMissing => {
+            Some("Kopfhaut-Mesh fehlt; öffne einen VaM-Ordner und scanne erneut")
+        }
+        TextKey::HairShowPoints => Some("Punkte anzeigen"),
+        TextKey::HairShowPointsHint => Some(
+            "Zeigt die Pflanzpunkte auf der Kopfhaut. Zum Ausblenden abschalten; die Pinsel arbeiten weiter.",
+        ),
+        TextKey::HairPartTint => Some("Teile einfärben"),
+        TextKey::HairPartTintHint => Some(
+            "Gibt jedem Teil eine eigene Tönung im Viewport, um sie zu unterscheiden. Nur Anzeige; der Export bleibt unberührt.",
+        ),
+        TextKey::HairSettingsPanel => Some("Haar-Einstellungen"),
+        TextKey::HairCreateFirst => Some("Erstelle zuerst Haar."),
+        TextKey::HairHideStrands => Some("Haar ausblenden"),
+        TextKey::HairHideStrandsHint => Some(
+            "Nimmt das gewachsene Haar weg, damit nur die Straehnen zu lesen sind. Einschalten schaltet die Straehnen mit ein.",
+        ),
+        TextKey::HairShowStreams => Some("Haarstraehnen zeigen"),
+        TextKey::HairShowStreamsHint => {
+            Some("Zeichnet die Straehne, die du bearbeitest, ueber dem Haar das daraus waechst.")
+        }
+        TextKey::HairViewportPhysics => Some("Viewport-Physik"),
+        TextKey::HairViewportPhysicsHint => {
+            Some("Zeigt die Physik auf dem Bildschirm. Hat nichts mit dem Export zu tun.")
+        }
+        TextKey::HairMirrorEdit => Some("Spiegel-Bearbeitung"),
+        TextKey::HairMirrorEditHint => {
+            Some("Pinsel bearbeiten beide Seiten zugleich, links-rechts symmetrisch.")
+        }
+        TextKey::HairAutoPart => Some("Auto-Part"),
+        TextKey::HairAutoPartHint => Some(
+            "Der Pinsel bearbeitet nur das unter dem Cursor erkannte Part statt der aktiven Ebenen.",
+        ),
+        TextKey::HairExportSection => Some("Haar speichern"),
+        TextKey::HairExportBothSexes => Some("Beide"),
+        TextKey::HairExportRescanNotice => {
+            Some("VaM - Hair - Rescan Files anklicken, damit es in der Liste erscheint")
+        }
+        TextKey::HairExportOverwroteNotice => {
+            Some("Ein überschriebenes Vorschaubild erscheint nach Hard Reset oder VaM-Neustart")
+        }
+        TextKey::HairSimToggleHint => Some("Fuehrt die Haarphysik hier und im Spiel aus."),
+        TextKey::HairCollisionToggleHint => Some("Haelt Straehnen aus Kopf und Koerper heraus."),
+        TextKey::HairStyleJoints => Some("Stil-Gelenke"),
+        TextKey::HairStyleJointsHint => Some(
+            "Verbindet nahe Strähnen, damit die Frisur im Spiel ihre Form hält -- das, was Cling skaliert. Für langes oder gebundenes Haar; macht die Datei schwerer.",
+        ),
+        TextKey::HairThumbnailPrompt => Some("Winkel einstellen und zum Aufnehmen klicken"),
+        TextKey::HairThumbnailShoot => Some("Aufnehmen"),
+        TextKey::HairThumbnailSkip => Some("Überspringen"),
+        TextKey::HairThumbnailSaved => Some("Vorschaubild gespeichert"),
+        TextKey::HairThumbnailFailed => Some("Vorschaubild fehlgeschlagen"),
+        TextKey::HairGameOnly => Some(
+            "Physik-Einstellung: das Viewport simuliert nicht, wirkt also nur in VaM. Wird mit dem Stil exportiert.",
+        ),
+        TextKey::HairPartVisible => Some("Dieses Haarteil ein-/ausblenden"),
+        TextKey::RemoveHairPart => Some("Haarteil entfernen"),
+        TextKey::HairRenamePart => Some("Zum Umbenennen klicken"),
+        TextKey::HairToolPlant => Some("Pflanzen"),
+        TextKey::HairToolErase => Some("Löschen"),
+        TextKey::HairToolGrow => Some("Wachsen (Alt kürzt)"),
+        TextKey::HairToolComb => Some("Kämmen"),
+        TextKey::HairToolPlantHint => {
+            Some("Straehnen auf den Kopfhautpunkten unter dem Pinsel wachsen lassen")
+        }
+        TextKey::HairToolGrowHint => {
+            Some("Straehnen unter dem Pinsel verlaengern; Alt haelt sie kuerzer")
+        }
+        TextKey::HairToolEraseHint => Some("Straehnen unter dem Pinsel entfernen"),
+        TextKey::HairToolCombHint => {
+            Some("Straehnen unter dem Pinsel in Form ziehen; die Ansaetze bleiben")
+        }
+        TextKey::HairToolPinch => Some("Buendeln"),
+        TextKey::HairToolPinchHint => {
+            Some("Fasst die Straehnen unter dem Pinsel zusammen. Alt spreizt sie")
+        }
+        TextKey::HairToolCut => Some("Schneiden"),
+        TextKey::HairToolCutHint => Some("Kuerzt die Straehnen dort, wo der Pinsel sie kreuzt"),
+        TextKey::HairToolPuff => Some("Aufplustern"),
+        TextKey::HairToolPuffHint => {
+            Some("Stellt die Straehnen unter dem Pinsel von der Haut ab. Alt legt sie an")
+        }
+        TextKey::HairCopySettings => Some("Alles kopieren"),
+        TextKey::HairPasteSettings => Some("Alles einfuegen"),
+        TextKey::HairGroupPerformance => Some("Leistung"),
+        TextKey::HairGroupPhysics => Some("Physik"),
+        TextKey::HairGroupStiffness => Some("Steifigkeit"),
+        TextKey::HairGroupShape => Some("Form"),
+        TextKey::HairGroupCurl => Some("Locken"),
+        TextKey::HairGroupLook => Some("Aussehen"),
+        TextKey::HairColorScalp => Some("Kopfhaut"),
+        TextKey::HairColorRoot => Some("Ansatz"),
+        TextKey::HairColorTip => Some("Spitze"),
+        TextKey::HairColorSpecular => Some("Glanz"),
+        TextKey::HairScalpMask => Some("Kopfhaut-Textur"),
+        TextKey::HairScalpMaskBuiltIn => Some("Integriert"),
+        TextKey::HairScalpMaskCustom => Some("Aus Datei..."),
+        TextKey::HairExport => Some("Nach VaM exportieren"),
+        TextKey::HairExportName => Some("Elementname"),
+        TextKey::HairExportCreator => Some("Ersteller"),
+        TextKey::HairExportNeedsMetadata => {
+            Some("Name und Ersteller ausfuellen, bevor exportiert wird")
+        }
+        TextKey::HairOverwriteTitle => Some("Diesen Stil ersetzen?"),
+        TextKey::HairOverwriteBody => Some(
+            "Ein Stil mit diesem Namen und Ersteller ist bereits installiert. Der Export ersetzt seine Dateien.",
+        ),
+        TextKey::HairOverwriteProceed => Some("Ersetzen"),
+        TextKey::HairExportDone => Some("Haar-Element gespeichert"),
+        TextKey::HairExportFailed => Some("Haar-Export fehlgeschlagen"),
+        TextKey::HairExportNeedsPart => Some("Waehle zuerst ein Haarteil mit Straehnen"),
+        TextKey::HairExportNeedsVaMRoot => Some("Setze vor dem Export einen VaM-Ordner"),
+        TextKey::HairMirrorPart => Some("Teil auf die andere Seite spiegeln"),
+        TextKey::HairDuplicatePart => Some("Teil duplizieren"),
+        TextKey::HairSegmentsShort => Some("Seg"),
         TextKey::MorphCategoryBody => Some("Körper"),
         TextKey::TextureNamePlaceholder => Some("Texturnamen eingeben"),
         TextKey::TextureOverwriteTitle => Some("Texturen mit gleichem Namen werden ersetzt"),
@@ -74,6 +195,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::Undo => Some("Rückgängig"),
         TextKey::ResetAllPins => Some("Alle Pins zurücksetzen"),
+        TextKey::ResetAll => Some("Alles zuruecksetzen"),
         TextKey::MorphSave => Some("Morph speichern"),
         TextKey::TextureSaveSection => Some("Texturen speichern"),
         TextKey::Generate => Some("Gesicht anpassen"),
@@ -95,7 +217,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ViewportWireframeTooltip => Some("Drahtgitter-Overlay anzeigen und anpassen"),
         TextKey::ViewportXrayTooltip => Some("Röntgen-Overlay anzeigen und anpassen"),
         TextKey::ViewportSkinTooltip => Some("Eine VaM-Hauttextur wählen"),
-        TextKey::ViewportHairTooltip => Some("Ein VaM-Haar-Preset wählen"),
         TextKey::FalloffTooltip => Some("Die Einflusskurve des Pinsels wählen"),
         TextKey::FalloffSmooth => Some("Glatt"),
         TextKey::FalloffSmoother => Some("Glatter"),
@@ -142,6 +263,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::PinPrompt => Some("Setzen Sie je einen Pin, oder fitten Sie ohne"),
         TextKey::TextureNeedsImage => Some("Fügen Sie über die Seitenleiste ein Bild hinzu"),
         TextKey::TexturePinPairPrompt => Some("Setzen Sie links und rechts zusammengehörige Pins"),
+        TextKey::TextureToolNeedsPins => Some("Erst die Pins setzen, dann nutzbar"),
         TextKey::SymmetrySuggestion => {
             Some("Für einen saubereren Abgleich wird Spiegeln empfohlen")
         }
@@ -181,10 +303,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SkinLoadFailed => Some("Haut konnte nicht geladen werden"),
         TextKey::SkinUvUnavailable => Some("Haut-UV nicht verfügbar"),
         TextKey::NoMatchingSkins => Some("Keine passenden Haut-Presets"),
-        TextKey::Hair => Some("Haar"),
-        TextKey::HairNone => Some("Keins"),
         TextKey::HairSearch => Some("Haar suchen"),
-        TextKey::HairLoading => Some("Haar wird geladen"),
         TextKey::HairReady => Some("Haarvorschau bereit"),
         TextKey::HairLoadFailed => Some("Haar konnte nicht geladen werden"),
         TextKey::HairPartsSkipped => Some("Einige Teile werden nicht angezeigt"),
@@ -195,6 +314,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsViewport => Some("Viewport"),
         TextKey::SettingsGeneral => Some("Allgemein"),
         TextKey::SettingsAbout => Some("Über"),
+        TextKey::SettingsShortcuts => Some("Tastenkürzel"),
+        TextKey::ShortcutsCapturing => Some("Drücken…"),
+        TextKey::ShortcutsResetAll => Some("Alle Tastenkürzel zurücksetzen"),
+        TextKey::ShortcutsExport => Some("Belegung als Datei speichern"),
+        TextKey::ShortcutsImport => Some("Belegungsdatei laden"),
+        TextKey::ShortcutsTaken => Some("Eine andere Aktion hört darauf"),
         TextKey::SettingsAboutBuild => Some("Build"),
         TextKey::SettingsAboutLicense => Some("Lizenz"),
         TextKey::SettingsAboutDiagnostics => Some("Diagnose"),
@@ -234,21 +359,28 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsLanguage => Some("Anzeigesprache"),
         TextKey::SettingsFoldersGroup => Some("Ordner"),
         TextKey::SettingsVaMRoot => Some("VaM-Installationspfad"),
-        TextKey::HairVisible => Some("Haar anzeigen"),
         TextKey::HairNeedsFinishedHead => Some("Haare werden auf einem fertigen Kopf getragen."),
-        TextKey::HairPreviewCaveat => Some("Haardetails weichen vom Original ab."),
         TextKey::NoMatchingHair => Some("Keine passenden Haar-Presets"),
         TextKey::MorphSearch => Some("Morphs suchen"),
         TextKey::MorphOneSidedFilter => Some("L/R"),
         TextKey::MorphOneSidedFilterShow => Some("Morphs zeigen, die nur eine Seite bewegen"),
         TextKey::MorphOneSidedFilterHide => Some("Morphs ausblenden, die nur eine Seite bewegen"),
         TextKey::AppearanceSearch => Some("Looks suchen"),
+        TextKey::AppearanceLayers => Some("Aussehens-Ebenen"),
+        TextKey::AddAppearanceLayer => Some("Gewaehltes Aussehen hinzufuegen"),
+        TextKey::AppearanceLayersEmpty => Some("Noch keine Ebenen"),
+        TextKey::AppearanceLayerRaise => Some("Nach oben"),
+        TextKey::AppearanceLayerLower => Some("Nach unten"),
         TextKey::LookFind => Some("Look laden"),
         TextKey::CameraTrackballArmed => {
-            Some("Rollen aktiv · seitwärts ziehen zum Neigen · Klick oder R beendet")
+            Some("Trackball · zum freien Drehen ziehen · Klick oder R zum Verlassen")
         }
         TextKey::HelpTrackball => Some("Trackball-Drehung"),
         TextKey::ShortcutTrackball => Some("R"),
+        TextKey::SplitModelViewTooltip => Some("Aus zwei Winkeln sehen — Ansicht teilen"),
+        TextKey::SplitModelViewName => Some("Geteilte Ansicht"),
+        TextKey::HelpLevelRoll => Some("Horizont waagerecht stellen"),
+        TextKey::ShortcutLevelRoll => Some("Alt+R"),
         TextKey::RecoveryTitle => Some("Die letzte Sitzung wurde unerwartet beendet"),
         TextKey::RecoveryBody => Some(
             "Die Morphs, Sculpting- und Texturebenen wurden kurz davor gesichert. Zurückholen?",
@@ -259,9 +391,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Der Look dieser Sitzung ist noch nicht gelistet — Texturen wurden wiederhergestellt; die Änderungen greifen, sobald der Look gewählt wird.",
         ),
-        TextKey::SettingsOcclusionGroup => Some("Ambient Occlusion"),
-        TextKey::SettingsOcclusionIntensity => Some("Stärke"),
-        TextKey::SettingsOcclusionRadius => Some("Reichweite"),
         TextKey::SettingsBloomGroup => Some("Bloom"),
         TextKey::SettingsBloomIntensity => Some("Intensität"),
         TextKey::SettingsBloomThreshold => Some("Schwelle"),
@@ -274,9 +403,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SculptNotCarried => Some("Das Sculpting konnte diesem Look nicht folgen"),
         TextKey::SettingsToneCurve => Some("Tonkurve"),
         TextKey::SettingsToneCurveTooltip => Some("Passt Schatten und Lichter an"),
-        TextKey::SettingsOcclusionTooltip => {
-            Some("Verschattet die Vertiefungen, wo Flächen aufeinandertreffen")
-        }
         TextKey::SettingsVignetteTooltip => Some("Dunkelt die Bildränder ab"),
         TextKey::SettingsEffectEnabled => Some("Aktiv"),
         TextKey::SettingsInterfaceGroup => Some("Benutzeroberfläche"),
@@ -383,6 +509,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphUnavailable => Some("Kein kompatibler Ergebnis-Morph verfügbar"),
         TextKey::AlignmentPending => Some("Scan-Kopf laden und VaM-Ordner wählen"),
         TextKey::ScanLoaded => Some("Eigene Kopfdatei (OBJ, GLB oder FBX) geladen"),
+        TextKey::ScanUnloaded => Some("Kopfdatei entfernt; die G2-Basis ist bereit"),
+        TextKey::PinPairsMismatched => Some("Pin-Anzahl stimmt nicht überein; Pins ohne Partner"),
+        TextKey::UnloadScanTooltip => Some("Diese Kopfdatei entfernen"),
         TextKey::TemplateLoaded => Some("G2 geladen"),
         TextKey::PinsReset => Some("Alle Pins wurden zurückgesetzt"),
         TextKey::ResultStale => Some("Das Ergebnis muss neu erzeugt werden"),
@@ -442,6 +571,39 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutStandardViews => Some("Ziffernblock 1-9"),
         TextKey::ShortcutCameraProjection => Some("Ziffernblock ."),
         TextKey::ShortcutUndo => Some("Strg+Z"),
+        TextKey::HelpRedo => Some("Wiederholen"),
+        TextKey::ShortcutRedo => Some("Ctrl+Y"),
+        TextKey::HairPresetSection => Some("Haar-Voreinstellungen"),
+        TextKey::HairPresetLoad => Some("Laden"),
+        TextKey::HairToolPick => Some("Ebene waehlen"),
+        TextKey::HairToolPickHint => Some(
+            "Auf eine Straehne im Viewport klicken, um ihre Ebene zu aktivieren. Der Pinsel wartet auf den naechsten Klick.",
+        ),
+        TextKey::HelpHairPick => Some("Ebene unter dem Zeiger waehlen"),
+        TextKey::ShortcutHairPick => Some("V, oder Strg + Klick mit jedem Pinsel"),
+        TextKey::HelpHairSmooth => Some("Glaetten statt kaemmen"),
+        TextKey::ShortcutHairSmooth => Some("Shift beim Kaemmen"),
+        TextKey::HairGroupScalp => Some("Kopfhaut"),
+        TextKey::HairScalpAlpha => Some("Kopfhaut-Maske"),
+        TextKey::HairScalpPanel => Some("Kopfhaut"),
+        TextKey::HairScalpMesh => Some("Kopfhaut-Mesh"),
+        TextKey::HairScalpCreate => Some("Kopfhaut erstellen"),
+        TextKey::HairScalpAbsent => Some("Diese Frisur hat noch keine Kopfhaut-Ebene."),
+        TextKey::HistoryBranchTitle => Some("Die Schritte danach gehen verloren"),
+        TextKey::HistoryBranchProceed => Some("Trotzdem bearbeiten"),
+        TextKey::DoNotShowAgain => Some("Nicht mehr anzeigen"),
+        TextKey::SurfaceBaseUnblended => {
+            Some("Einige PBR-Maps konnten nicht mit der VaM-Haut verschmolzen werden")
+        }
+        TextKey::DetailEditRedone => Some("Rückgängig gemachte Bearbeitung wiederhergestellt"),
+        TextKey::ShortcutBrushSmaller => Some("Pinsel verkleinern"),
+        TextKey::ShortcutBrushLarger => Some("Pinsel vergrößern"),
+        TextKey::ShortcutBrushSizeDrag => Some("Pinselgröße, gezogen"),
+        TextKey::ShortcutBrushStrengthDrag => Some("Pinselstärke, gezogen"),
+        TextKey::ShortcutStencilCancel => Some("Schablonenplatzierung abbrechen"),
+        TextKey::ShortcutViewOrbit => Some("Ansicht umkreisen"),
+        TextKey::ShortcutViewPan => Some("Ansicht verschieben"),
+        TextKey::ShortcutViewDolly => Some("Ansicht heran- und wegfahren"),
         TextKey::TemplatePending => {
             Some("VaM-Ordner wählen, um die G2-Basis automatisch vorzubereiten")
         }
@@ -477,6 +639,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Glättet Oberflächendetails"),
         TextKey::SculptBrushRestoreTooltip => Some("Stellt die Basisform schrittweise wieder her"),
+        TextKey::SculptBrushMask => Some("Maske"),
+        TextKey::SculptBrushMaskTooltip => Some(
+            "Traegt die gewaehlte Aussehens-Ebene ab, sodass die darunter erscheint. Alt malt zurueck",
+        ),
         TextKey::TextureLayers => Some("Texturebenen"),
         TextKey::PackageSection => Some("VAR exportieren"),
         TextKey::PackageCreatorHint => Some("Ersteller"),
@@ -654,6 +820,216 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::DialogAddTextureLayer => Some("Texturebene hinzufügen"),
         TextKey::DialogSaveMorphPair => Some("VaM-Morph als VMI + VMB speichern"),
         TextKey::DialogChooseVamFolder => Some("Virt-A-Mate-Ordner wählen"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_label(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some("Haarmenge"),
+        "curveDensity" => Some("Kurvendichte"),
+        "iterations" => Some("Iterationen"),
+        "simulationEnabled" => Some("Physik"),
+        "collisionEnabled" => Some("Kollision"),
+        "weight" => Some("Gewicht"),
+        "drag" => Some("Luftwiderstand"),
+        "gravityMultiplier" => Some("Schwerkraft-Faktor"),
+        "collisionRadius" => Some("Kollisionsradius"),
+        "collisionRadiusRoot" => Some("Kollisionsradius (Ansatz)"),
+        "friction" => Some("Reibung"),
+        "bendResistance" => Some("Biegewiderstand"),
+        "rootRigidity" => Some("Steifigkeit am Ansatz"),
+        "mainRigidity" => Some("Steifigkeit in der Mitte"),
+        "tipRigidity" => Some("Steifigkeit an der Spitze"),
+        "jointRigidity" => Some("Gelenksteifigkeit"),
+        "rigidityRolloffPower" => Some("Steifigkeitsabfall"),
+        "cling" => Some("Stil-Zusammenhalt"),
+        "clingRolloff" => Some("Zusammenhalts-Abfall"),
+        "snap" => Some("Einrasten"),
+        "usePaintedRigidity" => Some("Gemalte Steifigkeit nutzen"),
+        "width" => Some("Dicke"),
+        "length1" => Some("Länge 1"),
+        "length2" => Some("Länge 2"),
+        "length3" => Some("Länge 3"),
+        "maxSpread" => Some("Maximale Streuung"),
+        "spreadRoot" => Some("Streuung (Ansatz)"),
+        "spreadMid" => Some("Streuung (Mitte)"),
+        "spreadTip" => Some("Streuung (Spitze)"),
+        "spreadMidpoint" => Some("Streuungs-Mittelpunkt"),
+        "spreadCurvePower" => Some("Streuungskurve"),
+        "curlScale" => Some("Lockengröße"),
+        "curlFrequency" => Some("Lockenfrequenz"),
+        "curlScaleRandomness" => Some("Größen-Zufall"),
+        "curlFrequencyRandomness" => Some("Frequenz-Zufall"),
+        "curlRoot" => Some("Locke (Ansatz)"),
+        "curlMid" => Some("Locke (Mitte)"),
+        "curlTip" => Some("Locke (Spitze)"),
+        "curlMidpoint" => Some("Locken-Mittelpunkt"),
+        "curlCurvePower" => Some("Lockenkurve"),
+        "curlX" => Some("Locke X"),
+        "curlY" => Some("Locke Y"),
+        "curlZ" => Some("Locke Z"),
+        "curlNormalAdjust" => Some("Locken-Normalenkorrektur"),
+        "curlAllowReverse" => Some("Gegenrichtung erlauben"),
+        "curlAllowFlipAxis" => Some("Achsenspiegelung erlauben"),
+        "Alpha Adjust" => Some("Kopfhaut-Deckkraft"),
+        "Diffuse Color" => Some("Kopfhaut-Diffusfarbe"),
+        "Gloss" => Some("Kopfhaut-Glanz"),
+        "Specular Intensity" => Some("Kopfhaut-Spiegelung"),
+        "Diffuse Texture Offset" => Some("Kopfhaut-Texturversatz"),
+        "rootColor" => Some("Ansatzfarbe"),
+        "tipColor" => Some("Spitzenfarbe"),
+        "specularColor" => Some("Glanzfarbe"),
+        "colorRolloff" => Some("Farbabfall Ansatz→Spitze"),
+        "randomColorPower" => Some("Zufallsfarben-Stärke"),
+        "randomColorOffset" => Some("Zufallsfarben-Versatz"),
+        "primarySpecularSharpness" => Some("Primärer Glanz"),
+        "secondarySpecularSharpness" => Some("Sekundärer Glanz"),
+        "specularShift" => Some("Versatz des zweiten Glanzes"),
+        "diffuseSoftness" => Some("Diffus-Weichheit"),
+        "fresnelPower" => Some("Fresnel-Stärke"),
+        "fresnelAttenuation" => Some("Fresnel-Abschwächung"),
+        "IBLFactor" => Some("Indirektes Licht"),
+        "normalRandomize" => Some("Normalen-Zufall"),
+        _ => None,
+    }
+}
+
+pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
+    match key {
+        "hairMultiplier" => Some(
+            "Wie viele Strähnen zwischen je drei Führungen wachsen. Das Aussehen des Haares, und der Großteil seiner Kosten.",
+        ),
+        "curveDensity" => Some(
+            "Punkte entlang jeder Strähne. Mehr ist glatter und langsamer; die Form ist lange lesbar, bevor die Zahl hoch wird.",
+        ),
+        "iterations" => Some(
+            "Solver-Durchgänge pro Bild. Mehr hält die Zwangsbedingungen bei schneller Bewegung straffer.",
+        ),
+        "simulationEnabled" => Some(
+            "Ob sich dieses Part im Spiel bewegt. Hat nichts mit dem Viewport-Schalter zu tun.",
+        ),
+        "collisionEnabled" => Some("Ob die Strähnen dieses Parts aus dem Körper geschoben werden."),
+        "weight" => Some(
+            "Wie schwer eine Strähne hängt. Skaliert Schwerkraft und den Widerstand gegen Bewegung.",
+        ),
+        "drag" => Some(
+            "Wie stark die Luft eine Strähne bremst. Hoch legt sie sich schnell und schwingt kaum.",
+        ),
+        "gravityMultiplier" => Some("Die Schwerkraft auf dieses Part, als Vielfaches der Szene."),
+        "collisionRadius" => {
+            Some("Die Dicke, mit der eine Strähne kollidiert, über ihre ganze Länge.")
+        }
+        "collisionRadiusRoot" => {
+            Some("Die Dicke nahe dem Ansatz, wenn sie vom Rest abweichen soll.")
+        }
+        "friction" => Some("Wie sehr eine Strähne greift statt zu gleiten."),
+        "bendResistance" => {
+            Some("Wie sehr eine Strähne sich dem Biegen aus der Geraden widersetzt.")
+        }
+        "rootRigidity" => Some("Wie stark der Ansatz die frisierte Form hält."),
+        "mainRigidity" => Some("Wie stark die Mitte die frisierte Form hält."),
+        "tipRigidity" => Some("Wie stark die Spitze die frisierte Form hält."),
+        "jointRigidity" => Some(
+            "Die Härte der Stil-Gelenke: die Federn, die einen Pferdeschwanz zum Pferdeschwanz machen.",
+        ),
+        "rigidityRolloffPower" => Some(
+            "Wie sich die drei Steifigkeiten entlang der Strähne mischen. Höher trägt den Ansatzwert weiter nach unten.",
+        ),
+        "cling" => Some("Wie stark die Stil-Gelenke Strähnen zueinander ziehen."),
+        "clingRolloff" => Some(
+            "Wie weit der Zusammenhalt entlang der Strähne abklingt. Höher hält ihn nahe am Ansatz.",
+        ),
+        "snap" => Some("Wie fest jedes Segment die erstellte Länge hält."),
+        "usePaintedRigidity" => {
+            Some("Die Steifigkeit aus der gemalten Karte nehmen statt aus den drei Reglern.")
+        }
+        "width" => Some(
+            "Wie dick eine Strähne gezeichnet wird. Auch der Regler in VaM endet bei einem Zehntelmillimeter.",
+        ),
+        "length1" => Some("Länge der Strähnen nahe der ersten Führung ihres Dreiecks."),
+        "length2" => Some("Länge der Strähnen nahe der zweiten Führung ihres Dreiecks."),
+        "length3" => Some("Länge der Strähnen nahe der dritten Führung ihres Dreiecks."),
+        "maxSpread" => Some(
+            "Eine Obergrenze dafür, wie weit eine Strähne von ihrer Führung abdriften darf, kein Verstärker. Sobald sie den Führungsabstand übersteigt, ändert Höherdrehen nichts.",
+        ),
+        "spreadRoot" => {
+            Some("Wie frei sich Strähnen am Ansatz trennen. Niedrig sammelt sie zur Führung hin.")
+        }
+        "spreadMid" => Some("Wie frei sich Strähnen in der Mitte trennen."),
+        "spreadTip" => Some("Wie frei sich Strähnen an der Spitze trennen."),
+        "spreadMidpoint" => Some("Ab welcher Stelle der Strähne die mittlere Streuung greift."),
+        "spreadCurvePower" => {
+            Some("Wie scharf die Streuung zwischen Ansatz, Mitte und Spitze umschlägt.")
+        }
+        "curlScale" => {
+            Some("Die Breite der Locke: der Radius, um den sie sich windet, nicht ihre Länge.")
+        }
+        "curlFrequency" => Some("Windungen pro Zentimeter Strähne."),
+        "curlScaleRandomness" => {
+            Some("Wie stark die Lockenbreite von Strähne zu Strähne schwankt.")
+        }
+        "curlFrequencyRandomness" => {
+            Some("Wie stark die Windungsrate von Strähne zu Strähne schwankt.")
+        }
+        "curlRoot" => Some("Wie viel Locke den Ansatz erreicht."),
+        "curlMid" => Some("Wie viel Locke die Mitte erreicht."),
+        "curlTip" => Some("Wie viel Locke die Spitze erreicht."),
+        "curlMidpoint" => Some("Ab welcher Stelle der Strähne die mittlere Locke greift."),
+        "curlCurvePower" => {
+            Some("Wie scharf die Locke zwischen Ansatz, Mitte und Spitze umschlägt.")
+        }
+        "curlX" => Some(
+            "Die Verschiebung der Locke entlang X. Ein Vektor, der gedreht wird, keine Achse zum Winden.",
+        ),
+        "curlY" => Some("Die Verschiebung der Locke entlang Y."),
+        "curlZ" => Some("Die Verschiebung der Locke entlang Z."),
+        "curlNormalAdjust" => Some(
+            "Wird dem Lockenversatz entlang der Normalen zugerechnet. Es hebt die Windung vom Kopf ab, statt sie zu neigen.",
+        ),
+        "curlAllowReverse" => Some(
+            "Lässt manche Strähnen andersherum winden, damit ein Lockenkopf nicht als eine wiederholte Strähne liest.",
+        ),
+        "curlAllowFlipAxis" => {
+            Some("Lässt manche Strähnen um eine gespiegelte Achse winden, aus demselben Grund.")
+        }
+        "Alpha Adjust" => Some(
+            "Wie deckend die Kopfhaut-Kappe ist. Die meisten Parts tragen die Kappe eines anderen und lassen dies ganz unten, um sie zu verbergen; erhöhe es nur, wenn ein Scheitel Kopfhaut zeigen soll.",
+        ),
+        "Diffuse Color" => Some(
+            "Die Diffusfarbe der Kappe selbst. VaM liefert sie weiß, damit die Haut darunter durchscheint.",
+        ),
+        "Gloss" => Some("Wie glänzend die Kappe dort ist, wo sie sichtbar wird."),
+        "Specular Intensity" => Some("Wie stark die Kappe ein Glanzlicht aufnimmt."),
+        "Diffuse Texture Offset" => {
+            Some("Wird der Diffusfarbe der Kappe zugerechnet. Trotz des Namens kein Blattindex.")
+        }
+        "rootColor" => Some("Die Farbe am Ansatz."),
+        "tipColor" => Some("Die Farbe an der Spitze."),
+        "specularColor" => Some("Die Farbe des Glanzlichts."),
+        "colorRolloff" => Some("Wie die Ansatzfarbe entlang der Strähne der Spitzenfarbe weicht."),
+        "randomColorPower" => Some("Wie stark Strähnen in der Farbe voneinander abweichen."),
+        "randomColorOffset" => Some("Wohin diese Abweichung neigt, heller oder dunkler."),
+        "primarySpecularSharpness" => {
+            Some("Wie eng das Hauptglanzlicht ist. Höher ist glänzender.")
+        }
+        "secondarySpecularSharpness" => {
+            Some("Wie eng das zweite Glanzlicht ist: das farbige, das mit dem Haar wandert.")
+        }
+        "specularShift" => {
+            Some("Wie weit das zweite Glanzlicht entlang der Strähne vom ersten sitzt.")
+        }
+        "diffuseSoftness" => Some(
+            "Wie weich Licht sich um eine Strähne legt, statt nur die zugewandte Seite zu beleuchten.",
+        ),
+        "fresnelPower" => {
+            Some("Wie scharf der Rand aufhellt, wo sich das Haar vom Blick wegdreht.")
+        }
+        "fresnelAttenuation" => Some("Wie stark diese Randaufhellung ist."),
+        "IBLFactor" => Some("Wie viel Umgebungslicht der Szene das Haar aufnimmt."),
+        "normalRandomize" => Some(
+            "Wie stark die Schattierungsnormale jeder Strähne verwackelt wird, damit Nachbarn nicht identisch schattieren.",
+        ),
         _ => None,
     }
 }

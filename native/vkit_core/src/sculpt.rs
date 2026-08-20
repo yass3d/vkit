@@ -56,10 +56,6 @@ impl SculptTarget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SculptTargets(u8);
 
-#[allow(
-    dead_code,
-    reason = "public mask constants support UI presets and future persisted sessions"
-)]
 impl SculptTargets {
     pub const NONE: Self = Self(0);
     pub const HEAD_SKIN: Self = Self(SculptTarget::HeadSkin as u8);
@@ -69,13 +65,6 @@ impl SculptTargets {
     pub const EYES: Self = Self(SculptTarget::Eyes as u8);
     pub const INNER_MOUTH: Self = Self(SculptTarget::InnerMouth as u8);
     pub const LIPS: Self = Self(SculptTarget::Lips as u8);
-    /// What someone reshaping a face reaches for without being asked: the skin
-    /// and the parts sitting on it that have to travel with it.
-    ///
-    /// The tear line and the lashes are attached to the surface, so leaving
-    /// them out means the first pull around an eye tears them off the face.
-    /// The eyes, teeth and inner mouth are parts *behind* the surface and stay
-    /// off until they are asked for.
     pub const FACE_SURFACE: Self = Self(
         SculptTarget::HeadSkin as u8
             | SculptTarget::Tear as u8
@@ -108,7 +97,6 @@ impl SculptTargets {
         Self(self.0 & !(target as u8))
     }
 
-    /// The groups in both sets — what is selected *and* on screen, typically.
     pub const fn intersection(self, other: Self) -> Self {
         Self(self.0 & other.0)
     }

@@ -54,11 +54,13 @@ macro_rules! scalp_shader_source {
         struct VertexInput {
             @location(0) position: vec3<f32>,
             @location(1) uv: vec2<f32>,
+            @location(2) normal: vec3<f32>,
         };
         struct VertexOutput {
             @builtin(position) clip_position: vec4<f32>,
             @location(0) uv: vec2<f32>,
             @location(1) world_position: vec3<f32>,
+            @location(2) normal: vec3<f32>,
         };
 
         @vertex
@@ -68,6 +70,7 @@ macro_rules! scalp_shader_source {
             output.clip_position = scene.view_projection * world;
             output.uv = input.uv;
             output.world_position = world.xyz;
+            output.normal = (scene.model * vec4<f32>(input.normal, 0.0)).xyz;
             return output;
         }
 
@@ -174,10 +177,16 @@ macro_rules! scalp_shader_source {
             input: VertexOutput,
             @builtin(front_facing) front_facing: bool,
         ) -> @location(0) vec4<f32> {
-            var albedo = srgb_to_linear(scene.tint.rgb);
+            var sheet = vec3<f32>(1.0);
             if (scene.map_flags.x > 0.5) {
-                albedo = albedo * textureSample(diffuse_map, map_sampler, input.uv).rgb;
+                sheet = textureSample(diffuse_map, map_sampler, input.uv).rgb;
             }
+            let albedo = srgb_to_linear(scene.tint.rgb)
+                * clamp(
+                    sheet + vec3<f32>(scene.map_flags_2.z),
+                    vec3<f32>(0.0),
+                    vec3<f32>(1.0),
+                );
             var coverage = scene.tint.a;
             if (scene.map_flags.y > 0.5) {
 
@@ -189,6 +198,9 @@ macro_rules! scalp_shader_source {
                 discard;
             }
             var normal = normalize(cross(dpdx(input.world_position), dpdy(input.world_position)));
+            if (dot(input.normal, input.normal) > 1.0e-8) {
+                normal = normalize(input.normal);
+            }
             if (!front_facing) { normal = -normal; }
             if (scene.map_flags.z > 0.5) {
                 normal = tangent_space_normal(
@@ -309,6 +321,7 @@ macro_rules! hair_shader_source {
             particles: vec4<u32>,
 
             weights: vec4<f32>,
+            slot: vec4<f32>,
         };
         struct RenderPart {
 
@@ -329,6 +342,7 @@ macro_rules! hair_shader_source {
             waviness_b: vec4<f32>,
 
             waviness_c: vec4<f32>,
+            waviness_d: vec4<f32>,
 
             spread_a: vec4<f32>,
 
@@ -339,6 +353,11 @@ macro_rules! hair_shader_source {
         @group(0) @binding(1) var<storage, read> particles: array<Particle>;
         @group(0) @binding(2) var<storage, read> segments: array<RenderSegment>;
         @group(0) @binding(3) var<storage, read> parts: array<RenderPart>;
+        struct GuideData {
+            normal_phase: vec4<f32>,
+            rand: vec4<f32>,
+        };
+        @group(0) @binding(4) var<storage, read> guide_data: array<GuideData>;
 
         struct VertexOutput {
             @builtin(position) clip_position: vec4<f32>,
@@ -354,33 +373,6 @@ macro_rules! hair_shader_source {
 
         fn max_render_subdivisions() -> u32 {
             return max(u32(scene.grading.w), 1u);
-        }
-
-        fn catmull_position(
-            before: vec3<f32>,
-            start: vec3<f32>,
-            end: vec3<f32>,
-            after: vec3<f32>,
-            f: f32,
-        ) -> vec3<f32> {
-            return 0.5
-                * (2.0 * start
-                    + (end - before) * f
-                    + (2.0 * before - 5.0 * start + 4.0 * end - after) * f * f
-                    + (3.0 * start - before - 3.0 * end + after) * f * f * f);
-        }
-
-        fn catmull_tangent(
-            before: vec3<f32>,
-            start: vec3<f32>,
-            end: vec3<f32>,
-            after: vec3<f32>,
-            f: f32,
-        ) -> vec3<f32> {
-            return 0.5
-                * ((end - before)
-                    + 2.0 * (2.0 * before - 5.0 * start + 4.0 * end - after) * f
-                    + 3.0 * (3.0 * start - before - 3.0 * end + after) * f * f);
         }
 
         fn hash_u32(value: u32) -> u32 {
@@ -419,58 +411,116 @@ macro_rules! hair_shader_source {
             return mix(part.waviness_c.y, part.waviness_c.z, eased);
         }
 
-        fn waviness_offset(t: f32, part: RenderPart, strand_rand: f32) -> vec3<f32> {
-            let amplitude = part.waviness_a.w;
-            if (amplitude <= 0.0) {
+        fn strand_spine(root: u32, segment_count: u32) -> vec3<f32> {
+            return particles[root + segment_count].position.xyz
+                - particles[root].position.xyz;
+        }
+
+        struct GuideCurl {
+            spine: vec3<f32>,
+            root_normal: vec3<f32>,
+            rand: vec3<f32>,
+            phase: f32,
+        };
+
+        fn guide_curl(root: u32, segment_count: u32) -> GuideCurl {
+            var curl: GuideCurl;
+            curl.spine = strand_spine(root, segment_count);
+            curl.root_normal = guide_data[root].normal_phase.xyz;
+            curl.rand = guide_data[root].rand.xyz;
+            curl.phase = guide_data[root].normal_phase.w;
+            return curl;
+        }
+
+        fn waviness_offset(
+            t: f32,
+            part: RenderPart,
+            curl: GuideCurl,
+        ) -> vec3<f32> {
+            let vector = part.waviness_a.xyz;
+            let scale = part.waviness_a.w;
+            if (scale <= 0.0) {
                 return vec3<f32>(0.0);
             }
-            let r_scale = fract(strand_rand * 61.8034);
-            let r_frequency = fract(strand_rand * 137.036);
-            let r_direction = fract(strand_rand * 261.8034);
-            let amp_random = max(0.0, 1.0 + part.waviness_b.y * (r_scale - 0.5));
-            let freq_random = max(0.0, 1.0 + part.waviness_b.z * (r_frequency - 0.5));
+            let chord = length(curl.spine);
+            if (chord <= 1.0e-6) {
+                return vec3<f32>(0.0);
+            }
+            let spine = curl.spine / chord;
+
+            let amp_random = 1.0 + part.waviness_b.y * (curl.rand.z - 0.5);
+            let freq_random = 1.0 + part.waviness_b.z * (curl.rand.x - 0.5);
+            let sign = select(1.0, -1.0, curl.rand.y < 0.5);
+
             let flags = u32(part.width.w);
-            var axis = part.waviness_a.xyz;
-            if ((flags & 2u) != 0u && r_direction > 0.5) {
-                axis = -axis;
+            var flipped = vector;
+            if ((flags & 2u) != 0u) {
+                flipped = flipped * sign;
             }
-            var direction = 1.0;
-            if ((flags & 1u) != 0u && fract(r_direction * 2.0) < 0.5) {
-                direction = -1.0;
+            var winding = 1.0;
+            if ((flags & 1u) != 0u) {
+                winding = sign;
             }
 
-            let phase = t * part.waviness_b.x * freq_random * direction * 6.2831853;
-            return axis * (sin(phase) * amplitude * amp_random * waviness_envelope(t, part));
+            let angle = winding
+                * (curl.phase + t * chord * part.waviness_b.x * freq_random);
+
+            let cosine = cos(angle);
+            let sine = sin(angle);
+            let rotated = flipped * cosine
+                + cross(spine, flipped) * sine
+                + spine * dot(spine, flipped) * (1.0 - cosine);
+
+            let adjusted = rotated + curl.root_normal * part.waviness_d.x;
+
+            return adjusted * (scale * amp_random * waviness_envelope(t, part));
         }
 
-        fn guide_random(root: u32) -> f32 {
-            return f32(hash_u32(root * 0x9e3779b9u + 0x7f4a7c15u) & 0x00ffffffu) / 16777215.0;
+        fn guide_spline(root: u32, travel: f32, segment_count: u32) -> vec3<f32> {
+            let cells = f32(segment_count);
+            let clamped = clamp(travel, 0.0, cells);
+            let cell = i32(floor(min(clamped, cells - 1.0e-4)));
+            let k = clamped - f32(cell);
+            let last = i32(segment_count);
+            let p0 = particles[root + u32(clamp(cell - 1, 0, last))].position.xyz;
+            let p1 = particles[root + u32(clamp(cell, 0, last))].position.xyz;
+            let p2 = particles[root + u32(clamp(cell + 1, 0, last))].position.xyz;
+            let inv = 1.0 - k;
+            return (p0 + p1) * (0.5 * inv * inv)
+                + p1 * (2.0 * k * inv)
+                + (p1 + p2) * (0.5 * k * k);
         }
 
-        fn guide_blend(
-            roots: vec3<i32>,
-            weights: vec3<f32>,
-            point: i32,
+        fn strand_sample(
+            roots: vec3<u32>,
+            bary: vec3<f32>,
+            travel: f32,
             segment_count: u32,
             part: RenderPart,
+            curl_x: GuideCurl,
+            curl_y: GuideCurl,
+            curl_z: GuideCurl,
         ) -> vec3<f32> {
-            let index = clamp(point, 0, i32(segment_count));
-            let t = f32(index) / f32(segment_count);
-            let x = u32(roots.x + index);
-            let y = u32(roots.y + index);
-            let z = u32(roots.z + index);
-            return (particles[x].position.xyz
-                    + waviness_offset(t, part, guide_random(u32(roots.x))))
-                    * weights.x
-                + (particles[y].position.xyz
-                    + waviness_offset(t, part, guide_random(u32(roots.y))))
-                    * weights.y
-                + (particles[z].position.xyz
-                    + waviness_offset(t, part, guide_random(u32(roots.z))))
-                    * weights.z;
+            let t = clamp(travel / f32(segment_count), 0.0, 1.0);
+            let g0 = guide_spline(roots.x, travel, segment_count)
+                + waviness_offset(t, part, curl_x);
+            var g1 = guide_spline(roots.y, travel, segment_count)
+                + waviness_offset(t, part, curl_y);
+            var g2 = guide_spline(roots.z, travel, segment_count)
+                + waviness_offset(t, part, curl_z);
+            let max_spread = part.spread_b.y;
+            let d1 = g1 - g0;
+            let len1 = length(d1);
+            g1 = g0 + d1 * (min(len1, max_spread) / max(len1, 1.0e-4));
+            let d2 = g2 - g0;
+            let len2 = length(d2);
+            g2 = g0 + d2 * (min(len2, max_spread) / max(len2, 1.0e-4));
+            let blended = g0 * bary.x + g1 * bary.y + g2 * bary.z;
+            let centre = (g0 + g1 + g2) / 3.0;
+            return mix(blended, centre, spread_gather(t, part));
         }
 
-        fn spread_deviation(t: f32, part: RenderPart) -> f32 {
+        fn spread_gather(t: f32, part: RenderPart) -> f32 {
             let midpoint = max(part.spread_a.w, 0.001);
             var followed: f32;
             if (t <= midpoint) {
@@ -483,11 +533,31 @@ macro_rules! hair_shader_source {
             return clamp(1.0 - followed, 0.0, 1.0);
         }
 
-        fn leaned_weights(seed: f32) -> vec3<f32> {
-            let pick = hash_u32(bitcast<u32>(seed * 8191.0 + 7.0)) % 3u;
-            if (pick == 0u) { return vec3<f32>(1.0, 0.0, 0.0); }
-            if (pick == 1u) { return vec3<f32>(0.0, 1.0, 0.0); }
-            return vec3<f32>(0.0, 0.0, 1.0);
+        fn polyline_sample(
+            roots: vec3<u32>,
+            weights: vec3<f32>,
+            strand_u: f32,
+            segment_count: u32,
+            part: RenderPart,
+            curl_x: GuideCurl,
+            curl_y: GuideCurl,
+            curl_z: GuideCurl,
+        ) -> vec3<f32> {
+            let spans = max(part.spread_b.w - 1.0, 1.0);
+            let q = clamp(strand_u, 0.0, 1.0) * spans;
+            let lower = floor(q);
+            let blend = q - lower;
+            let u0 = lower / spans;
+            let u1 = min(lower + 1.0, spans) / spans;
+            let p0 = strand_sample(
+                roots, weights, u0 * f32(segment_count), segment_count, part,
+                curl_x, curl_y, curl_z,
+            );
+            let p1 = strand_sample(
+                roots, weights, u1 * f32(segment_count), segment_count, part,
+                curl_x, curl_y, curl_z,
+            );
+            return mix(p0, p1, blend);
         }
 
         @vertex
@@ -508,40 +578,51 @@ macro_rules! hair_shader_source {
 
             let local_segment = i32(round(segment.weights.w * f32(segment_count)));
             let roots = vec3<i32>(segment.particles.xyz) - vec3<i32>(local_segment);
-            let subdivisions = clamp(u32(part.spread_b.w), 1u, stride);
-            let f = (f32(min(sub, subdivisions)) + select(0.0, 1.0, use_end))
-                / f32(subdivisions);
+            let subdivisions = clamp(
+                u32(ceil(part.spread_b.w / f32(segment_count))),
+                1u,
+                stride,
+            );
+            if (sub >= subdivisions) {
+                output.clip_position = vec4<f32>(0.0, 0.0, -2.0, 1.0);
+                output.world_position = vec3<f32>(0.0);
+                output.world_tangent = vec3<f32>(0.0, 1.0, 0.0);
+                output.strand_t = 0.0;
+                output.ribbon_side = 0.0;
+                output.part_index = part_index;
+                output.strand_noise = 0.0;
+                output.half_pixels = 0.0;
+                return output;
+            }
+            let f = (f32(sub) + select(0.0, 1.0, use_end)) / f32(subdivisions);
 
             let t = (f32(local_segment) + f) / f32(segment_count);
 
-            let reach = clamp(dot(segment.weights.xyz, part.lengths.xyz), 0.05, 1.0);
-            let travel = t * reach * f32(segment_count);
+            let weights = segment.weights.xyz;
+            let uroots = vec3<u32>(roots);
+            let curl_x = guide_curl(uroots.x, segment_count);
+            let curl_y = guide_curl(uroots.y, segment_count);
+            let curl_z = guide_curl(uroots.z, segment_count);
 
-            let cell = clamp(i32(floor(travel)), 0, i32(segment_count) - 1);
-            let frac = clamp(travel - f32(cell), 0.0, 1.0);
+            let reach = clamp(dot(segment.slot.xyz, part.lengths.xyz), 0.0, 1.0);
+            let strand_u = t * reach;
 
-            var weights = segment.weights.xyz;
-            let deviation = spread_deviation(t, part);
-            if (deviation > 0.0 && weights.x < 0.999) {
-                let lean = leaned_weights(noise);
-                let blend_here = guide_blend(roots, weights, cell, segment_count, part);
-                let lean_here = guide_blend(roots, lean, cell, segment_count, part);
-                let reach = length(lean_here - blend_here) * deviation;
-                var allowed = deviation;
-                if (reach > part.spread_b.y && reach > 1.0e-6) {
-                    allowed = deviation * (part.spread_b.y / reach);
-                }
-                weights = mix(weights, lean, allowed);
-            }
-
-            let before = guide_blend(roots, weights, cell - 1, segment_count, part);
-            let start = guide_blend(roots, weights, cell, segment_count, part);
-            let end = guide_blend(roots, weights, cell + 1, segment_count, part);
-            let after = guide_blend(roots, weights, cell + 2, segment_count, part);
-            let position = catmull_position(before, start, end, after, frac);
+            let position = polyline_sample(
+                uroots, weights, strand_u, segment_count, part, curl_x, curl_y, curl_z,
+            );
             let world = scene.model * vec4<f32>(position, 1.0);
 
-            let direction = catmull_tangent(before, start, end, after, frac);
+            let sample_step = max(reach, 1.0e-3) / (f32(subdivisions) * f32(segment_count));
+            var neighbour_u = strand_u - sample_step;
+            var neighbour_sign = 1.0;
+            if (neighbour_u < 0.0) {
+                neighbour_u = strand_u + sample_step;
+                neighbour_sign = -1.0;
+            }
+            let neighbour = polyline_sample(
+                uroots, weights, neighbour_u, segment_count, part, curl_x, curl_y, curl_z,
+            );
+            let direction = (position - neighbour) * neighbour_sign;
             let along = safe_normalize(
                 (scene.model * vec4<f32>(direction, 0.0)).xyz,
                 vec3<f32>(0.0, 1.0, 0.0),
@@ -562,7 +643,7 @@ macro_rules! hair_shader_source {
                 side = normalize(cross(along, fallback));
             }
 
-            let taper = mix(0.06, 1.0, pow(1.0 - t, 0.55));
+            let taper = 1.0 - saturate((t - 0.9) * 10.0);
             let authored_half_width = part.width.x * taper * 0.5;
             var half_width = authored_half_width;
             let viewport_pixels = scene.grading.yz;
@@ -840,6 +921,7 @@ struct ScalpUniform {
 struct ScalpVertex {
     position: [f32; 3],
     uv: [f32; 2],
+    normal: [f32; 3],
 }
 
 const SCALP_ALPHA_CUTOFF: f32 = 0.45;
@@ -921,6 +1003,7 @@ pub(crate) struct ScalpRenderResources {
     sampler: wgpu::Sampler,
     blank: wgpu::TextureView,
     scenes: BTreeMap<u64, ScalpGpuScene>,
+    texture_views: std::collections::HashMap<(u64, wgpu::TextureFormat), wgpu::TextureView>,
 
     logged_scalps: BTreeSet<ScalpLogIdentity>,
     use_counter: u64,
@@ -1046,6 +1129,11 @@ impl ScalpRenderResources {
                                 offset: 12,
                                 shader_location: 1,
                             },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x3,
+                                offset: 20,
+                                shader_location: 2,
+                            },
                         ],
                     }],
                 },
@@ -1098,13 +1186,34 @@ impl ScalpRenderResources {
             sampler,
             blank,
             scenes: BTreeMap::new(),
+            texture_views: std::collections::HashMap::new(),
             logged_scalps: BTreeSet::new(),
             use_counter: 0,
             target_is_srgb: target_format.is_srgb(),
         }
     }
 
-    fn prepare(
+    fn cached_scalp_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        image: &crate::skin_preview::SkinImage,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::TextureView {
+        const CACHE_CAP: usize = 48;
+        let key = (image.revision, format);
+        if let Some(view) = self.texture_views.get(&key) {
+            return view.clone();
+        }
+        if self.texture_views.len() >= CACHE_CAP {
+            self.texture_views.clear();
+        }
+        let view = upload_scalp_texture(device, queue, Some(image), format);
+        self.texture_views.insert(key, view.clone());
+        view
+    }
+
+    pub(crate) fn prepare(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1145,7 +1254,7 @@ impl ScalpRenderResources {
             map_flags_2: [
                 f32::from(u8::from(part.gloss.is_some())),
                 material.alpha_adjust,
-                0.0,
+                material.diffuse_offset,
                 0.0,
             ],
             eye: callback.eye.extend(1.0).to_array(),
@@ -1199,17 +1308,39 @@ impl ScalpRenderResources {
             return;
         }
 
-        let vertices = part
+        let positions = part
             .anchors
             .iter()
+            .map(|anchor| anchored_position(&callback.head, anchor))
+            .collect::<Vec<_>>();
+        let mut normals = vec![Vec3::ZERO; positions.len()];
+        for triangle in part.triangles.iter() {
+            let [a, b, c] = triangle.map(|index| positions.get(index as usize).copied());
+            let (Some(a), Some(b), Some(c)) = (a, b, c) else {
+                continue;
+            };
+            let face = (b - a).cross(c - a);
+            for index in triangle {
+                if let Some(normal) = normals.get_mut(*index as usize) {
+                    *normal += face;
+                }
+            }
+        }
+        let vertices = positions
+            .iter()
             .enumerate()
-            .map(|(index, anchor)| ScalpVertex {
-                position: anchored_position(&callback.head, anchor).to_array(),
+            .map(|(index, position)| ScalpVertex {
+                position: position.to_array(),
 
                 uv: part
                     .uvs
                     .get(index)
                     .map_or([0.0, 0.0], |uv| [uv[0], 1.0 - uv[1]]),
+                normal: normals
+                    .get(index)
+                    .and_then(|normal| normal.try_normalize())
+                    .unwrap_or(Vec3::Y)
+                    .to_array(),
             })
             .collect::<Vec<_>>();
         let indices = part
@@ -1236,25 +1367,20 @@ impl ScalpRenderResources {
             contents: bytemuck::bytes_of(&uniform),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let diffuse = part.diffuse.as_deref().map(|image| {
-            upload_scalp_texture(
-                device,
-                queue,
-                Some(image),
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            )
+        let diffuse = part.diffuse.clone().map(|image| {
+            self.cached_scalp_texture(device, queue, &image, wgpu::TextureFormat::Rgba8UnormSrgb)
         });
-        let alpha = part.alpha.as_deref().map(|image| {
-            upload_scalp_texture(device, queue, Some(image), wgpu::TextureFormat::Rgba8Unorm)
+        let alpha = part.alpha.clone().map(|image| {
+            self.cached_scalp_texture(device, queue, &image, wgpu::TextureFormat::Rgba8Unorm)
         });
-        let normal = part.normal.as_deref().map(|image| {
-            upload_scalp_texture(device, queue, Some(image), wgpu::TextureFormat::Rgba8Unorm)
+        let normal = part.normal.clone().map(|image| {
+            self.cached_scalp_texture(device, queue, &image, wgpu::TextureFormat::Rgba8Unorm)
         });
-        let specular = part.specular.as_deref().map(|image| {
-            upload_scalp_texture(device, queue, Some(image), wgpu::TextureFormat::Rgba8Unorm)
+        let specular = part.specular.clone().map(|image| {
+            self.cached_scalp_texture(device, queue, &image, wgpu::TextureFormat::Rgba8Unorm)
         });
-        let gloss = part.gloss.as_deref().map(|image| {
-            upload_scalp_texture(device, queue, Some(image), wgpu::TextureFormat::Rgba8Unorm)
+        let gloss = part.gloss.clone().map(|image| {
+            self.cached_scalp_texture(device, queue, &image, wgpu::TextureFormat::Rgba8Unorm)
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("vkit.scalp.bind-group"),
@@ -1468,6 +1594,10 @@ pub struct HairPaintCallback {
 
     pub settle_gravity: f32,
 
+    pub simulate_hair: crate::hair_physics::HairSimulation,
+
+    pub solve: bool,
+
     pub viewport_pixels: [f32; 2],
 }
 
@@ -1560,6 +1690,7 @@ impl HairRenderResources {
                 render_storage_entry(1, wgpu::ShaderStages::VERTEX),
                 render_storage_entry(2, wgpu::ShaderStages::VERTEX),
                 render_storage_entry(3, wgpu::ShaderStages::VERTEX_FRAGMENT),
+                render_storage_entry(4, wgpu::ShaderStages::VERTEX),
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -1623,7 +1754,7 @@ impl HairRenderResources {
         }
     }
 
-    fn prepare(
+    pub(crate) fn prepare(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1673,7 +1804,9 @@ impl HairRenderResources {
             ],
         };
         if let Some(scene) = self.scenes.get_mut(&callback.scene_key)
-            && scene.physics.matches(&callback.preview, &callback.mesh)
+            && scene
+                .physics
+                .matches(&callback.preview, &callback.mesh, callback.simulate_hair)
         {
             uniform.grading[3] = scene.physics.render_subdivisions() as f32;
             queue.write_buffer(&scene.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
@@ -1686,6 +1819,7 @@ impl HairRenderResources {
                 &self.physics_pipelines,
                 callback.time_seconds,
                 callback.settle_gravity,
+                callback.solve,
             );
             return;
         }
@@ -1694,10 +1828,12 @@ impl HairRenderResources {
             Arc::clone(&callback.preview),
             Arc::clone(&callback.mesh),
             &self.physics_pipelines,
+            callback.simulate_hair,
         ) else {
             self.scenes.remove(&callback.scene_key);
             return;
         };
+        uniform.grading[3] = physics.render_subdivisions() as f32;
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vkit.hair.uniform"),
             contents: bytemuck::bytes_of(&uniform),
@@ -1722,6 +1858,10 @@ impl HairRenderResources {
                 wgpu::BindGroupEntry {
                     binding: 3,
                     resource: physics.render_part_buffer().as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: physics.guide_normal_buffer().as_entire_binding(),
                 },
             ],
         });
@@ -1871,7 +2011,6 @@ mod tests {
             .expect("test surface"),
         );
         let preview = Arc::new(HairPreview {
-            preset_id: "pipeline-test".to_owned(),
             parts: vec![HairPreviewPart {
                 curve_density: 4,
                 guides: Arc::new(vec![HairPreviewGuide {
@@ -1885,6 +2024,8 @@ mod tests {
                     },
                     local_points: vec![[0.0, 0.0, 0.0], [0.0, 0.0, 0.2]],
                     painted_rigidity: vec![1.0, 1.0],
+                    curl_rand: [0.5, 0.5, 0.5],
+                    curl_phase: 0.0,
                 }]),
                 strands: Arc::new(vec![HairPreviewStrand {
                     point_count: 2,
@@ -1902,13 +2043,14 @@ mod tests {
                 nearby_joints: Vec::new(),
             }],
             scalps: Vec::new(),
-            skipped_parts: Vec::new(),
             body_capsules: Vec::new(),
         });
         let mut callback = HairPaintCallback {
             scene_key: 1,
             mesh,
             preview,
+            simulate_hair: crate::hair_physics::HairSimulation::Off,
+            solve: true,
             view_projection: Mat4::IDENTITY,
             model: Mat4::IDENTITY,
             eye: Vec3::new(0.0, 0.0, 2.0),

@@ -96,17 +96,6 @@ impl VaMRoot {
         &self.female_bank
     }
 
-    pub fn male_bank_path(&self) -> Result<&Path> {
-        if self.male_bank.is_file() {
-            Ok(&self.male_bank)
-        } else {
-            Err(VaMError::InvalidRoot {
-                path: self.path.clone(),
-                message: "VaM_Data/StreamingAssets/m_mb was not found".to_owned(),
-            })
-        }
-    }
-
     pub fn morph_bank_path(&self, sex: SkinSex) -> Result<&Path> {
         let (path, relative_path) = match sex {
             SkinSex::Female => (self.female_bank_path(), "VaM_Data/StreamingAssets/f_mb"),
