@@ -482,13 +482,6 @@ fn build_scalp_anchors(
             .triangles
             .get(hit.primitive_id as usize)
             .ok_or("scalp anchor references a triangle outside the template")?;
-        let surface = Vec3::new(
-            hit.point[0] as f32,
-            hit.point[1] as f32,
-            hit.point[2] as f32,
-        );
-
-        let normal = triangle_normal(mesh, triangle).unwrap_or(Vec3::Y);
         anchors.push(ScalpAnchor {
             triangle,
             barycentric: [
@@ -496,7 +489,15 @@ fn build_scalp_anchors(
                 hit.barycentric[1] as f32,
                 hit.barycentric[2] as f32,
             ],
-            normal_offset: (placed - surface).dot(normal) + lift,
+            // The lift, and nothing else. `placed` is where the BUNDLE put this
+            // cap vertex, which is a shape authored on the neutral G2 head, and
+            // the projection lands on the head actually loaded. Baking
+            // the distance between them and re-applying it made the wrapped cap
+            // reproduce the G2 cap rather than the head under it — so wherever a
+            // look departs from G2 the cap stood off the skin by exactly that
+            // departure. The forehead and the back of the skull are where looks
+            // depart most, which is where it showed.
+            normal_offset: lift,
         });
     }
     Ok(anchors)
@@ -879,6 +880,162 @@ mod guide_visibility_tests {
         assert!(
             !draw_guides,
             "once triangles exist, only children are drawn"
+        );
+    }
+}
+
+#[cfg(test)]
+mod scalp_wrap_tests {
+    use super::*;
+
+    /// A ball of triangles, optionally squashed along one axis, standing in for
+    /// a head whose look has been changed under a cap authored on another one.
+    fn ball(radius: f32, squash: [f32; 3], rings: usize) -> Mesh {
+        let mut vertices: Vec<[f64; 3]> = Vec::new();
+        let mut triangles: Vec<[u32; 3]> = Vec::new();
+        let columns = rings * 2;
+        for ring in 0..=rings {
+            let polar = std::f32::consts::PI * ring as f32 / rings as f32;
+            for step in 0..columns {
+                let azimuth = std::f32::consts::TAU * step as f32 / columns as f32;
+                let point = [
+                    radius * polar.sin() * azimuth.cos() * squash[0],
+                    radius * polar.cos() * squash[1],
+                    radius * polar.sin() * azimuth.sin() * squash[2],
+                ];
+                vertices.push([
+                    f64::from(point[0]),
+                    f64::from(point[1]),
+                    f64::from(point[2]),
+                ]);
+            }
+        }
+        for ring in 0..rings {
+            for step in 0..columns {
+                let next = (step + 1) % columns;
+                let a = (ring * columns + step) as u32;
+                let b = (ring * columns + next) as u32;
+                let c = ((ring + 1) * columns + step) as u32;
+                let d = ((ring + 1) * columns + next) as u32;
+                triangles.push([a, d, c]);
+                triangles.push([a, b, d]);
+            }
+        }
+        Mesh {
+            vertices,
+            triangles,
+        }
+    }
+
+    /// The cap the bundle authored: a patch of the neutral ball's own surface.
+    fn cap_on(mesh: &Mesh, take: usize) -> HairScalpGeometry {
+        let vertices_cm: Vec<[f32; 3]> = mesh
+            .vertices
+            .iter()
+            .take(take)
+            .map(|point| [point[0] as f32, point[1] as f32, point[2] as f32])
+            .collect();
+        let triangles = (2..vertices_cm.len())
+            .map(|corner| [0, (corner - 1) as u32, corner as u32])
+            .collect();
+        HairScalpGeometry {
+            materials: Vec::new(),
+            uvs: vec![[0.0, 0.0]; vertices_cm.len()],
+            vertices_cm,
+            triangles,
+        }
+    }
+
+    fn hug_distances(cap: &HairScalpGeometry, head: &Mesh) -> Vec<f32> {
+        let projector = projector_for_mesh(head).expect("a head projects");
+        let anchors = build_scalp_anchors(
+            cap,
+            HairAlignment {
+                scale: 1.0,
+                mirror_x: false,
+            },
+            head,
+            &projector,
+        )
+        .expect("the cap wraps");
+        anchors
+            .iter()
+            .map(|anchor| {
+                let [a, b, c] = triangle_points(head, anchor.triangle).expect("a triangle");
+                let on_surface = a * anchor.barycentric[0]
+                    + b * anchor.barycentric[1]
+                    + c * anchor.barycentric[2];
+                let placed = anchored_test_position(head, anchor);
+                (placed - on_surface).length()
+            })
+            .collect()
+    }
+
+    fn anchored_test_position(head: &Mesh, anchor: &ScalpAnchor) -> Vec3 {
+        let [a, b, c] = triangle_points(head, anchor.triangle).expect("a triangle");
+        let normal = (b - a).cross(c - a).normalize();
+        a * anchor.barycentric[0]
+            + b * anchor.barycentric[1]
+            + c * anchor.barycentric[2]
+            + normal * anchor.normal_offset
+    }
+
+    /// The invariant, and the whole of it: a wrapped cap stands the lift off
+    /// the head it was wrapped to, whatever shape that head has. It does not
+    /// keep any part of the shape it was authored on.
+    #[test]
+    fn a_cap_hugs_whatever_head_it_is_given() {
+        let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
+        let cap = cap_on(&neutral, 60);
+
+        for (label, squash) in [
+            ("the head it was authored on", [1.0_f32, 1.0, 1.0]),
+            ("a flatter skull", [1.0, 1.0, 0.72]),
+            ("a taller one", [0.88, 1.25, 0.95]),
+            ("a wider one", [1.3, 0.95, 1.05]),
+        ] {
+            let head = ball(10.0, squash, 12);
+            let worst = hug_distances(&cap, &head)
+                .into_iter()
+                .fold(0.0_f32, |held, value| held.max((value - 0.03).abs()));
+            assert!(
+                worst < 1.0e-3,
+                "{label}: a cap vertex stood {worst} beyond the lift, so the cap is \
+                 keeping the shape it was authored on rather than following the head",
+            );
+        }
+    }
+
+    /// And the failure it replaces, stated so nobody restores it: the distance
+    /// between the authored cap and the loaded head is exactly the departure
+    /// between the two shapes, which is what used to be baked in.
+    #[test]
+    fn the_departure_that_used_to_be_baked_is_real_and_large() {
+        let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
+        let cap = cap_on(&neutral, 60);
+        let flattened = ball(10.0, [1.0, 1.0, 0.72], 12);
+        let projector = projector_for_mesh(&flattened).expect("projects");
+
+        let mut worst = 0.0_f32;
+        for point in &cap.vertices_cm {
+            let placed = Vec3::from_array(*point);
+            let hit = projector
+                .project([
+                    f64::from(placed.x),
+                    f64::from(placed.y),
+                    f64::from(placed.z),
+                ])
+                .expect("a nearest point");
+            let surface = Vec3::new(
+                hit.point[0] as f32,
+                hit.point[1] as f32,
+                hit.point[2] as f32,
+            );
+            worst = worst.max((placed - surface).length());
+        }
+        assert!(
+            worst > 1.0,
+            "the test heads are too alike to show the defect: worst departure {worst}",
         );
     }
 }
