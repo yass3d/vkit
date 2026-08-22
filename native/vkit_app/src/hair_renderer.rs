@@ -741,7 +741,25 @@ macro_rules! hair_shader_source {
                 )).xyz,
                 vec3<f32>(0.0, 1.0, 0.0),
             );
-            output.light_centre = root_world - root_normal * part.lengths.w;
+            // normalRandomize: the kernel picks ANOTHER strand with this
+            // strand's own seed-5 rand.x, takes that strand's scalp normal, and
+            // lerps toward it — then builds the light centre from the result.
+            // The lerp is deliberately not renormalised: as the two normals
+            // oppose, the centre also draws in toward the root, and that
+            // shortening is part of what the parameter does.
+            let lanes = arrayLength(&guide_data);
+            let last_lane = f32(max(lanes, 1u) - 1u);
+            let pick = u32(clamp(last_lane * curl_x.rand.x, 0.0, last_lane));
+            let other_normal = safe_normalize(
+                (scene.model * vec4<f32>(guide_data[pick].normal_phase.xyz, 0.0)).xyz,
+                root_normal,
+            );
+            let light_normal = mix(
+                root_normal,
+                other_normal,
+                clamp(part.variation.w, 0.0, 1.0),
+            );
+            output.light_centre = root_world - light_normal * part.lengths.w;
             output.radiance = strand_radiance(
                 output.world_position,
                 output.world_tangent,
@@ -885,13 +903,12 @@ macro_rules! hair_shader_source {
                 cross(tangent, view_direction),
                 vec3<f32>(1.0, 0.0, 0.0),
             );
-            var normal = safe_normalize(cross(side_axis, tangent), view_direction);
-            let random_angle = (strand_noise * 2.0 - 1.0)
-                * clamp(part.variation.w, 0.0, 1.0) * 0.9;
-            normal = safe_normalize(
-                normal * cos(random_angle) + side_axis * sin(random_angle),
-                normal,
-            );
+            // normalRandomize does not live here. It is a compute-side uniform
+            // on CSTesselateWithNormals and never reaches a shading normal; the
+            // twist that used to stand here, with its magic 0.9, broke the
+            // highlight into per-fibre glitter where the game keeps a coherent
+            // band. It is applied at the light centre instead, in vs_main.
+            let normal = safe_normalize(cross(side_axis, tangent), view_direction);
 
             let color_t = pow(
                 clamp(strand_t, 0.0, 1.0),
@@ -2575,6 +2592,49 @@ mod curl_frequency_tests {
         assert!(
             HAIR_SHADER.contains("let spine = curl.spine / chord;"),
             "the rotation axis must still come from the live spine",
+        );
+    }
+}
+
+#[cfg(test)]
+mod normal_randomize_tests {
+    use super::*;
+
+    /// normalRandomize is a uniform on `CSTesselateWithNormals`, not a shading
+    /// term. It picks another strand with this strand's own seed-5 rand.x,
+    /// takes that strand's scalp normal, lerps toward it, and the result is
+    /// used for one thing only: the origin the pseudo-normal is measured from.
+    #[test]
+    fn normal_randomize_moves_the_light_centre_and_nothing_else() {
+        assert!(
+            HAIR_SHADER
+                .contains("output.light_centre = root_world - light_normal * part.lengths.w;")
+                && HAIR_SHADER
+                    .contains("let pick = u32(clamp(last_lane * curl_x.rand.x, 0.0, last_lane));"),
+            "the randomized normal has to be the one the light centre is built from",
+        );
+        assert!(
+            !HAIR_SHADER.contains("random_angle"),
+            "the shading normal twist, and its magic 0.9, have no counterpart in the game",
+        );
+        assert!(
+            !HAIR_SHADER.contains("0.9;"),
+            "no magic 0.9 survives in the strand shader",
+        );
+    }
+
+    /// The kernel's `mad` is a raw lerp: as the borrowed normal opposes the
+    /// root's, the centre draws in toward the root. Renormalising would take
+    /// that away.
+    #[test]
+    fn the_borrowed_normal_is_lerped_rather_than_renormalised() {
+        let at = HAIR_SHADER
+            .find("let light_normal = mix(")
+            .expect("the light normal is a lerp");
+        let tail = &HAIR_SHADER[at..at + 200];
+        assert!(
+            !tail.contains("safe_normalize(mix(") && !tail.contains("normalize(light_normal)"),
+            "the lerp must not be renormalised: {tail}",
         );
     }
 }
