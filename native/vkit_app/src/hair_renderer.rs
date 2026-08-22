@@ -574,13 +574,16 @@ macro_rules! hair_shader_source {
         @vertex
         fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
             var output: VertexOutput;
-            let quad_index = vertex_index / 6u;
+            let quad_index = vertex_index / 4u;
             let stride = max_render_subdivisions();
             let segment = segments[quad_index / stride];
             let sub = quad_index % stride;
-            let corner = vertex_index % 6u;
-            let use_end = corner == 2u || corner == 3u || corner == 5u;
-            let positive_side = corner == 1u || corner == 4u || corner == 5u;
+            // Four corners to a quad, indexed as 0,1,2, 2,1,3 by the buffer the
+            // draw is bound to. Corner 0 is the near side of the segment's
+            // start, 3 the far side of its end.
+            let corner = vertex_index % 4u;
+            let use_end = corner >= 2u;
+            let positive_side = (corner & 1u) == 1u;
             let packed = segment.particles.w;
             let part_index = packed & 0xffffu;
             let segment_count = max(packed >> 16u, 1u);
@@ -1749,10 +1752,16 @@ pub(crate) struct HairRenderResources {
     target_is_srgb: bool,
 }
 
+/// Corners the vertex stage runs per quad. The shader divides `vertex_index`
+/// by this to find its quad and takes the remainder to find its corner, so the
+/// two sides have to agree; `the_shader_reads_the_corners_the_indices_write`
+/// holds them together.
+pub(crate) const HAIR_QUAD_CORNERS: u32 = 4;
+
 fn build_quad_indices(device: &wgpu::Device, quads: u32) -> (wgpu::Buffer, u32) {
     let mut indices = Vec::with_capacity(quads as usize * 6);
     for quad in 0..quads {
-        let base = quad * 4;
+        let base = quad * HAIR_QUAD_CORNERS;
         indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
     }
     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -2303,5 +2312,54 @@ mod scene_cache_tests {
         assert!(kept.contains(&3) && kept.contains(&4), "this frame stays");
         assert!(kept.contains(&1), "and the newest of the old ones");
         assert!(!kept.contains(&0), "the oldest goes first");
+    }
+}
+
+#[cfg(test)]
+mod quad_contract_tests {
+    use super::*;
+
+    /// The draw binds an index buffer written in Rust and a shader written in
+    /// WGSL, and the two agree only by both using the same number. Changing one
+    /// without the other scrambles which segment each corner belongs to, which
+    /// no test that only runs Rust would ever notice.
+    #[test]
+    fn the_shader_reads_the_corners_the_indices_write() {
+        let divide = format!("let quad_index = vertex_index / {HAIR_QUAD_CORNERS}u;");
+        let remainder = format!("let corner = vertex_index % {HAIR_QUAD_CORNERS}u;");
+        assert!(
+            HAIR_SHADER.contains(&divide),
+            "the shader does not find its quad the way the indices are written: {divide}",
+        );
+        assert!(
+            HAIR_SHADER.contains(&remainder),
+            "the shader does not find its corner the way the indices are written: {remainder}",
+        );
+    }
+
+    /// Corner 0 is the near side of the start, 3 the far side of the end, and
+    /// the index pattern has to name two triangles that cover the quad once.
+    #[test]
+    fn the_index_pattern_covers_the_quad_exactly_once() {
+        let pattern = [0_u32, 1, 2, 2, 1, 3];
+        let corner = |index: u32| {
+            let use_end = index >= 2;
+            let positive = index % 2 == 1;
+            (use_end, positive)
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        for index in pattern {
+            seen.insert(corner(index));
+        }
+        assert_eq!(
+            seen.len(),
+            4,
+            "the two triangles have to reach all four corners: {seen:?}",
+        );
+        assert_eq!(
+            pattern.len(),
+            6,
+            "two triangles, six indices, four corners run through the vertex stage",
+        );
     }
 }

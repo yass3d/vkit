@@ -1057,8 +1057,9 @@ impl HairPhysicsScene {
         self.render_subdivisions
     }
 
-    /// Indices to draw with: six to a quad, two of them repeats of corners the
-    /// vertex stage no longer has to run twice.
+    /// Indices to draw with: six to a quad over
+    /// [`crate::hair_renderer::HAIR_QUAD_CORNERS`] corners, two of them repeats
+    /// the vertex stage no longer has to run.
     pub(crate) const fn render_index_count(&self) -> u32 {
         self.render_segment_count
             .saturating_mul(6 * self.render_subdivisions)
