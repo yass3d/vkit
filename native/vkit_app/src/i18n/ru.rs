@@ -862,6 +862,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("Диффузный цвет кожи"),
         "Gloss" => Some("Блеск кожи головы"),
         "Specular Intensity" => Some("Блик кожи головы"),
+        "Global Illumination Filter" => Some("Глобальное освещение кожи головы"),
         "Diffuse Texture Offset" => Some("Смещение текстуры кожи"),
         "rootColor" => Some("Цвет у корня"),
         "tipColor" => Some("Цвет на кончике"),
@@ -979,6 +980,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("Насколько блестит шапочка там, где она видна."),
         "Specular Intensity" => Some("Насколько сильно шапочка ловит блик."),
+        "Global Illumination Filter" => Some("Сколько окружающего света принимает шапочка."),
         "Diffuse Texture Offset" => {
             Some("Прибавляется к диффузному цвету шапочки. Вопреки названию, это не номер листа.")
         }

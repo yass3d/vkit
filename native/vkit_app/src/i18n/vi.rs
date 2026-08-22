@@ -824,6 +824,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("Màu khuếch tán da đầu"),
         "Gloss" => Some("Độ bóng da đầu"),
         "Specular Intensity" => Some("Phản chiếu da đầu"),
+        "Global Illumination Filter" => Some("Ánh sáng môi trường da đầu"),
         "Diffuse Texture Offset" => Some("Dịch texture da đầu"),
         "rootColor" => Some("Màu chân tóc"),
         "tipColor" => Some("Màu ngọn tóc"),
@@ -929,6 +930,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("Mũ da đầu bóng đến đâu ở chỗ nó lộ ra."),
         "Specular Intensity" => Some("Mũ da đầu bắt highlight mạnh đến đâu."),
+        "Global Illumination Filter" => Some("Lượng ánh sáng môi trường mà lớp phủ hấp thụ."),
         "Diffuse Texture Offset" => Some(
             "Được cộng vào màu khuếch tán của mũ. Bất chấp cái tên, đây không phải số hiệu trang.",
         ),

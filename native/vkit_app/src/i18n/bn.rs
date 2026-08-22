@@ -788,6 +788,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("মাথার ত্বকের বিচ্ছুরিত রঙ"),
         "Gloss" => Some("মাথার ত্বকের ঔজ্জ্বল্য"),
         "Specular Intensity" => Some("মাথার ত্বকের প্রতিফলন"),
+        "Global Illumination Filter" => Some("স্ক্যাল্প পরিবেশ আলো"),
         "Diffuse Texture Offset" => Some("মাথার ত্বকের টেক্সচার অফসেট"),
         "rootColor" => Some("গোড়ার রঙ"),
         "tipColor" => Some("ডগার রঙ"),
@@ -879,6 +880,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         }
         "Gloss" => Some("যেখানে মাথার ত্বকের ক্যাপ দেখা যায়, সেখানে তা কতটা চকচকে।"),
         "Specular Intensity" => Some("মাথার ত্বকের ক্যাপ ঝিলিক কত জোরালোভাবে ধরে।"),
+        "Global Illumination Filter" => Some("ক্যাপ কতটা পরিবেশ আলো গ্রহণ করে।"),
         "Diffuse Texture Offset" => {
             Some("ক্যাপের বিচ্ছুরিত রঙের সঙ্গে যোগ হয়। নাম যা-ই হোক, এটি কোনো শিট নম্বর নয়।")
         }

@@ -189,14 +189,14 @@ const fn color(key: &'static str, label: &'static str, r: u8, g: u8, b: u8) -> H
 
 use HairParamGroup::{Curl, Look, Performance, Physics, Shape, Stiffness};
 
-pub const HAIR_PARAMS: [HairParam; 65] = [
+pub const HAIR_PARAMS: [HairParam; 66] = [
     count(
         "hairMultiplier",
         Performance,
         "Hair Multiplier",
         1.0,
         64.0,
-        15.0,
+        16.0,
     ),
     count(
         "curveDensity",
@@ -204,13 +204,13 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Curve Density",
         2.0,
         64.0,
-        12.0,
+        24.0,
     ),
     count("iterations", Performance, "Iterations", 1.0, 5.0, 2.0),
     toggle("simulationEnabled", Physics, "Physics", true),
     toggle("collisionEnabled", Physics, "Collision", true),
-    float("weight", Physics, "Weight", 0.0, 2.0, 1.0, 3),
-    float("drag", Physics, "Drag", 0.0, 1.0, 0.2, 3),
+    float("weight", Physics, "Weight", 0.0, 2.0, 1.5, 3),
+    float("drag", Physics, "Drag", 0.0, 1.0, 0.1, 3),
     float(
         "gravityMultiplier",
         Physics,
@@ -245,7 +245,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Bend Resistance",
         0.0,
         1.0,
-        0.0,
+        0.2,
         3,
     ),
     float(
@@ -254,7 +254,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Style Rigidity Root",
         0.0,
         1.0,
-        0.3,
+        0.2,
         3,
     ),
     float(
@@ -272,7 +272,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Style Rigidity Tip",
         0.0,
         1.0,
-        0.025,
+        0.0,
         3,
     ),
     float(
@@ -290,7 +290,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Style Rigidity Rolloff",
         0.0,
         16.0,
-        6.0,
+        8.0,
         2,
     ),
     float("cling", Stiffness, "Style Cling", 0.0, 1.0, 0.5, 3),
@@ -317,7 +317,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
     float("maxSpread", Shape, "Max Spread", 0.0, 0.5, 0.025, 4),
     float("spreadRoot", Shape, "Spread Root", 0.0, 1.0, 1.0, 3),
     float("spreadMid", Shape, "Spread Mid", 0.0, 1.0, 1.0, 3),
-    float("spreadTip", Shape, "Spread Tip", 0.0, 1.0, 0.7, 3),
+    float("spreadTip", Shape, "Spread Tip", 0.0, 1.0, 1.0, 3),
     float("spreadMidpoint", Shape, "Spread Midpoint", 0.0, 1.0, 0.5, 3),
     float(
         "spreadCurvePower",
@@ -345,7 +345,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
         "Curl Freq Random",
         0.0,
         2.0,
-        0.0,
+        1.0,
         3,
     ),
     float("curlRoot", Curl, "Curl Root", 0.0, 1.0, 0.0, 3),
@@ -376,8 +376,16 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
     toggle("curlAllowReverse", Curl, "Allow Reverse", false),
     toggle("curlAllowFlipAxis", Curl, "Allow Axis Flip", false),
     scalp("Alpha Adjust", "Scalp Opacity", -1.0, 1.0, -1.0, 3),
-    scalp("Gloss", "Scalp Gloss", 0.0, 10.0, 2.0, 2),
-    scalp("Specular Intensity", "Scalp Specular", 0.0, 4.0, 0.0, 2),
+    scalp("Gloss", "Scalp Gloss", 2.0, 8.0, 2.0, 2),
+    scalp("Specular Intensity", "Scalp Specular", 0.0, 10.0, 0.0, 2),
+    scalp(
+        "Global Illumination Filter",
+        "Scalp Global Illumination",
+        0.0,
+        1.0,
+        0.7,
+        3,
+    ),
     scalp(
         "Diffuse Texture Offset",
         "Scalp Texture Offset",
@@ -388,7 +396,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
     ),
     scalp_color("Diffuse Color", "Scalp Color", 255, 255, 255),
     color("rootColor", "Root Color", 0, 0, 0),
-    color("tipColor", "Tip Color", 19, 17, 15),
+    color("tipColor", "Tip Color", 20, 15, 12),
     color("specularColor", "Specular Color", 99, 66, 58),
     float(
         "colorRolloff",
@@ -1043,12 +1051,12 @@ mod tests {
     fn storables_are_written_the_way_vam_writes_them() {
         let settings = HairSettings::default();
         let entries: BTreeMap<_, _> = settings.storable_entries().into_iter().collect();
-        assert_eq!(entries["hairMultiplier"], "15");
+        assert_eq!(entries["hairMultiplier"], "16");
         assert_eq!(entries["iterations"], "2");
         assert_eq!(entries["simulationEnabled"], "true");
         assert_eq!(entries["usePaintedRigidity"], "false");
-        assert_eq!(entries["weight"], "1");
-        assert_eq!(entries["tipRigidity"], "0.025");
+        assert_eq!(entries["weight"], "1.5");
+        assert_eq!(entries["tipRigidity"], "0");
         assert_eq!(entries["maxSpread"], "0.025");
         assert_eq!(entries["width"], "0.0001");
     }
@@ -1065,7 +1073,7 @@ mod color_tests {
             .find(|param| param.key == "tipColor")
             .unwrap();
         let mut settings = HairSettings::default();
-        assert_eq!(settings.color_channel(param, 0), 19.0);
+        assert_eq!(settings.color_channel(param, 0), 20.0);
         assert!(settings.is_color_default(param));
 
         settings.set_color_channel(param, 0, 255.0);

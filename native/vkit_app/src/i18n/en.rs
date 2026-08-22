@@ -778,6 +778,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("How glossy the scalp cap is where it shows."),
         "Specular Intensity" => Some("How strongly the scalp cap catches a highlight."),
+        "Global Illumination Filter" => Some("How much ambient light the cap takes in."),
         "Diffuse Texture Offset" => {
             Some("Added to the cap's diffuse colour. Not a sheet index, despite the name.")
         }

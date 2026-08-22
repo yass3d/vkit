@@ -890,6 +890,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("Kopfhaut-Diffusfarbe"),
         "Gloss" => Some("Kopfhaut-Glanz"),
         "Specular Intensity" => Some("Kopfhaut-Spiegelung"),
+        "Global Illumination Filter" => Some("Kopfhaut-Umgebungslicht"),
         "Diffuse Texture Offset" => Some("Kopfhaut-Texturversatz"),
         "rootColor" => Some("Ansatzfarbe"),
         "tipColor" => Some("Spitzenfarbe"),
@@ -1015,6 +1016,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("Wie glänzend die Kappe dort ist, wo sie sichtbar wird."),
         "Specular Intensity" => Some("Wie stark die Kappe ein Glanzlicht aufnimmt."),
+        "Global Illumination Filter" => Some("Wie viel Umgebungslicht die Kappe aufnimmt."),
         "Diffuse Texture Offset" => {
             Some("Wird der Diffusfarbe der Kappe zugerechnet. Trotz des Namens kein Blattindex.")
         }

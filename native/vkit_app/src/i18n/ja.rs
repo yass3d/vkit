@@ -829,6 +829,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("頭皮の拡散色"),
         "Gloss" => Some("頭皮の光沢"),
         "Specular Intensity" => Some("頭皮の反射"),
+        "Global Illumination Filter" => Some("頭皮の環境光"),
         "Diffuse Texture Offset" => Some("頭皮テクスチャオフセット"),
         "rootColor" => Some("根元の色"),
         "tipColor" => Some("毛先の色"),
@@ -924,6 +925,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("頭皮キャップが見える箇所での光沢の強さ。"),
         "Specular Intensity" => Some("頭皮キャップがハイライトをどれだけ強く受けるか。"),
+        "Global Illumination Filter" => Some("キャップが環境光をどれだけ取り込むか。"),
         "Diffuse Texture Offset" => {
             Some("キャップの拡散色に加算される値。名前に反してシート番号ではありません。")
         }

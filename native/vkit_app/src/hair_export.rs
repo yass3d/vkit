@@ -52,74 +52,25 @@ fn transparent_sheet() -> Vec<u8> {
     bytes
 }
 
-const SIM_TABLE: [(&str, &str); 68] = [
+/// The keys an exported sim storable carries that no parameter owns.
+///
+/// Everything the parameter table owns is written by `storable_entries()`, so a
+/// row here for one of those keys is a second copy that nothing reads — until
+/// the key leaves the table and a number nobody chose ships. There is one
+/// source for a value, and `the_sim_baseline_holds_only_what_no_parameter_owns`
+/// keeps it that way.
+const SIM_TABLE: [(&str, &str); 12] = [
     ("styleModeAllowControlOtherNodes", "false"),
     ("styleModeShowCurls", "false"),
     ("styleModeShowTool1", "true"),
     ("styleModeShowTool2", "true"),
     ("styleModeShowTool3", "false"),
     ("styleModeShowTool4", "false"),
-    ("simulationEnabled", "true"),
-    ("collisionEnabled", "true"),
-    ("usePaintedRigidity", "false"),
-    ("curlAllowReverse", "false"),
-    ("curlAllowFlipAxis", "false"),
     ("styleJointsSearchDistance", "0.01"),
     ("styleModeCollisionRadius", "0.004"),
     ("styleModeCollisionRadiusRoot", "0.002"),
     ("styleModeGravityMultiplier", "0"),
     ("styleModeUpHairPullStrength", "0.2"),
-    ("collisionRadius", "0.008"),
-    ("collisionRadiusRoot", "0.004"),
-    ("drag", "0.1"),
-    ("rootRigidity", "0.2"),
-    ("mainRigidity", "0.01"),
-    ("tipRigidity", "0"),
-    ("rigidityRolloffPower", "8"),
-    ("friction", "0.2"),
-    ("gravityMultiplier", "1"),
-    ("weight", "1.5"),
-    ("iterations", "2"),
-    ("cling", "0.5"),
-    ("clingRolloff", "1"),
-    ("snap", "0.2"),
-    ("bendResistance", "0.2"),
-    ("colorRolloff", "1.4"),
-    ("diffuseSoftness", "0.1"),
-    ("primarySpecularSharpness", "160"),
-    ("secondarySpecularSharpness", "64"),
-    ("specularShift", "0.4"),
-    ("fresnelPower", "8"),
-    ("fresnelAttenuation", "0.2"),
-    ("randomColorPower", "2"),
-    ("randomColorOffset", "0.3"),
-    ("IBLFactor", "0.5"),
-    ("normalRandomize", "0"),
-    ("curlX", "0"),
-    ("curlY", "0"),
-    ("curlZ", "0"),
-    ("curlScale", "0"),
-    ("curlScaleRandomness", "0"),
-    ("curlFrequency", "0"),
-    ("curlFrequencyRandomness", "0"),
-    ("curlNormalAdjust", "0"),
-    ("curlRoot", "0"),
-    ("curlMid", "0"),
-    ("curlTip", "0"),
-    ("curlMidpoint", "0.5"),
-    ("curlCurvePower", "2"),
-    ("length1", "1"),
-    ("length2", "1"),
-    ("length3", "1"),
-    ("width", "0.0001"),
-    ("curveDensity", "30"),
-    ("hairMultiplier", "20"),
-    ("maxSpread", "0.015"),
-    ("spreadRoot", "1"),
-    ("spreadMid", "0.5"),
-    ("spreadTip", "0.7"),
-    ("spreadMidpoint", "0.5"),
-    ("spreadCurvePower", "2"),
     ("shaderType", "Quality"),
 ];
 
@@ -166,7 +117,6 @@ fn scalp_material_storable(
         ("Specular Texture Offset", "0"),
         ("Specular Fresnel", "0.5"),
         ("Gloss Texture Offset", "0"),
-        ("Global Illumination Filter", "0.7"),
         ("Diffuse Texture Offset", "0"),
         ("simTexture", ""),
     ] {
@@ -1047,13 +997,65 @@ mod tests {
         );
     }
 
+    /// `SIM_TABLE` is the baseline every exported sim storable starts from, and
+    /// `storable_entries()` then overwrites every key the parameter table owns.
+    /// A row that disagrees with the table is therefore invisible — until a key
+    /// leaves `HAIR_PARAMS`, at which point a number nobody chose ships. Two
+    /// sources for one value is the shape the ledger keeps retiring; this holds
+    /// them equal instead.
+    /// The IBL filter is per mesh, not one number for all of them: across 1125
+    /// shipped scalp materials Udane is 0.5 in 303 of 304, PantyRegion 0.0 in
+    /// 136 of 136, and Krayon, Leyton and Soleil 0.7. The exporter used to
+    /// write a flat 0.7 while the right numbers sat unread in `SCALP_STOCK`.
+    #[test]
+    fn each_cap_exports_the_ambient_filter_its_own_mesh_ships() {
+        for (provider, wanted) in [
+            ("UdaneScalp", "0.5"),
+            ("PantyRegionScalp", "0"),
+            ("KrayonScalp", "0.7"),
+            ("LeytonScalp", "0.7"),
+            ("SoleilScalp", "0.7"),
+        ] {
+            let mut settings = HairSettings::default();
+            settings.wear(provider);
+            let material = scalp_material_storable(
+                "Vkit:Bob",
+                provider,
+                &settings,
+                &crate::hair_project::HairScalpTexture::default(),
+                "Bob",
+            )
+            .expect("a material");
+            assert_eq!(
+                material["Global Illumination Filter"], wanted,
+                "{provider} ships {wanted}",
+            );
+        }
+    }
+
+    #[test]
+    fn the_sim_baseline_holds_only_what_no_parameter_owns() {
+        let defaults = crate::hair_settings::HairSettings::default().storable_entries();
+        let table: std::collections::BTreeMap<&str, String> = defaults.into_iter().collect();
+        let disagreed: Vec<&str> = SIM_TABLE
+            .iter()
+            .map(|(key, _)| *key)
+            .filter(|key| table.contains_key(key))
+            .collect();
+        assert!(
+            disagreed.is_empty(),
+            "{} sim keys are declared twice: {disagreed:#?}",
+            disagreed.len(),
+        );
+    }
+
     #[test]
     fn sim_table_pins_the_long_dynamic_sentinels() {
         let sim = sim_storable("T:Test", &HairSettings::default());
         assert_eq!(sim["mainRigidity"], "0.1");
-        assert_eq!(sim["weight"], "1");
-        assert_eq!(sim["hairMultiplier"], "15");
-        assert_eq!(sim["curveDensity"], "12");
+        assert_eq!(sim["weight"], "1.5");
+        assert_eq!(sim["hairMultiplier"], "16");
+        assert_eq!(sim["curveDensity"], "24");
         assert_eq!(sim["maxSpread"], "0.025");
         assert_eq!(sim["wind"], json!(["0", "0", "0"]));
         assert_eq!(sim["usePaintedRigidity"], "false");
@@ -1215,7 +1217,7 @@ mod settings_export_tests {
         assert_eq!(sim["hairMultiplier"], "48");
         assert_eq!(sim["width"], "0.0004");
         assert_eq!(sim["simulationEnabled"], "false");
-        assert_eq!(sim["weight"], "1");
+        assert_eq!(sim["weight"], "1.5");
         assert_eq!(sim["id"], "Vkit:TestSim");
     }
 

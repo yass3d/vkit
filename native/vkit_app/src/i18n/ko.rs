@@ -745,6 +745,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("두피 확산색"),
         "Gloss" => Some("두피 광택"),
         "Specular Intensity" => Some("두피 반사"),
+        "Global Illumination Filter" => Some("두피 환경광"),
         "Diffuse Texture Offset" => Some("두피 텍스처 오프셋"),
         "Alpha Adjust" => Some("두피 불투명도"),
         "hairMultiplier" => Some("머리카락 개수"),
@@ -818,6 +819,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("두피 캡이 드러나는 곳에서 얼마나 광택이 나는지."),
         "Specular Intensity" => Some("두피 캡이 하이라이트를 얼마나 강하게 받는지."),
+        "Global Illumination Filter" => Some("캡이 주변 환경광을 얼마나 받아들이는지."),
         "Diffuse Texture Offset" => {
             Some("캡의 디퓨즈 색에 더해지는 값입니다. 이름과 달리 시트 번호가 아닙니다.")
         }

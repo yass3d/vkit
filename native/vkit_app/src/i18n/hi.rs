@@ -802,6 +802,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("खोपड़ी का विसरित रंग"),
         "Gloss" => Some("खोपड़ी की चमक"),
         "Specular Intensity" => Some("खोपड़ी का परावर्तन"),
+        "Global Illumination Filter" => Some("स्कैल्प परिवेश प्रकाश"),
         "Diffuse Texture Offset" => Some("खोपड़ी टेक्सचर ऑफ़सेट"),
         "rootColor" => Some("जड़ का रंग"),
         "tipColor" => Some("सिरे का रंग"),
@@ -895,6 +896,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         }
         "Gloss" => Some("जहाँ खोपड़ी की टोपी दिखती है, वहाँ वह कितनी चमकीली है।"),
         "Specular Intensity" => Some("खोपड़ी की टोपी चमक को कितनी तीव्रता से पकड़ती है।"),
+        "Global Illumination Filter" => Some("कैप कितना परिवेशी प्रकाश लेती है।"),
         "Diffuse Texture Offset" => {
             Some("टोपी के विसरित रंग में जोड़ा जाता है। नाम के बावजूद यह कोई शीट संख्या नहीं है।")
         }

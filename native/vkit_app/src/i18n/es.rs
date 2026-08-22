@@ -884,6 +884,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("Color difuso del cuero"),
         "Gloss" => Some("Brillo del cuero"),
         "Specular Intensity" => Some("Especular del cuero"),
+        "Global Illumination Filter" => Some("Iluminación global del cuero cabelludo"),
         "Diffuse Texture Offset" => Some("Desplazamiento de textura del cuero"),
         "rootColor" => Some("Color de raíz"),
         "tipColor" => Some("Color de punta"),
@@ -1007,6 +1008,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("Lo brillante que es el casquete allí donde se ve."),
         "Specular Intensity" => Some("Con cuánta fuerza el casquete recoge un brillo."),
+        "Global Illumination Filter" => Some("Cuánta luz ambiental recoge la capa."),
         "Diffuse Texture Offset" => {
             Some("Se suma al color difuso del casquete. Pese al nombre, no es un índice de hoja.")
         }

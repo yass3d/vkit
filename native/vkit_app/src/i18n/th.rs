@@ -772,6 +772,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("สีกระจายแสงของหนังศีรษะ"),
         "Gloss" => Some("ความมันของหนังศีรษะ"),
         "Specular Intensity" => Some("แสงสะท้อนหนังศีรษะ"),
+        "Global Illumination Filter" => Some("แสงสภาพแวดล้อมหนังศีรษะ"),
         "Diffuse Texture Offset" => Some("การเลื่อนพื้นผิวหนังศีรษะ"),
         "rootColor" => Some("สีโคนผม"),
         "tipColor" => Some("สีปลายผม"),
@@ -855,6 +856,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("สีกระจายแสงของฝาครอบเอง VaM ส่งมาเป็นสีขาว เพื่อให้ผิวที่อยู่ข้างใต้ทะลุออกมาได้"),
         "Gloss" => Some("ฝาครอบหนังศีรษะมันวาวแค่ไหนตรงที่มองเห็น"),
         "Specular Intensity" => Some("ฝาครอบหนังศีรษะรับแสงไฮไลต์แรงแค่ไหน"),
+        "Global Illumination Filter" => Some("ฝาหนังศีรษะรับแสงสภาพแวดล้อมมากเพียงใด"),
         "Diffuse Texture Offset" => {
             Some("บวกเข้ากับสีกระจายแสงของฝาครอบ แม้ชื่อจะบอกอย่างนั้น แต่ไม่ใช่หมายเลขแผ่นภาพ")
         }

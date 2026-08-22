@@ -858,6 +858,7 @@ pub(super) fn hair_label(key: &str) -> Option<&'static str> {
         "Diffuse Color" => Some("Warna difus kulit kepala"),
         "Gloss" => Some("Kilau kulit kepala"),
         "Specular Intensity" => Some("Spekular kulit kepala"),
+        "Global Illumination Filter" => Some("Pencahayaan global kulit kepala"),
         "Diffuse Texture Offset" => Some("Geser tekstur kulit kepala"),
         "rootColor" => Some("Warna akar"),
         "tipColor" => Some("Warna ujung"),
@@ -973,6 +974,7 @@ pub(super) fn hair_hint(key: &str) -> Option<&'static str> {
         ),
         "Gloss" => Some("Seberapa berkilau tudung di tempat ia terlihat."),
         "Specular Intensity" => Some("Seberapa kuat tudung menangkap kilau."),
+        "Global Illumination Filter" => Some("Seberapa banyak cahaya sekitar yang diserap tudung."),
         "Diffuse Texture Offset" => {
             Some("Ditambahkan ke warna difus tudung. Meski namanya begitu, ini bukan nomor lembar.")
         }
