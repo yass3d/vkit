@@ -395,6 +395,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("Cheveux empaquetés"),
         TextKey::HairPackageFailed => Some("Échec de l'empaquetage"),
         TextKey::HairPackageNeedsInstall => Some("Installez d'abord la coiffure"),
+        TextKey::DialogOpenHeadPreset => Some("Ouvrir un préréglage de tête"),
+        TextKey::FindHeadPreset => Some("Trouver un préréglage…"),
         TextKey::SettingsVignetteIntensity => Some("Quantité"),
         TextKey::SettingsVignetteSmoothness => Some("Douceur"),
         TextKey::SettingsVignetteRoundness => Some("Rondeur"),

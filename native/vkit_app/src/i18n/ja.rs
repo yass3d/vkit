@@ -380,6 +380,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("ヘア書き出し完了"),
         TextKey::HairPackageFailed => Some("書き出し失敗"),
         TextKey::HairPackageNeedsInstall => Some("先にヘアを書き出してください"),
+        TextKey::DialogOpenHeadPreset => Some("ヘッドプリセットを開く"),
+        TextKey::FindHeadPreset => Some("プリセットを探す…"),
         TextKey::SettingsVignetteIntensity => Some("強さ"),
         TextKey::SettingsVignetteSmoothness => Some("柔らかさ"),
         TextKey::SettingsVignetteRoundness => Some("丸み"),

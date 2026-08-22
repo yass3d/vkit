@@ -365,6 +365,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairPackageDone => "헤어 패키지 완료",
         TextKey::HairPackageFailed => "패키지 실패",
         TextKey::HairPackageNeedsInstall => "먼저 헤어를 설치하세요",
+        TextKey::DialogOpenHeadPreset => "헤드 프리셋 열기",
+        TextKey::FindHeadPreset => "프리셋 찾기…",
         TextKey::SettingsVignetteIntensity => "강도",
         TextKey::SettingsVignetteSmoothness => "부드러움",
         TextKey::SettingsVignetteRoundness => "원형도",

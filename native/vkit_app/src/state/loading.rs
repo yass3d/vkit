@@ -1037,6 +1037,25 @@ impl AppState {
         })
     }
 
+    /// Take a preset the catalogue never saw — a loose file, a folder outside
+    /// the scan — and treat it as though it had.
+    pub(super) fn open_head_preset_file(&mut self, path: &std::path::Path) {
+        let source = crate::vam_edit_sources::source_from_path(
+            path,
+            None,
+            crate::vam_edit_sources::VaMEditSourceKind::AppearancePreset,
+        );
+        let id = source.stable_id.clone();
+        if !self
+            .vam_edit_sources
+            .iter()
+            .any(|known| known.stable_id == id)
+        {
+            self.vam_edit_sources.push(source);
+        }
+        self.select_vam_edit_source(&id);
+    }
+
     pub(super) fn select_vam_edit_source(&mut self, id: &str) {
         let Some(source) = self
             .vam_edit_sources

@@ -387,6 +387,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("Волосы упакованы"),
         TextKey::HairPackageFailed => Some("Не удалось упаковать"),
         TextKey::HairPackageNeedsInstall => Some("Сначала установите причёску"),
+        TextKey::DialogOpenHeadPreset => Some("Открыть пресет головы"),
+        TextKey::FindHeadPreset => Some("Найти пресет…"),
         TextKey::SettingsVignetteIntensity => Some("Величина"),
         TextKey::SettingsVignetteSmoothness => Some("Мягкость"),
         TextKey::SettingsVignetteRoundness => Some("Округлость"),

@@ -465,7 +465,12 @@ pub fn morph_identity_candidates(value: &str) -> Vec<String> {
     candidates
 }
 
-fn source_from_path(path: &Path, sex: Option<SkinSex>, kind: VaMEditSourceKind) -> VaMEditSource {
+#[must_use]
+pub fn source_from_path(
+    path: &Path,
+    sex: Option<SkinSex>,
+    kind: VaMEditSourceKind,
+) -> VaMEditSource {
     let label = path
         .file_stem()
         .and_then(|value| value.to_str())

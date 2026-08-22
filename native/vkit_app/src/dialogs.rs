@@ -40,6 +40,12 @@ pub const fn spec_for(intent: DialogIntent) -> DialogSpec {
             save: true,
             folder: false,
         },
+        DialogIntent::OpenHeadPreset => DialogSpec {
+            title: TextKey::DialogOpenHeadPreset,
+            extensions: &["vap", "json"],
+            save: false,
+            folder: false,
+        },
         DialogIntent::ChooseVaMRoot => DialogSpec {
             title: TextKey::DialogChooseVamFolder,
             extensions: &[],
@@ -76,6 +82,20 @@ pub fn show(intent: DialogIntent, state: &AppState) -> Option<PathBuf> {
                 .or(state.scan_path.as_deref());
             if let Some(parent) = source.and_then(Path::parent) {
                 dialog = dialog.set_directory(parent);
+            }
+        }
+        DialogIntent::OpenHeadPreset => {
+            if let Some(root) = state.vam_root.as_deref() {
+                let looks = root
+                    .join("Custom")
+                    .join("Atom")
+                    .join("Person")
+                    .join("Appearance");
+                dialog = dialog.set_directory(if looks.is_dir() {
+                    looks
+                } else {
+                    root.to_owned()
+                });
             }
         }
         DialogIntent::ChooseOutput => {

@@ -530,6 +530,8 @@ text_keys! {
     HairPackageDone,
     HairPackageFailed,
     HairPackageNeedsInstall,
+    DialogOpenHeadPreset,
+    FindHeadPreset,
     SettingsVignetteIntensity,
     SettingsVignetteSmoothness,
     SettingsVignetteRoundness,

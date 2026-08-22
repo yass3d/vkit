@@ -377,6 +377,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairPackageDone => "Hair packaged",
         TextKey::HairPackageFailed => "Packaging failed",
         TextKey::HairPackageNeedsInstall => "Install the style first",
+        TextKey::DialogOpenHeadPreset => "Open a head preset",
+        TextKey::FindHeadPreset => "Find a preset…",
         TextKey::SettingsVignetteIntensity => "Amount",
         TextKey::SettingsVignetteSmoothness => "Softness",
         TextKey::SettingsVignetteRoundness => "Roundness",

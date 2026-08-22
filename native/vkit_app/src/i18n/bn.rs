@@ -354,6 +354,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("চুল প্যাকেজ হয়েছে"),
         TextKey::HairPackageFailed => Some("প্যাকেজিং ব্যর্থ"),
         TextKey::HairPackageNeedsInstall => Some("আগে স্টাইল ইনস্টল করুন"),
+        TextKey::DialogOpenHeadPreset => Some("হেড প্রিসেট খুলুন"),
+        TextKey::FindHeadPreset => Some("প্রিসেট খুঁজুন…"),
         TextKey::SettingsVignetteIntensity => Some("মাত্রা"),
         TextKey::SettingsVignetteSmoothness => Some("কোমলতা"),
         TextKey::SettingsVignetteRoundness => Some("গোলাকৃতি"),

@@ -436,6 +436,8 @@ pub enum DialogIntent {
     OpenTextureImage(TextureSourceMode),
     ChooseOutput,
     ChooseVaMRoot,
+
+    OpenHeadPreset,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

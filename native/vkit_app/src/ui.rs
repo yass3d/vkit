@@ -1761,6 +1761,19 @@ fn draw_vam_edit_source_picker(
     if let Some(id) = selected {
         state.dispatch(Action::SelectVaMEditSource(id));
     }
+
+    // A preset the scan never reached is still a preset.
+    if capsule_action(
+        ui,
+        ui.available_width().max(0.0),
+        text(state.locale, TextKey::FindHeadPreset),
+        true,
+    )
+    .clicked()
+        && let Some(path) = crate::dialogs::show(crate::state::DialogIntent::OpenHeadPreset, state)
+    {
+        state.dispatch(Action::OpenHeadPresetFile(path));
+    }
 }
 
 fn selectable_list_row(ui: &mut Ui, label: &str, selected: bool) -> Response {

@@ -189,6 +189,8 @@ pub enum Action {
     SetHairBrushFollowStroke(bool),
 
     PackageHairStyle,
+
+    OpenHeadPresetFile(std::path::PathBuf),
     SetManualEyeGaze([f32; 2]),
     SetEyeGazeMode(EyeGazeMode),
     ResetEyeGaze,
@@ -660,6 +662,7 @@ impl Action {
             | Self::SetHairBrushShape(_)
             | Self::SetHairBrushFollowStroke(_)
             | Self::PackageHairStyle
+            | Self::OpenHeadPresetFile(_)
             | Self::SetManualEyeGaze(_)
             | Self::SetEyeGazeMode(_)
             | Self::ResetEyeGaze

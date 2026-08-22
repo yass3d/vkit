@@ -348,6 +348,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("แพ็กผมแล้ว"),
         TextKey::HairPackageFailed => Some("แพ็กไม่สำเร็จ"),
         TextKey::HairPackageNeedsInstall => Some("ติดตั้งทรงผมก่อน"),
+        TextKey::DialogOpenHeadPreset => Some("เปิดพรีเซ็ตศีรษะ"),
+        TextKey::FindHeadPreset => Some("ค้นหาพรีเซ็ต…"),
         TextKey::SettingsVignetteIntensity => Some("ปริมาณ"),
         TextKey::SettingsVignetteSmoothness => Some("ความนุ่ม"),
         TextKey::SettingsVignetteRoundness => Some("ความกลม"),

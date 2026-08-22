@@ -1339,6 +1339,7 @@ impl AppState {
             Action::RemoveAppearanceLayer(id) => self.remove_appearance_layer(id),
             Action::ExportHairPart => self.request_hair_export(),
             Action::PackageHairStyle => self.package_hair_style(),
+            Action::OpenHeadPresetFile(path) => self.open_head_preset_file(&path),
             Action::ConfirmHairOverwrite => {
                 self.pending_hair_overwrite = false;
                 self.hair_overwrite_confirmed = true;

@@ -348,6 +348,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("头发已打包"),
         TextKey::HairPackageFailed => Some("打包失败"),
         TextKey::HairPackageNeedsInstall => Some("请先安装该发型"),
+        TextKey::DialogOpenHeadPreset => Some("打开头部预设"),
+        TextKey::FindHeadPreset => Some("查找预设…"),
         TextKey::SettingsVignetteIntensity => Some("强度"),
         TextKey::SettingsVignetteSmoothness => Some("柔和度"),
         TextKey::SettingsVignetteRoundness => Some("圆度"),

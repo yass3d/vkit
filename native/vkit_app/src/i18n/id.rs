@@ -385,6 +385,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("Rambut dipaketkan"),
         TextKey::HairPackageFailed => Some("Gagal memaketkan"),
         TextKey::HairPackageNeedsInstall => Some("Pasang gaya rambut dulu"),
+        TextKey::DialogOpenHeadPreset => Some("Buka preset kepala"),
+        TextKey::FindHeadPreset => Some("Cari preset…"),
         TextKey::SettingsVignetteIntensity => Some("Kekuatan"),
         TextKey::SettingsVignetteSmoothness => Some("Kelembutan"),
         TextKey::SettingsVignetteRoundness => Some("Kebulatan"),

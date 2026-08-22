@@ -1697,6 +1697,9 @@ impl Runtime {
             crate::state::DialogIntent::ChooseVaMRoot => {
                 self.state.dispatch(Action::SetVaMRoot(path))
             }
+            crate::state::DialogIntent::OpenHeadPreset => {
+                self.state.dispatch(Action::OpenHeadPresetFile(path));
+            }
         }
         self.persist_preferences();
     }

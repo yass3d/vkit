@@ -377,6 +377,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairPackageDone => Some("Đã đóng gói tóc"),
         TextKey::HairPackageFailed => Some("Đóng gói thất bại"),
         TextKey::HairPackageNeedsInstall => Some("Hãy cài kiểu tóc trước"),
+        TextKey::DialogOpenHeadPreset => Some("Mở preset đầu"),
+        TextKey::FindHeadPreset => Some("Tìm preset…"),
         TextKey::SettingsVignetteIntensity => Some("Mức"),
         TextKey::SettingsVignetteSmoothness => Some("Độ mềm"),
         TextKey::SettingsVignetteRoundness => Some("Độ tròn"),
