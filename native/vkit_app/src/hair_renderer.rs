@@ -620,7 +620,18 @@ macro_rules! hair_shader_source {
             let curl_y = guide_curl(uroots.y, segment_count);
             let curl_z = guide_curl(uroots.z, segment_count);
 
-            let reach = clamp(dot(segment.slot.xyz, part.lengths.xyz), 0.0, 1.0);
+            // The game truncates a child's extent to a whole tessellation point:
+            //   seg = trunc(vDomain.x * (curveDensity - 0.001) * L)
+            // so a short child ends ON a density point rather than part way
+            // along a chord. That is what makes the length tiers land in
+            // visible steps instead of smearing through each other.
+            let length_factor = clamp(dot(segment.slot.xyz, part.lengths.xyz), 0.0, 1.0);
+            let length_spans = max(part.spread_b.w - 1.0, 1.0);
+            let reach = clamp(
+                floor((part.spread_b.w - 0.001) * length_factor) / length_spans,
+                0.0,
+                1.0,
+            );
             let strand_u = t * reach;
 
             let position = polyline_sample(
@@ -2360,6 +2371,66 @@ mod quad_contract_tests {
             pattern.len(),
             6,
             "two triangles, six indices, four corners run through the vertex stage",
+        );
+    }
+}
+
+#[cfg(test)]
+mod child_length_tests {
+    use super::*;
+
+    /// The game's rule, mirrored so the arithmetic can be checked without a GPU:
+    /// `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)`, which at the tip
+    /// means the child ends on density point `floor((density - 0.001) * L)`.
+    fn reach(density: f32, length_factor: f32) -> f32 {
+        let spans = (density - 1.0).max(1.0);
+        (((density - 0.001) * length_factor).floor() / spans).clamp(0.0, 1.0)
+    }
+
+    #[test]
+    fn a_full_length_child_reaches_the_last_point_and_no_further() {
+        for density in [2.0_f32, 8.0, 16.0, 32.0, 64.0] {
+            assert!(
+                (reach(density, 1.0) - 1.0).abs() < 1.0e-6,
+                "density {density} at full length must reach exactly the end",
+            );
+            assert_eq!(reach(density, 0.0), 0.0);
+        }
+    }
+
+    #[test]
+    fn a_short_child_lands_on_a_density_point_rather_than_between_two() {
+        // Sixteen points, half length: the game stops at point 7, not at 7.5.
+        let spans = 15.0_f32;
+        let landed = reach(16.0, 0.5) * spans;
+        assert!(
+            (landed - landed.round()).abs() < 1.0e-4,
+            "a child ended {landed} points along, which is between two of them",
+        );
+        assert_eq!(landed.round() as i32, 7);
+    }
+
+    #[test]
+    fn neighbouring_tiers_collapse_onto_the_same_point() {
+        // The visible consequence: tiers within one point of each other end in
+        // the same place, which is what makes flyaways read as locks rather
+        // than as a smear.
+        // 0.44 and 0.50 both truncate to point 7 of sixteen; 0.60 reaches 9.
+        assert_eq!(reach(16.0, 0.44), reach(16.0, 0.50));
+        assert_ne!(reach(16.0, 0.50), reach(16.0, 0.60));
+    }
+
+    /// The shader has to run this same arithmetic; a Rust mirror proves nothing
+    /// on its own.
+    #[test]
+    fn the_shader_truncates_the_length_the_way_the_game_does() {
+        assert!(
+            HAIR_SHADER.contains("floor((part.spread_b.w - 0.001) * length_factor)"),
+            "the shader no longer truncates a child's extent to a density point",
+        );
+        assert!(
+            HAIR_SHADER.contains("let length_spans = max(part.spread_b.w - 1.0, 1.0);"),
+            "the truncation has to divide by the same spans polyline_sample uses",
         );
     }
 }
