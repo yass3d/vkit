@@ -1397,6 +1397,8 @@ fn segment_subdivisions(curve_density: u32, segment_count: u32) -> u32 {
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub(crate) struct GpuGuideData {
     pub normal_phase: [f32; 4],
+
+    /// The three curl randoms, and in `w` the chord of the guide **at rest**.
     pub rand: [f32; 4],
 }
 
@@ -1405,13 +1407,23 @@ fn build_guide_data(preview: &HairPreview, mesh: &SurfaceMesh) -> Option<Vec<Gpu
     for part in preview.parts.iter() {
         for guide in part.guides.iter() {
             let frame = binding_frame(&guide.binding, mesh)?;
+            // How many turns a strand carries is measured on the rest chord —
+            // the kernel reads GPPointJoint.Point for the first and last
+            // particle, a different buffer from the live positions it takes the
+            // rotation axis from. Reading the live chord instead makes the
+            // ringlet count breathe as the lock stretches and compresses.
+            let rest = deformed_guide_points(guide, mesh)?;
+            let rest_chord = match (rest.first(), rest.last()) {
+                (Some(first), Some(last)) => (*last - *first).length(),
+                _ => 0.0,
+            };
             let entry = GpuGuideData {
                 normal_phase: [frame.3.x, frame.3.y, frame.3.z, guide.curl_phase],
                 rand: [
                     guide.curl_rand[0],
                     guide.curl_rand[1],
                     guide.curl_rand[2],
-                    0.0,
+                    rest_chord,
                 ],
             };
             data.extend(std::iter::repeat_n(entry, guide.local_points.len()));

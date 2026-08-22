@@ -447,6 +447,10 @@ macro_rules! hair_shader_source {
             root_normal: vec3<f32>,
             rand: vec3<f32>,
             phase: f32,
+
+            // The chord at rest. The live spine still gives the rotation axis,
+            // but the turn count is not a physics-dependent quantity.
+            rest_chord: f32,
         };
 
         fn guide_curl(root: u32, segment_count: u32) -> GuideCurl {
@@ -455,6 +459,7 @@ macro_rules! hair_shader_source {
             curl.root_normal = guide_data[root].normal_phase.xyz;
             curl.rand = guide_data[root].rand.xyz;
             curl.phase = guide_data[root].normal_phase.w;
+            curl.rest_chord = guide_data[root].rand.w;
             return curl;
         }
 
@@ -511,7 +516,7 @@ macro_rules! hair_shader_source {
             }
 
             let angle = winding
-                * (curl.phase + t * chord * part.waviness_b.x * freq_random);
+                * (curl.phase + t * curl.rest_chord * part.waviness_b.x * freq_random);
 
             let cosine = cos(angle);
             let sine = sin(angle);
@@ -2543,6 +2548,33 @@ mod envelope_tests {
             HAIR_SHADER
                 .contains("* (scale * amp_random * baked_envelope(travel, segment_count, part));"),
             "the curl offset has to use the baked amplitude, not the curve",
+        );
+    }
+}
+
+#[cfg(test)]
+mod curl_frequency_tests {
+    use super::*;
+
+    /// The kernel reads GPPointJoint.Point — the rest pose — for the chord it
+    /// multiplies the frequency by, and only the rotation axis comes from the
+    /// live GPParticle positions. Taking both from the live spine makes the
+    /// ringlet count wind and unwind as a lock stretches under gravity.
+    #[test]
+    fn the_turn_count_is_measured_on_the_rest_chord_not_the_simulated_one() {
+        assert!(
+            HAIR_SHADER.contains(
+                "* (curl.phase + t * curl.rest_chord * part.waviness_b.x * freq_random);"
+            ),
+            "the curl angle is back on the live chord, so the frequency breathes",
+        );
+        assert!(
+            HAIR_SHADER.contains("curl.rest_chord = guide_data[root].rand.w;"),
+            "the rest chord has to come from the guide data the mesh rebuilds",
+        );
+        assert!(
+            HAIR_SHADER.contains("let spine = curl.spine / chord;"),
+            "the rotation axis must still come from the live spine",
         );
     }
 }
