@@ -394,6 +394,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender confirma com um clique ou segunda tecla; ZBrush ao soltar a tecla")
         }
+        TextKey::HairBrushShape => Some("Forma do pincel"),
+        TextKey::HairBrushShapeCircle => Some("Círculo"),
+        TextKey::HairBrushShapeWide => Some("Barra larga"),
+        TextKey::HairBrushShapeTall => Some("Barra alta"),
+        TextKey::HairBrushFollowStroke => Some("Seguir o traço"),
         TextKey::SettingsVignetteIntensity => Some("Quantidade"),
         TextKey::SettingsVignetteSmoothness => Some("Suavidade"),
         TextKey::SettingsVignetteRoundness => Some("Arredondamento"),

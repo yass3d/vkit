@@ -353,6 +353,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender क्लिक या दूसरी बार दबाने पर तय होता है; ZBrush कुंजी छोड़ने पर")
         }
+        TextKey::HairBrushShape => Some("ब्रश आकृति"),
+        TextKey::HairBrushShapeCircle => Some("वृत्त"),
+        TextKey::HairBrushShapeWide => Some("चौड़ी पट्टी"),
+        TextKey::HairBrushShapeTall => Some("लंबी पट्टी"),
+        TextKey::HairBrushFollowStroke => Some("स्ट्रोक का अनुसरण करें"),
         TextKey::SettingsVignetteIntensity => Some("मात्रा"),
         TextKey::SettingsVignetteSmoothness => Some("कोमलता"),
         TextKey::SettingsVignetteRoundness => Some("गोलाई"),

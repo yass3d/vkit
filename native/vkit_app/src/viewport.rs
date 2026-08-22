@@ -626,7 +626,7 @@ fn draw_result_in(
     }
 
     if state.is_hair_editing() && state.hair_thumbnail.is_none() {
-        hair_input::paint_hair_brush_hud(ui, state, &response);
+        hair_input::paint_hair_brush_hud(ui, state, &response, rect, swept);
     }
 
     if projection_stencil_mode(state) {

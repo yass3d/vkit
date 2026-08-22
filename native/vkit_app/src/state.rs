@@ -273,6 +273,10 @@ pub struct AppState {
 
     pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
 
+    pub hair_brush_shape: crate::hair_brush::HairBrushShape,
+
+    pub hair_brush_follow_stroke: bool,
+
     pub manual_eye_gaze: [f32; 2],
     pub eye_gaze_mode: EyeGazeMode,
 
@@ -589,6 +593,8 @@ impl Default for AppState {
             surface_smooth_passes: VAM_SMOOTH_PASSES_DEFAULT,
             viewport_background_mode: ViewportBackgroundMode::Radial,
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
+            hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
+            hair_brush_follow_stroke: true,
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
             frozen_eye_gaze: None,
@@ -1463,6 +1469,8 @@ impl AppState {
                 self.viewport_background_mode = mode;
             }
             Action::SetBrushSweepCommit(commit) => self.brush_sweep_commit = commit,
+            Action::SetHairBrushShape(shape) => self.hair_brush_shape = shape,
+            Action::SetHairBrushFollowStroke(follow) => self.hair_brush_follow_stroke = follow,
             Action::SetManualEyeGaze(value) => {
                 self.manual_eye_gaze = value.map(sanitize_eye_gaze_axis);
                 self.eye_gaze_mode = EyeGazeMode::Manual;

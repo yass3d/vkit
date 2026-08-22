@@ -376,6 +376,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender dikunci dengan klik atau tekan ulang; ZBrush saat tombol dilepas")
         }
+        TextKey::HairBrushShape => Some("Bentuk kuas"),
+        TextKey::HairBrushShapeCircle => Some("Lingkaran"),
+        TextKey::HairBrushShapeWide => Some("Batang lebar"),
+        TextKey::HairBrushShapeTall => Some("Batang tinggi"),
+        TextKey::HairBrushFollowStroke => Some("Ikuti arah sapuan"),
         TextKey::SettingsVignetteIntensity => Some("Kekuatan"),
         TextKey::SettingsVignetteSmoothness => Some("Kelembutan"),
         TextKey::SettingsVignetteRoundness => Some("Kebulatan"),

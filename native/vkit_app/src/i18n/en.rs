@@ -368,6 +368,11 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSweepTooltip => {
             "Blender commits on a click or a second press; ZBrush commits when the key comes up"
         }
+        TextKey::HairBrushShape => "Brush shape",
+        TextKey::HairBrushShapeCircle => "Circle",
+        TextKey::HairBrushShapeWide => "Wide bar",
+        TextKey::HairBrushShapeTall => "Tall bar",
+        TextKey::HairBrushFollowStroke => "Follow the stroke",
         TextKey::SettingsVignetteIntensity => "Amount",
         TextKey::SettingsVignetteSmoothness => "Softness",
         TextKey::SettingsVignetteRoundness => "Roundness",

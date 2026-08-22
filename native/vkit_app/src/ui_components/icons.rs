@@ -74,6 +74,10 @@ pub enum Icon {
     HairPlant,
     VennThree,
     CrosshairBox,
+    BrushCircle,
+    BrushBarWide,
+    BrushBarTall,
+    BrushFollowStroke,
     GlobeGravity,
     HairStream,
     MirrorPart,
@@ -308,6 +312,12 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::HairPlant => include_str!("../../resources/icons/hair-plant.svg"),
         Icon::VennThree => include_str!("../../resources/icons/venn-three.svg"),
         Icon::CrosshairBox => include_str!("../../resources/icons/crosshair-box.svg"),
+        Icon::BrushCircle => include_str!("../../resources/icons/brush-circle.svg"),
+        Icon::BrushBarWide => include_str!("../../resources/icons/brush-bar-wide.svg"),
+        Icon::BrushBarTall => include_str!("../../resources/icons/brush-bar-tall.svg"),
+        Icon::BrushFollowStroke => {
+            include_str!("../../resources/icons/brush-follow-stroke.svg")
+        }
         Icon::GlobeGravity => include_str!("../../resources/icons/globe-gravity.svg"),
         Icon::HairStream => include_str!("../../resources/icons/hair-stream.svg"),
         Icon::MirrorPart => include_str!("../../resources/icons/mirror-part.svg"),
@@ -463,6 +473,10 @@ mod tests {
                 Icon::HairPlant => {}
                 Icon::VennThree => {}
                 Icon::CrosshairBox => {}
+                Icon::BrushCircle => {}
+                Icon::BrushBarWide => {}
+                Icon::BrushBarTall => {}
+                Icon::BrushFollowStroke => {}
                 Icon::GlobeGravity => {}
                 Icon::HairStream => {}
                 Icon::MirrorPart => {}

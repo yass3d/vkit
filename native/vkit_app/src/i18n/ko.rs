@@ -356,6 +356,11 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSweepTooltip => {
             "블렌더는 클릭하거나 키를 다시 눌러야 확정되고, 지브러시는 키를 떼면 확정됩니다"
         }
+        TextKey::HairBrushShape => "브러시 모양",
+        TextKey::HairBrushShapeCircle => "원",
+        TextKey::HairBrushShapeWide => "가로 막대",
+        TextKey::HairBrushShapeTall => "세로 막대",
+        TextKey::HairBrushFollowStroke => "획 방향 따라가기",
         TextKey::SettingsVignetteIntensity => "강도",
         TextKey::SettingsVignetteSmoothness => "부드러움",
         TextKey::SettingsVignetteRoundness => "원형도",

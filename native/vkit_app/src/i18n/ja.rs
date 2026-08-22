@@ -371,6 +371,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blenderはクリックか再押下で確定、ZBrushはキーを離すと確定します")
         }
+        TextKey::HairBrushShape => Some("ブラシ形状"),
+        TextKey::HairBrushShapeCircle => Some("円"),
+        TextKey::HairBrushShapeWide => Some("横バー"),
+        TextKey::HairBrushShapeTall => Some("縦バー"),
+        TextKey::HairBrushFollowStroke => Some("ストローク方向に追従"),
         TextKey::SettingsVignetteIntensity => Some("強さ"),
         TextKey::SettingsVignetteSmoothness => Some("柔らかさ"),
         TextKey::SettingsVignetteRoundness => Some("丸み"),

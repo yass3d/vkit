@@ -21,6 +21,7 @@ mod diagnostics;
 mod dialogs;
 mod edit_clock;
 mod guidance;
+mod hair_brush;
 mod hair_collision;
 mod hair_export;
 mod hair_physics;

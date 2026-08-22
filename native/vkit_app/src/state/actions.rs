@@ -183,6 +183,10 @@ pub enum Action {
     SetViewportBackgroundMode(ViewportBackgroundMode),
 
     SetBrushSweepCommit(crate::sweep_gesture::SweepCommit),
+
+    SetHairBrushShape(crate::hair_brush::HairBrushShape),
+
+    SetHairBrushFollowStroke(bool),
     SetManualEyeGaze([f32; 2]),
     SetEyeGazeMode(EyeGazeMode),
     ResetEyeGaze,
@@ -651,6 +655,8 @@ impl Action {
             | Self::ClearCache
             | Self::SetViewportBackgroundMode(_)
             | Self::SetBrushSweepCommit(_)
+            | Self::SetHairBrushShape(_)
+            | Self::SetHairBrushFollowStroke(_)
             | Self::SetManualEyeGaze(_)
             | Self::SetEyeGazeMode(_)
             | Self::ResetEyeGaze

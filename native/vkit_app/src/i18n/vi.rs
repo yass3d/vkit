@@ -368,6 +368,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender xác nhận khi nhấp hoặc nhấn lại; ZBrush xác nhận khi nhả phím")
         }
+        TextKey::HairBrushShape => Some("Hình dạng cọ"),
+        TextKey::HairBrushShapeCircle => Some("Hình tròn"),
+        TextKey::HairBrushShapeWide => Some("Thanh ngang"),
+        TextKey::HairBrushShapeTall => Some("Thanh dọc"),
+        TextKey::HairBrushFollowStroke => Some("Theo hướng nét"),
         TextKey::SettingsVignetteIntensity => Some("Mức"),
         TextKey::SettingsVignetteSmoothness => Some("Độ mềm"),
         TextKey::SettingsVignetteRoundness => Some("Độ tròn"),

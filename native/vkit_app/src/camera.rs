@@ -469,6 +469,11 @@ impl TurntableCamera {
         point.is_finite().then_some(point)
     }
 
+    #[must_use]
+    pub fn screen_basis(&self) -> (Vec3, Vec3, Vec3) {
+        self.basis()
+    }
+
     pub(crate) fn basis(&self) -> (Vec3, Vec3, Vec3) {
         let (yaw, pitch) = self.effective_angles();
         let cos_pitch = pitch.cos();

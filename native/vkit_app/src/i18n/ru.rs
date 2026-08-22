@@ -378,6 +378,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => Some(
             "Blender подтверждает щелчком или повторным нажатием; ZBrush — отпусканием клавиши",
         ),
+        TextKey::HairBrushShape => Some("Форма кисти"),
+        TextKey::HairBrushShapeCircle => Some("Круг"),
+        TextKey::HairBrushShapeWide => Some("Широкая полоса"),
+        TextKey::HairBrushShapeTall => Some("Высокая полоса"),
+        TextKey::HairBrushFollowStroke => Some("Следовать за штрихом"),
         TextKey::SettingsVignetteIntensity => Some("Величина"),
         TextKey::SettingsVignetteSmoothness => Some("Мягкость"),
         TextKey::SettingsVignetteRoundness => Some("Округлость"),

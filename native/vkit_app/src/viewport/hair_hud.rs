@@ -172,6 +172,43 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
     }
 
     draw_detail_separator(&mut hud);
+    for shape in crate::hair_brush::HairBrushShape::ALL {
+        let icon = match shape {
+            crate::hair_brush::HairBrushShape::Circle => Icon::BrushCircle,
+            crate::hair_brush::HairBrushShape::Wide => Icon::BrushBarWide,
+            crate::hair_brush::HairBrushShape::Tall => Icon::BrushBarTall,
+        };
+        let chosen = detail_hud_toggle_icon(
+            &mut hud,
+            icon,
+            state.hair_brush_shape == shape,
+            text(state.locale, shape.label_key()),
+            text(state.locale, TextKey::HairBrushShape),
+            None,
+        );
+        if chosen.clicked() {
+            state.dispatch(Action::SetHairBrushShape(shape));
+        }
+    }
+    let follow = hud
+        .add_enabled_ui(state.hair_brush_shape.is_bar(), |hud| {
+            detail_hud_toggle_icon(
+                hud,
+                Icon::BrushFollowStroke,
+                state.hair_brush_follow_stroke,
+                text(state.locale, TextKey::HairBrushFollowStroke),
+                text(state.locale, TextKey::HairBrushFollowStroke),
+                None,
+            )
+        })
+        .inner;
+    if follow.clicked() {
+        state.dispatch(Action::SetHairBrushFollowStroke(
+            !state.hair_brush_follow_stroke,
+        ));
+    }
+
+    draw_detail_separator(&mut hud);
     let mirror = detail_hud_toggle_icon(
         &mut hud,
         Icon::MirrorX,
