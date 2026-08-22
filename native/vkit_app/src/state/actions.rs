@@ -204,7 +204,6 @@ pub enum Action {
     SetCameraControl(crate::camera_control::ControlMode),
     RestoreSession,
     DiscardSession,
-    SetBloom(BloomSettings),
     SetVignette(VignetteSettings),
     ToggleHelp,
     Undo,
@@ -671,7 +670,6 @@ impl Action {
             | Self::SetCameraControl(_)
             | Self::RestoreSession
             | Self::DiscardSession
-            | Self::SetBloom(_)
             | Self::SetVignette(_)
             | Self::ToggleHelp
             | Self::SetSculptBrushRadius(_)

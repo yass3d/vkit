@@ -1412,12 +1412,9 @@ fn switch_impl(
         justify_width.unwrap_or(SWITCH_TRACK_WIDTH + label_width),
         crate::theme::CONTROL_H_COMPACT.max(galley.size().y),
     );
+    let id = ui.auto_id_with(("vkit.switch-row", galley.text()));
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    let mut response = ui.interact(
-        rect,
-        Id::new(("vkit.switch-row", galley.text())),
-        Sense::click(),
-    );
+    let mut response = ui.interact(rect, id, Sense::click());
     let keyboard_toggle = response.has_focus()
         && ui.input(|input| {
             input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter)

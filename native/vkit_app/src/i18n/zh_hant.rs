@@ -337,11 +337,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("該工作階段的外觀尚未在清單中 — 紋理已還原,編輯將在選擇該外觀後套用。")
         }
-        TextKey::SettingsBloomGroup => Some("光暈"),
-        TextKey::SettingsBloomIntensity => Some("強度"),
-        TextKey::SettingsBloomThreshold => Some("臨界值"),
-        TextKey::SettingsBloomSoftKnee => Some("柔和轉折"),
-        TextKey::SettingsBloomRadius => Some("半徑"),
         TextKey::SettingsVignetteGroup => Some("暈影"),
         TextKey::SettingsVignetteIntensity => Some("強度"),
         TextKey::SettingsVignetteSmoothness => Some("柔和度"),

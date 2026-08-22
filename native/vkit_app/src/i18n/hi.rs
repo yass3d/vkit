@@ -346,11 +346,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("उस सत्र का लुक अभी सूची में नहीं है — बनावटें बहाल हो गईं, और लुक चुनते ही संपादन लागू होंगे।")
         }
-        TextKey::SettingsBloomGroup => Some("ब्लूम"),
-        TextKey::SettingsBloomIntensity => Some("तीव्रता"),
-        TextKey::SettingsBloomThreshold => Some("सीमा"),
-        TextKey::SettingsBloomSoftKnee => Some("सॉफ़्ट नी"),
-        TextKey::SettingsBloomRadius => Some("त्रिज्या"),
         TextKey::SettingsVignetteGroup => Some("विनेट"),
         TextKey::SettingsVignetteIntensity => Some("मात्रा"),
         TextKey::SettingsVignetteSmoothness => Some("कोमलता"),

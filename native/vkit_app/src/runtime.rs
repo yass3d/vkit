@@ -1931,11 +1931,6 @@ fn preferences_from_state(state: &AppState) -> Preferences {
         vignette_intensity: state.vignette.intensity,
         vignette_smoothness: state.vignette.smoothness,
         vignette_roundness: state.vignette.roundness,
-        bloom_enabled: state.bloom.enabled,
-        bloom_intensity: state.bloom.intensity,
-        bloom_threshold: state.bloom.threshold,
-        bloom_soft_knee: state.bloom.soft_knee,
-        bloom_radius: state.bloom.radius,
     }
 }
 
@@ -1991,13 +1986,6 @@ fn apply_saved_preferences(state: &mut AppState, saved: &Preferences) {
     state.dispatch(Action::SetToneMapping(
         crate::shader_color::ToneMapping::from_id(saved.tone_mapping),
     ));
-    state.dispatch(Action::SetBloom(crate::post_process::BloomSettings {
-        enabled: saved.bloom_enabled,
-        intensity: saved.bloom_intensity,
-        threshold: saved.bloom_threshold,
-        soft_knee: saved.bloom_soft_knee,
-        radius: saved.bloom_radius,
-    }));
     state.dispatch(Action::SetVignette(crate::post_process::VignetteSettings {
         enabled: saved.vignette_enabled,
         intensity: saved.vignette_intensity,

@@ -41,7 +41,7 @@ use crate::{
         MorphLibraryValueSnapshot, MorphListFilter, MorphSource,
         apply_genital_applications_to_vam_mesh, unresolved_slider_contract,
     },
-    post_process::{BloomSettings, VignetteSettings},
+    post_process::VignetteSettings,
     scene::{Bounds3, MeshSide, ModelTransform, PreparedScan, SurfaceEndpoint, WorkspaceScene},
     sculpt::{SculptBrush, SculptDab, SculptFalloff, SculptSession, SculptTarget},
     shader_color::ToneMapping,
@@ -308,8 +308,6 @@ pub struct AppState {
     pub camera_control: crate::camera_control::ControlMode,
 
     pub pending_recovery: Option<crate::session_snapshot::SessionSnapshot>,
-
-    pub bloom: BloomSettings,
 
     pub vignette: VignetteSettings,
     pub eye_closure: f32,
@@ -614,7 +612,6 @@ impl Default for AppState {
             tone_mapping: ToneMapping::default(),
             camera_control: crate::camera_control::ControlMode::default(),
             pending_recovery: None,
-            bloom: BloomSettings::default(),
             vignette: VignetteSettings::default(),
             eye_closure: 0.0,
             morph_library: MorphLibrary::default(),
@@ -1526,7 +1523,6 @@ impl AppState {
                 self.light_brightness = sanitize_brightness(value);
             }
             Action::SetToneMapping(value) => self.tone_mapping = value,
-            Action::SetBloom(value) => self.bloom = value,
             Action::SetCameraControl(mode) => self.camera_control = mode,
             Action::RestoreSession => self.answer_recovery(true),
             Action::DiscardSession => self.answer_recovery(false),

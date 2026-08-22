@@ -355,57 +355,6 @@ fn draw_lighting_settings(ui: &mut Ui, state: &mut AppState) {
 fn draw_effect_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
 
-    group_heading(ui, locale, TextKey::SettingsBloomGroup);
-    let mut bloom = state.bloom;
-    let mut bloom_changed = crate::ui_components::switch_row(
-        ui,
-        &mut bloom.enabled,
-        text(locale, TextKey::SettingsEffectEnabled),
-    )
-    .changed();
-    ui.add_enabled_ui(bloom.enabled, |ui| {
-        for (key, value, range, percent) in [
-            (
-                TextKey::SettingsBloomIntensity,
-                &mut bloom.intensity,
-                crate::post_process::INTENSITY_RANGE,
-                false,
-            ),
-            (
-                TextKey::SettingsBloomThreshold,
-                &mut bloom.threshold,
-                crate::post_process::THRESHOLD_RANGE,
-                false,
-            ),
-            (
-                TextKey::SettingsBloomSoftKnee,
-                &mut bloom.soft_knee,
-                crate::post_process::SOFT_KNEE_RANGE,
-                true,
-            ),
-            (
-                TextKey::SettingsBloomRadius,
-                &mut bloom.radius,
-                crate::post_process::RADIUS_RANGE,
-                false,
-            ),
-        ] {
-            bloom_changed |= setting_row(ui, locale, key, None, |ui| {
-                let slider = FilledNumericSlider::new(value, range).min_width(CONTROL_COLUMN_WIDTH);
-
-                let slider = if percent {
-                    slider.percent().decimals(0)
-                } else {
-                    slider.decimals(2)
-                };
-                ui.add(slider).changed()
-            });
-        }
-    });
-    if bloom_changed {
-        state.dispatch(Action::SetBloom(bloom));
-    }
-
     group_heading(ui, locale, TextKey::SettingsVignetteGroup);
     let mut vignette = state.vignette;
     let mut changed = effect_switch(
@@ -1339,9 +1288,8 @@ mod tests {
     fn an_effect_switch_never_repeats_its_own_heading() {
         for locale in Locale::ALL {
             let enabled = text(locale, TextKey::SettingsEffectEnabled);
-            for heading in [TextKey::SettingsBloomGroup, TextKey::SettingsVignetteGroup] {
-                assert_ne!(enabled, text(locale, heading), "{heading:?} in {locale:?}");
-            }
+            let heading = TextKey::SettingsVignetteGroup;
+            assert_ne!(enabled, text(locale, heading), "{heading:?} in {locale:?}");
         }
     }
 

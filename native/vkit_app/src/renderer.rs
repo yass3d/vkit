@@ -134,30 +134,9 @@ pub fn install(painter: &EguiPainter) -> Result<(), RendererInstallError> {
     );
     let hair_error = pollster::block_on(hair_scope.pop());
 
-    let bloom_scope = render_state
-        .device
-        .push_error_scope(wgpu::ErrorFilter::Validation);
-    let bloom_resources = crate::bloom::BloomResources::new(
-        &render_state.device,
-        render_state.target_format,
-        1280,
-        720,
-    );
-    let bloom_error = pollster::block_on(bloom_scope.pop());
-
     let mut renderer = render_state.renderer.write();
     renderer.callback_resources.insert(resources);
     renderer.callback_resources.insert(skin_resources);
-    if let Some(error) = bloom_error {
-        let _ = crate::diagnostics::record(
-            crate::diagnostics::Severity::Error,
-            "renderer",
-            "bloom_pipeline_failed",
-            &error.to_string(),
-        );
-    } else {
-        renderer.callback_resources.insert(bloom_resources);
-    }
     if let Some(error) = hair_error {
         let _ = crate::diagnostics::record(
             crate::diagnostics::Severity::Error,
@@ -437,13 +416,6 @@ impl SmoothedPositionCache {
     const fn evaluations(&self) -> usize {
         self.evaluations
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SceneTarget {
-    Screen,
-
-    Hdr,
 }
 
 #[cfg(test)]
@@ -1183,15 +1155,11 @@ mod tests {
         for (name, source) in [
             ("mesh", SHADER),
             ("skin", SKIN_SHADER),
-            ("skin-hdr", SKIN_SHADER_HDR),
             ("depth-reset", DEPTH_RESET_SHADER),
             ("mip-blit", MIP_BLIT_SHADER),
             ("hair", crate::hair_renderer::HAIR_SHADER),
-            ("hair-hdr", crate::hair_renderer::HAIR_SHADER_HDR),
             ("hair-physics", crate::hair_physics::HAIR_PHYSICS_SHADER),
             ("scalp", crate::hair_renderer::SCALP_SHADER),
-            ("scalp-hdr", crate::hair_renderer::SCALP_SHADER_HDR),
-            ("bloom", crate::bloom::BLOOM_WGSL),
         ] {
             let module = naga::front::wgsl::parse_str(source)
                 .unwrap_or_else(|error| panic!("{name} WGSL failed to parse: {error}"));

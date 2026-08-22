@@ -81,36 +81,6 @@ pub(super) fn add_skin_callback(
     ui.painter().add(callback.paint_callback(rect));
 }
 
-pub(super) fn begin_bloom(ui: &Ui, state: &AppState, rect: Rect) -> bool {
-    if !state.bloom.contributes() || !rect.is_positive() {
-        return false;
-    }
-    ui.painter().add(
-        crate::bloom::BloomBeginCallback {
-            salt: scene_salt(ui),
-        }
-        .paint_callback(rect),
-    );
-    true
-}
-
-pub(super) fn end_bloom(ui: &Ui, state: &AppState, rect: Rect, opened: bool) {
-    if !opened {
-        return;
-    }
-    ui.painter().add(
-        crate::bloom::BloomOverlayCallback {
-            salt: scene_salt(ui),
-            settings: state.bloom,
-            rect,
-
-            exposure: 1.0,
-            filmic: state.tone_mapping.shader_flag(),
-        }
-        .paint_callback(rect),
-    );
-}
-
 #[expect(
     clippy::too_many_arguments,
     reason = "one call per pane; every argument is a distinct thing to draw"
@@ -267,7 +237,6 @@ pub(super) fn add_sculpt_result_callbacks(
     eye_gaze: [f32; 2],
     result_mesh: Arc<SurfaceMesh>,
 ) {
-    let bloomed = begin_bloom(ui, state, rect);
     let visible = sculpt_visible_targets(state);
     let active = state.sculpt.editable_targets();
     let mut surfaces = state.workspace.result_sculpt_surfaces().collect::<Vec<_>>();
@@ -464,8 +433,6 @@ pub(super) fn add_sculpt_result_callbacks(
             }
         }
     }
-
-    end_bloom(ui, state, rect, bloomed);
 
     let wire_alpha = overlay_alpha(state.wireframe_opacity);
     if state.wireframe_visible && wire_alpha > 0.0 {
@@ -675,7 +642,6 @@ pub(super) fn add_result_composed_callbacks(
     view: ResultRenderView,
     result_mesh: Arc<SurfaceMesh>,
 ) {
-    let bloomed = begin_bloom(ui, state, rect);
     let mut meshes = vec![(RESULT_SCENE_KEY, Arc::clone(&result_mesh))];
     for (scene_key, enabled, part) in [
         (
@@ -743,7 +709,6 @@ pub(super) fn add_result_composed_callbacks(
             );
         }
     }
-    end_bloom(ui, state, rect, bloomed);
     if plan.wire {
         let alpha = overlay_alpha(state.wireframe_opacity);
         for (scene_key, mesh) in &meshes {

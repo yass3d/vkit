@@ -14,7 +14,7 @@ use crate::{
     hair_physics::{HairPhysicsPipelines, HairPhysicsScene},
     hair_preview::HairPreview,
     lighting::{LightingPreset, sanitize_brightness},
-    renderer::{DEPTH_FORMAT, SceneTarget},
+    renderer::DEPTH_FORMAT,
     scene::SurfaceMesh,
 };
 
@@ -267,9 +267,6 @@ macro_rules! scalp_shader_source {
 
 pub(crate) const SCALP_SHADER: &str =
     scalp_shader_source!(crate::shader_color::color_grading_wgsl!());
-pub(crate) const SCALP_SHADER_HDR: &str =
-    scalp_shader_source!(crate::shader_color::color_grading_hdr_wgsl!());
-
 macro_rules! hair_shader_source {
     ($grading:expr) => {
         concat!(
@@ -855,9 +852,6 @@ macro_rules! hair_shader_source {
 
 pub(crate) const HAIR_SHADER: &str =
     hair_shader_source!(crate::shader_color::color_grading_wgsl!());
-pub(crate) const HAIR_SHADER_HDR: &str =
-    hair_shader_source!(crate::shader_color::color_grading_hdr_wgsl!());
-
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct HairUniform {
@@ -957,16 +951,8 @@ impl CallbackTrait for ScalpPaintCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let kept = if let Some(resources) = callback_resources.get_mut::<ScalpRenderResources>() {
+        if let Some(resources) = callback_resources.get_mut::<ScalpRenderResources>() {
             resources.prepare(device, queue, self);
-
-            resources.scenes.contains_key(&self.scene_key)
-        } else {
-            false
-        };
-
-        if kept && let Some(bloom) = callback_resources.get_mut::<crate::bloom::BloomResources>() {
-            bloom.record(crate::bloom::HdrDraw::Scalp(self.scene_key));
         }
         Vec::new()
     }
@@ -978,7 +964,7 @@ impl CallbackTrait for ScalpPaintCallback {
         callback_resources: &CallbackResources,
     ) {
         if let Some(resources) = callback_resources.get::<ScalpRenderResources>() {
-            resources.paint(render_pass, self.scene_key, SceneTarget::Screen);
+            resources.paint(render_pass, self.scene_key);
         }
     }
 }
@@ -998,7 +984,6 @@ struct ScalpGpuScene {
 pub(crate) struct ScalpRenderResources {
     pipeline: wgpu::RenderPipeline,
 
-    hdr_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     blank: wgpu::TextureView,
@@ -1026,7 +1011,6 @@ impl ScalpRenderResources {
             })
         };
         let shader = module("vkit.scalp.shader", SCALP_SHADER);
-        let hdr_shader = module("vkit.scalp.shader.hdr", SCALP_SHADER_HDR);
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vkit.scalp.bind-group-layout"),
             entries: &[
@@ -1103,11 +1087,8 @@ impl ScalpRenderResources {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
-        let build = |target_format: wgpu::TextureFormat, target: SceneTarget| {
-            let shader = match target {
-                SceneTarget::Screen => &shader,
-                SceneTarget::Hdr => &hdr_shader,
-            };
+        let build = |target_format: wgpu::TextureFormat| {
+            let shader = &shader;
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("vkit.scalp.pipeline"),
                 layout: Some(&layout),
@@ -1180,8 +1161,7 @@ impl ScalpRenderResources {
         });
         let blank = upload_scalp_texture(device, queue, None, wgpu::TextureFormat::Rgba8Unorm);
         Self {
-            pipeline: build(target_format, SceneTarget::Screen),
-            hdr_pipeline: build(crate::hdr_target::HDR_FORMAT, SceneTarget::Hdr),
+            pipeline: build(target_format),
             bind_group_layout,
             sampler,
             blank,
@@ -1475,19 +1455,7 @@ impl ScalpRenderResources {
         );
     }
 
-    const fn pipeline_for(&self, target: SceneTarget) -> &wgpu::RenderPipeline {
-        match target {
-            SceneTarget::Screen => &self.pipeline,
-            SceneTarget::Hdr => &self.hdr_pipeline,
-        }
-    }
-
-    pub(crate) fn paint(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'static>,
-        scene_key: u64,
-        target: SceneTarget,
-    ) {
+    pub(crate) fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>, scene_key: u64) {
         let Some(scene) = self.scenes.get(&scene_key) else {
             return;
         };
@@ -1496,7 +1464,7 @@ impl ScalpRenderResources {
             return;
         }
         let _keep_uniform_alive = &scene.uniform_buffer;
-        render_pass.set_pipeline(self.pipeline_for(target));
+        render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
         render_pass.set_vertex_buffer(0, scene.vertex_buffer.slice(..));
         render_pass.set_index_buffer(scene.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -1616,16 +1584,8 @@ impl CallbackTrait for HairPaintCallback {
         egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let kept = if let Some(resources) = callback_resources.get_mut::<HairRenderResources>() {
+        if let Some(resources) = callback_resources.get_mut::<HairRenderResources>() {
             resources.prepare(device, queue, egui_encoder, self);
-
-            resources.scenes.contains_key(&self.scene_key)
-        } else {
-            false
-        };
-
-        if kept && let Some(bloom) = callback_resources.get_mut::<crate::bloom::BloomResources>() {
-            bloom.record(crate::bloom::HdrDraw::Hair(self.scene_key));
         }
         Vec::new()
     }
@@ -1637,7 +1597,7 @@ impl CallbackTrait for HairPaintCallback {
         callback_resources: &CallbackResources,
     ) {
         if let Some(resources) = callback_resources.get::<HairRenderResources>() {
-            resources.paint(render_pass, self.scene_key, SceneTarget::Screen);
+            resources.paint(render_pass, self.scene_key);
         }
     }
 }
@@ -1651,7 +1611,6 @@ struct HairGpuScene {
 pub(crate) struct HairRenderResources {
     pipeline: wgpu::RenderPipeline,
 
-    hdr_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
@@ -1671,7 +1630,6 @@ impl HairRenderResources {
             })
         };
         let shader = module("vkit.hair.shader", HAIR_SHADER);
-        let hdr_shader = module("vkit.hair.shader.hdr", HAIR_SHADER_HDR);
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("vkit.hair.scene-layout"),
             entries: &[
@@ -1698,11 +1656,8 @@ impl HairRenderResources {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
-        let build = |target_format: wgpu::TextureFormat, target: SceneTarget| {
-            let shader = match target {
-                SceneTarget::Screen => &shader,
-                SceneTarget::Hdr => &hdr_shader,
-            };
+        let build = |target_format: wgpu::TextureFormat| {
+            let shader = &shader;
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("vkit.hair.pipeline"),
                 layout: Some(&layout),
@@ -1745,8 +1700,7 @@ impl HairRenderResources {
             })
         };
         Self {
-            pipeline: build(target_format, SceneTarget::Screen),
-            hdr_pipeline: build(crate::hdr_target::HDR_FORMAT, SceneTarget::Hdr),
+            pipeline: build(target_format),
             bind_group_layout,
             physics_pipelines: HairPhysicsPipelines::new(device),
             scenes: BTreeMap::new(),
@@ -1875,24 +1829,12 @@ impl HairRenderResources {
         );
     }
 
-    const fn pipeline_for(&self, target: SceneTarget) -> &wgpu::RenderPipeline {
-        match target {
-            SceneTarget::Screen => &self.pipeline,
-            SceneTarget::Hdr => &self.hdr_pipeline,
-        }
-    }
-
-    pub(crate) fn paint(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'static>,
-        scene_key: u64,
-        target: SceneTarget,
-    ) {
+    pub(crate) fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>, scene_key: u64) {
         let Some(scene) = self.scenes.get(&scene_key) else {
             return;
         };
         let _keep_uniform_alive = &scene.uniform_buffer;
-        render_pass.set_pipeline(self.pipeline_for(target));
+        render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
         render_pass.draw(0..scene.physics.render_vertex_count(), 0..1);
     }
@@ -1935,20 +1877,8 @@ mod tests {
                 std::mem::size_of::<HairUniform>(),
             ),
             (
-                "hair-hdr",
-                HAIR_SHADER_HDR,
-                "HairUniform",
-                std::mem::size_of::<HairUniform>(),
-            ),
-            (
                 "scalp",
                 SCALP_SHADER,
-                "ScalpUniform",
-                std::mem::size_of::<ScalpUniform>(),
-            ),
-            (
-                "scalp-hdr",
-                SCALP_SHADER_HDR,
                 "ScalpUniform",
                 std::mem::size_of::<ScalpUniform>(),
             ),

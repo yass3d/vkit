@@ -334,11 +334,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("该会话的外观尚未在列表中 — 纹理已恢复,编辑将在选择该外观后应用。")
         }
-        TextKey::SettingsBloomGroup => Some("泛光"),
-        TextKey::SettingsBloomIntensity => Some("强度"),
-        TextKey::SettingsBloomThreshold => Some("阈值"),
-        TextKey::SettingsBloomSoftKnee => Some("软拐点"),
-        TextKey::SettingsBloomRadius => Some("半径"),
         TextKey::SettingsVignetteGroup => Some("暗角"),
         TextKey::SettingsVignetteIntensity => Some("强度"),
         TextKey::SettingsVignetteSmoothness => Some("柔和度"),

@@ -391,11 +391,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Der Look dieser Sitzung ist noch nicht gelistet — Texturen wurden wiederhergestellt; die Änderungen greifen, sobald der Look gewählt wird.",
         ),
-        TextKey::SettingsBloomGroup => Some("Bloom"),
-        TextKey::SettingsBloomIntensity => Some("Intensität"),
-        TextKey::SettingsBloomThreshold => Some("Schwelle"),
-        TextKey::SettingsBloomSoftKnee => Some("Soft Knee"),
-        TextKey::SettingsBloomRadius => Some("Radius"),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsVignetteIntensity => Some("Stärke"),
         TextKey::SettingsVignetteSmoothness => Some("Weichheit"),

@@ -340,11 +340,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "সেই সেশনের লুক এখনো তালিকায় নেই — টেক্সচার পুনরুদ্ধার হয়েছে, লুক নির্বাচন করলে সম্পাদনাগুলি প্রযোজ্য হবে।",
         ),
-        TextKey::SettingsBloomGroup => Some("ব্লুম"),
-        TextKey::SettingsBloomIntensity => Some("তীব্রতা"),
-        TextKey::SettingsBloomThreshold => Some("থ্রেশহোল্ড"),
-        TextKey::SettingsBloomSoftKnee => Some("সফট নি"),
-        TextKey::SettingsBloomRadius => Some("ব্যাসার্ধ"),
         TextKey::SettingsVignetteGroup => Some("ভিনিয়েট"),
         TextKey::SettingsVignetteIntensity => Some("মাত্রা"),
         TextKey::SettingsVignetteSmoothness => Some("কোমলতা"),

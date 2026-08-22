@@ -334,11 +334,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("ลุคของเซสชันนั้นยังไม่อยู่ในรายการ — พื้นผิวถูกกู้คืนแล้ว และการแก้ไขจะมีผลเมื่อเลือกลุคนั้น")
         }
-        TextKey::SettingsBloomGroup => Some("บลูม"),
-        TextKey::SettingsBloomIntensity => Some("ความเข้ม"),
-        TextKey::SettingsBloomThreshold => Some("เกณฑ์"),
-        TextKey::SettingsBloomSoftKnee => Some("ความนุ่มของเกณฑ์"),
-        TextKey::SettingsBloomRadius => Some("รัศมี"),
         TextKey::SettingsVignetteGroup => Some("วิกเน็ตต์"),
         TextKey::SettingsVignetteIntensity => Some("ปริมาณ"),
         TextKey::SettingsVignetteSmoothness => Some("ความนุ่ม"),

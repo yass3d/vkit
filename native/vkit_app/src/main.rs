@@ -12,7 +12,6 @@ pub const SUPPORT_URL: &str = "https://ko-fi.com/yass_3d";
 
 mod appearance_layer_ui;
 mod appearance_layers;
-mod bloom;
 mod boot_window;
 mod cache_paths;
 mod camera;
@@ -30,7 +29,6 @@ mod hair_preview;
 mod hair_project;
 mod hair_renderer;
 mod hair_settings;
-mod hdr_target;
 mod history;
 mod i18n;
 mod importers;

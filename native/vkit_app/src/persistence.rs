@@ -177,37 +177,6 @@ pub struct Preferences {
     pub vignette_smoothness: f32,
     #[serde(default = "default_vignette_roundness")]
     pub vignette_roundness: f32,
-
-    #[serde(default = "default_bloom_enabled")]
-    pub bloom_enabled: bool,
-    #[serde(default = "default_bloom_intensity")]
-    pub bloom_intensity: f32,
-    #[serde(default = "default_bloom_threshold")]
-    pub bloom_threshold: f32,
-    #[serde(default = "default_bloom_soft_knee")]
-    pub bloom_soft_knee: f32,
-    #[serde(default = "default_bloom_radius")]
-    pub bloom_radius: f32,
-}
-
-const fn default_bloom_enabled() -> bool {
-    true
-}
-
-const fn default_bloom_intensity() -> f32 {
-    crate::post_process::DEFAULT_INTENSITY
-}
-
-const fn default_bloom_threshold() -> f32 {
-    crate::post_process::DEFAULT_THRESHOLD
-}
-
-const fn default_bloom_soft_knee() -> f32 {
-    crate::post_process::DEFAULT_SOFT_KNEE
-}
-
-const fn default_bloom_radius() -> f32 {
-    crate::post_process::DEFAULT_RADIUS
 }
 
 const fn default_vignette_intensity() -> f32 {
@@ -271,11 +240,6 @@ impl Default for Preferences {
             vignette_intensity: default_vignette_intensity(),
             vignette_smoothness: default_vignette_smoothness(),
             vignette_roundness: default_vignette_roundness(),
-            bloom_enabled: default_bloom_enabled(),
-            bloom_intensity: default_bloom_intensity(),
-            bloom_threshold: default_bloom_threshold(),
-            bloom_soft_knee: default_bloom_soft_knee(),
-            bloom_radius: default_bloom_radius(),
         }
     }
 }
@@ -299,27 +263,6 @@ impl Preferences {
             0.0
         };
         self.light_brightness = sanitize_brightness(self.light_brightness);
-
-        self.bloom_intensity = sanitize_range(
-            self.bloom_intensity,
-            crate::post_process::INTENSITY_RANGE,
-            default_bloom_intensity(),
-        );
-        self.bloom_threshold = sanitize_range(
-            self.bloom_threshold,
-            crate::post_process::THRESHOLD_RANGE,
-            default_bloom_threshold(),
-        );
-        self.bloom_soft_knee = sanitize_range(
-            self.bloom_soft_knee,
-            crate::post_process::SOFT_KNEE_RANGE,
-            default_bloom_soft_knee(),
-        );
-        self.bloom_radius = sanitize_range(
-            self.bloom_radius,
-            crate::post_process::RADIUS_RANGE,
-            default_bloom_radius(),
-        );
     }
 
     pub fn with_sanitized_display(mut self) -> Self {
@@ -409,14 +352,6 @@ where
         serde_json::from_value(serde_json::Value::String(value.trim().to_ascii_lowercase()))
             .unwrap_or_default()
     }))
-}
-
-fn sanitize_range(value: f32, range: std::ops::RangeInclusive<f32>, fallback: f32) -> f32 {
-    if value.is_finite() {
-        value.clamp(*range.start(), *range.end())
-    } else {
-        fallback
-    }
 }
 
 fn sanitize_unit(value: f32, fallback: f32) -> f32 {
@@ -857,11 +792,6 @@ mod tests {
             vignette_intensity: default_vignette_intensity(),
             vignette_smoothness: default_vignette_smoothness(),
             vignette_roundness: default_vignette_roundness(),
-            bloom_enabled: default_bloom_enabled(),
-            bloom_intensity: default_bloom_intensity(),
-            bloom_threshold: default_bloom_threshold(),
-            bloom_soft_knee: default_bloom_soft_knee(),
-            bloom_radius: default_bloom_radius(),
         };
         store.save(&expected).unwrap();
         assert_eq!(store.load().unwrap(), expected);

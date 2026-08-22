@@ -369,11 +369,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Look sesi itu belum terdaftar — tekstur dipulihkan, dan suntingan akan diterapkan saat look dipilih.",
         ),
-        TextKey::SettingsBloomGroup => Some("Bloom"),
-        TextKey::SettingsBloomIntensity => Some("Intensitas"),
-        TextKey::SettingsBloomThreshold => Some("Ambang"),
-        TextKey::SettingsBloomSoftKnee => Some("Soft knee"),
-        TextKey::SettingsBloomRadius => Some("Radius"),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsVignetteIntensity => Some("Kekuatan"),
         TextKey::SettingsVignetteSmoothness => Some("Kelembutan"),

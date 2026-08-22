@@ -8,10 +8,10 @@ use wgpu::util::DeviceExt as _;
 
 use super::mesh::MeshRenderResources;
 use super::mip::MipBlit;
-use super::shaders::{SKIN_SHADER, SKIN_SHADER_HDR};
+use super::shaders::SKIN_SHADER;
 use super::{
-    RenderDepthScope, SceneTarget, SceneUniform, SmoothedPositionCache, evict_lru_scenes,
-    lighting_uniform_data, normal_matrix, rgba8_srgb_to_linear, sanitized_light_yaw,
+    RenderDepthScope, SceneUniform, SmoothedPositionCache, evict_lru_scenes, lighting_uniform_data,
+    normal_matrix, rgba8_srgb_to_linear, sanitized_light_yaw,
 };
 use crate::{
     lighting::{LightingPreset, sanitize_brightness},
@@ -165,11 +165,6 @@ impl CallbackTrait for SkinPaintCallback {
         };
         resources.prepare_scene(device, queue, self);
 
-        let kept = resources.scenes.contains_key(&self.scene_key);
-
-        if kept && let Some(bloom) = callback_resources.get_mut::<crate::bloom::BloomResources>() {
-            bloom.record(crate::bloom::HdrDraw::Skin(self.scene_key));
-        }
         Vec::new()
     }
 
@@ -185,7 +180,7 @@ impl CallbackTrait for SkinPaintCallback {
             mesh_resources.reset_depth(render_pass);
         }
         if let Some(resources) = callback_resources.get::<SkinRenderResources>() {
-            resources.paint(render_pass, self.scene_key, SceneTarget::Screen);
+            resources.paint(render_pass, self.scene_key);
         }
     }
 }
@@ -256,7 +251,6 @@ fn skin_vertex_key(skin: &SkinPreview) -> SkinVertexKey {
 pub(crate) struct SkinRenderResources {
     screen: SkinPipelines,
 
-    hdr: SkinPipelines,
     target_is_srgb: bool,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -306,7 +300,6 @@ impl SkinRenderResources {
             })
         };
         let shader = module("vkit.skin.shader", SKIN_SHADER);
-        let hdr_shader = module("vkit.skin.shader.hdr", SKIN_SHADER_HDR);
         let mut bind_entries = vec![wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
@@ -345,15 +338,12 @@ impl SkinRenderResources {
             immediate_size: 0,
         });
 
-        let pipelines = |format: wgpu::TextureFormat, target: SceneTarget| {
+        let pipelines = |format: wgpu::TextureFormat| {
             let attachment = SkinAttachment {
                 format,
                 sample_count,
             };
-            let module = match target {
-                SceneTarget::Screen => &shader,
-                SceneTarget::Hdr => &hdr_shader,
-            };
+            let module = &shader;
             SkinPipelines {
                 opaque: create_skin_pipeline(
                     device,
@@ -384,8 +374,7 @@ impl SkinRenderResources {
             ..Default::default()
         });
         Self {
-            screen: pipelines(target_format, SceneTarget::Screen),
-            hdr: pipelines(crate::hdr_target::HDR_FORMAT, SceneTarget::Hdr),
+            screen: pipelines(target_format),
             target_is_srgb: target_format.is_srgb(),
             bind_group_layout,
             sampler,
@@ -714,12 +703,7 @@ impl SkinRenderResources {
         })
     }
 
-    pub(crate) fn paint(
-        &self,
-        render_pass: &mut wgpu::RenderPass<'static>,
-        scene_key: u64,
-        target: SceneTarget,
-    ) {
+    pub(crate) fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>, scene_key: u64) {
         let Some(scene) = self.scenes.get(&scene_key) else {
             return;
         };
@@ -727,10 +711,7 @@ impl SkinRenderResources {
         if scene.vertex_count == 0 {
             return;
         }
-        let pipelines = match target {
-            SceneTarget::Screen => &self.screen,
-            SceneTarget::Hdr => &self.hdr,
-        };
+        let pipelines = &self.screen;
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
         render_pass.set_vertex_buffer(0, scene.vertex_buffer.slice(..));
         render_pass.set_pipeline(&pipelines.opaque);

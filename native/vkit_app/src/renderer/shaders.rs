@@ -658,9 +658,6 @@ macro_rules! skin_shader_source {
 
 pub(super) const SKIN_SHADER: &str =
     skin_shader_source!(crate::shader_color::color_grading_wgsl!());
-pub(super) const SKIN_SHADER_HDR: &str =
-    skin_shader_source!(crate::shader_color::color_grading_hdr_wgsl!());
-
 pub(super) const DEPTH_RESET_SHADER: &str = r#"
 struct DepthResetOutput {
     @builtin(frag_depth) depth: f32,

@@ -387,11 +387,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "O look daquela sessão ainda não está na lista — as texturas foram restauradas e as edições se aplicarão ao selecioná-lo.",
         ),
-        TextKey::SettingsBloomGroup => Some("Bloom"),
-        TextKey::SettingsBloomIntensity => Some("Intensidade"),
-        TextKey::SettingsBloomThreshold => Some("Limiar"),
-        TextKey::SettingsBloomSoftKnee => Some("Transição suave"),
-        TextKey::SettingsBloomRadius => Some("Raio"),
         TextKey::SettingsVignetteGroup => Some("Vinheta"),
         TextKey::SettingsVignetteIntensity => Some("Quantidade"),
         TextKey::SettingsVignetteSmoothness => Some("Suavidade"),

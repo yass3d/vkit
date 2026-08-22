@@ -1,4 +1,4 @@
-use crate::renderer::{DEPTH_FORMAT, MSAA_SAMPLES, SceneTarget};
+use crate::renderer::{DEPTH_FORMAT, MSAA_SAMPLES};
 
 #[must_use]
 pub(crate) const fn portrait_scene_key(seed: u64) -> u64 {
@@ -173,16 +173,16 @@ pub(crate) fn render_portrait(
         if let Some(skin) = scene.skin.as_ref()
             && let Some(painter) = resources.get::<crate::renderer::SkinRenderResources>()
         {
-            painter.paint(&mut pass, skin.scene_key, SceneTarget::Screen);
+            painter.paint(&mut pass, skin.scene_key);
         }
         if let Some(scalp) = resources.get::<crate::hair_renderer::ScalpRenderResources>() {
             for callback in &scene.scalps {
-                scalp.paint(&mut pass, callback.scene_key, SceneTarget::Screen);
+                scalp.paint(&mut pass, callback.scene_key);
             }
         }
         if let Some(painter) = resources.get::<crate::hair_renderer::HairRenderResources>() {
             for callback in &scene.hair {
-                painter.paint(&mut pass, callback.scene_key, SceneTarget::Screen);
+                painter.paint(&mut pass, callback.scene_key);
             }
         }
     }

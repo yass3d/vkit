@@ -349,11 +349,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "그 세션의 외형이 아직 목록에 없습니다 — 텍스처는 복원됐고, 편집 내용은 외형을 선택하면 적용됩니다."
         }
-        TextKey::SettingsBloomGroup => "블룸",
-        TextKey::SettingsBloomIntensity => "세기",
-        TextKey::SettingsBloomThreshold => "임계값",
-        TextKey::SettingsBloomSoftKnee => "부드러운 전환",
-        TextKey::SettingsBloomRadius => "번짐 범위",
         TextKey::SettingsVignetteGroup => "비네트",
         TextKey::SettingsVignetteIntensity => "강도",
         TextKey::SettingsVignetteSmoothness => "부드러움",

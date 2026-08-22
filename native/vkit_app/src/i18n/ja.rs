@@ -364,11 +364,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "そのセッションの外見はまだ一覧にありません — テクスチャは復元済みで、編集内容は外見を選ぶと適用されます。",
         ),
-        TextKey::SettingsBloomGroup => Some("ブルーム"),
-        TextKey::SettingsBloomIntensity => Some("強さ"),
-        TextKey::SettingsBloomThreshold => Some("しきい値"),
-        TextKey::SettingsBloomSoftKnee => Some("なめらかさ"),
-        TextKey::SettingsBloomRadius => Some("広がり"),
         TextKey::SettingsVignetteGroup => Some("ビネット"),
         TextKey::SettingsVignetteIntensity => Some("強さ"),
         TextKey::SettingsVignetteSmoothness => Some("柔らかさ"),

@@ -371,11 +371,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Образ той сессии ещё не в списке — текстуры восстановлены, правки применятся при его выборе.",
         ),
-        TextKey::SettingsBloomGroup => Some("Свечение"),
-        TextKey::SettingsBloomIntensity => Some("Интенсивность"),
-        TextKey::SettingsBloomThreshold => Some("Порог"),
-        TextKey::SettingsBloomSoftKnee => Some("Мягкий переход"),
-        TextKey::SettingsBloomRadius => Some("Радиус"),
         TextKey::SettingsVignetteGroup => Some("Виньетка"),
         TextKey::SettingsVignetteIntensity => Some("Величина"),
         TextKey::SettingsVignetteSmoothness => Some("Мягкость"),

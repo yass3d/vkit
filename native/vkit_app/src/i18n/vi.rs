@@ -361,11 +361,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Diện mạo của phiên đó chưa có trong danh sách — kết cấu đã khôi phục, chỉnh sửa sẽ áp dụng khi chọn diện mạo.",
         ),
-        TextKey::SettingsBloomGroup => Some("Bloom"),
-        TextKey::SettingsBloomIntensity => Some("Cường độ"),
-        TextKey::SettingsBloomThreshold => Some("Ngưỡng"),
-        TextKey::SettingsBloomSoftKnee => Some("Soft knee"),
-        TextKey::SettingsBloomRadius => Some("Bán kính"),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsVignetteIntensity => Some("Mức"),
         TextKey::SettingsVignetteSmoothness => Some("Độ mềm"),

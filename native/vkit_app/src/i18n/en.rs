@@ -361,11 +361,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "That session's look is not installed yet — textures were restored, and the edits will apply when the look is selected."
         }
-        TextKey::SettingsBloomGroup => "Bloom",
-        TextKey::SettingsBloomIntensity => "Intensity",
-        TextKey::SettingsBloomThreshold => "Threshold",
-        TextKey::SettingsBloomSoftKnee => "Soft knee",
-        TextKey::SettingsBloomRadius => "Radius",
         TextKey::SettingsVignetteGroup => "Vignette",
         TextKey::SettingsVignetteIntensity => "Amount",
         TextKey::SettingsVignetteSmoothness => "Softness",

@@ -70,29 +70,7 @@ fn graded_display(
     };
 }
 
-macro_rules! color_grading_hdr_wgsl {
-    () => {
-        concat!(
-            crate::shader_color::color_grading_common_wgsl!(),
-            r#"
-fn graded_display(
-    linear_color: vec3<f32>,
-    exposure: f32,
-    filmic: bool,
-    target_is_srgb: bool,
-) -> vec3<f32> {
-
-    _ = exposure;
-    _ = filmic;
-    _ = target_is_srgb;
-    return sanitize_radiance(linear_color);
-}
-"#
-        )
-    };
-}
-
-pub(crate) use {color_grading_common_wgsl, color_grading_hdr_wgsl, color_grading_wgsl};
+pub(crate) use {color_grading_common_wgsl, color_grading_wgsl};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ToneMapping {
@@ -143,14 +121,9 @@ mod tests {
             "fn graded_display(",
         ] {
             assert!(preamble.contains(symbol), "preamble lost {symbol}");
-            assert!(
-                color_grading_hdr_wgsl!().contains(symbol),
-                "off-screen preamble lost {symbol}"
-            );
         }
 
         assert!(preamble.contains("tone_curve_filmic(exposed)"));
-        assert!(!color_grading_hdr_wgsl!().contains("tone_curve_filmic(exposed)"));
     }
 
     #[test]
