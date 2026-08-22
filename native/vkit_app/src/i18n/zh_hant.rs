@@ -369,6 +369,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("重設全部設定並重新啟動"),
         TextKey::SettingsGraphicsLighting => Some("燈光"),
         TextKey::SettingsGraphicsEffects => Some("效果"),
+        TextKey::SettingsGraphicsQuality => Some("品質"),
+        TextKey::SettingsQualityAntialiasing => Some("抗鋸齒"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => {
+            Some("依所選取樣數平滑邊緣鋸齒。數值越高越乾淨，也越耗資源。")
+        }
+        TextKey::SettingsMsaaRestart => Some("重新啟動後生效 — 目前為"),
         TextKey::SoloViewHint => Some("只顯示這個部件"),
         TextKey::SoloViewRestoreHint => Some("還原先前的顯示"),
         TextKey::ToneCurveFilmic => Some("電影感"),

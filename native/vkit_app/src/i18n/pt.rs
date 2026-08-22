@@ -425,6 +425,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("Redefinir todas as configurações e reiniciar"),
         TextKey::SettingsGraphicsLighting => Some("Iluminação"),
         TextKey::SettingsGraphicsEffects => Some("Efeitos"),
+        TextKey::SettingsGraphicsQuality => Some("Qualidade"),
+        TextKey::SettingsQualityAntialiasing => Some("Suavização"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => Some(
+            "Suaviza bordas serrilhadas conforme as amostras escolhidas. Mais alto é mais limpo e mais custoso.",
+        ),
+        TextKey::SettingsMsaaRestart => Some("Aplica ao reiniciar — atualmente"),
         TextKey::SoloViewHint => Some("Mostrar apenas esta parte"),
         TextKey::SoloViewRestoreHint => Some("Restaurar a vista anterior"),
         TextKey::ToneCurveFilmic => Some("Fílmica"),

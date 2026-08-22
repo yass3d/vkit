@@ -1,4 +1,4 @@
-use crate::renderer::{DEPTH_FORMAT, MSAA_SAMPLES};
+use crate::renderer::{DEPTH_FORMAT, msaa_samples};
 
 #[must_use]
 pub(crate) const fn portrait_scene_key(seed: u64) -> u64 {
@@ -29,7 +29,7 @@ impl PortraitTarget {
                 label: Some("vkit.portrait.multisampled"),
                 size: extent,
                 mip_level_count: 1,
-                sample_count: MSAA_SAMPLES,
+                sample_count: msaa_samples(),
                 dimension: wgpu::TextureDimension::D2,
                 format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -52,7 +52,7 @@ impl PortraitTarget {
                 label: Some("vkit.portrait.depth"),
                 size: extent,
                 mip_level_count: 1,
-                sample_count: MSAA_SAMPLES,
+                sample_count: msaa_samples(),
                 dimension: wgpu::TextureDimension::D2,
                 format: DEPTH_FORMAT,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

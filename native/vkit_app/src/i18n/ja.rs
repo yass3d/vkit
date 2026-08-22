@@ -400,6 +400,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("すべての設定を初期化して再起動"),
         TextKey::SettingsGraphicsLighting => Some("ライティング"),
         TextKey::SettingsGraphicsEffects => Some("エフェクト"),
+        TextKey::SettingsGraphicsQuality => Some("品質"),
+        TextKey::SettingsQualityAntialiasing => Some("アンチエイリアス"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => {
+            Some("サンプル数の分だけ輪郭のギザギザをならす。高いほど滑らかで重い。")
+        }
+        TextKey::SettingsMsaaRestart => Some("再起動後に適用 — 現在は"),
         TextKey::SoloViewHint => Some("このパーツだけ表示"),
         TextKey::SoloViewRestoreHint => Some("前の表示に戻す"),
         TextKey::ToneCurveFilmic => Some("フィルミック"),

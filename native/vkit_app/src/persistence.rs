@@ -179,6 +179,14 @@ pub struct Preferences {
     pub vignette_smoothness: f32,
     #[serde(default = "default_vignette_roundness")]
     pub vignette_roundness: f32,
+
+    /// Multisample count. Read once at startup, before the painter exists.
+    #[serde(default = "default_msaa_samples")]
+    pub msaa_samples: u32,
+}
+
+const fn default_msaa_samples() -> u32 {
+    crate::renderer::DEFAULT_MSAA_SAMPLES
 }
 
 const fn default_vignette_intensity() -> f32 {
@@ -238,6 +246,7 @@ impl Default for Preferences {
             light_yaw_radians: 0.0,
             lighting_preset: LightingPreset::default(),
             light_brightness: default_light_brightness(),
+            msaa_samples: default_msaa_samples(),
             tone_mapping: ToneMapping::default().id(),
             vignette_enabled: VignetteSettings::default().enabled,
             vignette_intensity: default_vignette_intensity(),
@@ -749,6 +758,7 @@ mod tests {
         let root = temp_root("preferences");
         let store = PreferenceStore::at(root.join("settings.json"));
         let expected = Preferences {
+            msaa_samples: 8,
             shortcuts: std::collections::BTreeMap::new(),
             package_creator: Some("Some One".to_owned()),
             package_version: Some("3".to_owned()),

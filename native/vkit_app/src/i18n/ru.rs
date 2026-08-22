@@ -409,6 +409,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("Сбросить все настройки и перезапустить"),
         TextKey::SettingsGraphicsLighting => Some("Освещение"),
         TextKey::SettingsGraphicsEffects => Some("Эффекты"),
+        TextKey::SettingsGraphicsQuality => Some("Качество"),
+        TextKey::SettingsQualityAntialiasing => Some("Сглаживание"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => {
+            Some("Сглаживает ступенчатые края по выбранному числу выборок. Выше — чище и дороже.")
+        }
+        TextKey::SettingsMsaaRestart => Some("Применится после перезапуска — сейчас"),
         TextKey::SoloViewHint => Some("Показать только эту часть"),
         TextKey::SoloViewRestoreHint => Some("Вернуть предыдущий вид"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

@@ -399,6 +399,13 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsResetAll => "Reset all settings and restart",
         TextKey::SettingsGraphicsLighting => "Lighting",
         TextKey::SettingsGraphicsEffects => "Effects",
+        TextKey::SettingsGraphicsQuality => "Quality",
+        TextKey::SettingsQualityAntialiasing => "Antialiasing",
+        TextKey::SettingsMsaa => "MSAA",
+        TextKey::SettingsMsaaTooltip => {
+            "Smooths stepped edges with the sample count you pick. Higher is cleaner and costlier."
+        }
+        TextKey::SettingsMsaaRestart => "Applies on restart — currently",
         TextKey::SoloViewHint => "Show only this part",
         TextKey::SoloViewRestoreHint => "Put the previous view back",
         TextKey::ToneCurveFilmic => "Filmic",

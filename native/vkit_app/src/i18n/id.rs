@@ -407,6 +407,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("Setel ulang semua pengaturan lalu mulai ulang"),
         TextKey::SettingsGraphicsLighting => Some("Pencahayaan"),
         TextKey::SettingsGraphicsEffects => Some("Efek"),
+        TextKey::SettingsGraphicsQuality => Some("Kualitas"),
+        TextKey::SettingsQualityAntialiasing => Some("Antialias"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => Some(
+            "Menghaluskan tepi bergerigi sesuai jumlah sampel yang dipilih. Makin tinggi makin bersih dan berat.",
+        ),
+        TextKey::SettingsMsaaRestart => Some("Berlaku setelah mulai ulang — saat ini"),
         TextKey::SoloViewHint => Some("Tampilkan bagian ini saja"),
         TextKey::SoloViewRestoreHint => Some("Kembalikan tampilan sebelumnya"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

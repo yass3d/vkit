@@ -383,6 +383,13 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsResetAll => "모든 설정 초기화 후 재시작",
         TextKey::SettingsGraphicsLighting => "조명",
         TextKey::SettingsGraphicsEffects => "효과",
+        TextKey::SettingsGraphicsQuality => "품질",
+        TextKey::SettingsQualityAntialiasing => "안티에일리어싱",
+        TextKey::SettingsMsaa => "MSAA",
+        TextKey::SettingsMsaaTooltip => {
+            "가장자리 계단을 샘플 수만큼 부드럽게 한다. 높을수록 선명하고 무겁다."
+        }
+        TextKey::SettingsMsaaRestart => "다시 시작하면 적용됨 — 지금은",
         TextKey::SoloViewHint => "이 부위만 보기",
         TextKey::SoloViewRestoreHint => "이전 표시 상태로 되돌리기",
         TextKey::ToneCurveFilmic => "필름",

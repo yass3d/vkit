@@ -1028,6 +1028,32 @@ impl Runtime {
             }
         });
 
+        // The sample count has to be settled before the painter is built: egui
+        // bakes it into its own pipelines at construction and every pipeline in
+        // this program has to agree with it. That is why the preference takes
+        // effect on restart, and why it is probed against the adapter first —
+        // a count the adapter cannot carry would fail validation on every pass
+        // rather than degrade.
+        let wanted_samples = saved.msaa_samples;
+        let active_samples = probe_msaa_samples(wanted_samples);
+        if active_samples != wanted_samples {
+            log(
+                Severity::Warning,
+                "msaa_unsupported",
+                &format!(
+                    "this adapter cannot carry {wanted_samples}x, running at {active_samples}x"
+                ),
+            );
+        }
+        log(
+            Severity::Info,
+            "msaa_selected",
+            &format!(
+                "{active_samples}x of {:?} available",
+                renderer::supported_msaa_samples()
+            ),
+        );
+
         let configuration = WgpuConfiguration {
             wgpu_setup: setup.into(),
 
@@ -1035,7 +1061,7 @@ impl Runtime {
             ..Default::default()
         };
         let renderer_options = RendererOptions {
-            msaa_samples: renderer::MSAA_SAMPLES,
+            msaa_samples: active_samples,
             depth_stencil_format: Some(renderer::DEPTH_FORMAT),
             ..Default::default()
         };
@@ -1930,11 +1956,43 @@ fn preferences_from_state(state: &AppState) -> Preferences {
         light_yaw_radians: state.light_yaw_radians,
         lighting_preset: state.lighting_preset,
         light_brightness: state.light_brightness,
+        msaa_samples: state.msaa_samples,
         tone_mapping: state.tone_mapping.id(),
         vignette_enabled: state.vignette.enabled,
         vignette_intensity: state.vignette.intensity,
         vignette_smoothness: state.vignette.smoothness,
         vignette_roundness: state.vignette.roundness,
+    }
+}
+
+/// Settle the sample count against the hardware before the painter exists.
+///
+/// A throwaway adapter on the same backend the painter will pick, asked one
+/// question and dropped. It costs a few milliseconds once, and it is the only
+/// place the answer can be had in time: after `Painter::new` the count is
+/// already inside egui's pipelines.
+fn probe_msaa_samples(wanted: u32) -> u32 {
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::DX12;
+    descriptor.flags = wgpu::InstanceFlags::empty().with_env();
+    let instance = wgpu::Instance::new(descriptor);
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        force_fallback_adapter: false,
+        compatible_surface: None,
+    }));
+    match adapter {
+        Ok(adapter) => {
+            renderer::resolve_msaa_samples(&adapter, wgpu::TextureFormat::Bgra8UnormSrgb, wanted)
+        }
+        Err(error) => {
+            log(
+                Severity::Warning,
+                "msaa_probe_failed",
+                &format!("running at the default sample count: {error}"),
+            );
+            renderer::DEFAULT_MSAA_SAMPLES
+        }
     }
 }
 
@@ -1991,6 +2049,7 @@ fn apply_saved_preferences(state: &mut AppState, saved: &Preferences) {
     state.dispatch(Action::SetToneMapping(
         crate::shader_color::ToneMapping::from_id(saved.tone_mapping),
     ));
+    state.dispatch(Action::SetMsaaSamples(saved.msaa_samples));
     state.dispatch(Action::SetVignette(crate::post_process::VignetteSettings {
         enabled: saved.vignette_enabled,
         intensity: saved.vignette_intensity,

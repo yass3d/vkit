@@ -206,6 +206,7 @@ pub enum Action {
     SetLightingPreset(LightingPreset),
     SetLightBrightness(f32),
     SetToneMapping(ToneMapping),
+    SetMsaaSamples(u32),
 
     SetCameraControl(crate::camera_control::ControlMode),
     RestoreSession,
@@ -676,6 +677,7 @@ impl Action {
             | Self::SetLightingPreset(_)
             | Self::SetLightBrightness(_)
             | Self::SetToneMapping(_)
+            | Self::SetMsaaSamples(_)
             | Self::SetCameraControl(_)
             | Self::RestoreSession
             | Self::DiscardSession

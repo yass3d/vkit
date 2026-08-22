@@ -29,7 +29,71 @@ pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroup
 #[cfg(test)]
 use self::{shaders::*, skin::*};
 
-pub const MSAA_SAMPLES: u32 = 4;
+/// The sample counts offered, in the order the picker shows them.
+///
+/// One is no multisampling at all. Four is the floor every renderable format is
+/// required to support, and is the default. Two and eight are optional in the
+/// specification, so the list the picker actually offers is filtered by
+/// [`supported_msaa_samples`] against the adapter this machine has.
+pub const MSAA_CHOICES: [u32; 4] = [1, 2, 4, 8];
+
+pub const DEFAULT_MSAA_SAMPLES: u32 = 4;
+
+/// The count this process is running at.
+///
+/// It is chosen once, before the painter exists, because egui bakes the sample
+/// count into its own pipelines at construction and every pipeline here has to
+/// agree with it. Changing the preference therefore takes effect on restart.
+static ACTIVE_MSAA_SAMPLES: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(DEFAULT_MSAA_SAMPLES);
+
+static SUPPORTED_MSAA_SAMPLES: std::sync::OnceLock<Vec<u32>> = std::sync::OnceLock::new();
+
+#[must_use]
+pub fn msaa_samples() -> u32 {
+    ACTIVE_MSAA_SAMPLES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// What this machine can actually be asked for, cheapest first.
+///
+/// Empty until the adapter has been probed, which happens during startup; a
+/// caller that runs earlier gets the default alone rather than a promise.
+#[must_use]
+pub fn supported_msaa_samples() -> &'static [u32] {
+    SUPPORTED_MSAA_SAMPLES
+        .get()
+        .map_or(&[DEFAULT_MSAA_SAMPLES], Vec::as_slice)
+}
+
+/// Ask the adapter which of [`MSAA_CHOICES`] both the colour target and the
+/// depth buffer can carry, and fix this process's count to the wanted one if it
+/// survives that filter.
+///
+/// Both formats have to agree: a pass whose colour attachment is 8x and whose
+/// depth attachment is not does not validate.
+pub fn resolve_msaa_samples(
+    adapter: &wgpu::Adapter,
+    target_format: wgpu::TextureFormat,
+    wanted: u32,
+) -> u32 {
+    let colour = adapter.get_texture_format_features(target_format).flags;
+    let depth = adapter.get_texture_format_features(DEPTH_FORMAT).flags;
+    let supported: Vec<u32> = MSAA_CHOICES
+        .into_iter()
+        .filter(|count| {
+            *count == 1
+                || (colour.sample_count_supported(*count) && depth.sample_count_supported(*count))
+        })
+        .collect();
+    let active = if supported.contains(&wanted) {
+        wanted
+    } else {
+        DEFAULT_MSAA_SAMPLES
+    };
+    ACTIVE_MSAA_SAMPLES.store(active, std::sync::atomic::Ordering::Relaxed);
+    let _ = SUPPORTED_MSAA_SAMPLES.set(supported);
+    active
+}
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 pub const DEFAULT_LIGHT_YAW_RADIANS: f32 = 0.0;
 
@@ -102,16 +166,17 @@ pub fn install(painter: &EguiPainter) -> Result<(), RendererInstallError> {
     let validation_scope = render_state
         .device
         .push_error_scope(wgpu::ErrorFilter::Validation);
+    let samples = msaa_samples();
     let resources = MeshRenderResources::new(
         &render_state.device,
         render_state.target_format,
-        MSAA_SAMPLES,
+        samples,
         DEPTH_FORMAT,
     );
     let skin_resources = SkinRenderResources::new(
         &render_state.device,
         render_state.target_format,
-        MSAA_SAMPLES,
+        samples,
         DEPTH_FORMAT,
     );
     if let Some(error) = pollster::block_on(validation_scope.pop()) {
@@ -121,16 +186,13 @@ pub fn install(painter: &EguiPainter) -> Result<(), RendererInstallError> {
     let hair_scope = render_state
         .device
         .push_error_scope(wgpu::ErrorFilter::Validation);
-    let hair_resources = HairRenderResources::new(
-        &render_state.device,
-        render_state.target_format,
-        MSAA_SAMPLES,
-    );
+    let hair_resources =
+        HairRenderResources::new(&render_state.device, render_state.target_format, samples);
     let scalp_resources = ScalpRenderResources::new(
         &render_state.device,
         &render_state.queue,
         render_state.target_format,
-        MSAA_SAMPLES,
+        samples,
     );
     let hair_error = pollster::block_on(hair_scope.pop());
 
@@ -1052,7 +1114,7 @@ mod tests {
         let _skin = SkinRenderResources::new(
             &device,
             wgpu::TextureFormat::Bgra8UnormSrgb,
-            MSAA_SAMPLES,
+            DEFAULT_MSAA_SAMPLES,
             DEPTH_FORMAT,
         );
         let failure = pollster::block_on(scope.pop());
@@ -1235,5 +1297,49 @@ mod tests {
                 "{name} reads a SceneUniform of a different size than the one written"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod msaa_tests {
+    use super::*;
+
+    /// Four is the only count the specification requires a renderable format to
+    /// carry, so it is the one a fallback may land on.
+    #[test]
+    fn the_default_is_the_count_every_adapter_must_support() {
+        assert_eq!(DEFAULT_MSAA_SAMPLES, 4);
+        assert!(MSAA_CHOICES.contains(&DEFAULT_MSAA_SAMPLES));
+    }
+
+    #[test]
+    fn the_choices_are_powers_of_two_in_ascending_order() {
+        let mut previous = 0;
+        for count in MSAA_CHOICES {
+            assert!(count > previous, "{MSAA_CHOICES:?} is not ascending");
+            assert!(count.is_power_of_two(), "{count} is not a sample count");
+            previous = count;
+        }
+    }
+
+    /// Before the adapter has been asked, the offer is the default alone — a
+    /// picker that promises 8x on a machine nobody has probed would be a lie.
+    #[test]
+    fn nothing_is_offered_that_has_not_been_probed() {
+        let offered = supported_msaa_samples();
+        assert!(!offered.is_empty());
+        for count in offered {
+            assert!(
+                MSAA_CHOICES.contains(count),
+                "{count} is offered but is not a choice",
+            );
+        }
+    }
+
+    /// The count in use is fixed for the life of the process, so whatever a
+    /// preference says, what pipelines are built with has to be a real choice.
+    #[test]
+    fn the_active_count_is_always_one_of_the_choices() {
+        assert!(MSAA_CHOICES.contains(&msaa_samples()));
     }
 }

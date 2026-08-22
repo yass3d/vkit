@@ -399,6 +399,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("Đặt lại mọi thiết lập rồi khởi động lại"),
         TextKey::SettingsGraphicsLighting => Some("Ánh sáng"),
         TextKey::SettingsGraphicsEffects => Some("Hiệu ứng"),
+        TextKey::SettingsGraphicsQuality => Some("Chất lượng"),
+        TextKey::SettingsQualityAntialiasing => Some("Khử răng cưa"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => {
+            Some("Làm mượt cạnh răng cưa theo số mẫu đã chọn. Càng cao càng sạch và càng nặng.")
+        }
+        TextKey::SettingsMsaaRestart => Some("Áp dụng sau khi khởi động lại — hiện tại"),
         TextKey::SoloViewHint => Some("Chỉ hiện phần này"),
         TextKey::SoloViewRestoreHint => Some("Trả lại khung nhìn trước"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

@@ -372,6 +372,13 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsResetAll => Some("সব সেটিং রিসেট করে আবার চালু করুন"),
         TextKey::SettingsGraphicsLighting => Some("আলো"),
         TextKey::SettingsGraphicsEffects => Some("ইফেক্ট"),
+        TextKey::SettingsGraphicsQuality => Some("মান"),
+        TextKey::SettingsQualityAntialiasing => Some("প্রান্ত মসৃণকরণ"),
+        TextKey::SettingsMsaa => Some("MSAA"),
+        TextKey::SettingsMsaaTooltip => {
+            Some("নির্বাচিত স্যাম্পল অনুযায়ী ধাপে ধাপে কাটা প্রান্ত মসৃণ করে। বেশি হলে পরিষ্কার, তবে ভারী।")
+        }
+        TextKey::SettingsMsaaRestart => Some("পুনরায় চালু করলে প্রযোজ্য — এখন"),
         TextKey::SoloViewHint => Some("কেবল এই অংশ দেখান"),
         TextKey::SoloViewRestoreHint => Some("আগের ভিউ ফিরিয়ে আনুন"),
         TextKey::ToneCurveFilmic => Some("ফিল্মিক"),

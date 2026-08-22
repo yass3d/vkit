@@ -318,6 +318,11 @@ pub struct AppState {
 
     pub tone_mapping: ToneMapping,
 
+    /// The multisample count the user has asked for. What this session is
+    /// actually drawing at is `renderer::msaa_samples()`, which is fixed for
+    /// the life of the process; the two differ until a restart.
+    pub msaa_samples: u32,
+
     pub camera_control: crate::camera_control::ControlMode,
 
     pub pending_recovery: Option<crate::session_snapshot::SessionSnapshot>,
@@ -627,6 +632,7 @@ impl Default for AppState {
             lighting_preset: LightingPreset::default(),
             light_brightness: DEFAULT_LIGHT_BRIGHTNESS,
             tone_mapping: ToneMapping::default(),
+            msaa_samples: crate::renderer::DEFAULT_MSAA_SAMPLES,
             camera_control: crate::camera_control::ControlMode::default(),
             pending_recovery: None,
             vignette: VignetteSettings::default(),
@@ -1545,6 +1551,13 @@ impl AppState {
                 self.light_brightness = sanitize_brightness(value);
             }
             Action::SetToneMapping(value) => self.tone_mapping = value,
+            Action::SetMsaaSamples(value) => {
+                self.msaa_samples = if crate::renderer::MSAA_CHOICES.contains(&value) {
+                    value
+                } else {
+                    crate::renderer::DEFAULT_MSAA_SAMPLES
+                };
+            }
             Action::SetCameraControl(mode) => self.camera_control = mode,
             Action::RestoreSession => self.answer_recovery(true),
             Action::DiscardSession => self.answer_recovery(false),
