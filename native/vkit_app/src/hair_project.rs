@@ -164,6 +164,39 @@ pub struct HairCheckpoint {
 
 pub const HAIR_UNDO_DEPTH: usize = 64;
 
+type HairControl = (&'static str, u8);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HairEdit {
+    Stroke,
+    PresetLoaded,
+    PartAdded,
+    PartRemoved,
+    PartDuplicated,
+    PartMirrored,
+    PartRenamed,
+    ScalpAdded,
+    ScalpMesh,
+    ScalpTexture,
+    StyleJoints,
+    ParamsReset,
+    SettingsPasted,
+    Segments,
+    Param(&'static str),
+    ColorChannel(&'static str, u8),
+}
+
+impl HairEdit {
+    const fn control(self) -> Option<HairControl> {
+        match self {
+            Self::Segments => Some(("vkit.hair.segments", 0)),
+            Self::Param(key) => Some((key, 0)),
+            Self::ColorChannel(key, channel) => Some((key, channel + 1)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct HairProject {
     pub parts: Vec<HairPart>,
@@ -178,7 +211,7 @@ pub struct HairProject {
     pub active_provider: String,
     history: crate::history::History<HairCheckpoint>,
     stroke_open: bool,
-    open_control: Option<&'static str>,
+    open_control: Option<HairControl>,
 }
 
 impl HairProject {
@@ -192,7 +225,17 @@ impl HairProject {
 
     fn restore(&mut self, checkpoint: HairCheckpoint) {
         self.open_control = None;
+        let visibility: std::collections::BTreeMap<u64, bool> = self
+            .parts
+            .iter()
+            .map(|part| (part.id, part.visible))
+            .collect();
         self.parts = checkpoint.parts;
+        for part in &mut self.parts {
+            if let Some(visible) = visibility.get(&part.id) {
+                part.visible = *visible;
+            }
+        }
         self.selected_part_id = checkpoint.selected_part_id;
         self.active_part_ids = checkpoint.active_part_ids;
         self.touch_every_part();
@@ -243,20 +286,20 @@ impl HairProject {
         self.history.clear_forward();
     }
 
-    pub fn checkpoint(&mut self) {
+    pub fn record(&mut self, edit: HairEdit) {
         if self.stroke_open {
             return;
         }
+        if let Some(control) = edit.control() {
+            if self.open_control == Some(control) {
+                return;
+            }
+            self.open_control = Some(control);
+        } else {
+            self.open_control = None;
+        }
         self.history.record(self.snapshot());
         self.history.trim(HAIR_UNDO_DEPTH, usize::MAX, |_| 0);
-    }
-
-    pub fn checkpoint_control(&mut self, control: &'static str) {
-        if self.open_control == Some(control) {
-            return;
-        }
-        self.checkpoint();
-        self.open_control = Some(control);
     }
 
     pub fn end_control(&mut self) {
@@ -267,7 +310,7 @@ impl HairProject {
         if self.stroke_open {
             return;
         }
-        self.checkpoint();
+        self.record(HairEdit::Stroke);
         self.stroke_open = true;
     }
 
@@ -1065,7 +1108,7 @@ mod tests {
     fn stepping_back_in_time_stamps_every_part_it_returns() {
         let mut project = HairProject::default();
         let first = project.add_part("UdaneScalp");
-        project.checkpoint();
+        project.record(HairEdit::Stroke);
         project.touch(first);
         let stamp = |project: &HairProject| project.parts[0].revision;
         let after_edit = stamp(&project);

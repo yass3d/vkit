@@ -534,7 +534,8 @@ impl AppState {
         let preset_storables = crate::vam_hair::preset_storables(&preset);
         let mut parts = Vec::new();
         let mut refused: Vec<String> = Vec::new();
-        self.hair_project.checkpoint();
+        self.hair_project
+            .record(crate::hair_project::HairEdit::PresetLoaded);
         let ids = self.hair_project.next_ids(preset.parts.len());
         let mut caps: Vec<(
             String,
@@ -629,7 +630,8 @@ impl AppState {
         if !self.ensure_hair_scalp(provider_name) {
             return;
         }
-        self.hair_project.checkpoint();
+        self.hair_project
+            .record(crate::hair_project::HairEdit::ScalpAdded);
         let id = self.hair_project.add_scalp_part(provider_name);
         self.hair_project.activate_part(id, false);
     }
@@ -638,7 +640,15 @@ impl AppState {
         if !self.ensure_hair_scalp(provider_name) {
             return;
         }
-        self.hair_project.checkpoint();
+        if self
+            .hair_project
+            .part(id)
+            .is_none_or(|part| part.provider_name == provider_name)
+        {
+            return;
+        }
+        self.hair_project
+            .record(crate::hair_project::HairEdit::ScalpMesh);
         if let Some(part) = self
             .hair_project
             .parts
@@ -717,19 +727,25 @@ impl AppState {
     }
 
     pub(super) fn set_hair_part_segments(&mut self, id: u64, segments: usize) {
-        self.hair_project.checkpoint();
+        let clamped = segments.clamp(2, crate::hair_project::MAX_HAIR_SEGMENTS);
+        if self
+            .hair_project
+            .part(id)
+            .is_none_or(|part| part.segments == clamped)
+        {
+            return;
+        }
+        self.hair_project
+            .record(crate::hair_project::HairEdit::Segments);
         if let Some(part) = self
             .hair_project
             .parts
             .iter_mut()
             .find(|part| part.id == id)
         {
-            let clamped = segments.clamp(2, crate::hair_project::MAX_HAIR_SEGMENTS);
-            if part.segments != clamped {
-                part.segments = clamped;
-                part.resample_all();
-                self.hair_project.touch(id);
-            }
+            part.segments = clamped;
+            part.resample_all();
+            self.hair_project.touch(id);
         }
     }
 
@@ -781,7 +797,8 @@ impl AppState {
             .iter()
             .find(|param| param.key == key)
         {
-            self.hair_project.checkpoint_control(param.key);
+            self.hair_project
+                .record(crate::hair_project::HairEdit::Param(param.key));
             if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
                 part.settings.set(param, value);
                 self.hair_project.touch(id);
@@ -800,7 +817,11 @@ impl AppState {
             .iter()
             .find(|param| param.key == key)
         {
-            self.hair_project.checkpoint();
+            self.hair_project
+                .record(crate::hair_project::HairEdit::ColorChannel(
+                    param.key,
+                    channel as u8,
+                ));
             if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
                 part.settings.set_color_channel(param, channel, value);
                 self.hair_project.touch(id);
@@ -809,7 +830,8 @@ impl AppState {
     }
 
     pub(super) fn reset_hair_params(&mut self, id: u64) {
-        self.hair_project.checkpoint();
+        self.hair_project
+            .record(crate::hair_project::HairEdit::ParamsReset);
         if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
             for group in crate::hair_settings::HairParamGroup::ALL {
                 part.settings.reset_group(group);
@@ -827,7 +849,8 @@ impl AppState {
                 .iter()
                 .any(|part| part.id == id && part.name != name);
         if changes {
-            self.hair_project.checkpoint();
+            self.hair_project
+                .record(crate::hair_project::HairEdit::PartRenamed);
             if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
                 part.name = name;
             }
@@ -839,7 +862,8 @@ impl AppState {
         if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id)
             && part.style_joints != on
         {
-            self.hair_project.checkpoint();
+            self.hair_project
+                .record(crate::hair_project::HairEdit::StyleJoints);
             if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
                 part.style_joints = on;
             }
@@ -852,7 +876,15 @@ impl AppState {
         id: u64,
         texture: crate::hair_project::HairScalpTexture,
     ) {
-        self.hair_project.checkpoint();
+        if self
+            .hair_project
+            .part(id)
+            .is_none_or(|part| part.scalp_texture == texture)
+        {
+            return;
+        }
+        self.hair_project
+            .record(crate::hair_project::HairEdit::ScalpTexture);
         if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
             part.scalp_texture = texture;
             self.hair_project.touch(id);
@@ -870,7 +902,8 @@ impl AppState {
 
     pub(super) fn paste_hair_settings(&mut self, id: u64) {
         if let Some(settings) = self.hair_settings_clipboard.clone() {
-            self.hair_project.checkpoint();
+            self.hair_project
+                .record(crate::hair_project::HairEdit::SettingsPasted);
             if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id) {
                 let scalp = part.settings.clone();
                 part.settings = settings;
@@ -881,7 +914,8 @@ impl AppState {
     }
 
     pub(super) fn mirror_hair_part(&mut self, id: u64) {
-        self.hair_project.checkpoint();
+        self.hair_project
+            .record(crate::hair_project::HairEdit::PartMirrored);
         let provider = self
             .hair_project
             .part(id)

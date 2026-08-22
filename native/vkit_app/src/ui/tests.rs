@@ -1590,7 +1590,9 @@ fn muting_the_branch_warning_quiets_every_tab_that_raises_it() {
 
     state.active_tab = Tab::Hair;
     for _ in 0..crate::state::HISTORY_BRANCH_WARN_STEPS + 1 {
-        state.hair_project.checkpoint();
+        state
+            .hair_project
+            .record(crate::hair_project::HairEdit::Stroke);
     }
     for _ in 0..crate::state::HISTORY_BRANCH_WARN_STEPS {
         state.hair_project.undo();

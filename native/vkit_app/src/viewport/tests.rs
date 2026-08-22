@@ -3932,3 +3932,62 @@ fn a_preset_portrait_holds_every_layer_and_a_layer_portrait_holds_one() {
         "two layers and the preset each want their own portrait"
     );
 }
+
+#[test]
+fn the_history_bar_ignores_what_is_not_an_edit() {
+    let mut state = probe_hair_state();
+    let id = state.hair_project.parts[0].id;
+    let start = state.hair_project.history_position().0;
+
+    state.dispatch(crate::state::Action::ToggleHairPartVisible(id));
+    state.dispatch(crate::state::Action::SetHairBrushRadius(120.0));
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id,
+        additive: false,
+    });
+    assert_eq!(
+        state.hair_project.history_position().0,
+        start,
+        "hiding a layer, sizing the brush and picking a layer are not edits"
+    );
+
+    for segments in [6, 7, 8, 9] {
+        state.dispatch(crate::state::Action::SetHairPartSegments { id, segments });
+    }
+    assert_eq!(
+        state.hair_project.history_position().0,
+        start + 1,
+        "a segment sweep is one step, not one per sample"
+    );
+
+    state.dispatch(crate::state::Action::EndHairStroke);
+    state.dispatch(crate::state::Action::SetHairPartSegments { id, segments: 10 });
+    assert_eq!(
+        state.hair_project.history_position().0,
+        start + 2,
+        "releasing the sweep closes the step"
+    );
+
+    state.dispatch(crate::state::Action::SetHairPartSegments { id, segments: 10 });
+    assert_eq!(
+        state.hair_project.history_position().0,
+        start + 2,
+        "a value that does not move records nothing"
+    );
+}
+
+#[test]
+fn stepping_back_leaves_a_hidden_layer_hidden() {
+    let mut state = probe_hair_state();
+    let id = state.hair_project.parts[0].id;
+    state.dispatch(crate::state::Action::SetHairPartSegments { id, segments: 9 });
+    state.dispatch(crate::state::Action::EndHairStroke);
+    state.dispatch(crate::state::Action::ToggleHairPartVisible(id));
+    assert!(!state.hair_project.part(id).unwrap().visible);
+
+    assert!(state.hair_project.undo(), "there is a step to take back");
+    assert!(
+        !state.hair_project.part(id).unwrap().visible,
+        "undo returns the geometry, never the view"
+    );
+}

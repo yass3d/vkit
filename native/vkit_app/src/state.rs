@@ -1239,19 +1239,20 @@ impl AppState {
             Action::SelectVaMEditSource(id) => self.select_vam_edit_source(&id),
             Action::AddHairPart { provider_name } => {
                 self.hair_project.active_tool = crate::hair_project::HairTool::Plant;
-                self.hair_project.checkpoint();
+                self.hair_project
+                    .record(crate::hair_project::HairEdit::PartAdded);
                 self.add_hair_part(&provider_name);
             }
             Action::RemoveHairPart(id) => {
                 self.hair_part_thumbnails.remove(&id);
-                self.hair_project.checkpoint();
+                self.hair_project
+                    .record(crate::hair_project::HairEdit::PartRemoved);
                 self.hair_project.remove_part(id);
             }
             Action::ActivateHairPart { id, additive } => {
                 self.hair_project.activate_part(id, additive);
             }
             Action::ToggleHairPartVisible(id) => {
-                self.hair_project.checkpoint();
                 self.hair_project.toggle_part_visible(id);
             }
             Action::SetHairTool(tool) => self.hair_project.active_tool = tool,
@@ -1364,7 +1365,8 @@ impl AppState {
             }
             Action::MirrorHairPart(id) => self.mirror_hair_part(id),
             Action::DuplicateHairPart(id) => {
-                self.hair_project.checkpoint();
+                self.hair_project
+                    .record(crate::hair_project::HairEdit::PartDuplicated);
                 self.hair_project.duplicate_part(id);
             }
             Action::SelectBaseFace => self.select_base_face(),
