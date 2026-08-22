@@ -815,6 +815,7 @@ struct Runtime {
     context: Context,
     egui_state: egui_winit::State,
     painter: Painter,
+    portrait_canvas: Option<crate::hair_portrait::PortraitTarget>,
     state: AppState,
 
     logged_status: Option<String>,
@@ -1020,7 +1021,13 @@ impl Runtime {
                 .max(limits.max_sampled_textures_per_shader_stage);
             wgpu::DeviceDescriptor {
                 label: Some("vkit"),
-                required_features: wgpu::Features::empty(),
+                // Without this a device is guaranteed only 1x and 4x whatever the
+                // adapter advertises, and asking for 2x or 8x is a texture it
+                // refuses to create. Asked for only where it is offered, so an
+                // adapter without it still starts.
+                required_features: adapter
+                    .features()
+                    .intersection(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
                 required_limits: limits,
                 memory_hints: wgpu::MemoryHints::default(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
@@ -1176,6 +1183,7 @@ impl Runtime {
             context,
             egui_state,
             painter,
+            portrait_canvas: None,
             state,
             scan_imports: ScanImportCoordinator::default(),
             workspace_loads: WorkspaceLoadCoordinator::default(),
@@ -1381,11 +1389,20 @@ impl Runtime {
             self.state.export_hair_style();
             return;
         };
-        let canvas = crate::hair_portrait::PortraitTarget::new(
-            &render_state.device,
-            render_state.target_format,
-            crate::hair_portrait::PORTRAIT_SIDE,
-        );
+        // Kept between runs, and rebuilt only when the shape or the sample
+        // count moves — the same reuse the viewport will want.
+        let canvas = match self.portrait_canvas.take() {
+            Some(canvas) => canvas.reshaped(
+                &render_state.device,
+                render_state.target_format,
+                crate::hair_portrait::PORTRAIT_SIDE,
+            ),
+            None => crate::hair_portrait::PortraitTarget::new(
+                &render_state.device,
+                render_state.target_format,
+                crate::hair_portrait::PORTRAIT_SIDE,
+            ),
+        };
         for target in wanted {
             let only = match target {
                 crate::state::HairThumbnailTarget::Part(id) => Some(id),
@@ -1403,6 +1420,7 @@ impl Runtime {
                 Err(detail) => log(Severity::Warning, "hair_portrait_failed", &detail),
             }
         }
+        self.portrait_canvas = Some(canvas);
         self.state.export_hair_style();
     }
 
@@ -1983,6 +2001,22 @@ fn probe_msaa_samples(wanted: u32) -> u32 {
     }));
     match adapter {
         Ok(adapter) => {
+            log(
+                Severity::Info,
+                "msaa_adapter",
+                &format!(
+                    "{} - adapter-specific format features {}",
+                    adapter.get_info().name,
+                    if adapter
+                        .features()
+                        .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
+                    {
+                        "available"
+                    } else {
+                        "absent, so 1x and 4x only"
+                    },
+                ),
+            );
             renderer::resolve_msaa_samples(&adapter, wgpu::TextureFormat::Bgra8UnormSrgb, wanted)
         }
         Err(error) => {

@@ -1,4 +1,4 @@
-use crate::renderer::{DEPTH_FORMAT, msaa_samples};
+use crate::renderer::{OffscreenTarget, msaa_samples};
 
 #[must_use]
 pub(crate) const fn portrait_scene_key(seed: u64) -> u64 {
@@ -9,94 +9,46 @@ pub(crate) const PORTRAIT_CLOSENESS: f32 = 0.72;
 
 pub(crate) const PORTRAIT_SIDE: u32 = crate::thumbnail::THUMBNAIL_SIDE;
 
+/// A square of [`OffscreenTarget`], which is what the viewport draws on too.
+///
+/// The thumbnail path has always rendered this way — its own multisampled
+/// buffer, its own depth, resolved once — and that is exactly the shape the
+/// viewport needs to stop borrowing egui's sample count.
 pub(crate) struct PortraitTarget {
-    multisampled: wgpu::TextureView,
-    resolved: wgpu::Texture,
-    resolved_view: wgpu::TextureView,
-    depth: wgpu::TextureView,
+    target: OffscreenTarget,
     side: u32,
 }
 
 impl PortraitTarget {
     pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, side: u32) -> Self {
-        let extent = wgpu::Extent3d {
-            width: side,
-            height: side,
-            depth_or_array_layers: 1,
-        };
-        let multisampled = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("vkit.portrait.multisampled"),
-                size: extent,
-                mip_level_count: 1,
-                sample_count: msaa_samples(),
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let resolved = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("vkit.portrait.resolved"),
-            size: extent,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let resolved_view = resolved.create_view(&wgpu::TextureViewDescriptor::default());
-        let depth = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("vkit.portrait.depth"),
-                size: extent,
-                mip_level_count: 1,
-                sample_count: msaa_samples(),
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-            .create_view(&wgpu::TextureViewDescriptor::default());
         Self {
-            multisampled,
-            resolved,
-            resolved_view,
-            depth,
+            target: OffscreenTarget::new(device, format, side, side, msaa_samples()),
             side,
         }
     }
 
+    /// Reuse the canvas when it still has the shape wanted, which is every run
+    /// but the first and the one after the sample count moves.
+    pub(crate) fn reshaped(
+        self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        side: u32,
+    ) -> Self {
+        Self {
+            target: self
+                .target
+                .reshaped(device, format, side, side, msaa_samples()),
+            side,
+        }
+    }
+
+    fn resolved(&self) -> &wgpu::Texture {
+        self.target.resolved()
+    }
+
     fn begin(&self, encoder: &mut wgpu::CommandEncoder) -> wgpu::RenderPass<'static> {
-        let mut pass = encoder
-            .begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("vkit.portrait.scene"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.multisampled,
-                    depth_slice: None,
-                    resolve_target: Some(&self.resolved_view),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(viewport_ground()),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            })
-            .forget_lifetime();
-        let side = self.side as f32;
-        pass.set_viewport(0.0, 0.0, side, side, 0.0, 1.0);
-        pass
+        self.target.begin(encoder, viewport_ground())
     }
 }
 
@@ -189,7 +141,7 @@ pub(crate) fn render_portrait(
 
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {
-            texture: &target.resolved,
+            texture: target.resolved(),
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,

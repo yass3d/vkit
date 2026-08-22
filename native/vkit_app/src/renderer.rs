@@ -19,11 +19,13 @@ use crate::{
 
 mod mesh;
 mod mip;
+mod offscreen;
 mod shaders;
 mod skin;
 
 use self::mesh::*;
 pub use self::mesh::{MeshPaintCallback, RenderStyle};
+pub use self::offscreen::OffscreenTarget;
 pub(crate) use self::skin::SkinRenderResources;
 pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroups};
 #[cfg(test)]
@@ -76,13 +78,26 @@ pub fn resolve_msaa_samples(
     target_format: wgpu::TextureFormat,
     wanted: u32,
 ) -> u32 {
+    // `get_texture_format_features` answers for the ADAPTER. A device only
+    // inherits the counts past the guaranteed [1, 4] if it asked for
+    // `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` — without it, wgpu rejects a
+    // 2x or 8x texture at creation however loudly the adapter advertised it.
+    // Offering a count the device will refuse is a validation error on every
+    // pass, which is a black window rather than a coarser picture.
+    let specific = adapter
+        .features()
+        .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
     let colour = adapter.get_texture_format_features(target_format).flags;
     let depth = adapter.get_texture_format_features(DEPTH_FORMAT).flags;
     let supported: Vec<u32> = MSAA_CHOICES
         .into_iter()
-        .filter(|count| {
-            *count == 1
-                || (colour.sample_count_supported(*count) && depth.sample_count_supported(*count))
+        .filter(|count| match count {
+            1 | 4 => true,
+            count => {
+                specific
+                    && colour.sample_count_supported(*count)
+                    && depth.sample_count_supported(*count)
+            }
         })
         .collect();
     let active = if supported.contains(&wanted) {
