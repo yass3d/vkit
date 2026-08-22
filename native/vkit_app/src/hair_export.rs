@@ -228,12 +228,7 @@ pub fn authoring_guide_geometry(
         .enumerate()
         .map(|(rank, index)| (*index, rank as u32))
         .collect();
-    let roots: Vec<[f32; 3]> = part
-        .strands
-        .values()
-        .map(|strand| strand.points_cm.first().copied().unwrap_or([0.0; 3]))
-        .collect();
-    let indices = render_triangle_indices(&root_rank, &roots, &scalp.triangles);
+    let indices = render_triangle_indices(&root_rank, &scalp.triangles);
     let guides = part
         .strands
         .iter()
@@ -336,11 +331,7 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
         .enumerate()
         .map(|(rank, index)| (*index, rank as u32))
         .collect();
-    let roots: Vec<[f32; 3]> = strands
-        .values()
-        .map(|points| points.first().copied().unwrap_or([0.0; 3]))
-        .collect();
-    let indices = render_triangle_indices(&root_rank, &roots, &scalp.triangles);
+    let indices = render_triangle_indices(&root_rank, &scalp.triangles);
 
     let style_joints = if part.style_joints {
         let borrowed: Vec<&[[f32; 3]]> = strands.values().map(|points| points.as_slice()).collect();
@@ -535,13 +526,23 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     std::fs::write(path, text).map_err(|err| format!("cannot write {}: {err}", path.display()))
 }
 
+/// The patch list: the scalp mesh's own triangles, minus the incomplete ones.
+///
+/// `ProcessIndices` -> `FixNotCompletedPolygon` is all the game does here, and
+/// it is what VaM's own create mode does. A strand in no complete triangle is
+/// physics only and never drawn — it keeps its slot, its mask bit, its entry in
+/// `hairRootToScalpIndices` and its points; it simply has no patch.
+///
+/// A synthetic triangle used to be invented for those strands out of their two
+/// nearest roots. It is a complete triangle, so VaM drew `hairMultiplier`
+/// children across it — between an orphan and whatever happened to be nearest,
+/// which can be across a parting or over a gap — with `maxSpread` anchored on
+/// the orphan and the envelope gathering toward a centre line nobody drew.
 pub fn render_triangle_indices(
     root_rank: &std::collections::BTreeMap<u32, u32>,
-    roots: &[[f32; 3]],
     scalp_triangles: &[[u32; 3]],
 ) -> Vec<u32> {
     let mut indices = Vec::new();
-    let mut supported = std::collections::HashSet::new();
     for triangle in scalp_triangles {
         if let (Some(a), Some(b), Some(c)) = (
             root_rank.get(&triangle[0]),
@@ -549,45 +550,9 @@ pub fn render_triangle_indices(
             root_rank.get(&triangle[2]),
         ) {
             indices.extend([*a, *b, *c]);
-            supported.extend([*a, *b, *c]);
-        }
-    }
-    for rank in root_rank.values().copied() {
-        if supported.contains(&rank) {
-            continue;
-        }
-        match two_nearest_roots(roots, rank) {
-            Some((second, third)) => indices.extend([rank, second, third]),
-            None => indices.extend([rank, rank, rank]),
         }
     }
     indices
-}
-
-fn two_nearest_roots(roots: &[[f32; 3]], rank: u32) -> Option<(u32, u32)> {
-    if roots.len() < 3 {
-        return None;
-    }
-    let origin = roots[rank as usize];
-    let mut best: Option<(f32, u32)> = None;
-    let mut second: Option<(f32, u32)> = None;
-    for (index, root) in roots.iter().enumerate() {
-        let index = index as u32;
-        if index == rank {
-            continue;
-        }
-        let dx = root[0] - origin[0];
-        let dy = root[1] - origin[1];
-        let dz = root[2] - origin[2];
-        let distance = dx * dx + dy * dy + dz * dz;
-        if best.is_none_or(|(best_distance, _)| distance < best_distance) {
-            second = best;
-            best = Some((distance, index));
-        } else if second.is_none_or(|(second_distance, _)| distance < second_distance) {
-            second = Some((distance, index));
-        }
-    }
-    Some((best?.1, second?.1))
 }
 
 pub fn export_hair_style(
@@ -1052,7 +1017,7 @@ mod tests {
     #[test]
     fn sim_table_pins_the_long_dynamic_sentinels() {
         let sim = sim_storable("T:Test", &HairSettings::default());
-        assert_eq!(sim["mainRigidity"], "0.1");
+        assert_eq!(sim["mainRigidity"], "0.01");
         assert_eq!(sim["weight"], "1.5");
         assert_eq!(sim["hairMultiplier"], "16");
         assert_eq!(sim["curveDensity"], "24");
@@ -1062,8 +1027,11 @@ mod tests {
         assert_eq!(sim["id"], "T:TestSim");
     }
 
+    /// `ProcessIndices` -> `FixNotCompletedPolygon`: a triangle whose three
+    /// corners are not all planted is dropped, and the strands on it are
+    /// physics only. Nothing is invented to keep them drawable.
     #[test]
-    fn sparsely_planted_strands_are_spanned_by_neighbours_not_collapsed_onto_themselves() {
+    fn a_strand_in_no_complete_triangle_keeps_its_slot_and_gets_no_patch() {
         use crate::hair_project::{HairProject, build_scalp_authoring};
         use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
 
@@ -1083,33 +1051,26 @@ mod tests {
         let mut project = HairProject::default();
         let id = project.add_part("UdaneScalp");
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
+        // Every other vertex: no scalp triangle has all three corners planted.
         part.plant(&authoring, &[0, 2, 4]);
 
         let doc = export_doc(part, &authoring).expect("doc");
-        assert_eq!(doc.indices.len() % 3, 0);
-        assert!(!doc.indices.is_empty(), "no render triangles at all");
-        for triangle in doc.indices.chunks(3) {
-            let mut corners = triangle.to_vec();
-            corners.sort_unstable();
-            corners.dedup();
-            assert_eq!(
-                corners.len(),
-                3,
-                "triangle {triangle:?} does not span three strands, so its                  children would all land on one guide",
-            );
-        }
-        for rank in 0..doc.strands_by_scalp_cm.len() as u32 {
-            assert!(
-                doc.indices.contains(&rank),
-                "strand {rank} is in no render triangle",
-            );
-        }
+        assert!(
+            doc.indices.is_empty(),
+            "a patch was invented for strands the game leaves physics-only: {:?}",
+            doc.indices,
+        );
+        assert_eq!(
+            doc.strands_by_scalp_cm.len(),
+            3,
+            "the strands themselves keep their slots and their physics",
+        );
         let encoded = encode_hair_vab(&doc).expect("encode");
         vkit_core::vam::parse_hair_vab(&encoded, "test").expect("parse");
     }
 
     #[test]
-    fn a_lone_strand_still_renders_because_nothing_can_be_spanned() {
+    fn a_fully_planted_patch_is_the_scalp_triangle_it_came_from() {
         use crate::hair_project::{HairProject, build_scalp_authoring};
         use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
 
@@ -1131,13 +1092,19 @@ mod tests {
         let mut project = HairProject::default();
         let id = project.add_part("UdaneScalp");
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
-        part.plant(&authoring, &[0]);
+        part.plant(&authoring, &[0, 1, 2]);
 
         let doc = export_doc(part, &authoring).expect("doc");
-        assert_eq!(doc.indices, vec![0, 0, 0]);
-        let encoded = encode_hair_vab(&doc).expect("encode");
-        let parsed = vkit_core::vam::parse_hair_vab(&encoded, "test").expect("parse");
-        assert_eq!(parsed.guide_triangles, vec![[0, 0, 0]]);
+        assert_eq!(doc.indices.len(), 3, "one complete triangle, one patch");
+        let mut corners = doc.indices.clone();
+        corners.sort_unstable();
+        assert_eq!(corners, vec![0, 1, 2]);
+
+        // A lone strand has no complete triangle and so has no patch at all.
+        let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
+        part.strands.retain(|index, _| *index == 0);
+        let doc = export_doc(part, &authoring).expect("doc");
+        assert!(doc.indices.is_empty());
     }
 
     #[test]

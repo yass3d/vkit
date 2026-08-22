@@ -263,7 +263,7 @@ pub const HAIR_PARAMS: [HairParam; 66] = [
         "Style Rigidity Main",
         0.0,
         1.0,
-        0.1,
+        0.01,
         3,
     ),
     float(

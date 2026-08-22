@@ -2056,11 +2056,20 @@ pub fn parse_hair_vab(bytes: &[u8], locator: &str) -> Result<HairGuideGeometry> 
             rigidity_values.push(reader.read_f32("rigidity")?);
         }
     }
-    for (guide, retained) in guides.iter_mut().zip(retained_rigidity_indices) {
-        guide.rigidity = retained
-            .into_iter()
-            .map(|index| rigidity_values.get(index).copied().unwrap_or(1.0))
-            .collect();
+    // No painted rigidity is a state, not a value. RuntimeHairGeometryCreator
+    // sets `rigidities = null` for a version-1.0 file and for a 1.1 file that
+    // stores a count of zero, and BuildPointJoints then falls through to the
+    // root/main/tip ramp. Substituting 1.0 instead pinned every particle to its
+    // rest pose — the solver's own `Rigidity >= 1` snap — so thirteen shipped
+    // items rendered with no physics at all: no gravity, no swing, no collision
+    // response, and nothing to say why.
+    if !rigidity_values.is_empty() {
+        for (guide, retained) in guides.iter_mut().zip(retained_rigidity_indices) {
+            guide.rigidity = retained
+                .into_iter()
+                .map(|index| rigidity_values.get(index).copied().unwrap_or(1.0))
+                .collect();
+        }
     }
 
     let root_map_count = reader.read_count("root map count", MAX_STRAND_SLOTS)?;
@@ -2570,9 +2579,17 @@ mod tests {
             assert_eq!(geometry.segment_length_cm, 1.0);
             assert_eq!(geometry.guides.len(), 2);
             assert_eq!(geometry.guides[0].points_cm[0], [10.0, 100.0, 200.0]);
+            // A 1.0 file paints no rigidity at all, and the absence has to
+            // survive as an absence: RuntimeHairGeometryCreator nulls the
+            // array and BuildPointJoints falls through to the root/main/tip
+            // ramp. Filling it with 1.0 instead welds every particle to rest.
             assert_eq!(
                 geometry.guides[0].rigidity,
-                vec![if schema == "1.1" { 0.5 } else { 1.0 }; 2]
+                if schema == "1.1" {
+                    vec![0.5; 2]
+                } else {
+                    Vec::new()
+                },
             );
             assert_eq!(geometry.guide_triangles, vec![[0, 1, 0]]);
             assert_eq!(geometry.root_map, vec![10, 20]);

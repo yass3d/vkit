@@ -239,9 +239,15 @@ fn build_preview_part(
         if local_points.len() < 2 {
             continue;
         }
-        let painted_rigidity = (0..local_points.len())
-            .map(|index| guide.rigidity.get(index).copied().unwrap_or(1.0))
-            .collect();
+        // Empty means the file painted none, which is not the same as painting
+        // every point solid.
+        let painted_rigidity: Vec<f32> = if guide.rigidity.is_empty() {
+            Vec::new()
+        } else {
+            (0..local_points.len())
+                .map(|index| guide.rigidity.get(index).copied().unwrap_or(1.0))
+                .collect()
+        };
         guide_map[geometry_index] = Some(guides.len() as u32);
         let curl_rand = strand_randoms
             .get(geometry_index)

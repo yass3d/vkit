@@ -25,9 +25,16 @@ const LIGHT_CENTRE_DEPTH_M: f32 = 0.1;
 
 const WORKGROUP_SIZE: u32 = 64;
 const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0;
-const MAX_FRAME_STEPS: usize = 1;
-
-const WARMUP_RESET_FRAMES_HOST: u32 = 10;
+/// How many fixed steps one rendered frame may consume.
+///
+/// The sim lives in `FixedUpdate`, which Unity runs as many times per frame as
+/// the accumulated time needs; the game defines no per-frame cap at all. A cap
+/// of one, paired with an accumulator clamped back to a single step, threw away
+/// real time every frame: at 30 fps the hair integrated thirty steps a second
+/// instead of sixty and fell at half speed, so every physics slider read weaker
+/// in the viewport than it would behave in VaM — and that mis-tune shipped.
+/// Six is the elapsed clamp divided by the step, so it can never bind.
+const MAX_FRAME_STEPS: usize = 6;
 
 /// The most quads a single guide segment can be asked to carry.
 ///
@@ -38,8 +45,6 @@ const WARMUP_RESET_FRAMES_HOST: u32 = 10;
 /// them — at the worst shipped ratio a curl collapsed to a near straight
 /// line.
 pub(crate) const MAX_RENDER_SUBDIVISIONS: u32 = 64;
-
-pub(crate) const SHAPE_QUIET_SECONDS: f64 = 0.25;
 
 const MAX_VAM_ITERATIONS: u32 = 5;
 const MAX_PART_INDEX: usize = u16::MAX as usize;
@@ -738,12 +743,6 @@ pub(crate) struct HairPhysicsScene {
     render_segment_count: u32,
     render_subdivisions: u32,
 
-    shape_changed: bool,
-
-    shape_fingerprint: u64,
-
-    shape_changed_at: Option<f64>,
-
     settle_gravity: f32,
 
     frame: u32,
@@ -903,9 +902,6 @@ impl HairPhysicsScene {
             particle_count: data.rests.len() as u32,
             render_segment_count: data.render_segments.len() as u32,
             render_subdivisions: data.render_subdivisions,
-            shape_changed: false,
-            shape_fingerprint: 0,
-            shape_changed_at: None,
             settle_gravity: 0.0,
             frame: 0,
             last_time_seconds: None,
@@ -946,12 +942,6 @@ impl HairPhysicsScene {
                 );
             }
 
-            let fingerprint = rest_fingerprint(&rests);
-            if fingerprint != self.shape_fingerprint {
-                self.shape_fingerprint = fingerprint;
-                self.shape_changed = true;
-            }
-
             if self.simulate == HairSimulation::Off {
                 let particles = particles_from_rests(&rests);
                 queue.write_buffer(&self.particle_buffer, 0, bytemuck::cast_slice(&particles));
@@ -976,21 +966,20 @@ impl HairPhysicsScene {
             self.last_time_seconds = Some(time_seconds);
             return;
         }
-        if self.shape_changed {
-            self.shape_changed = false;
-            self.shape_changed_at = Some(time_seconds);
-        } else if let Some(changed_at) = self.shape_changed_at
-            && time_seconds - changed_at >= SHAPE_QUIET_SECONDS
-        {
-            self.shape_changed_at = None;
-            if self.simulate != HairSimulation::Off {
-                self.frame = self.frame.min(WARMUP_RESET_FRAMES_HOST);
-            }
-        }
+        // A morphing head is not a reset. `PartialReset(10)` fires on a
+        // WorldScale change and on nothing else; a morph moves
+        // `transforms[MatrixId]` and the strands follow through their point
+        // joints without the solver being told anything. Resetting on a quiet
+        // period after a sculpt edit dropped all inertia and froze the hair for
+        // ten frames, so the settling the author was judging was not the
+        // settling the game produces.
         let effective_gravity = settle_gravity;
         if (self.settle_gravity - effective_gravity).abs() > f32::EPSILON {
+            // Physics off to on is the one case that really does reset: VaM
+            // runs the whole reset kernel and snaps every particle to rest, so
+            // the warmup starts from the beginning rather than ten frames in.
             if self.settle_gravity <= 0.0 && effective_gravity > 0.0 {
-                self.frame = self.frame.min(10);
+                self.frame = 0;
             }
             self.settle_gravity = effective_gravity;
             queue.write_buffer(
@@ -1358,18 +1347,6 @@ fn collision_radius(physics: &vkit_core::vam::HairPhysicsSettings, point_index: 
     } else {
         physics.collision_radius_m.max(0.0)
     }
-}
-
-fn rest_fingerprint(rests: &[GpuRestParticle]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    rests.len().hash(&mut hasher);
-    for rest in rests.iter().step_by(64) {
-        for axis in &rest.position[..3] {
-            axis.to_bits().hash(&mut hasher);
-        }
-    }
-    hasher.finish()
 }
 
 /// How many quads one segment of a strand is drawn with.
@@ -2429,23 +2406,6 @@ mod tests {
             grid.sample(buried) < 0.0,
             "the overlap of the two spheres is solid",
         );
-    }
-
-    #[test]
-    fn the_head_fingerprint_answers_whether_the_head_moved() {
-        let rest = |y: f32| GpuRestParticle {
-            position: [0.0, y, 0.0, 0.0],
-            data: [1.0, 0.0, 0.0, 0.0],
-            meta: [0, 0, 0, 0],
-        };
-        let head: Vec<GpuRestParticle> = (0..200).map(|index| rest(index as f32)).collect();
-        assert_eq!(rest_fingerprint(&head), rest_fingerprint(&head.clone()));
-
-        let mut moved = head.clone();
-        moved[64].position[1] += 0.5;
-        assert_ne!(rest_fingerprint(&head), rest_fingerprint(&moved));
-
-        assert_ne!(rest_fingerprint(&head), rest_fingerprint(&head[..199]));
     }
 
     #[test]
