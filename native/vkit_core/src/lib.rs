@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod anatomy;
+pub mod cache;
 pub mod fit;
 pub mod formats;
 pub mod math;

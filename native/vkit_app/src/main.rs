@@ -81,7 +81,40 @@ fn main() {
     if let Some(code) = cli::run_if_asked() {
         std::process::exit(code);
     }
+    settle_cache_generation();
     if let Err(error) = runtime::run() {
         boot_window::report_startup_failure(error.as_ref());
     }
+}
+
+/// A cache written by another build is emptied before anything reads it.
+fn settle_cache_generation() {
+    let Some(root) = vkit_core::cache_root() else {
+        return;
+    };
+    let version = env!("CARGO_PKG_VERSION");
+    let (severity, message) = match vkit_core::cache::ensure_cache_generation(&root, version) {
+        Ok(vkit_core::cache::CacheOutcome::Fresh) => {
+            (diagnostics::Severity::Info, "cache created".to_owned())
+        }
+        Ok(vkit_core::cache::CacheOutcome::Kept) => (
+            diagnostics::Severity::Info,
+            format!(
+                "cache kept at generation {}",
+                vkit_core::cache::CACHE_GENERATION
+            ),
+        ),
+        Ok(vkit_core::cache::CacheOutcome::Reset) => (
+            diagnostics::Severity::Warning,
+            format!(
+                "cache from another generation emptied; rebuilding at {}",
+                vkit_core::cache::CACHE_GENERATION
+            ),
+        ),
+        Err(error) => (
+            diagnostics::Severity::Error,
+            format!("cache could not be brought up to date: {error}"),
+        ),
+    };
+    let _ = diagnostics::record(severity, "cache", "generation", &message);
 }
