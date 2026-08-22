@@ -511,7 +511,16 @@ pub(super) fn part_tint_color(part_id: u64) -> [f32; 3] {
     [r * 0.7 + 0.3, g * 0.7 + 0.3, b * 0.7 + 0.3]
 }
 
-pub(super) const HAIR_PREVIEW_CHILD_BUDGET: usize = 6_000;
+/// How many strands one layer's preview may draw.
+///
+/// The game draws `hairMultiplier` children on every guide triangle and does
+/// not budget at all: one layer of `AKKEVE hair051` alone asks for some
+/// twenty-three thousand. At six thousand the preview drew about a quarter of
+/// the hair the game does, which is most of why it looked so sparse beside it.
+/// The children are enumerated once per rebuild and live in a GPU buffer, so
+/// the cost is memory rather than frame time; the cap is here for the styles
+/// that would ask for hundreds of thousands.
+pub(super) const HAIR_PREVIEW_CHILD_BUDGET: usize = 32_000;
 pub(super) const HAIR_STROKE_REBUILD_SECONDS: f64 = 0.045;
 
 pub(super) fn draw_thumbnail_frame(ui: &Ui, state: &mut AppState, rect: Rect) {

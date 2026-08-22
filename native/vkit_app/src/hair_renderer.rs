@@ -654,7 +654,10 @@ macro_rules! hair_shader_source {
             }
 
             let taper = 1.0 - saturate((t - 0.9) * 10.0);
-            let authored_half_width = part.width.x * taper * 0.5;
+            // The game's geometry shader extrudes each segment to `pos +- widthVec`,
+            // so the width it is given is a HALF width and the ribbon comes out
+            // twice as wide. Halving it here drew every strand at half the game's.
+            let authored_half_width = part.width.x * taper;
             var half_width = authored_half_width;
             let viewport_pixels = scene.grading.yz;
             let half_pixels =

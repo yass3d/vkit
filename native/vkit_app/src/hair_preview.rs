@@ -281,6 +281,19 @@ fn build_preview_part(
     let draw_guides = show_guides || valid_triangles.is_empty();
     let guide_demand = if draw_guides { drawable.len() } else { 0 };
     let demand = guide_demand + valid_triangles.len() * children;
+    if demand > limit {
+        // A style thinned to fit is a style the person is not seeing. Say so
+        // rather than let the preview quietly disagree with the game.
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "preview_thinned",
+            &format!(
+                "{demand} strands wanted, {limit} drawn ({} guide triangles x {children} children)",
+                valid_triangles.len()
+            ),
+        );
+    }
     let guide_budget = if demand == 0 {
         0
     } else {
