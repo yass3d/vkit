@@ -834,7 +834,8 @@ macro_rules! hair_shader_source {
                 clamp(input.strand_t, 0.0, 1.0),
                 clamp(part.root_color.w, 0.05, 16.0),
             );
-            var albedo = srgb_to_linear(mix(part.root_color.rgb, part.tip_color.rgb, color_t));
+            let ramp = mix(part.root_color.rgb, part.tip_color.rgb, color_t);
+            var albedo = srgb_to_linear(ramp);
             let random_gain = max(
                 0.0,
                 1.0
@@ -847,7 +848,13 @@ macro_rules! hair_shader_source {
                 input.world_position - input.light_centre,
                 normal,
             );
-            let shift = clamp(input.strand_noise - 0.5, 0.0, 1.0);
+            // The game reads the shift from the red of its own colour ramp, not
+            // from anything per strand: no hair item in the library ships a
+            // strand texture, so the ramp is what root and tip colour bake to.
+            // Dark hair therefore shifts by nothing at all and the two lobes sit
+            // symmetrically about the tangent — which is what makes the
+            // highlight a band across the head rather than a glint per fibre.
+            let shift = clamp(ramp.r - 0.5, 0.0, 1.0);
             let direct = fibre_lighting(
                 tangent,
                 pseudo_normal,
