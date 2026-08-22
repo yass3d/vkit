@@ -14,8 +14,6 @@ use glam::Vec3;
 
 const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 
-const MIN_RASTER_WIDTH_CM: f32 = 0.008;
-
 const SCALP_SURFACE_LIFT_CM: f32 = 0.03;
 
 #[derive(Clone, Debug)]
@@ -371,11 +369,7 @@ fn build_preview_part(
             .tip_color
             .or(look.root_color)
             .unwrap_or([0.16, 0.07, 0.03]),
-        width: preview_strand_width(
-            look.width_m.unwrap_or(0.0001),
-            alignment,
-            optics.shader_type.coverage_scale(),
-        ),
+        width: preview_strand_width(look.width_m.unwrap_or(0.0001), alignment),
         metres_to_template,
         optics,
         physics: asset.physics,
@@ -425,13 +419,16 @@ fn render_children(look: &HairLookPatch) -> usize {
         .min(MAX_CHILDREN_PER_GUIDE_TRIANGLE as u32) as usize
 }
 
-fn preview_strand_width(
-    authored_width_m: f32,
-    alignment: HairAlignment,
-    shader_coverage: f32,
-) -> f32 {
-    let authored_cm = authored_width_m.clamp(0.000_005, 0.005) * 100.0;
-    authored_cm.max(MIN_RASTER_WIDTH_CM) * alignment.scale * shader_coverage
+/// `_StandWidth = width x WorldScale`. There is no floor of any kind in the
+/// game, and the range is the one HairSimControl registers.
+///
+/// The floor that used to stand here was in world space, applied before any
+/// projection, so no zoom could undo it: 205 of the 1140 installed sims author
+/// a width under it and were drawn coarser than the game draws them, the
+/// thinnest by a factor of nearly ten. The legibility of a sub-pixel strand is
+/// the rasterizer's business, not the authored width's.
+fn preview_strand_width(authored_width_m: f32, alignment: HairAlignment) -> f32 {
+    authored_width_m.clamp(0.0, 0.001) * 100.0 * alignment.scale
 }
 
 #[derive(Clone, Debug, Default)]
@@ -668,21 +665,29 @@ mod tests {
             scale: 0.01,
             mirror_x: false,
         };
+        // A width from the thin end of the library, well under the floor that
+        // used to rewrite it.
         let width_m = 4.95768e-5;
-        let centimetre_width = preview_strand_width(width_m, centimetre_template, 1.0);
-        let metre_width = preview_strand_width(width_m, metre_template, 1.0);
+        let centimetre_width = preview_strand_width(width_m, centimetre_template);
+        let metre_width = preview_strand_width(width_m, metre_template);
 
         assert!(
-            (centimetre_width - 0.008).abs() < 1.0e-6,
-            "the raster floor moved: {centimetre_width}",
+            (centimetre_width - width_m * 100.0).abs() < 1.0e-9,
+            "the authored width is carried through unchanged: {centimetre_width}",
         );
-        assert!((metre_width - 0.00008).abs() < 1.0e-8);
-        assert!((centimetre_width / 100.0 - metre_width).abs() < 1.0e-8);
+        assert!((centimetre_width / 100.0 - metre_width).abs() < 1.0e-9);
 
-        let library_median = preview_strand_width(0.0001, centimetre_template, 1.0);
+        let library_median = preview_strand_width(0.0001, centimetre_template);
         assert!(
             (library_median - 0.01).abs() < 1.0e-6,
             "0.0001 m is 0.01 cm and nothing more: {library_median}",
+        );
+        // The thinnest hair in the library, drawn nearly ten times too wide by
+        // the floor this test used to pin.
+        let thinnest = preview_strand_width(8.19e-6, centimetre_template);
+        assert!(
+            (thinnest - 8.19e-4).abs() < 1.0e-9,
+            "the thinnest shipped strand is still floored: {thinnest}",
         );
     }
 }

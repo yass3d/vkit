@@ -298,24 +298,6 @@ macro_rules! hair_shader_source {
         };
         @group(0) @binding(0) var<uniform> scene: HairUniform;
 
-        const MIN_STRAND_HALF_PIXELS: f32 = 0.35;
-
-        const MAX_STRAND_WIDENING: f32 = 8.0;
-
-        fn ribbon_half_pixels(
-            world_centre: vec3<f32>,
-            offset: vec3<f32>,
-            viewport_pixels: vec2<f32>,
-        ) -> f32 {
-            let centre = scene.view_projection * vec4<f32>(world_centre, 1.0);
-            let edge = scene.view_projection * vec4<f32>(world_centre + offset, 1.0);
-            if (centre.w <= 1.0e-6 || edge.w <= 1.0e-6) {
-                return 0.0;
-            }
-            let delta = edge.xy / edge.w - centre.xy / centre.w;
-            return length(delta * 0.5 * viewport_pixels);
-        }
-
         struct Particle {
             position: vec4<f32>,
             previous: vec4<f32>,
@@ -375,7 +357,6 @@ macro_rules! hair_shader_source {
             @location(4) @interpolate(flat) part_index: u32,
             @location(5) @interpolate(flat) strand_noise: f32,
 
-            @location(6) @interpolate(flat) half_pixels: f32,
 
             @location(7) @interpolate(flat) light_centre: vec3<f32>,
 
@@ -634,7 +615,6 @@ macro_rules! hair_shader_source {
                 output.ribbon_side = 0.0;
                 output.part_index = part_index;
                 output.strand_noise = 0.0;
-                output.half_pixels = 0.0;
                 output.light_centre = vec3<f32>(0.0);
                 output.radiance = vec3<f32>(0.0);
                 return output;
@@ -702,21 +682,16 @@ macro_rules! hair_shader_source {
             // The game's geometry shader extrudes each segment to `pos +- widthVec`,
             // so the width it is given is a HALF width and the ribbon comes out
             // twice as wide. Halving it here drew every strand at half the game's.
-            let authored_half_width = part.width.x * taper;
-            var half_width = authored_half_width;
-            let viewport_pixels = scene.grading.yz;
-            let half_pixels =
-                ribbon_half_pixels(world.xyz, side * authored_half_width, viewport_pixels);
-
-            if (half_pixels > 0.02 && half_pixels < MIN_STRAND_HALF_PIXELS) {
-                let widening = min(MIN_STRAND_HALF_PIXELS / half_pixels, MAX_STRAND_WIDENING);
-                half_width = authored_half_width * widening;
-            }
-            let drawn_half_pixels = clamp(
-                half_pixels * (half_width / max(authored_half_width, 1.0e-9)),
-                0.05,
-                64.0,
-            );
+            // `_StandWidth * (1 - saturate((t - 0.9) * 10))`, and nothing else.
+            // The gs extrudes `pos +- widthVec`; the only screen-space quantity
+            // the ds carries is viewDir, and that orients the ribbon rather than
+            // sizing it. A widening term here thickened the silhouette as the
+            // camera pulled back — at full-body framing a default strand
+            // projects to 0.044 half-pixels, so essentially every strand on
+            // screen was drawn eight times too wide — and it fought the taper,
+            // holding the last tenth of every strand at a constant width where
+            // the game draws a point.
+            let half_width = part.width.x * taper;
             let signed_width = select(-half_width, half_width, positive_side);
             let ribbon_position = world.xyz + side * signed_width;
             output.clip_position = scene.view_projection * vec4<f32>(ribbon_position, 1.0);
@@ -726,7 +701,6 @@ macro_rules! hair_shader_source {
             output.ribbon_side = select(-1.0, 1.0, positive_side);
             output.part_index = part_index;
             output.strand_noise = noise;
-            output.half_pixels = drawn_half_pixels;
 
             let root = strand_sample(
                 uroots, weights, 0.0, segment_count, part, curl_x, curl_y, curl_z,
@@ -971,17 +945,16 @@ macro_rules! hair_shader_source {
             return ambient + direct;
         }
 
+        // Doc 15: "The ps is `o0.rgb = ambient + direct, o0.a = 1`." The quad is
+        // opaque edge to edge — there is no coverage term, no feather and no
+        // discard. What used to stand here turned 28% of a thick strand's half
+        // width into a translucent ramp while leaving a thin one nearly binary,
+        // so the two disagreed with each other as well as with the game. Edge
+        // antialiasing is the 4x MSAA the pipeline already runs, which is the
+        // same source the game uses.
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-            let part = parts[input.part_index];
-            let softness = clamp((input.half_pixels - 1.0) / 3.0, 0.0, 1.0);
-            let feather_start = mix(0.995, 0.72, softness);
-            let edge_coverage = 1.0 - smoothstep(feather_start, 1.0, abs(input.ribbon_side));
-            if (edge_coverage < 0.02) { discard; }
-            return vec4<f32>(
-                display_color(input.radiance),
-                part.width.y * edge_coverage,
-            );
+            return vec4<f32>(display_color(input.radiance), 1.0);
         }
 "#
         )
@@ -2635,6 +2608,38 @@ mod normal_randomize_tests {
         assert!(
             !tail.contains("safe_normalize(mix(") && !tail.contains("normalize(light_normal)"),
             "the lerp must not be renormalised: {tail}",
+        );
+    }
+}
+
+#[cfg(test)]
+mod strand_width_tests {
+    use super::*;
+
+    /// Doc 15: the gs extrudes `pos +- widthVec` and the ps writes
+    /// `o0.a = 1`. There is no view-dependent width term anywhere in the game's
+    /// hair pipeline and no coverage term in its fragment.
+    #[test]
+    fn the_ribbon_is_the_authored_width_and_the_fragment_is_opaque() {
+        assert!(
+            HAIR_SHADER.contains("let half_width = part.width.x * taper;"),
+            "the drawn width has to be the authored one, tapered and nothing else",
+        );
+        for gone in [
+            "MIN_STRAND_HALF_PIXELS",
+            "MAX_STRAND_WIDENING",
+            "ribbon_half_pixels",
+            "edge_coverage",
+            "feather_start",
+        ] {
+            assert!(
+                !HAIR_SHADER.contains(gone),
+                "{gone} has no counterpart in the game and still stands",
+            );
+        }
+        assert!(
+            HAIR_SHADER.contains("return vec4<f32>(display_color(input.radiance), 1.0);"),
+            "the fragment writes o0.a = 1, as the game's pixel shader does",
         );
     }
 }

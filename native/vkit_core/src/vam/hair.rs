@@ -48,14 +48,6 @@ impl HairShaderType {
             Self::NonStandard => 4,
         }
     }
-
-    pub fn coverage_scale(self) -> f32 {
-        match self {
-            Self::QualityThicken => 1.5,
-            Self::QualityThickenMore => 2.0,
-            Self::Fast | Self::Quality | Self::NonStandard => 1.0,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -274,7 +266,7 @@ impl HairLookPatch {
             color_rolloff: self
                 .color_rolloff
                 .unwrap_or(defaults.color_rolloff)
-                .clamp(0.05, 16.0),
+                .clamp(0.0, 5.0),
             specular_color: self.specular_color.unwrap_or(defaults.specular_color),
             diffuse_softness: self
                 .diffuse_softness
@@ -303,7 +295,7 @@ impl HairLookPatch {
             random_color_power: self
                 .random_color_power
                 .unwrap_or(defaults.random_color_power)
-                .clamp(0.05, 16.0),
+                .clamp(0.0, 10.0),
             random_color_offset: self
                 .random_color_offset
                 .unwrap_or(defaults.random_color_offset)
@@ -316,10 +308,14 @@ impl HairLookPatch {
                 .normal_randomize
                 .unwrap_or(defaults.normal_randomize)
                 .clamp(0.0, 1.0),
+            // length1/2/3 are registered 0-1, and zero is a value creators
+            // ship: with L = 0 the game's trunc puts every domain point on
+            // tessellation point 0, so that tier collapses and draws nothing.
+            // A floor of 0.05 turned it into a visible stub instead.
             child_lengths: std::array::from_fn(|index| {
                 self.length[index]
                     .unwrap_or(defaults.child_lengths[index])
-                    .clamp(0.05, 1.0)
+                    .clamp(0.0, 1.0)
             }),
         }
     }
@@ -2857,7 +2853,9 @@ mod tests {
         assert_eq!(optics.child_lengths[0], 1.0);
         assert_eq!(optics.child_lengths[1], 0.4710246);
 
-        assert_eq!(optics.child_lengths[2], 0.05);
+        // A zeroed tier reaches the shader as zero and draws nothing, which
+        // is what the game does with it.
+        assert_eq!(optics.child_lengths[2], 0.0);
     }
 
     #[test]
