@@ -487,11 +487,15 @@ macro_rules! hair_shader_source {
             return adjusted * (scale * amp_random * waviness_envelope(t, part));
         }
 
+        // The spline parameter is `(i / curveDensity) * particles`, so its whole
+        // part is a PARTICLE index and its fraction is the blend past it. The
+        // game clamps the index and leaves the fraction alone, which is how the
+        // last tessellation point reaches 93% of the way into the final cell
+        // instead of stopping at its midpoint.
         fn guide_spline(root: u32, travel: f32, segment_count: u32) -> vec3<f32> {
-            let cells = f32(segment_count);
-            let clamped = clamp(travel, 0.0, cells);
-            let cell = i32(floor(min(clamped, cells - 1.0e-4)));
-            let k = clamped - f32(cell);
+            let along = max(travel, 0.0);
+            let cell = i32(floor(along));
+            let k = along - f32(cell);
             let last = i32(segment_count);
             let p0 = particles[root + u32(clamp(cell - 1, 0, last))].position.xyz;
             let p1 = particles[root + u32(clamp(cell, 0, last))].position.xyz;
@@ -544,31 +548,10 @@ macro_rules! hair_shader_source {
             return clamp(1.0 - followed, 0.0, 1.0);
         }
 
-        fn polyline_sample(
-            roots: vec3<u32>,
-            weights: vec3<f32>,
-            strand_u: f32,
-            segment_count: u32,
-            part: RenderPart,
-            curl_x: GuideCurl,
-            curl_y: GuideCurl,
-            curl_z: GuideCurl,
-        ) -> vec3<f32> {
-            let spans = max(part.spread_b.w - 1.0, 1.0);
-            let q = clamp(strand_u, 0.0, 1.0) * spans;
-            let lower = floor(q);
-            let blend = q - lower;
-            let u0 = lower / spans;
-            let u1 = min(lower + 1.0, spans) / spans;
-            let p0 = strand_sample(
-                roots, weights, u0 * f32(segment_count), segment_count, part,
-                curl_x, curl_y, curl_z,
-            );
-            let p1 = strand_sample(
-                roots, weights, u1 * f32(segment_count), segment_count, part,
-                curl_x, curl_y, curl_z,
-            );
-            return mix(p0, p1, blend);
+        // The spline parameter of tessellation point `corner`, straight off the
+        // kernel: `udiv` by curveDensity then `mul` by the particle count.
+        fn tess_travel(corner: f32, segment_count: u32, density: f32) -> f32 {
+            return corner * (f32(segment_count) + 1.0) / max(density, 1.0);
         }
 
         @vertex
@@ -620,34 +603,33 @@ macro_rules! hair_shader_source {
             let curl_y = guide_curl(uroots.y, segment_count);
             let curl_z = guide_curl(uroots.z, segment_count);
 
-            // The game truncates a child's extent to a whole tessellation point:
-            //   seg = trunc(vDomain.x * (curveDensity - 0.001) * L)
-            // so a short child ends ON a density point rather than part way
-            // along a chord. That is what makes the length tiers land in
-            // visible steps instead of smearing through each other.
+            // The domain shader picks a WHOLE tessellation point for every drawn
+            // vertex — `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)` —
+            // so the drawn polyline IS the tessellated one, corner for corner.
+            // Sampling between corners chorded across every curl peak: over the
+            // 1136 installed sims whose segment count is readable, a fractional
+            // grid lands on the corners in 33 of them.
+            let density = max(part.spread_b.w, 2.0);
             let length_factor = clamp(dot(segment.slot.xyz, part.lengths.xyz), 0.0, 1.0);
-            let length_spans = max(part.spread_b.w - 1.0, 1.0);
-            let reach = clamp(
-                floor((part.spread_b.w - 0.001) * length_factor) / length_spans,
-                0.0,
-                1.0,
-            );
-            let strand_u = t * reach;
+            let tess_point = min(floor(t * (density - 0.001) * length_factor), density - 1.0);
 
-            let position = polyline_sample(
-                uroots, weights, strand_u, segment_count, part, curl_x, curl_y, curl_z,
+            let position = strand_sample(
+                uroots, weights, tess_travel(tess_point, segment_count, density),
+                segment_count, part, curl_x, curl_y, curl_z,
             );
             let world = scene.model * vec4<f32>(position, 1.0);
 
-            let sample_step = max(reach, 1.0e-3) / (f32(subdivisions) * f32(segment_count));
-            var neighbour_u = strand_u - sample_step;
+            // The tangent is differenced over one span of that same polyline, so
+            // a corner reads as a corner rather than across a wider chord.
+            var neighbour_point = tess_point - 1.0;
             var neighbour_sign = 1.0;
-            if (neighbour_u < 0.0) {
-                neighbour_u = strand_u + sample_step;
+            if (neighbour_point < 0.0) {
+                neighbour_point = min(tess_point + 1.0, density - 1.0);
                 neighbour_sign = -1.0;
             }
-            let neighbour = polyline_sample(
-                uroots, weights, neighbour_u, segment_count, part, curl_x, curl_y, curl_z,
+            let neighbour = strand_sample(
+                uroots, weights, tess_travel(neighbour_point, segment_count, density),
+                segment_count, part, curl_x, curl_y, curl_z,
             );
             let direction = (position - neighbour) * neighbour_sign;
             let along = safe_normalize(
@@ -700,7 +682,7 @@ macro_rules! hair_shader_source {
             output.strand_noise = noise;
             output.half_pixels = drawn_half_pixels;
 
-            let root = polyline_sample(
+            let root = strand_sample(
                 uroots, weights, 0.0, segment_count, part, curl_x, curl_y, curl_z,
             );
             let root_world = (scene.model * vec4<f32>(root, 1.0)).xyz;
@@ -2380,34 +2362,36 @@ mod child_length_tests {
     use super::*;
 
     /// The game's rule, mirrored so the arithmetic can be checked without a GPU:
-    /// `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)`, which at the tip
-    /// means the child ends on density point `floor((density - 0.001) * L)`.
-    fn reach(density: f32, length_factor: f32) -> f32 {
-        let spans = (density - 1.0).max(1.0);
-        (((density - 0.001) * length_factor).floor() / spans).clamp(0.0, 1.0)
+    /// `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)`. The result is the
+    /// index of a whole tessellation point, which is what a drawn vertex is.
+    fn corner(density: f32, domain: f32, length_factor: f32) -> f32 {
+        (domain * (density - 0.001) * length_factor)
+            .floor()
+            .min(density - 1.0)
+    }
+
+    /// The spline parameter of a tessellation point: `(i / curveDensity) * N`,
+    /// with N the particle count, not the cell count.
+    fn travel(corner: f32, segment_count: u32, density: f32) -> f32 {
+        corner * (segment_count as f32 + 1.0) / density
     }
 
     #[test]
     fn a_full_length_child_reaches_the_last_point_and_no_further() {
         for density in [2.0_f32, 8.0, 16.0, 32.0, 64.0] {
-            assert!(
-                (reach(density, 1.0) - 1.0).abs() < 1.0e-6,
-                "density {density} at full length must reach exactly the end",
+            assert_eq!(
+                corner(density, 1.0, 1.0),
+                density - 1.0,
+                "density {density} at full length must end on the last point",
             );
-            assert_eq!(reach(density, 0.0), 0.0);
+            assert_eq!(corner(density, 0.0, 1.0), 0.0);
         }
     }
 
     #[test]
     fn a_short_child_lands_on_a_density_point_rather_than_between_two() {
         // Sixteen points, half length: the game stops at point 7, not at 7.5.
-        let spans = 15.0_f32;
-        let landed = reach(16.0, 0.5) * spans;
-        assert!(
-            (landed - landed.round()).abs() < 1.0e-4,
-            "a child ended {landed} points along, which is between two of them",
-        );
-        assert_eq!(landed.round() as i32, 7);
+        assert_eq!(corner(16.0, 1.0, 0.5), 7.0);
     }
 
     #[test]
@@ -2416,8 +2400,40 @@ mod child_length_tests {
         // the same place, which is what makes flyaways read as locks rather
         // than as a smear.
         // 0.44 and 0.50 both truncate to point 7 of sixteen; 0.60 reaches 9.
-        assert_eq!(reach(16.0, 0.44), reach(16.0, 0.50));
-        assert_ne!(reach(16.0, 0.50), reach(16.0, 0.60));
+        assert_eq!(corner(16.0, 1.0, 0.44), corner(16.0, 1.0, 0.50));
+        assert_ne!(corner(16.0, 1.0, 0.50), corner(16.0, 1.0, 0.60));
+    }
+
+    /// The tip reaches into the last cell rather than stopping at its midpoint.
+    /// The kernel's own numbers: twelve particles, density 32, last point 31.
+    #[test]
+    fn the_last_tessellation_point_sits_where_the_kernel_puts_it() {
+        let last = corner(32.0, 1.0, 1.0);
+        assert_eq!(last, 31.0);
+        let parameter = travel(last, 11, 32.0);
+        assert!(
+            (parameter - 11.625).abs() < 1.0e-4,
+            "the last point landed at {parameter}, not the kernel's 11.625 — a \
+             whole particle index short ends every strand half a cell early",
+        );
+    }
+
+    /// Every drawn vertex has to be able to be a tessellation point, so the
+    /// vertex grid must be at least as fine as the polyline it draws.
+    #[test]
+    fn the_vertex_grid_is_never_coarser_than_the_polyline() {
+        for density in 2_u32..=64 {
+            for segment_count in 1_u32..=50 {
+                let subdivisions =
+                    crate::hair_physics::segment_subdivisions_for_test(density, segment_count);
+                assert!(
+                    segment_count * subdivisions >= density,
+                    "density {density} over {segment_count} segments draws only \
+                     {} vertices, so whole corners are dropped",
+                    segment_count * subdivisions,
+                );
+            }
+        }
     }
 
     /// The shader has to run this same arithmetic; a Rust mirror proves nothing
@@ -2425,12 +2441,18 @@ mod child_length_tests {
     #[test]
     fn the_shader_truncates_the_length_the_way_the_game_does() {
         assert!(
-            HAIR_SHADER.contains("floor((part.spread_b.w - 0.001) * length_factor)"),
-            "the shader no longer truncates a child's extent to a density point",
+            HAIR_SHADER.contains(
+                "let tess_point = min(floor(t * (density - 0.001) * length_factor), density - 1.0);"
+            ),
+            "the shader no longer truncates every drawn vertex to a density point",
         );
         assert!(
-            HAIR_SHADER.contains("let length_spans = max(part.spread_b.w - 1.0, 1.0);"),
-            "the truncation has to divide by the same spans polyline_sample uses",
+            HAIR_SHADER.contains("return corner * (f32(segment_count) + 1.0) / max(density, 1.0);"),
+            "the spline parameter has to be (corner / density) * particles",
+        );
+        assert!(
+            !HAIR_SHADER.contains("polyline_sample"),
+            "a drawn vertex is a tessellation point, not a resample between two",
         );
     }
 }

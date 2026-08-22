@@ -29,7 +29,15 @@ const MAX_FRAME_STEPS: usize = 1;
 
 const WARMUP_RESET_FRAMES_HOST: u32 = 10;
 
-pub(crate) const MAX_RENDER_SUBDIVISIONS: u32 = 8;
+/// The most quads a single guide segment can be asked to carry.
+///
+/// The game has no per-segment ceiling: the hull shader sets
+/// `detail = curveDensity`, whose own clamp is 64, and a strand with one
+/// segment must still be drawn at every one of those points. Anything
+/// lower drops whole corners of the polyline rather than merely rounding
+/// them — at the worst shipped ratio a curl collapsed to a near straight
+/// line.
+pub(crate) const MAX_RENDER_SUBDIVISIONS: u32 = 64;
 
 pub(crate) const SHAPE_QUIET_SECONDS: f64 = 0.25;
 
@@ -1372,6 +1380,12 @@ fn rest_fingerprint(rests: &[GpuRestParticle]) -> u64 {
 /// gives a smaller answer, and the shader then draws half the samples it wanted:
 /// each quad spans an arc it was never meant to, and a curl comes out as flat
 /// black shards.
+/// The subdivision count, reachable from the renderer's contract test.
+#[cfg(test)]
+pub(crate) fn segment_subdivisions_for_test(curve_density: u32, segment_count: u32) -> u32 {
+    segment_subdivisions(curve_density, segment_count)
+}
+
 fn segment_subdivisions(curve_density: u32, segment_count: u32) -> u32 {
     curve_density
         .clamp(2, 64)
