@@ -14,8 +14,6 @@ use glam::Vec3;
 
 const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 
-const SUBPIXEL_STRAND_COVERAGE_GAIN: f32 = 5.0;
-
 const MIN_RASTER_WIDTH_CM: f32 = 0.008;
 
 const SCALP_SURFACE_LIFT_CM: f32 = 0.03;
@@ -420,10 +418,7 @@ fn preview_strand_width(
     shader_coverage: f32,
 ) -> f32 {
     let authored_cm = authored_width_m.clamp(0.000_005, 0.005) * 100.0;
-    authored_cm.max(MIN_RASTER_WIDTH_CM)
-        * alignment.scale
-        * SUBPIXEL_STRAND_COVERAGE_GAIN
-        * shader_coverage
+    authored_cm.max(MIN_RASTER_WIDTH_CM) * alignment.scale * shader_coverage
 }
 
 #[derive(Clone, Debug, Default)]
@@ -651,7 +646,7 @@ mod tests {
     }
 
     #[test]
-    fn physical_vam_width_keeps_the_established_subpixel_coverage() {
+    fn the_authored_width_reaches_the_shader_unscaled() {
         let centimetre_template = HairAlignment {
             scale: 1.0,
             mirror_x: false,
@@ -664,16 +659,17 @@ mod tests {
         let centimetre_width = preview_strand_width(width_m, centimetre_template, 1.0);
         let metre_width = preview_strand_width(width_m, metre_template, 1.0);
 
-        let gain = SUBPIXEL_STRAND_COVERAGE_GAIN;
         assert!(
-            (centimetre_width - 0.008 * gain).abs() < 1.0e-6,
+            (centimetre_width - 0.008).abs() < 1.0e-6,
             "the raster floor moved: {centimetre_width}",
         );
-        assert!((metre_width - 0.00008 * gain).abs() < 1.0e-8);
+        assert!((metre_width - 0.00008).abs() < 1.0e-8);
         assert!((centimetre_width / 100.0 - metre_width).abs() < 1.0e-8);
+
+        let library_median = preview_strand_width(0.0001, centimetre_template, 1.0);
         assert!(
-            gain > 1.0,
-            "a gain of one is the setting that made the preview draw thread",
+            (library_median - 0.01).abs() < 1.0e-6,
+            "0.0001 m is 0.01 cm and nothing more: {library_median}",
         );
     }
 }
