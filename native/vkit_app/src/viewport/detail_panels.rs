@@ -751,7 +751,7 @@ pub(super) fn handle_texture_paint_interaction(
         return;
     };
     let spacing = (state.texture_project.mask_brush_radius
-        * texture_brush_points_per_uv(ui, state, viewport, camera, pointer)
+        * texture_brush_points_per_uv(ui, state, viewport, camera)
         * crate::texture_ui::BRUSH_SPACING_FRACTION)
         .max(1.0);
     let reverse = ui.input(|input| input.modifiers.alt);
@@ -839,15 +839,27 @@ pub(super) fn measure_texture_brush_points_per_uv(
     (screen_area > 0.0 && uv_area > 1.0e-12).then(|| (screen_area / uv_area).sqrt())
 }
 
+/// How many screen points a UV unit spans, measured where the camera is
+/// looking rather than where the pointer happens to be.
+///
+/// The brush paints in texture space, so its footprint in UV does not change as
+/// the pointer crosses the face — but the span of a UV unit ON SCREEN does,
+/// with the local triangle's foreshortening and with how densely that patch is
+/// laid out in the atlas. Measuring at the pointer made the ring breathe as it
+/// moved, which is what a hand reads as the brush resizing itself. Measuring
+/// where the camera points keeps the ring still while the pointer moves and
+/// still lets it grow when the view comes closer, which is the part that is
+/// worth tracking.
 fn texture_brush_points_per_uv(
     ui: &Ui,
     state: &AppState,
     viewport: Rect,
     camera: TurntableCamera,
-    pointer: Pos2,
 ) -> f32 {
     let id = Id::new(TEXTURE_BRUSH_UV_SCALE_ID);
-    if let Some(measured) = measure_texture_brush_points_per_uv(state, viewport, camera, pointer) {
+    if let Some(measured) =
+        measure_texture_brush_points_per_uv(state, viewport, camera, viewport.center())
+    {
         ui.data_mut(|data| data.insert_temp(id, measured));
         return measured;
     }
@@ -879,7 +891,7 @@ pub(super) fn paint_texture_brush_cursor(
         return;
     };
     let radius = (state.texture_project.mask_brush_radius
-        * texture_brush_points_per_uv(ui, state, viewport, camera, cursor.at))
+        * texture_brush_points_per_uv(ui, state, viewport, camera))
     .max(2.0);
     let reverse =
         ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();

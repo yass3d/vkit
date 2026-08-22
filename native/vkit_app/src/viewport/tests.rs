@@ -1648,6 +1648,17 @@ fn the_texture_brush_ring_tracks_the_camera_because_its_dab_is_measured_in_uv() 
         .is_none(),
         "there is nothing to measure off the head; that is what the remembered span is for"
     );
+
+    // The span is read where the camera looks, not where the pointer is: the
+    // brush paints in texture space, so a ring that changes size as the pointer
+    // crosses the face is reporting the local triangle rather than the brush.
+    let source = include_str!("detail_panels.rs");
+    assert!(
+        source.contains(
+            "measure_texture_brush_points_per_uv(state, viewport, camera, viewport.center())"
+        ),
+        "the brush scale is back on the pointer, so the ring breathes as it moves",
+    );
 }
 
 #[test]

@@ -139,24 +139,32 @@ fn draw_section_column(ui: &mut Ui, locale: Locale, rect: Rect, section: &mut Se
 /// Wider than the vertical margin on purpose: a row is a label on the left and
 /// a control on the right, and with the pane's own edge close to both of them
 /// the row reads as though it is falling off.
-const PANE_SIDE_MARGIN: f32 = 24.0;
+const PANE_SIDE_MARGIN: i8 = 24;
 
 fn draw_section_pane(ui: &mut Ui, state: &mut AppState, rect: Rect, section: SettingsSection) {
+    // The scroll area takes the whole pane so its bar rides at the pane's own
+    // right edge, where a bar belongs; the margin lives inside it, on the
+    // content. Insetting the scroll area instead dragged the bar inward with
+    // the text, and what a reader wants room around is the content.
     let mut pane = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(rect.shrink2(vec2(PANE_SIDE_MARGIN, SPACE_4)))
+            .max_rect(rect.shrink2(vec2(0.0, SPACE_4)))
             .layout(Layout::top_down(Align::Min)),
     );
     pane.spacing_mut().item_spacing.y = SPACE_2;
     egui::ScrollArea::vertical()
         .id_salt("vkit.settings.pane")
         .auto_shrink([false, false])
-        .show(&mut pane, |ui| match section {
-            SettingsSection::Graphics => draw_graphics_settings(ui, state),
-            SettingsSection::Viewport => draw_viewport_settings(ui, state),
-            SettingsSection::General => draw_general_settings(ui, state),
-            SettingsSection::Shortcuts => draw_shortcut_settings(ui, state),
-            SettingsSection::About => draw_about_settings(ui, state),
+        .show(&mut pane, |ui| {
+            Frame::new()
+                .inner_margin(Margin::symmetric(PANE_SIDE_MARGIN, 0))
+                .show(ui, |ui| match section {
+                    SettingsSection::Graphics => draw_graphics_settings(ui, state),
+                    SettingsSection::Viewport => draw_viewport_settings(ui, state),
+                    SettingsSection::General => draw_general_settings(ui, state),
+                    SettingsSection::Shortcuts => draw_shortcut_settings(ui, state),
+                    SettingsSection::About => draw_about_settings(ui, state),
+                });
         });
 }
 
@@ -236,12 +244,42 @@ fn effect_switch(
     )
 }
 
+/// A section label with a hairline running off the end of it.
+///
+/// One shape for every section in the page, including the shortcut list and the
+/// about pane — the about pane drew a full-width rule *above* its headings,
+/// which reads as the end of what came before rather than the start of what
+/// follows.
 fn group_heading(ui: &mut Ui, locale: Locale, key: TextKey) {
     ui.add_space(SPACE_3);
-    ui.label(
-        egui::RichText::new(text(locale, key))
-            .size(FONT_XS)
-            .color(COLOR_MUTED),
+    let label = egui::RichText::new(text(locale, key))
+        .size(FONT_XS)
+        .color(COLOR_MUTED);
+    let galley = ui.painter().layout_no_wrap(
+        text(locale, key).to_owned(),
+        egui::FontId::proportional(FONT_XS),
+        COLOR_MUTED,
+    );
+    let row = galley.size().y.max(FONT_XS);
+    ui.allocate_ui_with_layout(
+        vec2(ui.available_width().max(0.0), row),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            ui.label(label);
+            let rest = ui.available_width() - SPACE_2;
+            if rest > SPACE_2 {
+                ui.add_space(SPACE_2);
+                let (rect, _) = ui.allocate_exact_size(vec2(rest, row), Sense::hover());
+                ui.painter().rect_filled(
+                    Rect::from_min_max(
+                        pos2(rect.left(), rect.center().y - 0.5),
+                        pos2(rect.right(), rect.center().y + 0.5),
+                    ),
+                    0.0,
+                    COLOR_HAIRLINE,
+                );
+            }
+        },
     );
     ui.add_space(SPACE_2);
 }
@@ -923,15 +961,11 @@ fn draw_about_settings(ui: &mut Ui, state: &mut AppState) {
         },
     );
 
-    about_divider(ui);
-
     group_heading(ui, locale, TextKey::SettingsAboutBuild);
     about_version_row(ui, locale);
     about_row(ui, "Built for VaM", crate::VAM_TARGET_VERSION);
     about_row(ui, "Renderer", "wgpu \u{00b7} Direct3D 12");
     about_row(ui, "Platform", "Windows x64");
-
-    about_divider(ui);
 
     group_heading(ui, locale, TextKey::SettingsAboutLicense);
     about_row(ui, "License", "MIT OR Apache-2.0");
@@ -939,8 +973,6 @@ fn draw_about_settings(ui: &mut Ui, state: &mut AppState) {
     about_paragraph(ui, text(locale, TextKey::AboutNoAffiliation));
     ui.add_space(SPACE_1);
     about_paragraph(ui, text(locale, TextKey::AboutNoWarranty));
-
-    about_divider(ui);
 
     group_heading(ui, locale, TextKey::SettingsAboutDiagnostics);
     about_row(ui, "Log", crate::diagnostics::LOG_FILE_NAME);
