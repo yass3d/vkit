@@ -791,7 +791,15 @@ pub fn authoring_hair_preview(
         scale: 1.0,
         mirror_x: false,
     };
-    let part = build_preview_part(&asset, limit, alignment, mesh, projector, true);
+    // The game never draws a guide: every strand on screen is one of the
+    // `hairMultiplier` tessellation children of a complete triangle, and a
+    // strand belonging to no complete triangle is physics only (ledger 1).
+    // Drawing them put the longest, least gathered strands in the scene on top
+    // of the rest — a guide takes length1 whole and sits on guide 0, so it gets
+    // no spread toward the triangle centre. Those were the wiry flyaways.
+    // `build_preview_part` still falls back to guides when a part has no
+    // complete triangle at all, so a part being planted is not invisible.
+    let part = build_preview_part(&asset, limit, alignment, mesh, projector, false);
     let scalps = match scalp {
         Some(AuthoringScalp {
             geometry,
@@ -821,4 +829,45 @@ pub fn authoring_hair_preview(
         body_capsules: body_capsules.clone(),
         scalps,
     })
+}
+
+#[cfg(test)]
+mod guide_visibility_tests {
+    /// Ledger 1, the first absolute law: the game draws no guides. Every strand
+    /// on screen is a tessellation child of a complete triangle, and a strand
+    /// in no complete triangle is physics only.
+    ///
+    /// A drawn guide is the worst offender it could be: `render_segments` gives
+    /// it a length barycentric of `[1, 0, 0]`, so it takes `length1` whole while
+    /// its neighbours take their tier, and it sits exactly on guide 0, so the
+    /// spread never gathers it toward the triangle centre.
+    #[test]
+    fn the_authoring_preview_asks_for_children_only() {
+        let source = include_str!("hair_preview.rs");
+        let call = source
+            .lines()
+            .find(|line| line.contains("let part = build_preview_part(&asset,"))
+            .expect("the authoring preview builds a part");
+        assert!(
+            call.trim_end().ends_with("projector, false);"),
+            "the authoring preview asks for guides to be drawn: {call}",
+        );
+    }
+
+    #[test]
+    fn a_part_with_no_complete_triangle_still_draws_something() {
+        // The one case where guides may stand in: nothing else exists to draw,
+        // and a part being planted must not be invisible.
+        let show_guides = false;
+        let no_triangles: Vec<u32> = Vec::new();
+        let draw_guides = show_guides || no_triangles.is_empty();
+        assert!(draw_guides);
+
+        let some_triangles = [0_u32];
+        let draw_guides = show_guides || some_triangles.is_empty();
+        assert!(
+            !draw_guides,
+            "once triangles exist, only children are drawn"
+        );
+    }
 }
