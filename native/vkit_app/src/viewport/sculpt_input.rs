@@ -535,8 +535,7 @@ pub(super) fn paint_sculpt_brush_hud(ui: &Ui, state: &AppState, response: &Respo
         state.sculpt_brush_radius_points,
         color,
     );
-    ui.painter()
-        .circle_filled(cursor.at, 2.0, color.gamma_multiply(0.9));
+    crate::ui_components::hide_pointer(ui);
 }
 
 pub(super) const fn sculpt_visible_targets(state: &AppState) -> SculptTargets {

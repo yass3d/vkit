@@ -290,6 +290,12 @@ pub(super) fn handle_hair_interaction(
 }
 
 pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Response) {
+    // Pick takes hold of one part and Vertex of one joint; neither has a radius,
+    // so both keep the arrow. Vertex never reaches here — it paints its own
+    // handles — and Pick is turned away at this line.
+    if state.hair_project.active_tool == crate::hair_project::HairTool::Pick {
+        return;
+    }
     let hover = response
         .hovered()
         .then(|| ui.input(|input| input.pointer.hover_pos()))
@@ -298,7 +304,10 @@ pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Respons
         ui,
         hover,
         crate::ui_components::BrushSweeps::HAIR.size(),
-        None,
+        Some((
+            crate::ui_components::BrushSweeps::HAIR.strength(),
+            state.hair_brush_strength,
+        )),
     ) else {
         return;
     };
@@ -308,6 +317,7 @@ pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Respons
         state.hair_brush_radius_points.max(1.0),
         crate::theme::COLOR_MUTED,
     );
+    crate::ui_components::hide_pointer(ui);
 }
 
 fn scalp_brush_gather(

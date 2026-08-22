@@ -889,6 +889,7 @@ pub(super) fn paint_texture_brush_cursor(
         Color32::WHITE
     };
     crate::ui_components::paint_brush_cursor(ui.painter(), cursor, radius, color);
+    crate::ui_components::hide_pointer(ui);
 }
 
 fn stencil_brush_radius_points(state: &AppState, stencil: Rect) -> f32 {
@@ -930,6 +931,9 @@ pub(super) fn paint_stencil_brush_cursor(
         stencil_brush_radius_points(state, stencil),
         color,
     );
+    if stencil.contains(cursor.at) {
+        crate::ui_components::hide_pointer(ui);
+    }
 }
 
 const STENCIL_STROKE_LAST: &str = "vkit.texture.stencil-stroke-last";

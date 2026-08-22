@@ -450,6 +450,16 @@ pub fn brush_cursor(
     Some(BrushCursor { at, fill: None })
 }
 
+/// Draw the brush where it is, and take the arrow away while it is there.
+///
+/// The ring IS the pointer wherever a radius means something, so the system
+/// cursor on top of it is a second pointer saying something else. egui raises
+/// its own cursor again the moment the pointer leaves this widget, so nothing
+/// has to put it back — a side panel or a toolbar gets an arrow by itself.
+///
+/// `fill` is the strength: the circle is anchored where the sweep began and
+/// carries the value as opacity, so the size gesture and the strength gesture
+/// read as the same object rather than two.
 pub fn paint_brush_cursor(
     painter: &egui::Painter,
     cursor: BrushCursor,
@@ -460,6 +470,21 @@ pub fn paint_brush_cursor(
         painter.circle_filled(cursor.at, radius, color.gamma_multiply(0.12 + 0.58 * fill));
     }
     painter.circle_stroke(cursor.at, radius, Stroke::new(1.5, color));
+    // The centre, so a wide brush still says exactly where it is pointed.
+    painter.circle_filled(cursor.at, BRUSH_CENTRE_RADIUS, color.gamma_multiply(0.9));
+}
+
+/// How big the dot in the middle of a brush ring is.
+pub const BRUSH_CENTRE_RADIUS: f32 = 2.0;
+
+/// Take the system arrow away for this frame.
+///
+/// Called by whoever painted a brush ring, and by nothing else: the arrow is
+/// the right pointer everywhere a single point is being placed or picked —
+/// alignment pins, texture pin pairs, hair pick and vertex — and everywhere no
+/// tool is active.
+pub fn hide_pointer(ui: &Ui) {
+    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
 }
 
 pub fn clear_brush_size_gesture(context: &egui::Context, id: Id) {
@@ -2428,5 +2453,65 @@ mod tests {
 
         let small = crate::skin_preview::SkinImage::new(1, 8, 4, vec![0_u8; 8 * 4 * 4]).unwrap();
         assert_eq!(thumbnail_color_image(&small).size, [8, 4]);
+    }
+}
+
+#[cfg(test)]
+mod brush_pointer_tests {
+    /// The ring is the pointer, so the arrow has to go while it is up — and it
+    /// has to come back everywhere a single point is placed or picked. Every
+    /// surface that draws a ring hides it; nothing else does.
+    #[test]
+    fn every_brush_ring_takes_the_arrow_with_it() {
+        for (source, what) in [
+            (include_str!("viewport/sculpt_input.rs"), "sculpt"),
+            (include_str!("viewport/hair_input.rs"), "hair"),
+            (include_str!("viewport/detail_panels.rs"), "texture"),
+        ] {
+            assert_eq!(
+                source.matches("paint_brush_cursor(").count(),
+                source.matches("hide_pointer(ui)").count(),
+                "{what} paints a ring somewhere without taking the arrow away",
+            );
+        }
+    }
+
+    /// The two hair tools that take hold of one thing keep the arrow, and the
+    /// one that has no radius never reaches the ring painter at all.
+    #[test]
+    fn the_hair_tools_that_grab_one_thing_keep_the_arrow() {
+        let source = include_str!("viewport/hair_input.rs");
+        assert!(
+            source.contains(
+                "if state.hair_project.active_tool == crate::hair_project::HairTool::Pick {
+        return;
+    }"
+            ),
+            "Pick has no radius and must not be given a ring",
+        );
+        let viewport = include_str!("viewport.rs");
+        assert!(
+            viewport.contains(
+                "if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {"
+            ),
+            "Vertex paints its own handles rather than a ring",
+        );
+    }
+
+    /// Strength is opacity, and the circle stands still while it is set — the
+    /// hair tab passed no strength at all, so shift+F followed the mouse and
+    /// showed nothing.
+    #[test]
+    fn every_surface_shows_its_strength_in_the_ring() {
+        for (source, sweep) in [
+            (include_str!("viewport/sculpt_input.rs"), "SCULPT"),
+            (include_str!("viewport/hair_input.rs"), "HAIR"),
+            (include_str!("viewport/detail_panels.rs"), "TEXTURE_SURFACE"),
+        ] {
+            assert!(
+                source.contains(&format!("BrushSweeps::{sweep}.strength()")),
+                "{sweep} sets a strength nothing draws",
+            );
+        }
     }
 }
