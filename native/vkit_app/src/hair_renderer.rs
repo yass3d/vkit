@@ -1735,7 +1735,24 @@ pub(crate) struct HairRenderResources {
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
     use_counter: u64,
+    /// One `0,1,2, 2,1,3` per quad, shared by every scene and grown to fit the
+    /// largest one drawn. The pattern never varies, so neither does the buffer.
+    quad_indices: Option<(wgpu::Buffer, u32)>,
     target_is_srgb: bool,
+}
+
+fn build_quad_indices(device: &wgpu::Device, quads: u32) -> (wgpu::Buffer, u32) {
+    let mut indices = Vec::with_capacity(quads as usize * 6);
+    for quad in 0..quads {
+        let base = quad * 4;
+        indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
+    }
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("vkit.hair.quad-indices"),
+        contents: bytemuck::cast_slice(&indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    (buffer, quads)
 }
 
 impl HairRenderResources {
@@ -1826,6 +1843,7 @@ impl HairRenderResources {
             physics_pipelines: HairPhysicsPipelines::new(device),
             scenes: BTreeMap::new(),
             use_counter: 0,
+            quad_indices: None,
             target_is_srgb: target_format.is_srgb(),
         }
     }
@@ -1958,16 +1976,41 @@ impl HairRenderResources {
             HAIR_SCENE_CACHE_CAP,
             |scene| scene.last_used,
         );
+        self.ensure_quad_indices(device);
+    }
+
+    fn ensure_quad_indices(&mut self, device: &wgpu::Device) {
+        let wanted = self
+            .scenes
+            .values()
+            .map(|scene| scene.physics.render_index_count() / 6)
+            .max()
+            .unwrap_or(0);
+        if wanted == 0 {
+            return;
+        }
+        if self
+            .quad_indices
+            .as_ref()
+            .is_some_and(|(_, quads)| *quads >= wanted)
+        {
+            return;
+        }
+        self.quad_indices = Some(build_quad_indices(device, wanted));
     }
 
     pub(crate) fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>, scene_key: u64) {
         let Some(scene) = self.scenes.get(&scene_key) else {
             return;
         };
+        let Some((indices, _)) = self.quad_indices.as_ref() else {
+            return;
+        };
         let _keep_uniform_alive = &scene.uniform_buffer;
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
-        render_pass.draw(0..scene.physics.render_vertex_count(), 0..1);
+        render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        render_pass.draw_indexed(0..scene.physics.render_index_count(), 0, 0..1);
     }
 }
 

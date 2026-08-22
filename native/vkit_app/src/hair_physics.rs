@@ -1057,7 +1057,9 @@ impl HairPhysicsScene {
         self.render_subdivisions
     }
 
-    pub(crate) const fn render_vertex_count(&self) -> u32 {
+    /// Indices to draw with: six to a quad, two of them repeats of corners the
+    /// vertex stage no longer has to run twice.
+    pub(crate) const fn render_index_count(&self) -> u32 {
         self.render_segment_count
             .saturating_mul(6 * self.render_subdivisions)
     }
@@ -1576,7 +1578,7 @@ fn render_segments(
     ranges: &[Vec<GuideRange>],
     limit: usize,
 ) -> (Vec<GpuHairRenderSegment>, u32) {
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(limit.min(1 << 20));
     let mut subdivisions = 1_u32;
     'parts: for (part_index, part) in preview.parts.iter().enumerate() {
         for strand in part.strands.iter() {
