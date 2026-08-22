@@ -389,7 +389,7 @@ pub const HAIR_PARAMS: [HairParam; 65] = [
     scalp_color("Diffuse Color", "Scalp Color", 255, 255, 255),
     color("rootColor", "Root Color", 0, 0, 0),
     color("tipColor", "Tip Color", 19, 17, 15),
-    color("specularColor", "Specular Color", 25, 19, 19),
+    color("specularColor", "Specular Color", 99, 66, 58),
     float(
         "colorRolloff",
         Look,

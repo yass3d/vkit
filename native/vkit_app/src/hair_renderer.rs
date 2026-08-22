@@ -879,9 +879,15 @@ macro_rules! hair_shader_source {
                 part,
             );
 
+            // The game's ambient is two terms, not one: the sky sampled at the
+            // pseudo-normal and scaled by Global Illumination Factor, PLUS a
+            // flat scene ambient that no factor touches. Dropping the second
+            // let the unlit side of the hair fall to black, where the game
+            // keeps a lifted brown. We do not have the game's scene ambient, so
+            // the floor of our own environment stands in for it.
             let ambient = albedo
-                * environment_radiance(pseudo_normal)
-                * clamp(part.variation.z, 0.0, 1.0);
+                * (environment_radiance(pseudo_normal) * clamp(part.variation.z, 0.0, 1.0)
+                    + scene.environment_bottom.rgb);
 
             let softness = clamp((input.half_pixels - 1.0) / 3.0, 0.0, 1.0);
             let feather_start = mix(0.995, 0.72, softness);
