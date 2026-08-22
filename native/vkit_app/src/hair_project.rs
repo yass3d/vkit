@@ -153,6 +153,71 @@ impl ScalpAuthoring {
     pub fn normals(&self) -> &[[f32; 3]] {
         &self.normals
     }
+
+    /// The same cap, standing on the head it is wrapped to.
+    ///
+    /// The stock cap is the shape the provider ships. What the person sees is
+    /// that shape pulled onto the head, so what they click has to be too.
+    #[must_use]
+    pub fn posed(&self, vertices_cm: Vec<[f32; 3]>) -> Option<Self> {
+        if vertices_cm.len() != self.vertices_cm.len() {
+            return None;
+        }
+        let mut normals = vec![[0.0_f32; 3]; vertices_cm.len()];
+        for triangle in &self.triangles {
+            let corner = |index: u32| vertices_cm.get(index as usize).copied();
+            let (Some(a), Some(b), Some(c)) = (
+                corner(triangle[0]),
+                corner(triangle[1]),
+                corner(triangle[2]),
+            ) else {
+                continue;
+            };
+            let (a, b, c) = (
+                glam::Vec3::from_array(a),
+                glam::Vec3::from_array(b),
+                glam::Vec3::from_array(c),
+            );
+            let face = (b - a).cross(c - a);
+            for index in triangle {
+                if let Some(slot) = normals.get_mut(*index as usize) {
+                    slot[0] += face.x;
+                    slot[1] += face.y;
+                    slot[2] += face.z;
+                }
+            }
+        }
+        for normal in &mut normals {
+            let vector = glam::Vec3::from_array(*normal);
+            *normal = vector.try_normalize().unwrap_or(glam::Vec3::Z).to_array();
+        }
+        let vertices_f64: Vec<[f64; 3]> = vertices_cm
+            .iter()
+            .map(|point| {
+                [
+                    f64::from(point[0]),
+                    f64::from(point[1]),
+                    f64::from(point[2]),
+                ]
+            })
+            .collect();
+        let picking_triangles: Vec<[u32; 3]> = if self.export_negate_x {
+            self.triangles.iter().map(|t| [t[0], t[2], t[1]]).collect()
+        } else {
+            self.triangles.clone()
+        };
+        let mesh = Mesh::new(vertices_f64, picking_triangles).ok()?;
+        let surface = Arc::new(SurfaceMesh::new(mesh).ok()?);
+        Some(Self {
+            vertices_cm,
+            triangles: self.triangles.clone(),
+            uvs: self.uvs.clone(),
+            surface,
+            normals,
+            export_negate_x: self.export_negate_x,
+            mirror_pair: self.mirror_pair.clone(),
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

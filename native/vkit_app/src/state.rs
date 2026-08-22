@@ -280,6 +280,11 @@ pub struct AppState {
     /// What the last install put on disk, so it can be gathered into a package.
     pub hair_export_files: Vec<std::path::PathBuf>,
 
+    /// The cap wrapped onto the head as it is now, refreshed by the viewport.
+    /// Planting reads it so a root lands where the socket was clicked.
+    pub posed_hair_scalps:
+        std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
+
     pub manual_eye_gaze: [f32; 2],
     pub eye_gaze_mode: EyeGazeMode,
 
@@ -599,6 +604,7 @@ impl Default for AppState {
             hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
             hair_brush_follow_stroke: true,
             hair_export_files: Vec::new(),
+            posed_hair_scalps: std::collections::HashMap::new(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
             frozen_eye_gaze: None,

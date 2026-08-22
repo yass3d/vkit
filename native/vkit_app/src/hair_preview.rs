@@ -736,12 +736,13 @@ pub struct HeadBed {
 static HEAD_BED_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl HeadBed {
-    pub fn build(template: &DazGeometry) -> Result<Self, String> {
-        let mesh = template
-            .to_ordered_obj(None)
-            .map_err(|error| error.to_string())?
-            .triangulated()
-            .map_err(|error| error.to_string())?;
+    /// Lay the bed on the head as it is now.
+    ///
+    /// The template is still what the body capsules are read from — they are a
+    /// figure's proportions, not a face's — but everything hair is planted on,
+    /// wrapped to and bound against comes from the mesh handed in, so a morph
+    /// moves the scalp with it.
+    pub fn build_on(template: &DazGeometry, mesh: Mesh) -> Result<Self, String> {
         let projector = projector_for_mesh(&mesh).map_err(|error| format!("{error:?}"))?;
         Ok(Self {
             body_capsules: body_capsules_from_template(template),

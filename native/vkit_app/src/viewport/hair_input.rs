@@ -125,11 +125,29 @@ pub(super) fn handle_hair_interaction(
     } else {
         state.hair_project.editable_parts()
     };
+    // The wrapped cap, not the stock one: the pointer has to meet the head the
+    // person is looking at, and so must the root a plant leaves behind.
+    let mut providers: Vec<String> = active
+        .iter()
+        .chain(state.hair_project.selected_part_id.iter())
+        .filter_map(|id| state.hair_project.part(*id))
+        .map(|part| part.provider_name.clone())
+        .collect();
+    providers.sort_unstable();
+    providers.dedup();
+    for provider in providers {
+        if let Some(cap) = crate::viewport::hair_overlays::posed_scalp(ui.ctx(), state, &provider) {
+            state.posed_hair_scalps.insert(provider, cap);
+        }
+    }
     let scalp_of = |state: &AppState, id: u64| {
-        state
-            .hair_project
-            .part(id)
-            .and_then(|part| state.hair_scalps.get(&part.provider_name).cloned())
+        state.hair_project.part(id).and_then(|part| {
+            state
+                .posed_hair_scalps
+                .get(&part.provider_name)
+                .or_else(|| state.hair_scalps.get(&part.provider_name))
+                .cloned()
+        })
     };
     let mirror = state.hair_mirror_edit;
     if !matches!(tool, HairTool::Pick)
@@ -292,7 +310,7 @@ pub(super) fn paint_hair_brush_hud(
     // surface frame. A circle has nothing to show that way and stays flat,
     // which also keeps it visible when the pointer is off the scalp.
     if state.hair_brush_shape.is_bar()
-        && let Some(scalp) = hair_scalp_under_pointer(state)
+        && let Some(scalp) = hair_scalp_under_pointer(ui, state)
         && let Some(frame) = brush_frame_under_pointer(ui, state, viewport, camera, &scalp, radius)
     {
         let outline: Vec<egui::Pos2> = frame
@@ -317,10 +335,11 @@ pub(super) fn paint_hair_brush_hud(
 }
 
 fn hair_scalp_under_pointer(
+    ui: &Ui,
     state: &AppState,
 ) -> Option<std::sync::Arc<crate::hair_project::ScalpAuthoring>> {
     let part = state.hair_project.selected_part()?;
-    state.hair_scalps.get(&part.provider_name).cloned()
+    crate::viewport::hair_overlays::posed_scalp(ui.ctx(), state, &part.provider_name)
 }
 
 fn scalp_brush_gather(

@@ -1499,7 +1499,10 @@ impl ScalpRenderResources {
     }
 }
 
-fn anchored_position(head: &SurfaceMesh, anchor: &crate::hair_preview::ScalpAnchor) -> Vec3 {
+pub(crate) fn anchored_position(
+    head: &SurfaceMesh,
+    anchor: &crate::hair_preview::ScalpAnchor,
+) -> Vec3 {
     let corner = |index: u32| {
         head.mesh
             .vertices

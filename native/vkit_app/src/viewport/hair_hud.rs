@@ -112,6 +112,51 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
         .map(|part| (part.id, part.segments));
     let (part_id, segments) = selected.unwrap_or((0, crate::hair_project::DEFAULT_HAIR_SEGMENTS));
 
+    // The brush's shape sizes the brush, so it stands before the size.
+    let entries: Vec<_> = crate::hair_brush::HairBrushShape::ALL
+        .into_iter()
+        .map(|shape| {
+            let icon = match shape {
+                crate::hair_brush::HairBrushShape::Circle => Icon::BrushCircle,
+                crate::hair_brush::HairBrushShape::Wide => Icon::BrushBarWide,
+                crate::hair_brush::HairBrushShape::Tall => Icon::BrushBarTall,
+            };
+            (
+                shape,
+                icon,
+                text(state.locale, shape.label_key()).to_owned(),
+            )
+        })
+        .collect();
+    if let Some(shape) = crate::ui_components::hud_icon_menu(
+        &mut hud,
+        Id::new("vkit.viewport.hair.brush-shape"),
+        super::DETAIL_HUD_TOGGLE_SIZE,
+        state.hair_brush_shape,
+        &entries,
+        text(state.locale, TextKey::HairBrushShape),
+    ) {
+        state.dispatch(Action::SetHairBrushShape(shape));
+    }
+    let follow = hud
+        .add_enabled_ui(state.hair_brush_shape.is_bar(), |hud| {
+            detail_hud_toggle_icon(
+                hud,
+                Icon::BrushFollowStroke,
+                state.hair_brush_follow_stroke,
+                text(state.locale, TextKey::HairBrushFollowStroke),
+                text(state.locale, TextKey::HairBrushFollowStroke),
+                None,
+            )
+        })
+        .inner;
+    if follow.clicked() {
+        state.dispatch(Action::SetHairBrushFollowStroke(
+            !state.hair_brush_follow_stroke,
+        ));
+    }
+    draw_detail_separator(&mut hud);
+
     let numeric_width = detail_hud_flex_numeric_width(content.width(), true).max(96.0);
     let mut radius = state.hair_brush_radius_points;
     if detail_numeric_control(
@@ -169,43 +214,6 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
                 segments: value.round() as usize,
             });
         }
-    }
-
-    draw_detail_separator(&mut hud);
-    for shape in crate::hair_brush::HairBrushShape::ALL {
-        let icon = match shape {
-            crate::hair_brush::HairBrushShape::Circle => Icon::BrushCircle,
-            crate::hair_brush::HairBrushShape::Wide => Icon::BrushBarWide,
-            crate::hair_brush::HairBrushShape::Tall => Icon::BrushBarTall,
-        };
-        let chosen = detail_hud_toggle_icon(
-            &mut hud,
-            icon,
-            state.hair_brush_shape == shape,
-            text(state.locale, shape.label_key()),
-            text(state.locale, TextKey::HairBrushShape),
-            None,
-        );
-        if chosen.clicked() {
-            state.dispatch(Action::SetHairBrushShape(shape));
-        }
-    }
-    let follow = hud
-        .add_enabled_ui(state.hair_brush_shape.is_bar(), |hud| {
-            detail_hud_toggle_icon(
-                hud,
-                Icon::BrushFollowStroke,
-                state.hair_brush_follow_stroke,
-                text(state.locale, TextKey::HairBrushFollowStroke),
-                text(state.locale, TextKey::HairBrushFollowStroke),
-                None,
-            )
-        })
-        .inner;
-    if follow.clicked() {
-        state.dispatch(Action::SetHairBrushFollowStroke(
-            !state.hair_brush_follow_stroke,
-        ));
     }
 
     draw_detail_separator(&mut hud);

@@ -510,7 +510,11 @@ impl AppState {
         else {
             return;
         };
-        let Some(scalp) = self.hair_scalps.get(&part.provider_name) else {
+        let Some(scalp) = self
+            .posed_hair_scalps
+            .get(&part.provider_name)
+            .or_else(|| self.hair_scalps.get(&part.provider_name))
+        else {
             return;
         };
         if part.plant(scalp, scalp_indices) > 0 {

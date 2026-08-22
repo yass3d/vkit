@@ -96,11 +96,9 @@ pub(super) fn add_hair_authoring_overlays(
     camera: TurntableCamera,
     furniture: bool,
 ) {
+    // The dots mark sockets on the head, so they are read from the wrapped cap.
     let selected = state.hair_project.selected_part().and_then(|part| {
-        state
-            .hair_scalps
-            .get(&part.provider_name)
-            .map(|scalp| (part, scalp))
+        posed_scalp(ui.ctx(), state, &part.provider_name).map(|scalp| (part, scalp))
     });
     let Some((part, scalp)) = selected else {
         if state.hair_project.parts.is_empty() {
@@ -120,7 +118,7 @@ pub(super) fn add_hair_authoring_overlays(
         (0.35 - (planted as f32 / 400.0)).max(0.06)
     };
     if furniture {
-        add_hair_scalp_guide(ui, rect, camera, state, scalp, guide_alpha);
+        add_hair_scalp_guide(ui, rect, camera, state, &scalp, guide_alpha);
     }
     let eye = camera.eye();
     let painter = ui.painter().with_clip_rect(ui.clip_rect().intersect(rect));
@@ -325,20 +323,69 @@ pub(super) fn fxhash(text: &str) -> u64 {
 
 type CachedPreview = (u64, bool, bool, f64, Arc<crate::hair_preview::HairPreview>);
 
+/// The cap where it actually stands, for anything the pointer touches.
+///
+/// The stock cap is the provider's shape. Everything the person sees is that
+/// shape wrapped onto the head, so picking, brushing and the guide dots have to
+/// read the wrapped one or the click lands where the head used to be.
+pub(crate) fn posed_scalp(
+    ctx: &egui::Context,
+    state: &AppState,
+    provider: &str,
+) -> Option<Arc<crate::hair_project::ScalpAuthoring>> {
+    let stock = state.hair_scalps.get(provider).map(Arc::clone)?;
+    // Before a head is loaded there is nothing to wrap to, and the tab still
+    // has to draw and still has to be clickable. The stock cap stands in.
+    let Some(head) = state.workspace.result.as_ref().map(Arc::clone) else {
+        return Some(stock);
+    };
+    let Some(bed) = head_bed(ctx, state) else {
+        return Some(stock);
+    };
+    let cache_id = Id::new(("vkit.hair.posed-scalp", fxhash(provider)));
+    if let Some((generation, posed)) =
+        ctx.data(|data| data.get_temp::<(u64, Arc<crate::hair_project::ScalpAuthoring>)>(cache_id))
+        && generation == bed.generation
+    {
+        return Some(posed);
+    }
+    let Some((_, anchors)) = wrapped_cap(ctx, provider, &stock, &bed) else {
+        return Some(stock);
+    };
+    let vertices: Vec<[f32; 3]> = anchors
+        .iter()
+        .map(|anchor| crate::hair_renderer::anchored_position(&head, anchor).to_array())
+        .collect();
+    let Some(posed) = stock.posed(vertices).map(Arc::new) else {
+        return Some(stock);
+    };
+    ctx.data_mut(|data| data.insert_temp(cache_id, (bed.generation, Arc::clone(&posed))));
+    Some(posed)
+}
+
 fn head_bed(ctx: &egui::Context, state: &AppState) -> Option<Arc<crate::hair_preview::HeadBed>> {
     let template = state.workspace.template_geometry.as_ref().map(Arc::clone)?;
+    // Hair is planted on the head the person is looking at, not on the one the
+    // figure shipped with. A morph moves the scalp, so the bed is rebuilt with
+    // it; without this the guides bind to an unmorphed head and are then
+    // pushed about by a collider built from the morphed one.
+    let head = state.workspace.result.as_ref().map(Arc::clone)?;
+    let revision = head.revision;
     let cache_id = Id::new("vkit.hair.head-bed");
     type Cached = (
         Arc<vkit_core::formats::DazGeometry>,
+        u64,
         Arc<crate::hair_preview::HeadBed>,
     );
-    if let Some((cached, bed)) = ctx.data(|data| data.get_temp::<Cached>(cache_id))
+    if let Some((cached, cached_revision, bed)) = ctx.data(|data| data.get_temp::<Cached>(cache_id))
         && Arc::ptr_eq(&cached, &template)
+        && cached_revision == revision
     {
         return Some(bed);
     }
-    let bed = Arc::new(crate::hair_preview::HeadBed::build(&template).ok()?);
-    ctx.data_mut(|data| data.insert_temp(cache_id, (template, Arc::clone(&bed))));
+    let bed =
+        Arc::new(crate::hair_preview::HeadBed::build_on(&template, (*head.mesh).clone()).ok()?);
+    ctx.data_mut(|data| data.insert_temp(cache_id, (template, revision, Arc::clone(&bed))));
     Some(bed)
 }
 

@@ -624,18 +624,17 @@ impl SkinAuxiliary {
         }
     }
 
+    /// A look that brings its own eye wears it across the whole eye.
+    ///
+    /// Only the sclera's texture may be spread. The white of the eye is the
+    /// region that tells an atlas from a part: a picture that covers it covers
+    /// the rest, while a picture set on the iris alone is an iris on a black
+    /// field, and spreading that paints the white black.
     fn spread_own_eye_atlas(&mut self) {
-        let atlas = self
-            .sclera
-            .diffuse
-            .as_ref()
-            .or(self.iris.diffuse.as_ref())
-            .or(self.lacrimal.diffuse.as_ref())
-            .cloned();
-        let Some(atlas) = atlas else {
+        let Some(atlas) = self.sclera.diffuse.clone() else {
             return;
         };
-        for material in [&mut self.sclera, &mut self.iris, &mut self.lacrimal] {
+        for material in [&mut self.iris, &mut self.lacrimal] {
             material.diffuse.get_or_insert_with(|| atlas.clone());
         }
     }
@@ -3025,6 +3024,42 @@ mod tests {
     }
 
     #[test]
+    fn an_iris_a_look_brought_stays_in_the_iris() {
+        // vamhappy's H019 sets one custom picture on the irises and nothing on
+        // the sclera. That picture is an iris on black, so wearing it across
+        // the whole eye turned the white of the eye black.
+        let iris = AssetLocator::File(PathBuf::from("this-looks-own-iris.png"));
+        let mut stand_in = SkinAuxiliary::default();
+        stand_in.sclera.diffuse = Some(bundle_texture("base-eye"));
+        stand_in.iris.diffuse = Some(bundle_texture("base-iris"));
+        stand_in.lacrimal.diffuse = Some(bundle_texture("base-eye"));
+
+        let mut look = SkinAuxiliary::default();
+        look.iris.diffuse = Some(iris.clone());
+        look.iris.diffuse_source = SkinDiffuseSource::CustomTexture;
+        look.sclera.diffuse_source =
+            SkinDiffuseSource::BuiltInSelectorUnavailable("Sclera 1".to_owned());
+
+        look.spread_own_eye_atlas();
+        look.fill_missing_from(&stand_in, true);
+        look.spread_own_eye_atlas();
+
+        assert_eq!(
+            look.iris.diffuse.as_ref(),
+            Some(&iris),
+            "the iris is theirs"
+        );
+        assert_eq!(
+            look.sclera.diffuse, stand_in.sclera.diffuse,
+            "the white of the eye falls back to the figure rather than wearing an iris",
+        );
+        assert_eq!(
+            look.lacrimal.diffuse, stand_in.lacrimal.diffuse,
+            "and so does the lacrimal beside it",
+        );
+    }
+
+    #[test]
     fn a_look_that_names_no_eye_takes_the_base_figures() {
         let mut stand_in = SkinAuxiliary::default();
         stand_in.sclera.diffuse = Some(bundle_texture("base-eye"));
@@ -4120,5 +4155,40 @@ mod full_body_texture_tests {
             Some(&locator("base-limbs")),
             "and what it did not name falls through"
         );
+    }
+}
+
+/// A way back to how a real preset resolves, without a screenshot.
+///
+/// `VKIT_VAM_ROOT=... VKIT_PROBE=H019 cargo test -p vkit-core h019_probe -- --ignored --nocapture`
+#[cfg(test)]
+mod h019_probe {
+    use super::*;
+
+    #[test]
+    #[ignore = "reads the reader's own VaM installation"]
+    fn what_each_eye_slot_resolves_to() {
+        let Ok(path) = std::env::var("VKIT_VAM_ROOT") else {
+            return;
+        };
+        let root = VaMRoot::open(std::path::Path::new(&path)).unwrap();
+        let presets = scan_skin_library(&root).unwrap();
+        let wanted = std::env::var("VKIT_PROBE").unwrap_or_else(|_| "H019".to_owned());
+        for preset in &presets {
+            if !preset.label.to_lowercase().contains(&wanted.to_lowercase()) {
+                continue;
+            }
+            println!("== {} ({})", preset.label, preset.stable_id);
+            for (name, material) in [
+                ("sclera", &preset.auxiliary.sclera),
+                ("iris", &preset.auxiliary.iris),
+                ("lacrimal", &preset.auxiliary.lacrimal),
+            ] {
+                println!(
+                    "   {name:9} source={:?}\n             diffuse={:?}",
+                    material.diffuse_source, material.diffuse
+                );
+            }
+        }
     }
 }
