@@ -277,6 +277,9 @@ pub struct AppState {
 
     pub hair_brush_follow_stroke: bool,
 
+    /// What the last install put on disk, so it can be gathered into a package.
+    pub hair_export_files: Vec<std::path::PathBuf>,
+
     pub manual_eye_gaze: [f32; 2],
     pub eye_gaze_mode: EyeGazeMode,
 
@@ -595,6 +598,7 @@ impl Default for AppState {
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
             hair_brush_follow_stroke: true,
+            hair_export_files: Vec::new(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
             frozen_eye_gaze: None,
@@ -1334,6 +1338,7 @@ impl AppState {
             }
             Action::RemoveAppearanceLayer(id) => self.remove_appearance_layer(id),
             Action::ExportHairPart => self.request_hair_export(),
+            Action::PackageHairStyle => self.package_hair_style(),
             Action::ConfirmHairOverwrite => {
                 self.pending_hair_overwrite = false;
                 self.hair_overwrite_confirmed = true;

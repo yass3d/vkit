@@ -399,6 +399,10 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
 
 pub struct HairExportOutcome {
     pub preset_path: PathBuf,
+
+    /// Every file this export put on disk, so a package can gather exactly
+    /// what the game would load and nothing else.
+    pub files: Vec<PathBuf>,
     pub item_count: usize,
     pub triangle_count: usize,
     pub strand_count: usize,
@@ -475,9 +479,11 @@ fn write_hair_item(
     std::fs::create_dir_all(&item_dir)
         .map_err(|err| format!("cannot create {}: {err}", item_dir.display()))?;
 
+    let mut files = Vec::new();
     let vab_path = item_dir.join(format!("{name}.vab"));
     std::fs::write(&vab_path, &vab)
         .map_err(|err| format!("cannot write {}: {err}", vab_path.display()))?;
+    files.push(vab_path);
     if scalp_is_hidden(&part.settings) && part.scalp_texture.alpha.is_none() {
         // The cap the style does not want anyone to see.
         let textures = item_dir.join(SCALP_TEXTURE_DIR);
@@ -486,6 +492,7 @@ fn write_hair_item(
         let target = textures.join(HIDDEN_SCALP_SHEET);
         std::fs::write(&target, transparent_sheet())
             .map_err(|err| format!("cannot write {}: {err}", target.display()))?;
+        files.push(target);
     }
     if !part.scalp_texture.is_builtin() {
         let textures = item_dir.join(SCALP_TEXTURE_DIR);
@@ -500,15 +507,23 @@ fn write_hair_item(
                     target.display()
                 )
             })?;
+            files.push(target);
         }
     }
-    write_json(&item_dir.join(format!("{name}.vam")), &vam)?;
-    write_json(&item_dir.join(format!("{name}.vaj")), &vaj)?;
-    write_json(&item_dir.join(format!("{name}_Default.vap")), &vap)?;
+    for (suffix, document) in [
+        (format!("{name}.vam"), &vam),
+        (format!("{name}.vaj"), &vaj),
+        (format!("{name}_Default.vap"), &vap),
+    ] {
+        let path = item_dir.join(suffix);
+        write_json(&path, document)?;
+        files.push(path);
+    }
 
     Ok(HairItemOutcome {
         uid,
         name: name.to_owned(),
+        files,
         settings: part.settings.clone(),
         scalp_texture: part.scalp_texture.clone(),
         item_id: format!("/Custom/Hair/{sex_folder}/{creator}/{name}/{name}.vam"),
@@ -521,6 +536,7 @@ fn write_hair_item(
 struct HairItemOutcome {
     uid: String,
     name: String,
+    files: Vec<PathBuf>,
     settings: HairSettings,
     scalp_texture: crate::hair_project::HairScalpTexture,
     item_id: String,
@@ -628,6 +644,7 @@ pub fn export_hair_style(
     let mut strand_count = 0;
     let mut preset_thumbnails: Vec<PathBuf> = Vec::new();
     let mut item_thumbnails: Vec<(u64, PathBuf)> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
     for sex_folder in sexes.folders() {
         let mut items = Vec::with_capacity(parts.len());
         for (part, scalp) in parts {
@@ -636,9 +653,9 @@ pub fn export_hair_style(
             } else {
                 sanitize_name(&format!("{style} {}", part.name), &style)
             };
-            items.push(write_hair_item(
-                vam_root, part, scalp, &creator, &name, sex_folder,
-            )?);
+            let item = write_hair_item(vam_root, part, scalp, &creator, &name, sex_folder)?;
+            files.extend(item.files.iter().cloned());
+            items.push(item);
             item_thumbnails.push((
                 part.id,
                 vam_root
@@ -696,6 +713,7 @@ pub fn export_hair_style(
         };
         let preset_path = preset_dir.join(preset_name);
         write_json(&preset_path, &preset)?;
+        files.push(preset_path.clone());
         preset_thumbnails.push(preset_path.with_extension("jpg"));
         if first_preset.is_none() {
             first_preset = Some(preset_path);
@@ -708,6 +726,7 @@ pub fn export_hair_style(
     let preset_path = first_preset.expect("at least one sex is always chosen");
     Ok(HairExportOutcome {
         preset_path,
+        files,
         item_count,
         triangle_count,
         strand_count,
@@ -716,11 +735,124 @@ pub fn export_hair_style(
     })
 }
 
+/// Gather an installed style into a `.var` beside the game's other packages.
+///
+/// The files are read back from where the install put them rather than
+/// rebuilt, so the package carries exactly what the game would load — the
+/// custom scalp sheets among them — and picks up the thumbnails once they
+/// have been rendered.
+pub fn package_hair_style(
+    vam_root: &Path,
+    files: &[PathBuf],
+    metadata: &vkit_core::vam::VarMetadata,
+    existing: vkit_core::vam::ExistingPackage,
+) -> Result<vkit_core::vam::VarPackage, String> {
+    let mut contents = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for file in files {
+        for candidate in [file.clone(), file.with_extension("jpg")] {
+            if !candidate.is_file() {
+                continue;
+            }
+            let Ok(relative) = candidate.strip_prefix(vam_root) else {
+                continue;
+            };
+            let internal_path = relative
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            if !seen.insert(internal_path.clone()) {
+                continue;
+            }
+            let bytes = std::fs::read(&candidate)
+                .map_err(|err| format!("cannot read {}: {err}", candidate.display()))?;
+            contents.push(vkit_core::vam::VarContent {
+                internal_path,
+                bytes,
+            });
+        }
+    }
+    if contents.is_empty() {
+        return Err("nothing to package: install the style first".to_owned());
+    }
+    let directory = vam_root.join("AddonPackages");
+    std::fs::create_dir_all(&directory)
+        .map_err(|err| format!("cannot create {}: {err}", directory.display()))?;
+    vkit_core::vam::write_var_package(&directory, metadata, &contents, existing)
+        .map_err(|err| err.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::hair_project::build_scalp_authoring;
     use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
+
+    #[test]
+    fn a_package_carries_the_whole_install_including_the_sheets_it_needs() {
+        let dir = tempfile::tempdir().expect("temp");
+        let sheet = dir.path().join("my scalp.png");
+        std::fs::write(&sheet, b"a scalp sheet").expect("sheet");
+
+        let scalp = build_scalp_authoring(&test_scalp()).expect("scalp");
+        let mut project = crate::hair_project::HairProject::default();
+        let id = project.add_part("UdaneScalp");
+        let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
+        part.name = "Bob".to_owned();
+        part.scalp_texture = crate::hair_project::HairScalpTexture {
+            diffuse: None,
+            alpha: Some(sheet),
+        };
+        part.plant(&scalp, &[0, 1, 4]);
+        let parts: Vec<_> = project.parts.iter().map(|part| (part, &scalp)).collect();
+        let outcome = export_hair_style(
+            dir.path(),
+            &parts,
+            "Vkit",
+            "Bob",
+            crate::hair_project::HairExportSexes::Female,
+        )
+        .expect("export");
+
+        let package = package_hair_style(
+            dir.path(),
+            &outcome.files,
+            &vkit_core::vam::VarMetadata {
+                creator: "Vkit".to_owned(),
+                package: "Bob".to_owned(),
+                ..vkit_core::vam::VarMetadata::default()
+            },
+            vkit_core::vam::ExistingPackage::Keep,
+        )
+        .expect("package");
+
+        assert!(package.path.is_file(), "the package must reach the disk");
+        assert!(
+            package
+                .contents
+                .iter()
+                .any(|entry| entry.ends_with("Bob.vab")),
+            "the geometry has to be in there: {:?}",
+            package.contents
+        );
+        assert!(
+            package
+                .contents
+                .iter()
+                .any(|entry| entry.contains("/textures/") && entry.ends_with(".png")),
+            "a custom scalp sheet is the whole reason to package rather than              hand someone a preset: {:?}",
+            package.contents
+        );
+        assert!(
+            package
+                .contents
+                .iter()
+                .all(|entry| !entry.contains(std::path::MAIN_SEPARATOR)),
+            "a package addresses its files with forward slashes: {:?}",
+            package.contents
+        );
+    }
 
     #[test]
     fn a_both_sexes_export_files_the_style_into_each_registry() {

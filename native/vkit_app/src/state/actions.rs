@@ -187,6 +187,8 @@ pub enum Action {
     SetHairBrushShape(crate::hair_brush::HairBrushShape),
 
     SetHairBrushFollowStroke(bool),
+
+    PackageHairStyle,
     SetManualEyeGaze([f32; 2]),
     SetEyeGazeMode(EyeGazeMode),
     ResetEyeGaze,
@@ -657,6 +659,7 @@ impl Action {
             | Self::SetBrushSweepCommit(_)
             | Self::SetHairBrushShape(_)
             | Self::SetHairBrushFollowStroke(_)
+            | Self::PackageHairStyle
             | Self::SetManualEyeGaze(_)
             | Self::SetEyeGazeMode(_)
             | Self::ResetEyeGaze

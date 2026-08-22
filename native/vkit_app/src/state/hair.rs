@@ -220,6 +220,7 @@ impl AppState {
                     ),
                 );
                 self.write_export_thumbnails(&outcome);
+                self.hair_export_files.clone_from(&outcome.files);
                 let folder = outcome
                     .item_thumbnails
                     .first()
@@ -230,6 +231,54 @@ impl AppState {
             Err(detail) => {
                 self.status = StatusMessage::with_detail(
                     TextKey::HairExportFailed,
+                    StatusTone::Error,
+                    detail,
+                );
+            }
+        }
+    }
+
+    pub(crate) fn package_hair_style(&mut self) {
+        let Some(vam_root) = self.vam_root.clone() else {
+            self.status = StatusMessage::new(TextKey::HairExportNeedsVaMRoot, StatusTone::Warning);
+            return;
+        };
+        if self.hair_export_files.is_empty() {
+            self.status = StatusMessage::new(TextKey::HairPackageNeedsInstall, StatusTone::Warning);
+            return;
+        }
+        let creator = self.hair_project.export_creator.trim().to_owned();
+        let style = self.hair_project.export_name.trim().to_owned();
+        let metadata = vkit_core::vam::VarMetadata {
+            creator: creator.clone(),
+            package: style,
+            version: vkit_core::vam::next_version(
+                &vam_root.join("AddonPackages"),
+                &vkit_core::vam::safe_identity(&creator),
+                &vkit_core::vam::safe_identity(self.hair_project.export_name.trim()),
+            ),
+            ..self.var_metadata.clone()
+        };
+        match crate::hair_export::package_hair_style(
+            &vam_root,
+            &self.hair_export_files.clone(),
+            &metadata,
+            vkit_core::vam::ExistingPackage::Keep,
+        ) {
+            Ok(package) => {
+                self.status = StatusMessage::with_detail(
+                    TextKey::HairPackageDone,
+                    StatusTone::Success,
+                    format!(
+                        "{} file(s) -> {}",
+                        package.contents.len(),
+                        package.path.display()
+                    ),
+                );
+            }
+            Err(detail) => {
+                self.status = StatusMessage::with_detail(
+                    TextKey::HairPackageFailed,
                     StatusTone::Error,
                     detail,
                 );

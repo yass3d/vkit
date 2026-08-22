@@ -811,6 +811,18 @@ pub(crate) fn draw_hair_export_section(ui: &mut Ui, state: &mut AppState) {
             state.dispatch(Action::ExportHairPart);
         }
     }
+
+    let installed = !state.hair_export_files.is_empty();
+    let package = crate::ui::capsule_action(
+        ui,
+        ui.available_width().max(0.0),
+        text(state.locale, TextKey::HairPackageStyle),
+        installed,
+    )
+    .clicked();
+    if package && installed {
+        state.dispatch(Action::PackageHairStyle);
+    }
 }
 
 fn draw_parameter_groups(ui: &mut Ui, state: &mut AppState) {
