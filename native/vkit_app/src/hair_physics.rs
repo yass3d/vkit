@@ -2566,3 +2566,106 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod face_field_probe {
+    use super::*;
+
+    /// A closed box whose +z face is a shallow dish with a small bump in it —
+    /// the two things a face has that a sphere does not: a concavity a hair can
+    /// sit inside, and a protrusion beside it.
+    ///
+    /// `dish` is how deep the concavity goes (into the box), `bump` how far the
+    /// nose stands out.
+    fn face_box(dish: f32, bump: f32, steps: usize) -> Mesh {
+        let half = 10.0_f32;
+        let depth = 10.0_f32;
+        let mut vertices: Vec<[f64; 3]> = Vec::new();
+        let mut triangles: Vec<[u32; 3]> = Vec::new();
+
+        // Front surface: a grid over x,y with z modulated.
+        let at = |i: usize, j: usize| -> u32 { (j * (steps + 1) + i) as u32 };
+        for j in 0..=steps {
+            for i in 0..=steps {
+                let u = i as f32 / steps as f32 * 2.0 - 1.0;
+                let v = j as f32 / steps as f32 * 2.0 - 1.0;
+                let radial = (u * u + v * v).sqrt().min(1.0);
+                // A dish across the whole face, plus a narrow bump at the centre.
+                let sink = -dish * (1.0 - radial * radial);
+                let nose = bump * (-(radial * 6.0) * (radial * 6.0)).exp();
+                vertices.push([
+                    f64::from(u * half),
+                    f64::from(v * half),
+                    f64::from(sink + nose),
+                ]);
+            }
+        }
+        for j in 0..steps {
+            for i in 0..steps {
+                triangles.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+                triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+            }
+        }
+        // Back plate and a skirt, so the mesh is closed and the sign is defined.
+        let back_base = vertices.len() as u32;
+        for j in 0..=steps {
+            for i in 0..=steps {
+                let u = i as f32 / steps as f32 * 2.0 - 1.0;
+                let v = j as f32 / steps as f32 * 2.0 - 1.0;
+                vertices.push([f64::from(u * half), f64::from(v * half), f64::from(-depth)]);
+            }
+        }
+        let back = |i: usize, j: usize| -> u32 { back_base + (j * (steps + 1) + i) as u32 };
+        for j in 0..steps {
+            for i in 0..steps {
+                triangles.push([back(i, j), back(i + 1, j + 1), back(i + 1, j)]);
+                triangles.push([back(i, j), back(i, j + 1), back(i + 1, j + 1)]);
+            }
+        }
+        for i in 0..steps {
+            triangles.push([at(i, 0), back(i, 0), at(i + 1, 0)]);
+            triangles.push([at(i + 1, 0), back(i, 0), back(i + 1, 0)]);
+            triangles.push([at(i, steps), at(i + 1, steps), back(i, steps)]);
+            triangles.push([at(i + 1, steps), back(i + 1, steps), back(i, steps)]);
+            triangles.push([at(0, i), at(0, i + 1), back(0, i)]);
+            triangles.push([at(0, i + 1), back(0, i + 1), back(0, i)]);
+            triangles.push([at(steps, i), back(steps, i), at(steps, i + 1)]);
+            triangles.push([at(steps, i + 1), back(steps, i), back(steps, i + 1)]);
+        }
+        Mesh {
+            vertices,
+            triangles,
+        }
+    }
+
+    #[test]
+    fn open_air_in_front_of_a_face_is_never_solid() {
+        for (label, dish, bump) in [
+            ("deep features", 1.0_f32, 3.0_f32),
+            ("shallow features", 0.3, 0.8),
+            ("very shallow", 0.1, 0.3),
+        ] {
+            let mesh = SurfaceMesh::new(face_box(dish, bump, 40)).expect("a face is a mesh");
+            let grid = head_sdf_for_mesh(&mesh).expect("a face has a field");
+            let mut worst: Option<(Vec3, f32)> = None;
+            // Sweep the air in front of the whole face.
+            for gy in -9..=9 {
+                for gx in -9..=9 {
+                    for gz in 1..=40 {
+                        let point = Vec3::new(gx as f32, gy as f32, bump + gz as f32 * 0.25);
+                        let read = grid.sample(point);
+                        if read < 0.0 && worst.is_none_or(|(_, held)| read < held) {
+                            worst = Some((point, read));
+                        }
+                    }
+                }
+            }
+            assert!(
+                worst.is_none(),
+                "{label}: the field calls open air solid at {:?} (read {:?})",
+                worst.map(|(p, _)| p),
+                worst.map(|(_, r)| r),
+            );
+        }
+    }
+}

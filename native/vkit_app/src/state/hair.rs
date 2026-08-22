@@ -154,9 +154,8 @@ impl AppState {
         {
             return Some(std::sync::Arc::clone(collider));
         }
-        let collider = std::sync::Arc::new(crate::hair_collision::HeadCollider::new(
-            (*head.mesh).clone(),
-            revision,
+        let collider = std::sync::Arc::new(crate::hair_collision::HeadCollider::for_surface(
+            head, revision,
         )?);
         self.hair_collider = Some((revision, std::sync::Arc::clone(&collider)));
         Some(collider)
