@@ -1555,7 +1555,7 @@ fn fill_selector_diffuse(
     sex: SkinSex,
     cache_entries: &[PathBuf],
 ) {
-    if material.diffuse.is_some() {
+    if material.diffuse.is_some() && material.diffuse_source != SkinDiffuseSource::FigureDefault {
         return;
     }
     let Some(selector) = selector
@@ -1567,7 +1567,7 @@ fn fill_selector_diffuse(
     if let Some(path) = find_selector_cache(cache_entries, region, selector, sex) {
         material.diffuse = Some(AssetLocator::File(path));
         material.diffuse_source = SkinDiffuseSource::BuiltInSelectorResolved(selector.to_owned());
-    } else {
+    } else if material.diffuse.is_none() {
         material.diffuse_source =
             SkinDiffuseSource::BuiltInSelectorUnavailable(selector.to_owned());
     }
@@ -3210,6 +3210,41 @@ mod tests {
                 SkinSex::Female,
             ),
             Some(color_1)
+        );
+    }
+
+    #[test]
+    fn a_named_selector_outranks_the_eye_the_figure_shipped_with() {
+        let atlas = PathBuf::from("V5BreeEyes8M_jpg.vamcachemeta");
+        let color_eleven = PathBuf::from("Preset_DualColor11_jpg.vamcachemeta");
+        let entries = [atlas.clone(), color_eleven.clone()];
+
+        let mut parsed = ParsedAuxiliaryMaterials {
+            auxiliary: default_auxiliary_from_cache(&entries, SkinSex::Unknown),
+            ..ParsedAuxiliaryMaterials::default()
+        };
+        assert_eq!(
+            parsed.auxiliary.iris.diffuse,
+            Some(AssetLocator::File(atlas.clone())),
+            "the figure default is the full-eye atlas",
+        );
+        parsed.iris_selector = Some("Color 11".to_owned());
+        parsed.sclera_selector = Some("Sclera 2".to_owned());
+
+        let auxiliary = parsed.finish(SkinSex::Unknown, &entries);
+        assert_eq!(
+            auxiliary.iris.diffuse,
+            Some(AssetLocator::File(color_eleven)),
+            "a preset that names Color 11 must get Color 11, not whatever eye              happened to be lying in the cache",
+        );
+        assert_eq!(
+            auxiliary.iris.diffuse_source,
+            SkinDiffuseSource::BuiltInSelectorResolved("Color 11".to_owned()),
+        );
+        assert_eq!(
+            auxiliary.sclera.diffuse,
+            Some(AssetLocator::File(atlas)),
+            "a selector the game never unpacked leaves the atlas in place              rather than leaving the white of the eye with nothing to draw",
         );
     }
 
