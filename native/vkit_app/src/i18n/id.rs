@@ -16,6 +16,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("Selesaikan hasil sculpt sebelum menyunting rambut"),
         TextKey::HairPartsPanel => Some("Bagian rambut"),
         TextKey::AddHairPart => Some("Tambah bagian rambut"),
+        TextKey::HairScalpMeshCrowded => {
+            Some("Sebagian helai tidak mendapat tempat pada mesh kulit kepala baru dan dihapus")
+        }
         TextKey::HairScalpMissing => {
             Some("Mesh kulit kepala tidak tersedia; buka root VaM dan pindai ulang")
         }

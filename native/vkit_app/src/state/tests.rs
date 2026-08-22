@@ -5544,3 +5544,76 @@ fn exporting_over_an_install_removes_it_first_and_only_it() {
         "a blocked export must not have deleted anything",
     );
 }
+
+#[test]
+fn swapping_the_scalp_mesh_reseats_the_strands_and_drops_the_old_cap_s_sheet() {
+    use crate::hair_project::build_scalp_authoring;
+    use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
+
+    fn cap(provider: &str, vertices_cm: Vec<[f32; 3]>) -> BuiltinHairScalp {
+        let count = vertices_cm.len();
+        BuiltinHairScalp {
+            provider_name: provider.to_owned(),
+            geometry: HairScalpGeometry {
+                materials: Vec::new(),
+                vertices_cm,
+                uvs: vec![[0.0, 0.0]; count],
+                triangles: (2..count)
+                    .map(|corner| [0, (corner - 1) as u32, corner as u32])
+                    .collect(),
+            },
+        }
+    }
+
+    let mut state = AppState::default();
+    for (provider, vertices) in [
+        (
+            "UdaneScalp",
+            vec![[0.0, 10.0, 0.0], [2.0, 10.0, 0.0], [4.0, 10.0, 0.0]],
+        ),
+        (
+            "LeytonScalp",
+            vec![[-9.0, 10.0, 0.0], [4.2, 10.0, 0.0], [-4.0, 10.0, 0.0]],
+        ),
+    ] {
+        let authoring =
+            build_scalp_authoring(&cap(provider, vertices)).expect("a cap for the test");
+        state
+            .hair_scalps
+            .insert(provider.to_owned(), std::sync::Arc::new(authoring));
+    }
+
+    let id = state.hair_project.add_part("UdaneScalp");
+    let worn = std::sync::Arc::clone(&state.hair_scalps["UdaneScalp"]);
+    let part = state
+        .hair_project
+        .parts
+        .iter_mut()
+        .find(|part| part.id == id)
+        .expect("the part");
+    part.plant(&worn, &[2]);
+    // What an imported style carries: a sheet drawn for the cap it shipped on.
+    part.scalp_texture = crate::hair_project::HairScalpTexture {
+        diffuse: Some(std::path::PathBuf::from("udane diffuse.png")),
+        alpha: Some(std::path::PathBuf::from("udane alpha.png")),
+    };
+
+    state.dispatch(Action::SetHairScalpMesh {
+        id,
+        mesh: "LeytonScalp".to_owned(),
+    });
+
+    let part = state.hair_project.part(id).expect("the part");
+    assert_eq!(part.provider_name, "LeytonScalp");
+    assert!(
+        part.scalp_texture.is_builtin(),
+        "a sheet drawn for the old cap paints the new one's shell in the wrong \
+         place; the new cap falls back to the sheets it ships with",
+    );
+    assert_eq!(
+        part.strands.keys().copied().collect::<Vec<u32>>(),
+        vec![1],
+        "the root is re-seated on the vertex nearest where it stood, not left \
+         on a key that names somewhere else on a cap with its own ordering",
+    );
+}

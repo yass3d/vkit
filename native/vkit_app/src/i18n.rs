@@ -174,6 +174,7 @@ text_keys! {
     HairPartsPanel,
     AddHairPart,
     HairScalpMissing,
+    HairScalpMeshCrowded,
     HairGameOnly,
     HairPartTint,
     HairShowPoints,

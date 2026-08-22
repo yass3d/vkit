@@ -14,6 +14,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairUnavailable => "헤어를 편집하려면 먼저 조형 결과가 준비되어야 합니다",
         TextKey::HairPartsPanel => "헤어 파트",
         TextKey::AddHairPart => "파트 생성",
+        TextKey::HairScalpMeshCrowded => "새 두피 메시에 자리가 없어 일부 가닥을 옮기지 못했습니다",
         TextKey::HairScalpMissing => {
             "두피 프로바이더 메쉬가 없습니다. VaM 루트를 열고 다시 스캔하세요"
         }

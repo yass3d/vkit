@@ -18,6 +18,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::HairPartsPanel => Some("Части волос"),
         TextKey::AddHairPart => Some("Добавить часть волос"),
+        TextKey::HairScalpMeshCrowded => {
+            Some("Некоторым прядям не хватило места на новой сетке кожи головы, и они были удалены")
+        }
         TextKey::HairScalpMissing => {
             Some("Меш скальпа недоступен; откройте корень VaM и пересканируйте")
         }

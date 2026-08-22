@@ -6,7 +6,24 @@ use vkit_core::vam::hair_writer::{HairVabDoc, encode_hair_vab};
 use crate::hair_project::{HairPart, ScalpAuthoring};
 use crate::hair_settings::HairSettings;
 
-pub const HEAD_SCALP_PROVIDERS: [&str; 6] = [
+/// The caps offered when a head of hair is being built.
+///
+/// `PantyRegionScalp` is not among them. It is the body cap: all 66 of its
+/// materials in a 1105-package library sit on pubic hair, its shell lies in a
+/// thin band at v 0.132..0.261 rather than over the skull, and its bundle is
+/// the one that ships no `scalp-sim3` material at all, so it has never had a
+/// sheet to show. It stays in [`SCALP_PROVIDERS`] so an imported body part
+/// still exports the material it came with.
+pub const HEAD_SCALP_PROVIDERS: [&str; 5] = [
+    "UdaneScalp",
+    "KrayonScalp",
+    "SoleilScalp",
+    "LeytonScalp",
+    "OmriScalp",
+];
+
+/// Every cap this program knows how to write a scalp material for.
+pub const SCALP_PROVIDERS: [&str; 6] = [
     "UdaneScalp",
     "KrayonScalp",
     "SoleilScalp",
@@ -136,7 +153,7 @@ fn scalp_material_storable(
     scalp_texture: &crate::hair_project::HairScalpTexture,
     item_name: &str,
 ) -> Option<Value> {
-    if !HEAD_SCALP_PROVIDERS.contains(&provider_name) {
+    if !SCALP_PROVIDERS.contains(&provider_name) {
         return None;
     }
     let mut map = Map::new();
@@ -1000,6 +1017,34 @@ mod tests {
                 triangles: vec![[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]],
             },
         }
+    }
+
+    /// The body cap is not a head cap. All 66 `PantyRegionScalpMaterial`
+    /// storables in a 1105-package library sit on pubic hair, its UV shell is a
+    /// band at v 0.132..0.261 rather than a skull, and `p_gen_mat` is the one
+    /// scalp bundle shipping no `scalp-sim3` material — so it has never had a
+    /// sheet to show in a head-hair picker.
+    #[test]
+    fn the_body_cap_is_not_offered_for_a_head_but_still_exports() {
+        assert!(!HEAD_SCALP_PROVIDERS.contains(&"PantyRegionScalp"));
+        assert!(SCALP_PROVIDERS.contains(&"PantyRegionScalp"));
+        for provider in HEAD_SCALP_PROVIDERS {
+            assert!(
+                SCALP_PROVIDERS.contains(&provider),
+                "{provider} can be chosen but has no material writer",
+            );
+        }
+        let material = scalp_material_storable(
+            "Vkit:Bush",
+            "PantyRegionScalp",
+            &HairSettings::default(),
+            &crate::hair_project::HairScalpTexture::default(),
+            "Bush",
+        );
+        assert!(
+            material.is_some(),
+            "an imported body part still exports the material it came with",
+        );
     }
 
     #[test]

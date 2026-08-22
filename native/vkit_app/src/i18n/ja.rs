@@ -14,6 +14,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("ヘアを編集するには、まずスカルプト結果が必要です"),
         TextKey::HairPartsPanel => Some("ヘアパーツ"),
         TextKey::AddHairPart => Some("ヘアパーツを追加"),
+        TextKey::HairScalpMeshCrowded => {
+            Some("新しい頭皮メッシュに空きがなく、一部の毛束を移せませんでした")
+        }
         TextKey::HairScalpMissing => {
             Some("スカルプメッシュがありません。VaMルートを開いて再スキャンしてください")
         }

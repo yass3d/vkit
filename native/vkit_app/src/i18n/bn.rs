@@ -16,6 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("চুল সম্পাদনার আগে স্কাল্পট ফলাফল সম্পূর্ণ করুন"),
         TextKey::HairPartsPanel => Some("চুলের অংশ"),
         TextKey::AddHairPart => Some("চুলের অংশ যোগ করুন"),
+        TextKey::HairScalpMeshCrowded => Some("নতুন স্ক্যাল্প মেশে জায়গা না থাকায় কিছু গোছা বাদ পড়েছে"),
         TextKey::HairScalpMissing => Some("স্ক্যাল্প মেশ নেই; VaM রুট খুলে আবার স্ক্যান করুন"),
         TextKey::HairShowPoints => Some("বিন্দু দেখান"),
         TextKey::HairShowPointsHint => {

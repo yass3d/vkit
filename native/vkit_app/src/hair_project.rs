@@ -665,6 +665,67 @@ impl HairPart {
         self.plant(scalp, &planted)
     }
 
+    /// Carry every strand from the cap it was planted on over to another one.
+    ///
+    /// A strand is keyed by the scalp vertex it grows from, and no two caps
+    /// share a vertex ordering — Udane has 868 of them, Leyton and Soleil 922,
+    /// Krayon 1948 — so a key kept across a swap names a different place on the
+    /// head. Each root is re-seated on the vertex of the new cap nearest where
+    /// it stood and the whole strand travels with it, so a style keeps its
+    /// shape and stays where it was drawn.
+    ///
+    /// Two roots can land on one vertex when the new cap is the coarser of the
+    /// two; the nearer one keeps the seat. Returns how many strands were lost
+    /// that way, which is what the caller has to be honest about.
+    pub fn reseat_onto(&mut self, from: &ScalpAuthoring, to: &ScalpAuthoring) -> usize {
+        let mut claimed: BTreeMap<u32, (f32, HairStrand)> = BTreeMap::new();
+        let mut lost = 0;
+        for (index, strand) in std::mem::take(&mut self.strands) {
+            let Some(root) = from.vertices_cm.get(index as usize).copied() else {
+                lost += 1;
+                continue;
+            };
+            let Some((seat, reach)) = nearest_scalp_vertex(&to.vertices_cm, root) else {
+                lost += 1;
+                continue;
+            };
+            let landing = to.vertices_cm[seat as usize];
+            let shift = [
+                landing[0] - root[0],
+                landing[1] - root[1],
+                landing[2] - root[2],
+            ];
+            let carried = HairStrand {
+                points_cm: strand
+                    .points_cm
+                    .iter()
+                    .map(|point| {
+                        [
+                            point[0] + shift[0],
+                            point[1] + shift[1],
+                            point[2] + shift[2],
+                        ]
+                    })
+                    .collect(),
+            };
+            match claimed.get(&seat) {
+                Some((held, _)) if *held <= reach => lost += 1,
+                Some(_) => {
+                    claimed.insert(seat, (reach, carried));
+                    lost += 1;
+                }
+                None => {
+                    claimed.insert(seat, (reach, carried));
+                }
+            }
+        }
+        self.strands = claimed
+            .into_iter()
+            .map(|(seat, (_, strand))| (seat, strand))
+            .collect();
+        lost
+    }
+
     pub fn minimum_strand_length_cm(&self) -> f32 {
         let segments = self.segments.saturating_sub(1).max(1) as f32;
         (self.segment_length_cm * segments * 0.05).max(0.2)
@@ -782,6 +843,20 @@ pub fn resample_polyline(points: &[[f32; 3]], segments: usize) -> Vec<[f32; 3]> 
         ]);
     }
     output
+}
+
+/// The vertex of a cap nearest a point, with the distance it stands away.
+fn nearest_scalp_vertex(vertices_cm: &[[f32; 3]], point: [f32; 3]) -> Option<(u32, f32)> {
+    let mut best: Option<(u32, f32)> = None;
+    for (index, vertex) in vertices_cm.iter().enumerate() {
+        let reach = (vertex[0] - point[0]).powi(2)
+            + (vertex[1] - point[1]).powi(2)
+            + (vertex[2] - point[2]).powi(2);
+        if best.is_none_or(|(_, held)| reach < held) {
+            best = Some((index as u32, reach));
+        }
+    }
+    best.map(|(index, reach)| (index, reach.sqrt()))
 }
 
 pub fn build_scalp_authoring(scalp: &BuiltinHairScalp) -> Result<ScalpAuthoring, String> {
@@ -1530,5 +1605,133 @@ mod tests {
             "the cap layer grows nothing",
         );
         assert_eq!(doc.provider_name, "UdaneScalp");
+    }
+}
+
+#[cfg(test)]
+mod reseat_tests {
+    use super::*;
+
+    fn cap(provider: &str, vertices_cm: Vec<[f32; 3]>) -> ScalpAuthoring {
+        let count = vertices_cm.len();
+        let triangles = (2..count)
+            .map(|corner| [0, (corner - 1) as u32, corner as u32])
+            .collect();
+        build_scalp_authoring(&BuiltinHairScalp {
+            provider_name: provider.to_owned(),
+            geometry: vkit_core::vam::HairScalpGeometry {
+                materials: Vec::new(),
+                vertices_cm,
+                uvs: vec![[0.0, 0.0]; count],
+                triangles,
+            },
+        })
+        .expect("a cap")
+    }
+
+    /// The caps do not share a vertex ordering, so a strand that keeps its key
+    /// across a swap grows from somewhere else entirely.
+    #[test]
+    fn a_strand_lands_on_the_vertex_nearest_where_it_stood() {
+        // Vertex 2 of the worn cap stands at x = 4. On the wanted cap the
+        // nearest vertex to that is index 1, not index 2.
+        let worn = cap(
+            "UdaneScalp",
+            vec![[0.0, 10.0, 0.0], [2.0, 10.0, 0.0], [4.0, 10.0, 0.0]],
+        );
+        let wanted = cap(
+            "LeytonScalp",
+            vec![
+                [-9.0, 10.0, 0.0],
+                [4.2, 10.0, 0.0],
+                [-4.0, 10.0, 0.0],
+                [9.0, 10.0, 0.0],
+            ],
+        );
+        let mut project = HairProject::default();
+        let id = project.add_part("UdaneScalp");
+        let part = project.parts.iter_mut().find(|part| part.id == id).unwrap();
+        part.plant(&worn, &[2]);
+        let tip_before = part.strands[&2].points_cm[part.segments - 1];
+
+        assert_eq!(part.reseat_onto(&worn, &wanted), 0);
+        let seats: Vec<u32> = part.strands.keys().copied().collect();
+        assert_eq!(
+            seats,
+            vec![1],
+            "the root belongs on the nearest vertex of the cap it moved to",
+        );
+        let root = part.strands[&1].points_cm[0];
+        // `build_scalp_authoring` negates x, so the caps read back mirrored;
+        // what matters is that the root sits exactly on its new seat.
+        assert!(
+            (root[0] - wanted.vertices_cm[1][0]).abs() < 1.0e-4,
+            "root landed at {root:?}, seat is {:?}",
+            wanted.vertices_cm[1],
+        );
+        let tip_after = part.strands[&1].points_cm[part.segments - 1];
+        let shift = [
+            root[0] - worn.vertices_cm[2][0],
+            root[1] - worn.vertices_cm[2][1],
+            root[2] - worn.vertices_cm[2][2],
+        ];
+        for axis in 0..3 {
+            assert!(
+                (tip_after[axis] - (tip_before[axis] + shift[axis])).abs() < 1.0e-4,
+                "the whole strand travels with its root, keeping its shape",
+            );
+        }
+    }
+
+    #[test]
+    fn two_roots_crowding_one_seat_leave_the_nearer_one_and_are_counted() {
+        let worn = cap(
+            "UdaneScalp",
+            vec![[0.0, 10.0, 0.0], [0.1, 10.0, 0.0], [8.0, 10.0, 0.0]],
+        );
+        let wanted = cap(
+            "KrayonScalp",
+            vec![[0.0, 10.0, 0.0], [8.0, 10.0, 0.0], [0.0, 10.0, 9.0]],
+        );
+        let mut project = HairProject::default();
+        let id = project.add_part("UdaneScalp");
+        let part = project.parts.iter_mut().find(|part| part.id == id).unwrap();
+        part.plant(&worn, &[0, 1, 2]);
+
+        assert_eq!(
+            part.reseat_onto(&worn, &wanted),
+            1,
+            "the coarser cap has one seat for two roots, and the loss is reported",
+        );
+        assert_eq!(part.strands.len(), 2);
+        let root = part.strands[&0].points_cm[0];
+        assert!(
+            (root[0] - wanted.vertices_cm[0][0]).abs() < 1.0e-4,
+            "the nearer root keeps the seat",
+        );
+    }
+
+    #[test]
+    fn nothing_is_lost_when_the_cap_is_the_one_already_worn() {
+        let worn = cap(
+            "UdaneScalp",
+            vec![[0.0, 10.0, 0.0], [2.0, 10.0, 0.0], [4.0, 10.0, 0.0]],
+        );
+        let mut project = HairProject::default();
+        let id = project.add_part("UdaneScalp");
+        let part = project.parts.iter_mut().find(|part| part.id == id).unwrap();
+        part.plant(&worn, &[0, 1, 2]);
+        let before: Vec<(u32, Vec<[f32; 3]>)> = part
+            .strands
+            .iter()
+            .map(|(index, strand)| (*index, strand.points_cm.clone()))
+            .collect();
+        assert_eq!(part.reseat_onto(&worn, &worn), 0);
+        let after: Vec<(u32, Vec<[f32; 3]>)> = part
+            .strands
+            .iter()
+            .map(|(index, strand)| (*index, strand.points_cm.clone()))
+            .collect();
+        assert_eq!(after, before);
     }
 }

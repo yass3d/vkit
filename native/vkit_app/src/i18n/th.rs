@@ -16,6 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("ทำผลลัพธ์การปั้นให้เสร็จก่อนแก้ไขผม"),
         TextKey::HairPartsPanel => Some("ชิ้นส่วนผม"),
         TextKey::AddHairPart => Some("เพิ่มชิ้นส่วนผม"),
+        TextKey::HairScalpMeshCrowded => Some("เส้นผมบางส่วนไม่มีที่ว่างบนเมชหนังศีรษะใหม่ จึงถูกตัดออก"),
         TextKey::HairScalpMissing => Some("ไม่มีเมชหนังศีรษะ เปิดรูท VaM แล้วสแกนใหม่"),
         TextKey::HairShowPoints => Some("แสดงจุด"),
         TextKey::HairShowPointsHint => {

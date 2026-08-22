@@ -18,6 +18,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::HairPartsPanel => Some("Partes de cabelo"),
         TextKey::AddHairPart => Some("Adicionar parte de cabelo"),
+        TextKey::HairScalpMeshCrowded => {
+            Some("Algumas mechas não couberam na nova malha de couro cabeludo e foram descartadas")
+        }
         TextKey::HairScalpMissing => {
             Some("Malha do couro cabeludo ausente; abra uma raiz do VaM e reescaneie")
         }

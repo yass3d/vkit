@@ -14,6 +14,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairUnavailable => "Finish the sculpt result before editing hair",
         TextKey::HairPartsPanel => "Hair Parts",
         TextKey::AddHairPart => "Create Part",
+        TextKey::HairScalpMeshCrowded => {
+            "Some strands had nowhere to sit on the new scalp mesh and were dropped"
+        }
         TextKey::HairScalpMissing => {
             "Scalp provider mesh is not available; open a VaM root and rescan"
         }

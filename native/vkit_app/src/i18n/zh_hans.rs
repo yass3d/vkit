@@ -16,6 +16,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("编辑头发前请先完成雕刻结果"),
         TextKey::HairPartsPanel => Some("头发部件"),
         TextKey::AddHairPart => Some("添加头发部件"),
+        TextKey::HairScalpMeshCrowded => Some("新头皮网格上没有空位，部分发丝已被丢弃"),
         TextKey::HairScalpMissing => Some("找不到头皮网格。请打开 VaM 根目录并重新扫描"),
         TextKey::HairShowPoints => Some("显示点位"),
         TextKey::HairShowPointsHint => {

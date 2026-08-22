@@ -16,6 +16,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairUnavailable => Some("Hoàn tất kết quả điêu khắc trước khi chỉnh sửa tóc"),
         TextKey::HairPartsPanel => Some("Các phần tóc"),
         TextKey::AddHairPart => Some("Thêm phần tóc"),
+        TextKey::HairScalpMeshCrowded => {
+            Some("Một số lọn tóc không còn chỗ trên lưới da đầu mới nên đã bị bỏ")
+        }
         TextKey::HairScalpMissing => Some("Không có lưới da đầu; hãy mở thư mục VaM và quét lại"),
         TextKey::HairShowPoints => Some("Hien diem"),
         TextKey::HairShowPointsHint => {
