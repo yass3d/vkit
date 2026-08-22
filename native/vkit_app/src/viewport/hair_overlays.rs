@@ -153,9 +153,9 @@ pub(super) fn add_hair_authoring_overlays(
         }
         let planted = part.strands.contains_key(&(index as u32));
         let (radius, color) = if planted {
-            (2.4, crate::theme::COLOR_PRIMARY)
+            (2.4, crate::theme::COLOR_HAIR_POINT_PLANTED)
         } else {
-            (1.6, crate::theme::COLOR_MUTED)
+            (1.8, crate::theme::COLOR_HAIR_POINT_OPEN)
         };
         painter.circle_filled(projected.screen, radius, color);
     }

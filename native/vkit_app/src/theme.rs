@@ -28,6 +28,10 @@ pub const COLOR_WARNING_ACTIVE_BG: Color32 = Color32::from_rgb(0x8a, 0x72, 0x2a)
 pub const COLOR_EMPHASIS: Color32 = Color32::from_rgb(0xf5, 0xb3, 0x0a);
 
 pub const COLOR_TEXTURE_PIN: Color32 = Color32::from_rgb(42, 60, 78);
+
+pub const COLOR_HAIR_POINT_PLANTED: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
+
+pub const COLOR_HAIR_POINT_OPEN: Color32 = Color32::from_rgb(0xff, 0x00, 0x00);
 pub const COLOR_DESTRUCTIVE: Color32 = Color32::from_rgb(0xde, 0x5c, 0x63);
 
 pub const COLOR_CLOSE_HOVER: Color32 = Color32::from_rgb(0xc4, 0x2b, 0x1c);
