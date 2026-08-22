@@ -33,6 +33,49 @@ pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroup
 #[cfg(test)]
 use self::{shaders::*, skin::*};
 
+/// Rebuild the scene's pipelines if the sample count has moved under them.
+///
+/// A `RenderPipeline` carries the sample count it was created with, and a
+/// render pass carries its own; binding one to the other fails validation on
+/// every draw. So the surface changing its textures is only half the job — the
+/// pipelines have to move with it, and this is where they do.
+///
+/// It costs the scene caches, which rebuild on the next frames. The cheaper
+/// thing is to rebuild the pipeline objects alone and keep the caches; that
+/// wants the shader and layout kept on each resource set, which is a change
+/// worth making on its own rather than folded into a bug fix.
+pub(crate) fn sync_scene_samples(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    resources: &mut egui_wgpu::CallbackResources,
+) {
+    let Some(surface) = resources.get_mut::<SceneSurface>() else {
+        return;
+    };
+    let format = surface.format();
+    let Some(samples) = surface.pipelines_out_of_date() else {
+        return;
+    };
+    resources.insert(MeshRenderResources::new(
+        device,
+        format,
+        samples,
+        DEPTH_FORMAT,
+    ));
+    resources.insert(SkinRenderResources::new(
+        device,
+        format,
+        samples,
+        DEPTH_FORMAT,
+    ));
+    resources.insert(crate::hair_renderer::HairRenderResources::new(
+        device, format, samples,
+    ));
+    resources.insert(crate::hair_renderer::ScalpRenderResources::new(
+        device, queue, format, samples,
+    ));
+}
+
 /// Open the pass a three-dimensional layer draws in, on the scene's own surface
 /// rather than in egui's render pass.
 ///
@@ -1465,5 +1508,48 @@ mod scene_surface_contract_tests {
             "a count nobody offered must not become the one we draw at",
         );
         set_msaa_samples(before);
+    }
+}
+
+#[cfg(test)]
+mod sample_count_contract_tests {
+    /// The one this shipped broken. A `RenderPipeline` carries the sample count
+    /// it was created with; a render pass carries its own. Move the surface's
+    /// count without moving the pipelines and every draw fails validation —
+    /// which is not a coarser picture, it is a storm of uncaptured errors and a
+    /// viewport that stops.
+    #[test]
+    fn every_layer_asks_whether_its_pipelines_still_fit_the_pass() {
+        for (source, what) in [
+            (include_str!("renderer/mesh.rs"), "mesh"),
+            (include_str!("renderer/skin.rs"), "skin"),
+        ] {
+            assert!(
+                source.contains(
+                    "crate::renderer::sync_scene_samples(device, queue, callback_resources);"
+                ),
+                "{what} draws into the scene surface without checking its pipelines",
+            );
+        }
+        let hair = include_str!("hair_renderer.rs");
+        assert_eq!(
+            hair.matches("crate::renderer::sync_scene_samples(device, queue, callback_resources);")
+                .count(),
+            2,
+            "both the hair and the scalp layer have to check",
+        );
+    }
+
+    /// And the check has to fire once per change, not once per layer: four
+    /// layers rebuilding the same resources in one frame is four times the cost
+    /// for the same result.
+    #[test]
+    fn the_rebuild_is_claimed_once_and_not_once_per_layer() {
+        let source = include_str!("renderer/scene_surface.rs");
+        assert!(
+            source.contains("pub fn pipelines_out_of_date(&mut self) -> Option<u32> {")
+                && source.contains("self.pipeline_samples = samples;"),
+            "the surface has to consume the change, so the layers after it see none",
+        );
     }
 }

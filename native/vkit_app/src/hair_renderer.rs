@@ -1070,6 +1070,7 @@ impl CallbackTrait for ScalpPaintCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        crate::renderer::sync_scene_samples(device, queue, callback_resources);
         if let Some(resources) = callback_resources.get_mut::<ScalpRenderResources>() {
             resources.prepare(device, queue, self);
         }
@@ -1766,6 +1767,7 @@ impl CallbackTrait for HairPaintCallback {
         egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        crate::renderer::sync_scene_samples(device, queue, callback_resources);
         if let Some(resources) = callback_resources.get_mut::<HairRenderResources>() {
             resources.prepare(device, queue, egui_encoder, self);
         }

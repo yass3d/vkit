@@ -166,6 +166,7 @@ impl CallbackTrait for SkinPaintCallback {
         _egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
+        crate::renderer::sync_scene_samples(device, queue, callback_resources);
         let Some(resources) = callback_resources.get_mut::<SkinRenderResources>() else {
             return Vec::new();
         };

@@ -115,6 +115,12 @@ pub struct SceneSurface {
     pipeline: wgpu::RenderPipeline,
     format: wgpu::TextureFormat,
     cleared_for: Option<u64>,
+
+    /// What the scene's own pipelines were built at, which is not the same
+    /// question as what this surface's textures were built at. A pipeline
+    /// carries its sample count from creation and a pass carries its own; bind
+    /// one to the other and every draw fails validation.
+    pipeline_samples: u32,
 }
 
 impl std::fmt::Debug for SceneSurface {
@@ -201,7 +207,25 @@ impl SceneSurface {
             pipeline,
             format,
             cleared_for: None,
+            pipeline_samples: msaa_samples(),
         }
+    }
+
+    #[must_use]
+    pub const fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+
+    /// Take the count the scene's pipelines need rebuilding for, if any.
+    ///
+    /// Returns `Some` exactly once per change, so the caller rebuilds and the
+    /// layers after it in the same frame do not.
+    pub fn pipelines_out_of_date(&mut self) -> Option<u32> {
+        let samples = msaa_samples();
+        (samples != self.pipeline_samples).then(|| {
+            self.pipeline_samples = samples;
+            samples
+        })
     }
 
     /// Open the pass a layer draws in, with the viewport and scissor set to its
