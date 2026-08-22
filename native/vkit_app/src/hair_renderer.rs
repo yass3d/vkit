@@ -412,13 +412,28 @@ macro_rules! hair_shader_source {
             return f32(hash_u32(seed) & 0x00ffffffu) / 16777215.0;
         }
 
+        // `Mathf.Pow(0, 0)` is 1 and `Mathf.Pow(0, p > 0)` is 0. WGSL leaves
+        // `pow(0, p)` indeterminate — it is `exp2(p * log2(0))`, so `0 * -inf`
+        // is a NaN on most drivers — which is why the loaded power used to be
+        // floored at 1e-4 instead. The library ships curvePower 0, and with it
+        // the envelope is a step: root up to the midpoint, tip after it.
+        fn envelope_ease(base: f32, power: f32) -> f32 {
+            if (base <= 0.0) {
+                return select(0.0, 1.0, power <= 0.0);
+            }
+            return pow(base, power);
+        }
+
         fn waviness_envelope(t: f32, part: RenderPart) -> f32 {
             let midpoint = max(part.waviness_c.w, 0.001);
             if (t <= midpoint) {
-                let eased = pow(1.0 - t / midpoint, part.waviness_b.w);
+                let eased = envelope_ease(1.0 - t / midpoint, part.waviness_b.w);
                 return mix(part.waviness_c.y, part.waviness_c.x, eased);
             }
-            let eased = pow((t - midpoint) / max(1.0 - midpoint, 0.001), part.waviness_b.w);
+            let eased = envelope_ease(
+                (t - midpoint) / max(1.0 - midpoint, 0.001),
+                part.waviness_b.w,
+            );
             return mix(part.waviness_c.y, part.waviness_c.z, eased);
         }
 
@@ -443,8 +458,30 @@ macro_rules! hair_shader_source {
             return curl;
         }
 
+        // The amplitude the game actually draws is not the envelope curve. It
+        // bakes `envelope(j / (particles - 1))` once per physics particle into
+        // RenderParticle.WavinessScale and the kernel lerps between the two
+        // neighbouring particles with the same fraction it uses for the spline,
+        // so the shipped curve is a chord fit over N samples. With curvePower
+        // 14 and a twelve-particle guide the game ramps straight across the
+        // last cell where the curve stays near zero until the final percent —
+        // the curl kicks in somewhere else entirely.
+        fn baked_envelope(travel: f32, segment_count: u32, part: RenderPart) -> f32 {
+            let cells = f32(segment_count);
+            let along = clamp(travel, 0.0, cells);
+            let cell = floor(min(along, cells - 1.0e-4));
+            let k = along - cell;
+            return mix(
+                waviness_envelope(cell / cells, part),
+                waviness_envelope((cell + 1.0) / cells, part),
+                k,
+            );
+        }
+
         fn waviness_offset(
             t: f32,
+            travel: f32,
+            segment_count: u32,
             part: RenderPart,
             curl: GuideCurl,
         ) -> vec3<f32> {
@@ -484,7 +521,8 @@ macro_rules! hair_shader_source {
 
             let adjusted = rotated + curl.root_normal * part.waviness_d.x;
 
-            return adjusted * (scale * amp_random * waviness_envelope(t, part));
+            return adjusted
+                * (scale * amp_random * baked_envelope(travel, segment_count, part));
         }
 
         // The spline parameter is `(i / curveDensity) * particles`, so its whole
@@ -518,11 +556,11 @@ macro_rules! hair_shader_source {
         ) -> vec3<f32> {
             let t = clamp(travel / f32(segment_count), 0.0, 1.0);
             let g0 = guide_spline(roots.x, travel, segment_count)
-                + waviness_offset(t, part, curl_x);
+                + waviness_offset(t, travel, segment_count, part, curl_x);
             var g1 = guide_spline(roots.y, travel, segment_count)
-                + waviness_offset(t, part, curl_y);
+                + waviness_offset(t, travel, segment_count, part, curl_y);
             var g2 = guide_spline(roots.z, travel, segment_count)
-                + waviness_offset(t, part, curl_z);
+                + waviness_offset(t, travel, segment_count, part, curl_z);
             let max_spread = part.spread_b.y;
             let d1 = g1 - g0;
             let len1 = length(d1);
@@ -539,10 +577,13 @@ macro_rules! hair_shader_source {
             let midpoint = max(part.spread_a.w, 0.001);
             var followed: f32;
             if (t <= midpoint) {
-                let eased = pow(1.0 - t / midpoint, part.spread_b.x);
+                let eased = envelope_ease(1.0 - t / midpoint, part.spread_b.x);
                 followed = mix(part.spread_a.y, part.spread_a.x, eased);
             } else {
-                let eased = pow((t - midpoint) / max(1.0 - midpoint, 0.001), part.spread_b.x);
+                let eased = envelope_ease(
+                    (t - midpoint) / max(1.0 - midpoint, 0.001),
+                    part.spread_b.x,
+                );
                 followed = mix(part.spread_a.y, part.spread_a.z, eased);
             }
             return clamp(1.0 - followed, 0.0, 1.0);
@@ -2453,6 +2494,55 @@ mod child_length_tests {
         assert!(
             !HAIR_SHADER.contains("polyline_sample"),
             "a drawn vertex is a tessellation point, not a resample between two",
+        );
+    }
+}
+
+#[cfg(test)]
+mod envelope_tests {
+    use super::*;
+
+    /// `Mathf.Pow(0, 0)` is 1, and the library really does ship curvePower 0 —
+    /// the envelope is then a step, root before the midpoint and tip after it.
+    /// WGSL leaves `pow(0, 0)` indeterminate, which is why the loaded value used
+    /// to be floored to 1e-4 and one sample per strand came out at the wrong
+    /// amplitude.
+    #[test]
+    fn the_shader_reproduces_the_pow_the_engine_uses_rather_than_flooring_it() {
+        assert!(
+            HAIR_SHADER.contains("fn envelope_ease(base: f32, power: f32) -> f32 {")
+                && HAIR_SHADER.contains("return select(0.0, 1.0, power <= 0.0);"),
+            "pow(0, 0) has to come out as 1, not as a NaN and not as a floor",
+        );
+        assert!(
+            !HAIR_SHADER.contains("let eased = pow("),
+            "every envelope ease has to go through envelope_ease",
+        );
+    }
+
+    /// Nothing may floor the loaded power on the way to the GPU either, or the
+    /// shader branch above can never be reached.
+    #[test]
+    fn the_curve_powers_reach_the_gpu_as_they_were_loaded() {
+        let source = include_str!("hair_physics.rs");
+        assert!(
+            !source.contains("curve_power.max("),
+            "a floor on curve_power puts the step envelope out of reach",
+        );
+    }
+
+    /// The game bakes the envelope per particle and lerps; the curve itself is
+    /// never sampled at a tessellation point.
+    #[test]
+    fn the_curl_amplitude_is_a_chord_fit_over_the_particles() {
+        assert!(
+            HAIR_SHADER.contains("fn baked_envelope(travel: f32, segment_count: u32"),
+            "the amplitude has to be baked at particle times and interpolated",
+        );
+        assert!(
+            HAIR_SHADER
+                .contains("* (scale * amp_random * baked_envelope(travel, segment_count, part));"),
+            "the curl offset has to use the baked amplitude, not the curve",
         );
     }
 }

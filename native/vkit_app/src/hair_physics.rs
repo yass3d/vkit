@@ -1171,7 +1171,7 @@ fn build_scene_data(
                     part.waviness.frequency * 100.0 / part.metres_to_template.max(1.0e-6),
                     part.waviness.scale_randomness,
                     part.waviness.frequency_randomness,
-                    part.waviness.curve_power.max(1.0e-4),
+                    part.waviness.curve_power,
                 ],
                 waviness_c: [
                     part.waviness.root,
@@ -1192,7 +1192,7 @@ fn build_scene_data(
                     part.spread.midpoint,
                 ],
                 spread_b: [
-                    part.spread.curve_power.max(1.0e-4),
+                    part.spread.curve_power,
                     part.spread.max_spread_m * part.metres_to_template,
                     part.strand_length_m.max(0.01),
                     part.curve_density.clamp(2, 64) as f32,
