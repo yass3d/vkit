@@ -21,6 +21,8 @@ pub enum HairSimulation {
     Every,
 }
 
+const LIGHT_CENTRE_DEPTH_M: f32 = 0.1;
+
 const WORKGROUP_SIZE: u32 = 64;
 const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0;
 const MAX_FRAME_STEPS: usize = 1;
@@ -1188,7 +1190,7 @@ fn build_scene_data(
                     optics.child_lengths[0],
                     optics.child_lengths[1],
                     optics.child_lengths[2],
-                    0.0,
+                    LIGHT_CENTRE_DEPTH_M * part.metres_to_template,
                 ],
             }
         })
@@ -1651,8 +1653,10 @@ impl HeadSdfGrid {
                 let wy = if j == 1 { t.y } else { 1.0 - t.y };
                 for i in 0..2 {
                     let wx = if i == 1 { t.x } else { 1.0 - t.x };
-                    total +=
-                        read(base.x as i32 + i, base.y as i32 + j, base.z as i32 + k) * wx * wy * wz;
+                    total += read(base.x as i32 + i, base.y as i32 + j, base.z as i32 + k)
+                        * wx
+                        * wy
+                        * wz;
                 }
             }
         }
@@ -1709,17 +1713,9 @@ fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
     })
 }
 
-fn signed_distance_to(
-    mesh: &Mesh,
-    projector: &SurfaceProjector,
-    point: Vec3,
-) -> Option<f32> {
+fn signed_distance_to(mesh: &Mesh, projector: &SurfaceProjector, point: Vec3) -> Option<f32> {
     let hit = projector
-        .project([
-            f64::from(point.x),
-            f64::from(point.y),
-            f64::from(point.z),
-        ])
+        .project([f64::from(point.x), f64::from(point.y), f64::from(point.z)])
         .ok()?;
     let surface = Vec3::new(
         hit.point[0] as f32,
@@ -2311,7 +2307,7 @@ mod tests {
         for step in 0..64 {
             let angle = std::f32::consts::TAU * step as f32 / 64.0;
             let direction = Vec3::new(angle.cos(), (angle * 0.37).sin(), angle.sin()).normalize();
-            for offset in [-1.5_f32, -0.4, 0.0, 0.4, 1.5] {
+            for offset in [-2.0_f32, -1.0, -0.4, 0.0, 0.4] {
                 let point = centre + direction * (radius + offset);
                 let read = grid.sample(point);
                 assert!(
@@ -2319,6 +2315,14 @@ mod tests {
                     "at {offset} from the surface the field read {read} (tolerance {tolerance})",
                 );
             }
+
+            // Past the margin the read clamps to it, and the margin is positive:
+            // far from the head is never a collision, whichever way you left.
+            let far = centre + direction * (radius * 4.0);
+            assert!(
+                grid.sample(far) > 0.0,
+                "a point well outside the box must still read as open space",
+            );
         }
     }
 

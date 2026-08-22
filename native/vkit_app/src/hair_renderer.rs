@@ -366,6 +366,8 @@ macro_rules! hair_shader_source {
             @location(5) @interpolate(flat) strand_noise: f32,
 
             @location(6) @interpolate(flat) half_pixels: f32,
+
+            @location(7) @interpolate(flat) light_centre: vec3<f32>,
         };
 
         fn max_render_subdivisions() -> u32 {
@@ -589,6 +591,7 @@ macro_rules! hair_shader_source {
                 output.part_index = part_index;
                 output.strand_noise = 0.0;
                 output.half_pixels = 0.0;
+                output.light_centre = vec3<f32>(0.0);
                 return output;
             }
             let f = (f32(sub) + select(0.0, 1.0, use_end)) / f32(subdivisions);
@@ -666,6 +669,21 @@ macro_rules! hair_shader_source {
             output.part_index = part_index;
             output.strand_noise = noise;
             output.half_pixels = drawn_half_pixels;
+
+            let root = polyline_sample(
+                uroots, weights, 0.0, segment_count, part, curl_x, curl_y, curl_z,
+            );
+            let root_world = (scene.model * vec4<f32>(root, 1.0)).xyz;
+            let root_normal = safe_normalize(
+                (scene.model * vec4<f32>(
+                    curl_x.root_normal * weights.x
+                        + curl_y.root_normal * weights.y
+                        + curl_z.root_normal * weights.z,
+                    0.0,
+                )).xyz,
+                vec3<f32>(0.0, 1.0, 0.0),
+            );
+            output.light_centre = root_world - root_normal * part.lengths.w;
             return output;
         }
 
@@ -714,53 +732,69 @@ macro_rules! hair_shader_source {
             return linear_to_srgb(mapped);
         }
 
+        fn sine_between(a: vec3<f32>, b: vec3<f32>) -> f32 {
+            let cosine = dot(a, b);
+            return sqrt(max(1.0 - cosine * cosine, 0.0));
+        }
+
         fn fibre_lighting(
             tangent: vec3<f32>,
-            normal: vec3<f32>,
+            pseudo_normal: vec3<f32>,
+            ribbon_normal: vec3<f32>,
             view_direction: vec3<f32>,
             light_direction: vec3<f32>,
             radiance: vec3<f32>,
             albedo: vec3<f32>,
+            strand_t: f32,
+            shift: f32,
             part: RenderPart,
         ) -> vec3<f32> {
-            let halfway = safe_normalize(view_direction + light_direction, normal);
-            let diffuse_sine = sqrt(max(1.0 - dot(tangent, light_direction)
-                * dot(tangent, light_direction), 0.0));
-            let diffuse_exponent = mix(1.65, 0.55, clamp(part.tip_color.w, 0.0, 1.0));
-            let diffuse = pow(diffuse_sine, diffuse_exponent) * albedo / 3.14159265;
+            let lift = clamp(part.tip_color.w, 0.0, 1.0);
+            let hair_normal = safe_normalize(
+                light_direction - tangent * dot(tangent, light_direction),
+                ribbon_normal,
+            );
 
-            let shifted_primary = safe_normalize(
-                tangent + normal * part.specular.w,
+            let primary_axis = safe_normalize(
+                tangent + hair_normal * (shift - part.specular.w),
                 tangent,
             );
-            let shifted_secondary = safe_normalize(
-                tangent + normal * (part.specular.w - 0.04),
+            let secondary_axis = safe_normalize(
+                tangent + hair_normal * (shift + part.specular.w),
                 tangent,
             );
-            let primary_sine = sqrt(max(1.0 - dot(shifted_primary, halfway)
-                * dot(shifted_primary, halfway), 0.0));
-            let primary_sharpness = clamp(part.lobes.x, 1.0, 1024.0);
-            let primary = pow(primary_sine, primary_sharpness)
-                * sqrt((primary_sharpness + 1.0) / 6.2831853);
+            let halfway = safe_normalize(view_direction + light_direction, ribbon_normal);
+            let primary = pow(
+                sine_between(primary_axis, halfway),
+                clamp(part.lobes.x, 1.0, 1024.0),
+            );
             var secondary = 0.0;
             if (part.width.z > 0.5 && part.width.z < 3.5) {
-                let secondary_sine = sqrt(max(1.0 - dot(shifted_secondary, halfway)
-                    * dot(shifted_secondary, halfway), 0.0));
-                let secondary_sharpness = clamp(part.lobes.y, 1.0, 1024.0);
-                secondary = pow(secondary_sine, secondary_sharpness)
-                    * sqrt((secondary_sharpness + 1.0) / 6.2831853) * 0.38;
+                secondary = pow(
+                    sine_between(secondary_axis, halfway),
+                    clamp(part.lobes.y, 1.0, 1024.0),
+                );
             }
-            let n_dot_v = clamp(abs(dot(normal, view_direction)), 0.0, 1.0);
-            let fresnel = 0.035 + clamp(part.lobes.w, 0.0, 4.0)
-                * pow(1.0 - n_dot_v, clamp(part.lobes.z, 0.25, 32.0));
 
-            let view_sine = sqrt(max(
-                1.0 - dot(tangent, view_direction) * dot(tangent, view_direction),
-                0.0,
-            ));
+            let sphere_dot_light = clamp(dot(pseudo_normal, light_direction), 0.0, 1.0);
+            let sphere_dot_view = clamp(dot(pseudo_normal, view_direction), 0.0, 1.0);
             let specular = srgb_to_linear(part.specular.rgb)
-                * (primary + secondary) * clamp(fresnel, 0.0, 2.0) * view_sine;
-            return (diffuse + specular) * radiance * diffuse_sine;
+                * (primary + secondary)
+                * sphere_dot_light
+                * sphere_dot_view
+                * clamp(2.0 * strand_t, 0.0, 1.0);
+
+            let diffuse = albedo
+                * clamp(
+                    clamp(dot(hair_normal, light_direction), 0.0, 1.0) * (1.0 - lift) + lift,
+                    0.0,
+                    1.0,
+                );
+
+            let rim = pow(1.0 - sphere_dot_view, clamp(part.lobes.z, 0.25, 32.0))
+                * clamp(part.lobes.w, 0.0, 1.0);
+            let gate = clamp(sphere_dot_light * (1.0 - lift) + lift + rim, 0.0, 1.0);
+            return (diffuse + specular) * radiance * gate;
         }
 
         @fragment
@@ -788,60 +822,53 @@ macro_rules! hair_shader_source {
                 clamp(part.root_color.w, 0.05, 16.0),
             );
             var albedo = srgb_to_linear(mix(part.root_color.rgb, part.tip_color.rgb, color_t));
-            let random_value = pow(
-                clamp(input.strand_noise, 0.0001, 1.0),
-                clamp(part.variation.x, 0.05, 16.0),
-            );
             let random_gain = max(
-                0.2,
-                1.0 + (random_value - 0.5) * 2.0 * clamp(part.variation.y, -1.0, 1.0),
+                0.0,
+                1.0
+                    + clamp(part.variation.x, 0.0, 4.0)
+                        * (input.strand_noise + clamp(part.variation.y, -1.0, 1.0) - 1.0),
             );
             albedo = albedo * random_gain;
 
+            let pseudo_normal = safe_normalize(
+                input.world_position - input.light_centre,
+                normal,
+            );
+            let shift = clamp(input.strand_noise - 0.5, 0.0, 1.0);
             let direct = fibre_lighting(
                 tangent,
+                pseudo_normal,
                 normal,
                 view_direction,
                 rotated_key_direction(),
                 scene.key_light.rgb,
                 albedo,
+                input.strand_t,
+                shift,
                 part,
             ) + fibre_lighting(
                 tangent,
+                pseudo_normal,
                 normal,
                 view_direction,
                 rotated_fill_direction(),
                 scene.fill_light.rgb,
                 albedo,
+                input.strand_t,
+                shift,
                 part,
             );
-            let reflection_direction = reflect(-view_direction, normal);
-            let n_dot_v = clamp(abs(dot(normal, view_direction)), 0.0, 1.0);
-            let environment_fresnel = 0.035
-                + scene.environment_bottom.w * pow(1.0 - n_dot_v, 5.0);
-            let quality_ibl = select(
-                0.35,
-                1.0,
-                part.width.z > 0.5 && part.width.z < 3.5,
-            );
 
-            let view_sine = sqrt(max(
-                1.0 - dot(tangent, view_direction) * dot(tangent, view_direction),
-                0.0,
-            ));
-            let ibl = environment_radiance(reflection_direction)
-                * srgb_to_linear(part.specular.rgb)
-                * (0.12 + scene.environment_top.w)
-                * environment_fresnel
-                * clamp(part.variation.z, 0.0, 4.0) * quality_ibl * view_sine;
-            let ambient = environment_radiance(normal) * albedo * 0.34;
+            let ambient = albedo
+                * environment_radiance(pseudo_normal)
+                * clamp(part.variation.z, 0.0, 1.0);
 
             let softness = clamp((input.half_pixels - 1.0) / 3.0, 0.0, 1.0);
             let feather_start = mix(0.995, 0.72, softness);
             let edge_coverage = 1.0 - smoothstep(feather_start, 1.0, abs(input.ribbon_side));
             if (edge_coverage < 0.02) { discard; }
             return vec4<f32>(
-                display_color(ambient + direct + ibl),
+                display_color(ambient + direct),
                 part.width.y * edge_coverage,
             );
         }
