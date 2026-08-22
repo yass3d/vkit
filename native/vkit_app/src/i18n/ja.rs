@@ -86,6 +86,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ブラシで引いた位置で毛先を切りそろえます"),
         TextKey::HairToolPuff => Some("ふくらませる"),
         TextKey::HairToolPuffHint => Some("ブラシ下の毛を肌から立てます。Altで寝かせます"),
+        TextKey::HairToolVertex => Some("ポイント"),
+        TextKey::HairToolVertexHint => Some("毛束の関節を1つ掴んで動かします。長さは保たれます"),
         TextKey::HairCopySettings => Some("すべてコピー"),
         TextKey::HairPasteSettings => Some("すべて貼り付け"),
         TextKey::HairGroupPerformance => Some("パフォーマンス"),
@@ -371,11 +373,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blenderはクリックか再押下で確定、ZBrushはキーを離すと確定します")
         }
-        TextKey::HairBrushShape => Some("ブラシ形状"),
-        TextKey::HairBrushShapeCircle => Some("円"),
-        TextKey::HairBrushShapeWide => Some("横バー"),
-        TextKey::HairBrushShapeTall => Some("縦バー"),
-        TextKey::HairBrushFollowStroke => Some("ストローク方向に追従"),
         TextKey::HairPackageStyle => Some(".varで書き出し"),
         TextKey::HairPackageDone => Some("ヘア書き出し完了"),
         TextKey::HairPackageFailed => Some("書き出し失敗"),

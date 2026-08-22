@@ -98,6 +98,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Coupe les meches la ou le pinceau les traverse"),
         TextKey::HairToolPuff => Some("Gonfler"),
         TextKey::HairToolPuffHint => Some("Redresse les meches sous le pinceau. Alt les aplatit"),
+        TextKey::HairToolVertex => Some("Point"),
+        TextKey::HairToolVertexHint => Some(
+            "Saisissez une articulation d'une mèche et déplacez-la ; la longueur est conservée",
+        ),
         TextKey::HairCopySettings => Some("Tout copier"),
         TextKey::HairPasteSettings => Some("Tout coller"),
         TextKey::HairGroupPerformance => Some("Performance"),
@@ -386,11 +390,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender valide par un clic ou une seconde pression ; ZBrush au relâchement")
         }
-        TextKey::HairBrushShape => Some("Forme du pinceau"),
-        TextKey::HairBrushShapeCircle => Some("Cercle"),
-        TextKey::HairBrushShapeWide => Some("Barre large"),
-        TextKey::HairBrushShapeTall => Some("Barre haute"),
-        TextKey::HairBrushFollowStroke => Some("Suivre le tracé"),
         TextKey::HairPackageStyle => Some("Empaqueter en .var"),
         TextKey::HairPackageDone => Some("Cheveux empaquetés"),
         TextKey::HairPackageFailed => Some("Échec de l'empaquetage"),

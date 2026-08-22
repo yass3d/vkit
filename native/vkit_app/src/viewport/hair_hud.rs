@@ -2,7 +2,7 @@ use super::*;
 use crate::hair_project::HairTool;
 use crate::ui_components::Icon;
 
-pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 8] = [
+pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 9] = [
     (
         HairTool::Pick,
         Icon::CursorPick,
@@ -51,6 +51,12 @@ pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 8] = [
         TextKey::HairToolPuff,
         TextKey::HairToolPuffHint,
     ),
+    (
+        HairTool::Vertex,
+        Icon::HairVertex,
+        TextKey::HairToolVertex,
+        TextKey::HairToolVertexHint,
+    ),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -69,10 +75,16 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
     let right = detail_hud_right_base(viewport);
     let available = (right - left).max(0.0) - DETAIL_HUD_INSET_X * 2.0;
 
+    // What `draw_hair_header` actually puts in the row. Change one, change both:
+    // an island narrower than its contents pushes them off its right edge.
+    const NUMERIC_CONTROLS: f32 = 2.0;
+    const SEPARATORS: f32 = 2.0;
+    const TOGGLES: f32 = 7.0;
+
     let numeric_width = detail_hud_flex_numeric_width(available, true).max(96.0);
-    let separators = (SPACE_2 + SPACE_1 + 1.0 + SPACE_1) * 2.0;
-    let toggle_lane = separators + (DETAIL_HUD_TOGGLE_SIZE + SPACE_2) * 7.0;
-    let content = numeric_width * 2.0 + SPACE_2 + toggle_lane;
+    let separators = (SPACE_2 + SPACE_1 + 1.0 + SPACE_1) * SEPARATORS;
+    let toggle_lane = separators + (DETAIL_HUD_TOGGLE_SIZE + SPACE_2) * TOGGLES;
+    let content = numeric_width * NUMERIC_CONTROLS + SPACE_2 + toggle_lane;
     if available < content {
         return None;
     }
@@ -111,51 +123,6 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
         .selected_part()
         .map(|part| (part.id, part.segments));
     let (part_id, segments) = selected.unwrap_or((0, crate::hair_project::DEFAULT_HAIR_SEGMENTS));
-
-    // The brush's shape sizes the brush, so it stands before the size.
-    let entries: Vec<_> = crate::hair_brush::HairBrushShape::ALL
-        .into_iter()
-        .map(|shape| {
-            let icon = match shape {
-                crate::hair_brush::HairBrushShape::Circle => Icon::BrushCircle,
-                crate::hair_brush::HairBrushShape::Wide => Icon::BrushBarWide,
-                crate::hair_brush::HairBrushShape::Tall => Icon::BrushBarTall,
-            };
-            (
-                shape,
-                icon,
-                text(state.locale, shape.label_key()).to_owned(),
-            )
-        })
-        .collect();
-    if let Some(shape) = crate::ui_components::hud_icon_menu(
-        &mut hud,
-        Id::new("vkit.viewport.hair.brush-shape"),
-        super::DETAIL_HUD_TOGGLE_SIZE,
-        state.hair_brush_shape,
-        &entries,
-        text(state.locale, TextKey::HairBrushShape),
-    ) {
-        state.dispatch(Action::SetHairBrushShape(shape));
-    }
-    let follow = hud
-        .add_enabled_ui(state.hair_brush_shape.is_bar(), |hud| {
-            detail_hud_toggle_icon(
-                hud,
-                Icon::BrushFollowStroke,
-                state.hair_brush_follow_stroke,
-                text(state.locale, TextKey::HairBrushFollowStroke),
-                text(state.locale, TextKey::HairBrushFollowStroke),
-                None,
-            )
-        })
-        .inner;
-    if follow.clicked() {
-        state.dispatch(Action::SetHairBrushFollowStroke(
-            !state.hair_brush_follow_stroke,
-        ));
-    }
-    draw_detail_separator(&mut hud);
 
     let numeric_width = detail_hud_flex_numeric_width(content.width(), true).max(96.0);
     let mut radius = state.hair_brush_radius_points;
@@ -464,6 +431,7 @@ const fn tool_shortcut(tool: HairTool) -> Option<crate::shortcuts::Shortcut> {
         HairTool::Cut => Some(Shortcut::HairCutTool),
         HairTool::Erase => Some(Shortcut::HairEraseTool),
         HairTool::Comb => Some(Shortcut::HairCombBrush),
+        HairTool::Vertex => None,
         HairTool::Puff => Some(Shortcut::HairPuffTool),
         HairTool::Pinch => Some(Shortcut::HairPinchTool),
     }

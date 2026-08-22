@@ -620,68 +620,6 @@ fn brush_falloff_text_key(falloff: SculptFalloff) -> TextKey {
     }
 }
 
-/// One icon that stands for the chosen entry, and a menu behind it.
-///
-/// The falloff picker's row painter is reused, so a menu opened from a HUD
-/// island looks like every other menu in the program.
-pub fn hud_icon_menu<T: Copy + PartialEq>(
-    ui: &mut Ui,
-    id: Id,
-    size: f32,
-    current: T,
-    entries: &[(T, Icon, String)],
-    heading: &str,
-) -> Option<T> {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-    let heading = heading.to_owned();
-    let chosen_label = entries
-        .iter()
-        .find(|(value, _, _)| *value == current)
-        .map(|(_, _, label)| label.clone())
-        .unwrap_or_default();
-    let response = response.on_hover_ui(|ui| {
-        ui.set_max_width(TOOLTIP_MAX_WIDTH);
-        ui.label(egui::RichText::new(&heading).strong());
-        ui.label(&chosen_label);
-    });
-    let radius = rect.height() * 0.5;
-    if response.hovered() {
-        ui.painter()
-            .rect_filled(rect, radius, crate::theme::COLOR_SURFACE_RAISED);
-    }
-    let icon = entries
-        .iter()
-        .find(|(value, _, _)| *value == current)
-        .map_or(Icon::ChevronDown, |(_, icon, _)| *icon);
-    paint_icon(
-        ui.painter(),
-        rect.shrink(3.5),
-        icon,
-        if response.hovered() {
-            crate::theme::COLOR_TEXT
-        } else {
-            crate::theme::COLOR_MUTED
-        },
-    );
-    control_affordances(ui, &response, rect, radius);
-
-    let mut selected = None;
-    egui::Popup::menu(&response)
-        .id(id)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show(|ui| {
-            ui.set_min_width(BRUSH_FALLOFF_FIELD_WIDTH);
-            ui.spacing_mut().item_spacing.y = 3.0;
-            for (value, icon, label) in entries {
-                if brush_falloff_menu_row(ui, *icon, label, *value == current).clicked() {
-                    selected = Some(*value);
-                    ui.close();
-                }
-            }
-        });
-    selected
-}
-
 fn brush_falloff_menu_row(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Response {
     let (row, response) = ui.allocate_exact_size(
         Vec2::new(BRUSH_FALLOFF_FIELD_WIDTH, BRUSH_FALLOFF_FIELD_HEIGHT),

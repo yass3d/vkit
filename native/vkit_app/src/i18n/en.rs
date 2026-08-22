@@ -94,6 +94,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolPuffHint => {
             "Stand the strands under the brush up off the skin. Alt lays them down"
         }
+        TextKey::HairToolVertex => "Point",
+        TextKey::HairToolVertexHint => {
+            "Take hold of one joint on a strand and move it; the length is kept"
+        }
         TextKey::HairCopySettings => "Copy All",
         TextKey::HairPasteSettings => "Paste All",
         TextKey::HairGroupPerformance => "Performance",
@@ -368,11 +372,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSweepTooltip => {
             "Blender commits on a click or a second press; ZBrush commits when the key comes up"
         }
-        TextKey::HairBrushShape => "Brush shape",
-        TextKey::HairBrushShapeCircle => "Circle",
-        TextKey::HairBrushShapeWide => "Wide bar",
-        TextKey::HairBrushShapeTall => "Tall bar",
-        TextKey::HairBrushFollowStroke => "Follow the stroke",
         TextKey::HairPackageStyle => "Package as .var",
         TextKey::HairPackageDone => "Hair packaged",
         TextKey::HairPackageFailed => "Packaging failed",

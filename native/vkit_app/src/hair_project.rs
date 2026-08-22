@@ -45,6 +45,9 @@ pub enum HairTool {
     Cut,
 
     Puff,
+
+    /// Take hold of one point joint and move it.
+    Vertex,
 }
 
 #[derive(Clone, Debug)]

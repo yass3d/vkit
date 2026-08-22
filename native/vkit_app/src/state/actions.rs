@@ -184,10 +184,6 @@ pub enum Action {
 
     SetBrushSweepCommit(crate::sweep_gesture::SweepCommit),
 
-    SetHairBrushShape(crate::hair_brush::HairBrushShape),
-
-    SetHairBrushFollowStroke(bool),
-
     PackageHairStyle,
 
     OpenHeadPresetFile(std::path::PathBuf),
@@ -659,8 +655,6 @@ impl Action {
             | Self::ClearCache
             | Self::SetViewportBackgroundMode(_)
             | Self::SetBrushSweepCommit(_)
-            | Self::SetHairBrushShape(_)
-            | Self::SetHairBrushFollowStroke(_)
             | Self::PackageHairStyle
             | Self::OpenHeadPresetFile(_)
             | Self::SetManualEyeGaze(_)

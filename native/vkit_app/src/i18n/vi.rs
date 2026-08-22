@@ -86,6 +86,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Cat cac soi toc tai noi co quet qua"),
         TextKey::HairToolPuff => Some("Lam phong"),
         TextKey::HairToolPuffHint => Some("Dung cac soi toc duoi co len. Alt de vuot xuong"),
+        TextKey::HairToolVertex => Some("Điểm"),
+        TextKey::HairToolVertexHint => {
+            Some("Giữ một khớp trên sợi tóc và di chuyển; chiều dài được giữ nguyên")
+        }
         TextKey::HairCopySettings => Some("Sao chep tat ca"),
         TextKey::HairPasteSettings => Some("Dan tat ca"),
         TextKey::HairGroupPerformance => Some("Hieu nang"),
@@ -368,11 +372,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender xác nhận khi nhấp hoặc nhấn lại; ZBrush xác nhận khi nhả phím")
         }
-        TextKey::HairBrushShape => Some("Hình dạng cọ"),
-        TextKey::HairBrushShapeCircle => Some("Hình tròn"),
-        TextKey::HairBrushShapeWide => Some("Thanh ngang"),
-        TextKey::HairBrushShapeTall => Some("Thanh dọc"),
-        TextKey::HairBrushFollowStroke => Some("Theo hướng nét"),
         TextKey::HairPackageStyle => Some("Đóng gói thành .var"),
         TextKey::HairPackageDone => Some("Đã đóng gói tóc"),
         TextKey::HairPackageFailed => Some("Đóng gói thất bại"),

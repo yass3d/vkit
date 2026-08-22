@@ -141,10 +141,6 @@ pub struct Preferences {
     pub viewport_background_mode: ViewportBackgroundMode,
     #[serde(default, deserialize_with = "permissive_enum")]
     pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
-    #[serde(default, deserialize_with = "permissive_enum")]
-    pub hair_brush_shape: crate::hair_brush::HairBrushShape,
-    #[serde(default = "default_hair_brush_follow_stroke")]
-    pub hair_brush_follow_stroke: bool,
     #[serde(default)]
     pub wireframe_visible: bool,
     #[serde(default = "default_wireframe_opacity")]
@@ -229,8 +225,6 @@ impl Default for Preferences {
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::default(),
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
-            hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
-            hair_brush_follow_stroke: default_hair_brush_follow_stroke(),
             wireframe_visible: false,
             wireframe_opacity: default_wireframe_opacity(),
             xray_visible: false,
@@ -294,10 +288,6 @@ fn default_wireframe_color_rgb() -> [u8; 3] {
 
 const fn default_surface_smooth_passes() -> u8 {
     VAM_SMOOTH_PASSES_DEFAULT
-}
-
-const fn default_hair_brush_follow_stroke() -> bool {
-    true
 }
 
 fn default_tooltips_enabled() -> bool {
@@ -788,8 +778,6 @@ mod tests {
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::Flat,
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
-            hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
-            hair_brush_follow_stroke: default_hair_brush_follow_stroke(),
             wireframe_visible: true,
             wireframe_opacity: 0.61,
             xray_visible: true,

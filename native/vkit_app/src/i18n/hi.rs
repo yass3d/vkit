@@ -82,6 +82,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ब्रश जहाँ से गुज़रे वहाँ लटें काटें"),
         TextKey::HairToolPuff => Some("फुलाएँ"),
         TextKey::HairToolPuffHint => Some("ब्रश के नीचे लटें त्वचा से उठाएँ। Alt से बिठाएँ"),
+        TextKey::HairToolVertex => Some("बिंदु"),
+        TextKey::HairToolVertexHint => Some("एक लट के एक जोड़ को पकड़कर हिलाएँ; लंबाई बनी रहती है"),
         TextKey::HairCopySettings => Some("सब कॉपी करें"),
         TextKey::HairPasteSettings => Some("सब पेस्ट करें"),
         TextKey::HairGroupPerformance => Some("प्रदर्शन"),
@@ -353,11 +355,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender क्लिक या दूसरी बार दबाने पर तय होता है; ZBrush कुंजी छोड़ने पर")
         }
-        TextKey::HairBrushShape => Some("ब्रश आकृति"),
-        TextKey::HairBrushShapeCircle => Some("वृत्त"),
-        TextKey::HairBrushShapeWide => Some("चौड़ी पट्टी"),
-        TextKey::HairBrushShapeTall => Some("लंबी पट्टी"),
-        TextKey::HairBrushFollowStroke => Some("स्ट्रोक का अनुसरण करें"),
         TextKey::HairPackageStyle => Some(".var के रूप में पैकेज करें"),
         TextKey::HairPackageDone => Some("बाल पैकेज हो गए"),
         TextKey::HairPackageFailed => Some("पैकेजिंग विफल"),

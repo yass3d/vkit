@@ -1332,3 +1332,64 @@ mod tests {
 
 #[cfg(test)]
 mod limbs_evidence {}
+
+#[cfg(test)]
+mod eye_probe {
+    use super::*;
+
+    /// What each eye slot resolves to, and what that picture actually looks like.
+    ///
+    /// `VKIT_VAM_ROOT=... VKIT_PROBE="H019 b" cargo test -p vkit-app eye_probe -- --ignored --nocapture`
+    #[test]
+    #[ignore = "reads the reader's own VaM installation"]
+    fn what_the_eye_slots_carry() {
+        let Ok(path) = std::env::var("VKIT_VAM_ROOT") else {
+            return;
+        };
+        let root = vkit_core::vam::VaMRoot::open(std::path::Path::new(&path)).unwrap();
+        let presets = vkit_core::vam::scan_skin_library(&root).unwrap();
+        let wanted = std::env::var("VKIT_PROBE").unwrap_or_else(|_| "H019".to_owned());
+        for preset in presets {
+            if !preset.label.to_lowercase().contains(&wanted.to_lowercase()) {
+                continue;
+            }
+            println!("== {}", preset.label);
+            for (name, material) in [
+                ("sclera", &preset.auxiliary.sclera),
+                ("iris", &preset.auxiliary.iris),
+                ("lacrimal", &preset.auxiliary.lacrimal),
+            ] {
+                print!("   {name:9} colour={:?} ", material.base_color);
+                let Some(locator) = material.diffuse.as_ref() else {
+                    println!("no texture");
+                    continue;
+                };
+                match decode_skin_texture(1, locator, AUXILIARY_SKIN_EDGE) {
+                    Ok(image) => {
+                        let pixels = image.rgba8.as_ref();
+                        let count = (pixels.len() / 4).max(1) as u64;
+                        let mean = |offset: usize| {
+                            pixels
+                                .iter()
+                                .skip(offset)
+                                .step_by(4)
+                                .map(|value| u64::from(*value))
+                                .sum::<u64>()
+                                / count
+                        };
+                        println!(
+                            "{}x{} mean RGBA ({} {} {} {})",
+                            image.width,
+                            image.height,
+                            mean(0),
+                            mean(1),
+                            mean(2),
+                            mean(3)
+                        );
+                    }
+                    Err(error) => println!("DECODE FAILED: {error}"),
+                }
+            }
+        }
+    }
+}

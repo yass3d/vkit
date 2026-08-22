@@ -273,12 +273,11 @@ pub struct AppState {
 
     pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
 
-    pub hair_brush_shape: crate::hair_brush::HairBrushShape,
-
-    pub hair_brush_follow_stroke: bool,
-
     /// What the last install put on disk, so it can be gathered into a package.
     pub hair_export_files: Vec<std::path::PathBuf>,
+
+    /// The point joint the vertex tool has hold of: part, strand, point.
+    pub hair_vertex_selection: Option<(u64, u32, usize)>,
 
     /// The cap wrapped onto the head as it is now, refreshed by the viewport.
     /// Planting reads it so a root lands where the socket was clicked.
@@ -601,9 +600,8 @@ impl Default for AppState {
             surface_smooth_passes: VAM_SMOOTH_PASSES_DEFAULT,
             viewport_background_mode: ViewportBackgroundMode::Radial,
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
-            hair_brush_shape: crate::hair_brush::HairBrushShape::default(),
-            hair_brush_follow_stroke: true,
             hair_export_files: Vec::new(),
+            hair_vertex_selection: None,
             posed_hair_scalps: std::collections::HashMap::new(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
@@ -1481,8 +1479,6 @@ impl AppState {
                 self.viewport_background_mode = mode;
             }
             Action::SetBrushSweepCommit(commit) => self.brush_sweep_commit = commit,
-            Action::SetHairBrushShape(shape) => self.hair_brush_shape = shape,
-            Action::SetHairBrushFollowStroke(follow) => self.hair_brush_follow_stroke = follow,
             Action::SetManualEyeGaze(value) => {
                 self.manual_eye_gaze = value.map(sanitize_eye_gaze_axis);
                 self.eye_gaze_mode = EyeGazeMode::Manual;

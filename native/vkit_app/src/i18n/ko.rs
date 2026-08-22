@@ -84,6 +84,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolCutHint => "브러시로 그은 자리에서 머리카락을 끊습니다",
         TextKey::HairToolPuff => "부풀리기",
         TextKey::HairToolPuffHint => "브러시 아래 머리카락을 피부에서 세웁니다. Alt로 눕힙니다",
+        TextKey::HairToolVertex => "포인트",
+        TextKey::HairToolVertexHint => "가닥의 마디 하나를 잡아 옮깁니다. 길이는 유지됩니다",
         TextKey::HairCopySettings => "전체 복사",
         TextKey::HairPasteSettings => "전체 붙여넣기",
         TextKey::HairGroupPerformance => "성능",
@@ -356,11 +358,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::BrushSweepTooltip => {
             "블렌더는 클릭하거나 키를 다시 눌러야 확정되고, 지브러시는 키를 떼면 확정됩니다"
         }
-        TextKey::HairBrushShape => "브러시 모양",
-        TextKey::HairBrushShapeCircle => "원",
-        TextKey::HairBrushShapeWide => "가로 막대",
-        TextKey::HairBrushShapeTall => "세로 막대",
-        TextKey::HairBrushFollowStroke => "획 방향 따라가기",
         TextKey::HairPackageStyle => ".var로 내보내기",
         TextKey::HairPackageDone => "헤어 패키지 완료",
         TextKey::HairPackageFailed => "패키지 실패",

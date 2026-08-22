@@ -64,6 +64,7 @@ mod alignment_gizmo;
 mod backdrop;
 mod camera_input;
 pub(crate) mod hair_overlays;
+mod hair_vertex;
 mod help;
 mod islands;
 mod pins;
@@ -626,7 +627,11 @@ fn draw_result_in(
     }
 
     if state.is_hair_editing() && state.hair_thumbnail.is_none() {
-        hair_input::paint_hair_brush_hud(ui, state, &response, rect, swept);
+        if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
+            hair_vertex::paint(ui, state, rect, &response, swept);
+        } else {
+            hair_input::paint_hair_brush_hud(ui, state, &response);
+        }
     }
 
     if projection_stencil_mode(state) {

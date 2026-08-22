@@ -88,6 +88,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Обрезает пряди там, где кисть их пересекает"),
         TextKey::HairToolPuff => Some("Объём"),
         TextKey::HairToolPuffHint => Some("Приподнимает пряди под кистью. Alt прижимает их"),
+        TextKey::HairToolVertex => Some("Точка"),
+        TextKey::HairToolVertexHint => {
+            Some("Возьмитесь за один сустав пряди и переместите его; длина сохраняется")
+        }
         TextKey::HairCopySettings => Some("Копировать всё"),
         TextKey::HairPasteSettings => Some("Вставить всё"),
         TextKey::HairGroupPerformance => Some("Производительность"),
@@ -378,11 +382,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => Some(
             "Blender подтверждает щелчком или повторным нажатием; ZBrush — отпусканием клавиши",
         ),
-        TextKey::HairBrushShape => Some("Форма кисти"),
-        TextKey::HairBrushShapeCircle => Some("Круг"),
-        TextKey::HairBrushShapeWide => Some("Широкая полоса"),
-        TextKey::HairBrushShapeTall => Some("Высокая полоса"),
-        TextKey::HairBrushFollowStroke => Some("Следовать за штрихом"),
         TextKey::HairPackageStyle => Some("Упаковать в .var"),
         TextKey::HairPackageDone => Some("Волосы упакованы"),
         TextKey::HairPackageFailed => Some("Не удалось упаковать"),

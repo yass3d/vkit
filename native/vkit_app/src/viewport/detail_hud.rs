@@ -544,6 +544,9 @@ pub(super) fn detail_hud_row_ui(ui: &mut Ui, salt: Id, row: Rect, gap: f32) -> U
             .max_rect(row)
             .layout(Layout::left_to_right(Align::Center)),
     );
+    // An island handed more than it planned for should run out of room rather
+    // than spill its controls across the viewport.
+    hud.shrink_clip_rect(row);
     hud.spacing_mut().item_spacing.x = gap;
     hud
 }

@@ -160,6 +160,9 @@ pub(super) fn handle_hair_interaction(
     }
     match tool {
         HairTool::Pick => {}
+        HairTool::Vertex => {
+            crate::viewport::hair_vertex::handle(ui, state, viewport, response, camera);
+        }
         HairTool::Plant => {
             let Some(primary) = state
                 .hair_project
@@ -286,13 +289,7 @@ pub(super) fn handle_hair_interaction(
     }
 }
 
-pub(super) fn paint_hair_brush_hud(
-    ui: &Ui,
-    state: &AppState,
-    response: &Response,
-    viewport: Rect,
-    camera: TurntableCamera,
-) {
+pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Response) {
     let hover = response
         .hovered()
         .then(|| ui.input(|input| input.pointer.hover_pos()))
@@ -305,60 +302,36 @@ pub(super) fn paint_hair_brush_hud(
     ) else {
         return;
     };
-    let radius = state.hair_brush_radius_points.max(1.0);
-    // A bar has to lie on the head to read as one, so it is drawn from the
-    // surface frame. A circle has nothing to show that way and stays flat,
-    // which also keeps it visible when the pointer is off the scalp.
-    if state.hair_brush_shape.is_bar()
-        && let Some(scalp) = hair_scalp_under_pointer(ui, state)
-        && let Some(frame) = brush_frame_under_pointer(ui, state, viewport, camera, &scalp, radius)
-    {
-        let outline: Vec<egui::Pos2> = frame
-            .outline(48)
-            .into_iter()
-            .filter_map(|point| camera.project(point, viewport).map(|seen| seen.screen))
-            .collect();
-        if outline.len() >= 8 {
-            ui.painter().add(egui::Shape::closed_line(
-                outline,
-                egui::Stroke::new(1.5, crate::theme::COLOR_MUTED),
-            ));
-            return;
-        }
-    }
     crate::ui_components::paint_brush_cursor(
         ui.painter(),
         cursor,
-        radius,
+        state.hair_brush_radius_points.max(1.0),
         crate::theme::COLOR_MUTED,
     );
-}
-
-fn hair_scalp_under_pointer(
-    ui: &Ui,
-    state: &AppState,
-) -> Option<std::sync::Arc<crate::hair_project::ScalpAuthoring>> {
-    let part = state.hair_project.selected_part()?;
-    crate::viewport::hair_overlays::posed_scalp(ui.ctx(), state, &part.provider_name)
 }
 
 fn scalp_brush_gather(
     state: &AppState,
     scalp: &crate::hair_project::ScalpAuthoring,
     part_id: u64,
-    frame: crate::hair_brush::BrushFrame,
+    centre: [f32; 3],
+    radius: f32,
     eye: glam::Vec3,
     want_planted: Option<bool>,
 ) -> Vec<u32> {
     let Some(part) = state.hair_project.part(part_id) else {
         return Vec::new();
     };
+    let radius_sq = radius * radius;
     let mut gathered = Vec::new();
     for (index, vertex) in scalp.vertices_cm.iter().enumerate() {
-        let world = glam::Vec3::from_array(*vertex);
-        if !frame.contains(world) {
+        let dx = vertex[0] - centre[0];
+        let dy = vertex[1] - centre[1];
+        let dz = vertex[2] - centre[2];
+        if dx * dx + dy * dy + dz * dz > radius_sq {
             continue;
         }
+        let world = glam::Vec3::from_array(*vertex);
         let normal = scalp
             .normals
             .get(index)
@@ -383,54 +356,6 @@ fn brush_world_radius(
 ) -> f32 {
     camera.world_units_per_point_at(glam::Vec3::from_array(at), viewport.height())
         * radius_points.max(1.0)
-}
-
-fn brush_frame_under_pointer(
-    ui: &Ui,
-    state: &AppState,
-    viewport: Rect,
-    camera: TurntableCamera,
-    scalp: &crate::hair_project::ScalpAuthoring,
-    radius_points: f32,
-) -> Option<crate::hair_brush::BrushFrame> {
-    let (centre, radius) = brush_hit(ui, viewport, camera, scalp, radius_points)?;
-    let centre = glam::Vec3::from_array(centre);
-    let normal = nearest_scalp_normal(scalp, centre);
-    let (_, right, up) = camera.screen_basis();
-    let stroke = state
-        .hair_brush_follow_stroke
-        .then(|| {
-            let delta = ui.input(|input| input.pointer.delta());
-            (delta.length() > 0.5).then(|| right * delta.x + up * -delta.y)
-        })
-        .flatten();
-    Some(crate::hair_brush::brush_frame(
-        state.hair_brush_shape,
-        centre,
-        radius,
-        normal,
-        right,
-        up,
-        stroke,
-    ))
-}
-
-fn nearest_scalp_normal(
-    scalp: &crate::hair_project::ScalpAuthoring,
-    centre: glam::Vec3,
-) -> glam::Vec3 {
-    let mut best: Option<(f32, glam::Vec3)> = None;
-    for (index, vertex) in scalp.vertices_cm.iter().enumerate() {
-        let reach = (glam::Vec3::from_array(*vertex) - centre).length_squared();
-        if best.is_some_and(|(closest, _)| reach >= closest) {
-            continue;
-        }
-        let Some(normal) = scalp.normals().get(index) else {
-            continue;
-        };
-        best = Some((reach, glam::Vec3::new(normal[0], normal[1], normal[2])));
-    }
-    best.map_or(glam::Vec3::Z, |(_, normal)| normal)
 }
 
 fn brush_hit(
@@ -692,12 +617,11 @@ fn handle_scalp_brush(
     if !response.hovered() && !response.dragged() {
         return;
     }
-    let Some(frame) = brush_frame_under_pointer(ui, state, viewport, camera, scalp, radius_points)
-    else {
+    let Some((centre, radius)) = brush_hit(ui, viewport, camera, scalp, radius_points) else {
         return;
     };
     let want_planted = tool == HairTool::Erase;
-    let raw = scalp_brush_gather(state, scalp, part_id, frame, camera.eye(), None);
+    let raw = scalp_brush_gather(state, scalp, part_id, centre, radius, camera.eye(), None);
     let Some(part) = state.hair_project.part(part_id) else {
         return;
     };

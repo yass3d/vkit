@@ -88,6 +88,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Memotong helai di tempat kuas melintasinya"),
         TextKey::HairToolPuff => Some("Mengembang"),
         TextKey::HairToolPuffHint => Some("Menegakkan helai di bawah kuas. Alt merebahkannya"),
+        TextKey::HairToolVertex => Some("Titik"),
+        TextKey::HairToolVertexHint => {
+            Some("Pegang satu sendi pada helai dan pindahkan; panjangnya tetap")
+        }
         TextKey::HairCopySettings => Some("Salin semua"),
         TextKey::HairPasteSettings => Some("Tempel semua"),
         TextKey::HairGroupPerformance => Some("Kinerja"),
@@ -376,11 +380,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::BrushSweepTooltip => {
             Some("Blender dikunci dengan klik atau tekan ulang; ZBrush saat tombol dilepas")
         }
-        TextKey::HairBrushShape => Some("Bentuk kuas"),
-        TextKey::HairBrushShapeCircle => Some("Lingkaran"),
-        TextKey::HairBrushShapeWide => Some("Batang lebar"),
-        TextKey::HairBrushShapeTall => Some("Batang tinggi"),
-        TextKey::HairBrushFollowStroke => Some("Ikuti arah sapuan"),
         TextKey::HairPackageStyle => Some("Paketkan sebagai .var"),
         TextKey::HairPackageDone => Some("Rambut dipaketkan"),
         TextKey::HairPackageFailed => Some("Gagal memaketkan"),
