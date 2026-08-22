@@ -747,13 +747,10 @@ fn draw_hair_streams(
     let tinted = part_tint_active(state);
     let field = hair_depth_field(ui, state, rect, camera);
     let eye = camera.eye();
-    for part_id in state.hair_project.active_parts() {
+    for part_id in state.hair_project.editable_parts() {
         let Some(part) = state.hair_project.part(part_id) else {
             continue;
         };
-        if !part.visible {
-            continue;
-        }
         let ink = if tinted {
             part_tint_ink(part_id)
         } else {

@@ -270,12 +270,17 @@ impl HairProject {
         }
     }
 
-    pub fn active_parts(&self) -> Vec<u64> {
+    pub fn editable_parts(&self) -> Vec<u64> {
         self.parts
             .iter()
-            .filter(|part| self.active_part_ids.contains(&part.id))
+            .filter(|part| part.visible && self.active_part_ids.contains(&part.id))
             .map(|part| part.id)
             .collect()
+    }
+
+    pub fn is_part_editable(&self, id: u64) -> bool {
+        self.part(id)
+            .is_some_and(|part| part.visible && self.active_part_ids.contains(&id))
     }
 
     pub fn is_part_active(&self, id: u64) -> bool {
@@ -1246,34 +1251,34 @@ mod tests {
         let second = project.add_part("UdaneScalp");
 
         assert_eq!(
-            project.active_parts(),
+            project.editable_parts(),
             vec![second],
             "a new layer arrives lit"
         );
 
         project.activate_part(first, false);
-        assert_eq!(project.active_parts(), vec![first]);
+        assert_eq!(project.editable_parts(), vec![first]);
         assert_eq!(project.selected_part_id, Some(first));
 
         project.activate_part(first, false);
         assert!(
-            project.active_parts().is_empty(),
+            project.editable_parts().is_empty(),
             "a second plain click puts the layer out, so nothing is highlighted"
         );
         assert_eq!(project.selected_part_id, None);
 
         project.activate_part(first, false);
         assert_eq!(
-            project.active_parts(),
+            project.editable_parts(),
             vec![first],
             "and a third click lights it again"
         );
 
         project.activate_part(second, true);
-        assert_eq!(project.active_parts(), vec![first, second]);
+        assert_eq!(project.editable_parts(), vec![first, second]);
         project.activate_part(second, false);
         assert_eq!(
-            project.active_parts(),
+            project.editable_parts(),
             vec![second],
             "a plain click on one of several narrows to it rather than putting it out"
         );

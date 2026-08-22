@@ -428,7 +428,7 @@ impl AppState {
 
     pub(super) fn reset_hair_shapes(&mut self) {
         let mut touched = false;
-        for part_id in self.hair_project.active_parts() {
+        for part_id in self.hair_project.editable_parts() {
             let Some(scalp) = self
                 .hair_project
                 .part(part_id)

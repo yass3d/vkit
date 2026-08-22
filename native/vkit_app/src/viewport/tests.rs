@@ -2445,14 +2445,14 @@ fn framing_a_layers_portrait_puts_that_layer_alone_on_the_head() {
 fn a_new_or_duplicated_layer_arrives_on_its_own() {
     let mut state = probe_hair_state();
     let first = state.hair_project.parts[0].id;
-    assert_eq!(state.hair_project.active_parts(), vec![first]);
+    assert_eq!(state.hair_project.editable_parts(), vec![first]);
 
     state.dispatch(crate::state::Action::AddHairPart {
         provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
     });
     let second = state.hair_project.parts[1].id;
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![second],
         "creating a layer left the previous one active"
     );
@@ -2462,7 +2462,7 @@ fn a_new_or_duplicated_layer_arrives_on_its_own() {
         id: first,
         additive: true,
     });
-    assert_eq!(state.hair_project.active_parts(), vec![first, second]);
+    assert_eq!(state.hair_project.editable_parts(), vec![first, second]);
 
     state.dispatch(crate::state::Action::DuplicateHairPart(second));
     let copy = state
@@ -2472,7 +2472,7 @@ fn a_new_or_duplicated_layer_arrives_on_its_own() {
         .expect("a duplicated layer")
         .id;
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![copy],
         "duplicating left the gathered layers active alongside the copy"
     );
@@ -2561,7 +2561,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
     });
     let second = state.hair_project.parts[1].id;
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![second],
         "a new layer arrives alone, the way a plain click leaves one"
     );
@@ -2571,7 +2571,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         additive: false,
     });
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![first],
         "a plain click leaves only the clicked part active"
     );
@@ -2582,7 +2582,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         additive: false,
     });
     assert!(
-        state.hair_project.active_parts().is_empty(),
+        state.hair_project.editable_parts().is_empty(),
         "re-clicking the only active part puts it out, so nothing is highlighted"
     );
 
@@ -2596,7 +2596,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         additive: true,
     });
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![first, second],
         "shift gathers a second part into the set"
     );
@@ -2606,7 +2606,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         id: second,
         additive: true,
     });
-    assert_eq!(state.hair_project.active_parts(), vec![first]);
+    assert_eq!(state.hair_project.editable_parts(), vec![first]);
     assert_eq!(
         state.hair_project.selected_part_id,
         Some(first),
@@ -2618,7 +2618,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         additive: true,
     });
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![first],
         "the last active part cannot be shifted off"
     );
@@ -2628,7 +2628,7 @@ fn a_click_activates_one_part_and_shift_gathers_several() {
         additive: false,
     });
     assert_eq!(
-        state.hair_project.active_parts(),
+        state.hair_project.editable_parts(),
         vec![second],
         "a plain click on another part swaps the whole set for it"
     );
@@ -3990,4 +3990,35 @@ fn stepping_back_leaves_a_hidden_layer_hidden() {
         !state.hair_project.part(id).unwrap().visible,
         "undo returns the geometry, never the view"
     );
+}
+
+#[test]
+fn a_hidden_layer_is_out_of_reach_of_the_brush() {
+    let mut state = probe_hair_state();
+    state.dispatch(crate::state::Action::AddHairPart {
+        provider_name: crate::hair_project::HAIR_SCALP_PROVIDERS[0].to_owned(),
+    });
+    let first = state.hair_project.parts[0].id;
+    let second = state.hair_project.parts[1].id;
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: first,
+        additive: false,
+    });
+    state.dispatch(crate::state::Action::ActivateHairPart {
+        id: second,
+        additive: true,
+    });
+    assert_eq!(state.hair_project.editable_parts(), vec![first, second]);
+
+    state.dispatch(crate::state::Action::ToggleHairPartVisible(first));
+    assert!(
+        state.hair_project.is_part_active(first),
+        "hiding leaves the layer selected"
+    );
+    assert_eq!(
+        state.hair_project.editable_parts(),
+        vec![second],
+        "a hidden layer is isolated from every edit"
+    );
+    assert!(!state.hair_project.is_part_editable(first));
 }

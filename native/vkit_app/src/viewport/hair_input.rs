@@ -123,7 +123,7 @@ pub(super) fn handle_hair_interaction(
             tool,
         )
     } else {
-        state.hair_project.active_parts()
+        state.hair_project.editable_parts()
     };
     let scalp_of = |state: &AppState, id: u64| {
         state
@@ -143,7 +143,11 @@ pub(super) fn handle_hair_interaction(
     match tool {
         HairTool::Pick => {}
         HairTool::Plant => {
-            let Some(primary) = state.hair_project.selected_part_id else {
+            let Some(primary) = state
+                .hair_project
+                .selected_part_id
+                .filter(|id| state.hair_project.is_part_editable(*id))
+            else {
                 return;
             };
             let Some(scalp) = scalp_of(state, primary) else {
@@ -455,7 +459,7 @@ fn auto_part_targets(
     {
         return latched
             .into_iter()
-            .filter(|id| state.hair_project.part(*id).is_some())
+            .filter(|id| state.hair_project.is_part_editable(*id))
             .collect();
     }
     if !down {

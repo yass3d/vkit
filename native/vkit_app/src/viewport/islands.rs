@@ -360,7 +360,7 @@ pub(super) fn draw_sculpt_reset_island(ui: &Ui, state: &mut AppState, rect: Rect
 pub(super) fn draw_hair_reset_island(ui: &Ui, state: &mut AppState, rect: Rect) {
     let has_strands = state
         .hair_project
-        .active_parts()
+        .editable_parts()
         .into_iter()
         .filter_map(|id| state.hair_project.part(id))
         .any(|part| !part.strands.is_empty());
