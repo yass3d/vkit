@@ -1035,6 +1035,7 @@ const SCALP_ALPHA_FLOOR: f32 = 1.0 / 255.0;
 
 #[derive(Clone)]
 pub struct ScalpPaintCallback {
+    pub spot: crate::renderer::SceneSpot,
     pub scene_key: u64,
 
     pub head: Arc<SurfaceMesh>,
@@ -1050,7 +1051,12 @@ pub struct ScalpPaintCallback {
 }
 
 impl ScalpPaintCallback {
-    pub fn paint_callback(self, rect: Rect) -> epaint::PaintCallback {
+    pub fn paint_callback(
+        mut self,
+        rect: Rect,
+        spot: crate::renderer::SceneSpot,
+    ) -> epaint::PaintCallback {
+        self.spot = spot;
         Callback::new_paint_callback(rect, self)
     }
 }
@@ -1067,6 +1073,18 @@ impl CallbackTrait for ScalpPaintCallback {
         if let Some(resources) = callback_resources.get_mut::<ScalpRenderResources>() {
             resources.prepare(device, queue, self);
         }
+        let Some(mut pass) = crate::renderer::begin_scene_layer(
+            device,
+            _egui_encoder,
+            callback_resources,
+            _screen_descriptor,
+            self.spot,
+        ) else {
+            return Vec::new();
+        };
+        if let Some(resources) = callback_resources.get::<ScalpRenderResources>() {
+            resources.paint(&mut pass, self.scene_key);
+        }
         Vec::new()
     }
 
@@ -1076,9 +1094,7 @@ impl CallbackTrait for ScalpPaintCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     ) {
-        if let Some(resources) = callback_resources.get::<ScalpRenderResources>() {
-            resources.paint(render_pass, self.scene_key);
-        }
+        crate::renderer::blit_scene(render_pass, callback_resources);
     }
 }
 
@@ -1702,6 +1718,7 @@ fn upload_scalp_texture(
 
 #[derive(Clone)]
 pub struct HairPaintCallback {
+    pub spot: crate::renderer::SceneSpot,
     pub scene_key: u64,
     pub mesh: Arc<SurfaceMesh>,
     pub preview: Arc<HairPreview>,
@@ -1730,7 +1747,12 @@ pub struct HairPaintCallback {
 }
 
 impl HairPaintCallback {
-    pub fn paint_callback(self, rect: Rect) -> epaint::PaintCallback {
+    pub fn paint_callback(
+        mut self,
+        rect: Rect,
+        spot: crate::renderer::SceneSpot,
+    ) -> epaint::PaintCallback {
+        self.spot = spot;
         Callback::new_paint_callback(rect, self)
     }
 }
@@ -1747,6 +1769,18 @@ impl CallbackTrait for HairPaintCallback {
         if let Some(resources) = callback_resources.get_mut::<HairRenderResources>() {
             resources.prepare(device, queue, egui_encoder, self);
         }
+        let Some(mut pass) = crate::renderer::begin_scene_layer(
+            device,
+            egui_encoder,
+            callback_resources,
+            _screen_descriptor,
+            self.spot,
+        ) else {
+            return Vec::new();
+        };
+        if let Some(resources) = callback_resources.get::<HairRenderResources>() {
+            resources.paint(&mut pass, self.scene_key);
+        }
         Vec::new()
     }
 
@@ -1756,9 +1790,7 @@ impl CallbackTrait for HairPaintCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     ) {
-        if let Some(resources) = callback_resources.get::<HairRenderResources>() {
-            resources.paint(render_pass, self.scene_key);
-        }
+        crate::renderer::blit_scene(render_pass, callback_resources);
     }
 }
 
@@ -2207,6 +2239,7 @@ mod tests {
             body_capsules: Vec::new(),
         });
         let mut callback = HairPaintCallback {
+            spot: crate::renderer::SceneSpot::default(),
             scene_key: 1,
             frame: 0,
             mesh,

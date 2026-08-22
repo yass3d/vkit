@@ -435,7 +435,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => Some(
             "Glättet Treppenkanten mit der gewählten Sample-Zahl. Höher ist sauberer und teurer.",
         ),
-        TextKey::SettingsMsaaRestart => Some("Wirkt nach Neustart — derzeit"),
         TextKey::SoloViewHint => Some("Nur diesen Teil anzeigen"),
         TextKey::SoloViewRestoreHint => Some("Vorherige Ansicht zurückholen"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

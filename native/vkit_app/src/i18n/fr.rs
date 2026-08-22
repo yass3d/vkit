@@ -423,7 +423,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => Some(
             "Lisse les bords en escalier selon le nombre d'échantillons choisi. Plus haut est plus net et plus coûteux.",
         ),
-        TextKey::SettingsMsaaRestart => Some("Appliqué au redémarrage — actuellement"),
         TextKey::SoloViewHint => Some("Afficher seulement cette partie"),
         TextKey::SoloViewRestoreHint => Some("Rétablir la vue précédente"),
         TextKey::ToneCurveFilmic => Some("Filmique"),

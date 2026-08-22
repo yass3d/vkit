@@ -551,7 +551,6 @@ text_keys! {
     SettingsQualityAntialiasing,
     SettingsMsaa,
     SettingsMsaaTooltip,
-    SettingsMsaaRestart,
     SoloViewHint,
     SoloViewRestoreHint,
     ToneCurveFilmic,

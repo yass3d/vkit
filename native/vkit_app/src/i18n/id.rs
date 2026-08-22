@@ -413,7 +413,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => Some(
             "Menghaluskan tepi bergerigi sesuai jumlah sampel yang dipilih. Makin tinggi makin bersih dan berat.",
         ),
-        TextKey::SettingsMsaaRestart => Some("Berlaku setelah mulai ulang — saat ini"),
         TextKey::SoloViewHint => Some("Tampilkan bagian ini saja"),
         TextKey::SoloViewRestoreHint => Some("Kembalikan tampilan sebelumnya"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

@@ -20,16 +20,60 @@ use crate::{
 mod mesh;
 mod mip;
 mod offscreen;
+mod scene_surface;
 mod shaders;
 mod skin;
 
 use self::mesh::*;
 pub use self::mesh::{MeshPaintCallback, RenderStyle};
 pub use self::offscreen::OffscreenTarget;
+pub use self::scene_surface::{ScenePlacement, SceneSpot, SceneSurface};
 pub(crate) use self::skin::SkinRenderResources;
 pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroups};
 #[cfg(test)]
 use self::{shaders::*, skin::*};
+
+/// Open the pass a three-dimensional layer draws in, on the scene's own surface
+/// rather than in egui's render pass.
+///
+/// `None` means there is nothing to draw into and the layer should return: no
+/// surface installed, or a rectangle with no pixels in it.
+pub(crate) fn begin_scene_layer(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    resources: &mut egui_wgpu::CallbackResources,
+    screen: &egui_wgpu::ScreenDescriptor,
+    spot: SceneSpot,
+) -> Option<wgpu::RenderPass<'static>> {
+    let placement = ScenePlacement::from_egui(spot.rect, screen.pixels_per_point);
+    resources.get_mut::<SceneSurface>()?.begin(
+        device,
+        encoder,
+        screen.size_in_pixels,
+        placement,
+        spot.frame,
+    )
+}
+
+/// Put the finished scene back in front of egui, over the rectangle egui has
+/// already scissored this callback to.
+pub(crate) fn blit_scene(
+    render_pass: &mut wgpu::RenderPass<'static>,
+    resources: &egui_wgpu::CallbackResources,
+) {
+    if let Some(surface) = resources.get::<SceneSurface>() {
+        surface.blit(render_pass);
+    }
+}
+
+/// What egui's own pipelines are built at.
+///
+/// One, and it stays one. egui anti-aliases its shapes in its tessellator
+/// rather than by multisampling, so it gains nothing from a higher count — and
+/// the count it is built with cannot change while the program runs. Keeping it
+/// at one is what lets the scene's count be a setting: the scene has a surface
+/// of its own, and only the blit that carries it back has to agree with egui.
+pub const EGUI_MSAA_SAMPLES: u32 = 1;
 
 /// The sample counts offered, in the order the picker shows them.
 ///
@@ -54,6 +98,23 @@ static SUPPORTED_MSAA_SAMPLES: std::sync::OnceLock<Vec<u32>> = std::sync::OnceLo
 #[must_use]
 pub fn msaa_samples() -> u32 {
     ACTIVE_MSAA_SAMPLES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Draw at this many samples from the next frame on.
+///
+/// Refused unless the adapter was probed and answered for it, because the count
+/// becomes a texture the device has to be able to make. The scene's surface
+/// reads this every frame and rebuilds its attachments the frame it moves,
+/// which is the whole of what "no restart" means here.
+pub fn set_msaa_samples(samples: u32) -> u32 {
+    let offered = supported_msaa_samples();
+    let samples = if offered.contains(&samples) {
+        samples
+    } else {
+        DEFAULT_MSAA_SAMPLES
+    };
+    ACTIVE_MSAA_SAMPLES.store(samples, std::sync::atomic::Ordering::Relaxed);
+    samples
 }
 
 /// What this machine can actually be asked for, cheapest first.
@@ -212,6 +273,14 @@ pub fn install(painter: &EguiPainter) -> Result<(), RendererInstallError> {
     let hair_error = pollster::block_on(hair_scope.pop());
 
     let mut renderer = render_state.renderer.write();
+    // The surface every layer draws on, and the blit that puts it back. Its
+    // blit runs inside egui's pass, so its own pipeline is built at EGUI's
+    // sample count; the scene behind it is at ours.
+    renderer.callback_resources.insert(SceneSurface::new(
+        &render_state.device,
+        render_state.target_format,
+        EGUI_MSAA_SAMPLES,
+    ));
     renderer.callback_resources.insert(resources);
     renderer.callback_resources.insert(skin_resources);
     if let Some(error) = hair_error {
@@ -1356,5 +1425,45 @@ mod msaa_tests {
     #[test]
     fn the_active_count_is_always_one_of_the_choices() {
         assert!(MSAA_CHOICES.contains(&msaa_samples()));
+    }
+}
+
+#[cfg(test)]
+mod scene_surface_contract_tests {
+    use super::*;
+
+    /// The blit runs inside egui's pass, so its pipeline is built at egui's
+    /// sample count. If the painter is ever handed the scene's count again, the
+    /// two disagree and every blit fails validation — a viewport that shows
+    /// nothing rather than a coarser one.
+    #[test]
+    fn egui_is_told_its_own_sample_count_and_not_the_scenes() {
+        let source = include_str!("runtime.rs");
+        assert!(
+            source.contains("msaa_samples: renderer::EGUI_MSAA_SAMPLES,"),
+            "the painter must be built at egui's count, not the scene's",
+        );
+        assert_eq!(
+            EGUI_MSAA_SAMPLES, 1,
+            "egui anti-aliases in its tessellator; a higher count buys nothing              and cannot change while the program runs",
+        );
+    }
+
+    /// And the scene's count is a setting, which means it has to be reachable
+    /// from the action that changes it rather than only from startup.
+    #[test]
+    fn the_scenes_count_can_be_moved_after_startup() {
+        let before = msaa_samples();
+        // Only what was probed is offered, and in a test that is the default
+        // alone — which is enough to prove the setter is honoured and that it
+        // refuses what it was not offered.
+        assert_eq!(set_msaa_samples(DEFAULT_MSAA_SAMPLES), DEFAULT_MSAA_SAMPLES);
+        assert_eq!(msaa_samples(), DEFAULT_MSAA_SAMPLES);
+        assert_eq!(
+            set_msaa_samples(3),
+            DEFAULT_MSAA_SAMPLES,
+            "a count nobody offered must not become the one we draw at",
+        );
+        set_msaa_samples(before);
     }
 }

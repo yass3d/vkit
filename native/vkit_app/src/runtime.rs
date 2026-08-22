@@ -1068,7 +1068,10 @@ impl Runtime {
             ..Default::default()
         };
         let renderer_options = RendererOptions {
-            msaa_samples: active_samples,
+            // egui's own pipelines, not the scene's. The scene draws on a
+            // surface of its own at `active_samples`, which is why this can be
+            // one and why the setting can change without a restart.
+            msaa_samples: renderer::EGUI_MSAA_SAMPLES,
             depth_stencil_format: Some(renderer::DEPTH_FORMAT),
             ..Default::default()
         };

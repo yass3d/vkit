@@ -305,7 +305,6 @@ fn draw_quality_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
     group_heading(ui, locale, TextKey::SettingsQualityAntialiasing);
 
-    let running_at = crate::renderer::msaa_samples();
     let mut wanted = state.msaa_samples;
     let offered = crate::renderer::supported_msaa_samples();
     let row = setting_row(ui, locale, TextKey::SettingsMsaa, None, |ui| {
@@ -326,21 +325,6 @@ fn draw_quality_settings(ui: &mut Ui, state: &mut AppState) {
     );
     if wanted != state.msaa_samples {
         state.dispatch(Action::SetMsaaSamples(wanted));
-    }
-
-    // The count is fixed for the life of the process: egui bakes it into its own
-    // pipelines when the painter is built, long before this panel exists.
-    if state.msaa_samples != running_at {
-        ui.add_space(SPACE_2);
-        ui.label(
-            egui::RichText::new(format!(
-                "{} ({})",
-                text(locale, TextKey::SettingsMsaaRestart),
-                msaa_label(running_at),
-            ))
-            .size(FONT_SM)
-            .color(COLOR_MUTED),
-        );
     }
 }
 

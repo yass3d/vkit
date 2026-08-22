@@ -415,7 +415,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => {
             Some("Сглаживает ступенчатые края по выбранному числу выборок. Выше — чище и дороже.")
         }
-        TextKey::SettingsMsaaRestart => Some("Применится после перезапуска — сейчас"),
         TextKey::SoloViewHint => Some("Показать только эту часть"),
         TextKey::SoloViewRestoreHint => Some("Вернуть предыдущий вид"),
         TextKey::ToneCurveFilmic => Some("Filmic"),

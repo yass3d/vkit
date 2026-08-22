@@ -386,7 +386,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => {
             Some("चुने गए सैंपल के अनुसार किनारों की सीढ़ियाँ चिकनी करता है। अधिक साफ़, पर भारी।")
         }
-        TextKey::SettingsMsaaRestart => Some("पुनः आरंभ पर लागू — अभी"),
         TextKey::SoloViewHint => Some("सिर्फ़ यही भाग दिखाएँ"),
         TextKey::SoloViewRestoreHint => Some("पिछला व्यू वापस लाएँ"),
         TextKey::ToneCurveFilmic => Some("फ़िल्मिक"),

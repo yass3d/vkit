@@ -389,7 +389,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsMsaaTooltip => {
             "가장자리 계단을 샘플 수만큼 부드럽게 한다. 높을수록 선명하고 무겁다."
         }
-        TextKey::SettingsMsaaRestart => "다시 시작하면 적용됨 — 지금은",
         TextKey::SoloViewHint => "이 부위만 보기",
         TextKey::SoloViewRestoreHint => "이전 표시 상태로 되돌리기",
         TextKey::ToneCurveFilmic => "필름",

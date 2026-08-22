@@ -349,6 +349,7 @@ impl AppState {
         let skin = self
             .active_skin_preview()
             .map(|skin| crate::renderer::SkinPaintCallback {
+                spot: crate::renderer::SceneSpot::default(),
                 scene_key: crate::hair_portrait::portrait_scene_key(u64::MAX),
                 mesh: std::sync::Arc::clone(&head),
                 skin,
@@ -378,6 +379,7 @@ impl AppState {
             let scene_key = crate::hair_portrait::portrait_scene_key(index as u64);
             for (layer_index, layer) in preview.scalps.iter().enumerate() {
                 scalps.push(crate::hair_renderer::ScalpPaintCallback {
+                    spot: crate::renderer::SceneSpot::default(),
                     scene_key: crate::hair_portrait::portrait_scene_key(
                         ((index as u64) << 32) | (layer_index as u64 + 1),
                     ),
@@ -393,6 +395,7 @@ impl AppState {
                 });
             }
             hair.push(crate::hair_renderer::HairPaintCallback {
+                spot: crate::renderer::SceneSpot::default(),
                 scene_key,
                 // A portrait is rendered in one pass of its own.
                 frame: 0,

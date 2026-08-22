@@ -1552,11 +1552,9 @@ impl AppState {
             }
             Action::SetToneMapping(value) => self.tone_mapping = value,
             Action::SetMsaaSamples(value) => {
-                self.msaa_samples = if crate::renderer::MSAA_CHOICES.contains(&value) {
-                    value
-                } else {
-                    crate::renderer::DEFAULT_MSAA_SAMPLES
-                };
+                // The renderer has the last word: it is the one that knows what
+                // the adapter answered for, and it is what draws.
+                self.msaa_samples = crate::renderer::set_msaa_samples(value);
             }
             Action::SetCameraControl(mode) => self.camera_control = mode,
             Action::RestoreSession => self.answer_recovery(true),

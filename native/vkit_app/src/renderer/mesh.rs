@@ -74,6 +74,9 @@ pub(super) fn mesh_color_is_translucent(color: [f32; 4]) -> bool {
 
 #[derive(Clone)]
 pub struct MeshPaintCallback {
+    /// Filled in by `paint_callback`, which is the one place that knows the
+    /// rectangle. Nothing that builds a callback has to carry it.
+    pub spot: crate::renderer::SceneSpot,
     pub scene_key: u64,
     pub mesh: Arc<SurfaceMesh>,
     pub view_projection: Mat4,
@@ -95,7 +98,12 @@ pub struct MeshPaintCallback {
 }
 
 impl MeshPaintCallback {
-    pub fn paint_callback(self, rect: Rect) -> epaint::PaintCallback {
+    pub fn paint_callback(
+        mut self,
+        rect: Rect,
+        spot: crate::renderer::SceneSpot,
+    ) -> epaint::PaintCallback {
+        self.spot = spot;
         Callback::new_paint_callback(rect, self)
     }
 }
@@ -113,6 +121,30 @@ impl CallbackTrait for MeshPaintCallback {
             return Vec::new();
         };
         resources.prepare_scene(device, queue, self);
+
+        // The drawing happens here rather than in `paint`, because here is
+        // where the scene's own surface can be opened. `paint` puts the
+        // finished surface back in front of egui.
+        let Some(mut pass) = crate::renderer::begin_scene_layer(
+            device,
+            _egui_encoder,
+            callback_resources,
+            _screen_descriptor,
+            self.spot,
+        ) else {
+            return Vec::new();
+        };
+        if let Some(resources) = callback_resources.get::<MeshRenderResources>() {
+            if self.depth_scope.resets_before_draw() {
+                resources.reset_depth(&mut pass);
+            }
+            resources.paint(
+                &mut pass,
+                self.scene_key,
+                self.style,
+                mesh_color_is_translucent(self.color),
+            );
+        }
         Vec::new()
     }
 
@@ -122,18 +154,7 @@ impl CallbackTrait for MeshPaintCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     ) {
-        let Some(resources) = callback_resources.get::<MeshRenderResources>() else {
-            return;
-        };
-        if self.depth_scope.resets_before_draw() {
-            resources.reset_depth(render_pass);
-        }
-        resources.paint(
-            render_pass,
-            self.scene_key,
-            self.style,
-            mesh_color_is_translucent(self.color),
-        );
+        crate::renderer::blit_scene(render_pass, callback_resources);
     }
 }
 

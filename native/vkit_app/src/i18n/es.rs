@@ -429,7 +429,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => Some(
             "Suaviza los bordes escalonados según las muestras elegidas. Más alto es más limpio y más costoso.",
         ),
-        TextKey::SettingsMsaaRestart => Some("Se aplica al reiniciar — ahora"),
         TextKey::SoloViewHint => Some("Mostrar solo esta parte"),
         TextKey::SoloViewRestoreHint => Some("Restaurar la vista anterior"),
         TextKey::ToneCurveFilmic => Some("Fílmica"),

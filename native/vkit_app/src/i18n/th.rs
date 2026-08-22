@@ -370,7 +370,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsQualityAntialiasing => Some("ลบรอยหยัก"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some("ลดรอยหยักที่ขอบตามจำนวนตัวอย่างที่เลือก คมขึ้นแต่หนักขึ้น"),
-        TextKey::SettingsMsaaRestart => Some("มีผลเมื่อเริ่มโปรแกรมใหม่ — ตอนนี้"),
         TextKey::SoloViewHint => Some("แสดงเฉพาะส่วนนี้"),
         TextKey::SoloViewRestoreHint => Some("นำมุมมองก่อนหน้ากลับมา"),
         TextKey::ToneCurveFilmic => Some("ฟิล์มมิก"),

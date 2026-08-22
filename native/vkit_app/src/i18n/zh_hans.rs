@@ -372,7 +372,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => {
             Some("按所选采样数平滑边缘锯齿。数值越高越干净，也越耗资源。")
         }
-        TextKey::SettingsMsaaRestart => Some("重启后生效 — 当前为"),
         TextKey::SoloViewHint => Some("仅显示此部件"),
         TextKey::SoloViewRestoreHint => Some("恢复之前的显示"),
         TextKey::ToneCurveFilmic => Some("胶片"),

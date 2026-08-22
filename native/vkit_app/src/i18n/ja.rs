@@ -406,7 +406,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => {
             Some("サンプル数の分だけ輪郭のギザギザをならす。高いほど滑らかで重い。")
         }
-        TextKey::SettingsMsaaRestart => Some("再起動後に適用 — 現在は"),
         TextKey::SoloViewHint => Some("このパーツだけ表示"),
         TextKey::SoloViewRestoreHint => Some("前の表示に戻す"),
         TextKey::ToneCurveFilmic => Some("フィルミック"),

@@ -378,7 +378,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsMsaaTooltip => {
             Some("নির্বাচিত স্যাম্পল অনুযায়ী ধাপে ধাপে কাটা প্রান্ত মসৃণ করে। বেশি হলে পরিষ্কার, তবে ভারী।")
         }
-        TextKey::SettingsMsaaRestart => Some("পুনরায় চালু করলে প্রযোজ্য — এখন"),
         TextKey::SoloViewHint => Some("কেবল এই অংশ দেখান"),
         TextKey::SoloViewRestoreHint => Some("আগের ভিউ ফিরিয়ে আনুন"),
         TextKey::ToneCurveFilmic => Some("ফিল্মিক"),

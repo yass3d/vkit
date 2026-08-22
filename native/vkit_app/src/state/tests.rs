@@ -5623,12 +5623,15 @@ fn a_sample_count_the_renderer_does_not_offer_never_reaches_the_preference() {
     let mut state = AppState::default();
     assert_eq!(state.msaa_samples, crate::renderer::DEFAULT_MSAA_SAMPLES);
 
-    state.dispatch(Action::SetMsaaSamples(8));
-    assert_eq!(state.msaa_samples, 8, "8x is one of the offered counts");
-
-    // 3 is not a sample count, 16 is past the top of the list. Neither may be
-    // written to disk and handed to the next start, where it would be baked
-    // into every pipeline before anything could reject it.
+    // Only what the adapter answered for is offered, and in a test nothing has
+    // been probed, so that is the default alone. Whatever the list holds, a
+    // count inside it is kept and a count outside it lands on the default —
+    // the value goes to disk and comes back at the next start, where it becomes
+    // a texture the device has to be able to make.
+    for offered in crate::renderer::supported_msaa_samples() {
+        state.dispatch(Action::SetMsaaSamples(*offered));
+        assert_eq!(state.msaa_samples, *offered, "{offered}x is offered");
+    }
     for refused in [0, 3, 16, u32::MAX] {
         state.dispatch(Action::SetMsaaSamples(refused));
         assert_eq!(
@@ -5636,6 +5639,10 @@ fn a_sample_count_the_renderer_does_not_offer_never_reaches_the_preference() {
             crate::renderer::DEFAULT_MSAA_SAMPLES,
             "{refused} was accepted",
         );
-        state.dispatch(Action::SetMsaaSamples(8));
     }
+    assert_eq!(
+        state.msaa_samples,
+        crate::renderer::msaa_samples(),
+        "what the panel shows and what the renderer draws at must be one value",
+    );
 }

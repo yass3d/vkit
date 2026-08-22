@@ -159,12 +159,31 @@ impl OffscreenTarget {
         &self.resolved
     }
 
+    #[must_use]
+    pub const fn resolved_view(&self) -> &wgpu::TextureView {
+        &self.resolved_view
+    }
+
     /// Open the pass the whole scene is drawn in — one pass, one depth buffer,
     /// so the layers depth-test against each other the way they do today.
     pub fn begin(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         clear: wgpu::Color,
+    ) -> wgpu::RenderPass<'static> {
+        self.begin_layer(encoder, Some(clear))
+    }
+
+    /// One layer's pass. `None` loads what the layers before it left; `Some`
+    /// clears, which is what the first layer of a frame does.
+    ///
+    /// A multisampled pass resolves on every `end`, so a surface drawn in four
+    /// passes resolves four times. Each resolve carries everything drawn so
+    /// far, which is why the layer that paints last shows the whole scene.
+    pub fn begin_layer(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        clear: Option<wgpu::Color>,
     ) -> wgpu::RenderPass<'static> {
         let (view, resolve_target) = match self.multisampled.as_ref() {
             Some(multisampled) => (multisampled, Some(&self.resolved_view)),
@@ -178,14 +197,14 @@ impl OffscreenTarget {
                     depth_slice: None,
                     resolve_target,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
+                        load: clear.map_or(wgpu::LoadOp::Load, wgpu::LoadOp::Clear),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: clear.map_or(wgpu::LoadOp::Load, |_| wgpu::LoadOp::Clear(1.0)),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,

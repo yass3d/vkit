@@ -123,6 +123,7 @@ impl Default for SkinVisibilityGroups {
 
 #[derive(Clone)]
 pub struct SkinPaintCallback {
+    pub spot: crate::renderer::SceneSpot,
     pub scene_key: u64,
     pub mesh: Arc<SurfaceMesh>,
     pub skin: Arc<SkinPreview>,
@@ -146,7 +147,12 @@ pub struct SkinPaintCallback {
 }
 
 impl SkinPaintCallback {
-    pub fn paint_callback(self, rect: Rect) -> epaint::PaintCallback {
+    pub fn paint_callback(
+        mut self,
+        rect: Rect,
+        spot: crate::renderer::SceneSpot,
+    ) -> epaint::PaintCallback {
+        self.spot = spot;
         Callback::new_paint_callback(rect, self)
     }
 }
@@ -165,6 +171,23 @@ impl CallbackTrait for SkinPaintCallback {
         };
         resources.prepare_scene(device, queue, self);
 
+        let Some(mut pass) = crate::renderer::begin_scene_layer(
+            device,
+            _egui_encoder,
+            callback_resources,
+            _screen_descriptor,
+            self.spot,
+        ) else {
+            return Vec::new();
+        };
+        if self.depth_scope.resets_before_draw()
+            && let Some(mesh_resources) = callback_resources.get::<MeshRenderResources>()
+        {
+            mesh_resources.reset_depth(&mut pass);
+        }
+        if let Some(resources) = callback_resources.get::<SkinRenderResources>() {
+            resources.paint(&mut pass, self.scene_key);
+        }
         Vec::new()
     }
 
@@ -174,14 +197,7 @@ impl CallbackTrait for SkinPaintCallback {
         render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     ) {
-        if self.depth_scope.resets_before_draw()
-            && let Some(mesh_resources) = callback_resources.get::<MeshRenderResources>()
-        {
-            mesh_resources.reset_depth(render_pass);
-        }
-        if let Some(resources) = callback_resources.get::<SkinRenderResources>() {
-            resources.paint(render_pass, self.scene_key);
-        }
+        crate::renderer::blit_scene(render_pass, callback_resources);
     }
 }
 
