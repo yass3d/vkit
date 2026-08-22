@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
-use egui::{Rect, epaint};
+use egui::epaint;
 use egui_wgpu::{Callback, CallbackResources, CallbackTrait, ScreenDescriptor, wgpu};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt as _;
@@ -98,13 +98,11 @@ pub struct MeshPaintCallback {
 }
 
 impl MeshPaintCallback {
-    pub fn paint_callback(
-        mut self,
-        rect: Rect,
-        spot: crate::renderer::SceneSpot,
-    ) -> epaint::PaintCallback {
-        self.spot = spot;
-        Callback::new_paint_callback(rect, self)
+    /// Hand this to egui over the rectangle its own spot names. The spot is the
+    /// only place a rectangle is written, so there is no second copy to keep in
+    /// step with it.
+    pub fn paint_callback(self) -> epaint::PaintCallback {
+        Callback::new_paint_callback(self.spot.rect, self)
     }
 }
 

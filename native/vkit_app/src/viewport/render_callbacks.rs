@@ -22,7 +22,7 @@ pub(super) fn add_mesh_callback(
         depth_scope,
     } = draw;
     let callback = MeshPaintCallback {
-        spot: crate::renderer::SceneSpot::default(),
+        spot: crate::renderer::SceneSpot::of(ui, rect),
         frame_radius: camera.frame_radius,
         scene_key: scene_key ^ scene_salt(ui),
         mesh,
@@ -38,8 +38,7 @@ pub(super) fn add_mesh_callback(
         style,
         depth_scope,
     };
-    ui.painter()
-        .add(callback.paint_callback(rect, crate::renderer::SceneSpot::of(ui, rect)));
+    ui.painter().add(callback.paint_callback());
 }
 
 pub(super) fn add_skin_callback(
@@ -63,7 +62,7 @@ pub(super) fn add_skin_callback(
         depth_scope,
     } = draw;
     let callback = SkinPaintCallback {
-        spot: crate::renderer::SceneSpot::default(),
+        spot: crate::renderer::SceneSpot::of(ui, rect),
         frame_radius: camera.frame_radius,
         scene_key: scene_key ^ scene_salt(ui),
         mesh,
@@ -81,8 +80,7 @@ pub(super) fn add_skin_callback(
         show_eyelashes,
         smooth_passes: state.surface_smooth_passes,
     };
-    ui.painter()
-        .add(callback.paint_callback(rect, crate::renderer::SceneSpot::of(ui, rect)));
+    ui.painter().add(callback.paint_callback());
 }
 
 #[expect(
@@ -101,7 +99,7 @@ pub(super) fn add_hair_callback(
 ) {
     for (index, scalp) in preview.scalps.iter().enumerate() {
         let callback = ScalpPaintCallback {
-            spot: crate::renderer::SceneSpot::default(),
+            spot: crate::renderer::SceneSpot::of(ui, rect),
             scene_key: scene_key ^ (HAIR_SCALP_SCENE_KEY + index as u64) ^ scene_salt(ui),
             head: Arc::clone(&mesh),
             part: scalp.clone(),
@@ -115,8 +113,7 @@ pub(super) fn add_hair_callback(
             light_brightness: view.grading.brightness,
             tone_mapping: view.grading.tone_mapping,
         };
-        ui.painter()
-            .add(callback.paint_callback(rect, crate::renderer::SceneSpot::of(ui, rect)));
+        ui.painter().add(callback.paint_callback());
     }
 
     let settling = state.hair_settle_seconds > 0.0;
@@ -124,7 +121,7 @@ pub(super) fn add_hair_callback(
     let simulate_hair = simulate;
     let pump_frames = hair_pump_wanted(simulate_hair, state.hair_simulation_seconds);
     let callback = HairPaintCallback {
-        spot: crate::renderer::SceneSpot::default(),
+        spot: crate::renderer::SceneSpot::of(ui, rect),
         scene_key: scene_key ^ scene_salt(ui),
         mesh,
         preview,
@@ -152,8 +149,7 @@ pub(super) fn add_hair_callback(
         },
         frame: ui.ctx().cumulative_pass_nr(),
     };
-    ui.painter()
-        .add(callback.paint_callback(rect, crate::renderer::SceneSpot::of(ui, rect)));
+    ui.painter().add(callback.paint_callback());
     if pump_frames {
         ui.ctx().request_repaint_after(Duration::from_millis(16));
     }

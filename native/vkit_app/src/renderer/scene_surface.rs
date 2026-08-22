@@ -41,6 +41,9 @@ impl Default for SceneSpot {
 }
 
 impl SceneSpot {
+    /// Where and when a layer draws. The one place a rectangle enters the
+    /// scene: `paint_callback` takes this and hands egui the rectangle out of
+    /// it, so there is never a second copy to keep in step.
     #[must_use]
     pub fn of(ui: &egui::Ui, rect: egui::Rect) -> Self {
         Self {
