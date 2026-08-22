@@ -1249,7 +1249,20 @@ fn build_scene_data(
         });
     }
 
-    let render_segments = render_segments(preview, &guide_ranges, max_render_segments);
+    let (render_segments, render_subdivisions) =
+        render_segments(preview, &guide_ranges, max_render_segments);
+    let _ = crate::diagnostics::record(
+        crate::diagnostics::Severity::Info,
+        "hair",
+        "scene_built",
+        &format!(
+            "particles={}; segments={}; subdivisions={}; vertices={}",
+            rests.len(),
+            render_segments.len(),
+            render_subdivisions,
+            render_segments.len() as u64 * 6 * u64::from(render_subdivisions),
+        ),
+    );
     let (colliders, collider_count) = head_field_for_mesh(mesh);
     let strands = guide_ranges
         .iter()
@@ -1286,12 +1299,7 @@ fn build_scene_data(
         collider_count,
         guide_data,
         render_segments,
-        render_subdivisions: preview
-            .parts
-            .iter()
-            .map(|part| part_subdivisions(part.curve_density))
-            .max()
-            .unwrap_or(1),
+        render_subdivisions,
         render_parts,
         max_iterations,
     })
@@ -1557,12 +1565,19 @@ fn cling_constraints(
     result
 }
 
+/// The quads to draw, and how many of them each segment is worth.
+///
+/// The stride has to be the largest number of quads any one segment actually
+/// asks for. Handing the draw the whole `curveDensity` instead issues that many
+/// per segment and throws all but `curveDensity / segments` of them away — four
+/// out of every five for a typical style, every frame, in the vertex shader.
 fn render_segments(
     preview: &HairPreview,
     ranges: &[Vec<GuideRange>],
     limit: usize,
-) -> Vec<GpuHairRenderSegment> {
+) -> (Vec<GpuHairRenderSegment>, u32) {
     let mut result = Vec::new();
+    let mut subdivisions = 1_u32;
     'parts: for (part_index, part) in preview.parts.iter().enumerate() {
         for strand in part.strands.iter() {
             let (guide_indices, weights, length_weights) = match strand.source {
@@ -1598,6 +1613,8 @@ fn render_segments(
                 continue;
             }
             let packed = (part_index as u32) | ((segment_count as u32) << 16);
+            let density = part_subdivisions(part.curve_density);
+            subdivisions = subdivisions.max(density.div_ceil(segment_count as u32).max(1));
             for segment in 0..segment_count {
                 if result.len() >= limit {
                     break 'parts;
@@ -1620,7 +1637,7 @@ fn render_segments(
             }
         }
     }
-    result
+    (result, subdivisions.min(MAX_RENDER_SUBDIVISIONS))
 }
 
 const HEAD_SDF_RESOLUTION: usize = 64;

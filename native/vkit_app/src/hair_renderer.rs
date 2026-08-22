@@ -378,6 +378,8 @@ macro_rules! hair_shader_source {
             @location(6) @interpolate(flat) half_pixels: f32,
 
             @location(7) @interpolate(flat) light_centre: vec3<f32>,
+
+            @location(8) radiance: vec3<f32>,
         };
 
         fn max_render_subdivisions() -> u32 {
@@ -602,6 +604,7 @@ macro_rules! hair_shader_source {
                 output.strand_noise = 0.0;
                 output.half_pixels = 0.0;
                 output.light_centre = vec3<f32>(0.0);
+                output.radiance = vec3<f32>(0.0);
                 return output;
             }
             let f = (f32(sub) + select(0.0, 1.0, use_end)) / f32(subdivisions);
@@ -697,6 +700,14 @@ macro_rules! hair_shader_source {
                 vec3<f32>(0.0, 1.0, 0.0),
             );
             output.light_centre = root_world - root_normal * part.lengths.w;
+            output.radiance = strand_radiance(
+                output.world_position,
+                output.world_tangent,
+                output.strand_t,
+                noise,
+                output.light_centre,
+                part_index,
+            );
             return output;
         }
 
@@ -810,12 +821,22 @@ macro_rules! hair_shader_source {
             return (diffuse + specular) * radiance * gate;
         }
 
-        @fragment
-        fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-            let part = parts[input.part_index];
-            let tangent = safe_normalize(input.world_tangent, vec3<f32>(0.0, 1.0, 0.0));
+        // The game does every bit of this once per tessellated strand point, in
+        // its domain shader, and its pixel shader only writes what it was handed.
+        // Doing it per fragment instead costs a full two-lobe lighting model on
+        // every one of the many overlapping samples hair covers a screen with.
+        fn strand_radiance(
+            world_position: vec3<f32>,
+            world_tangent: vec3<f32>,
+            strand_t: f32,
+            strand_noise: f32,
+            light_centre: vec3<f32>,
+            part_index: u32,
+        ) -> vec3<f32> {
+            let part = parts[part_index];
+            let tangent = safe_normalize(world_tangent, vec3<f32>(0.0, 1.0, 0.0));
             let view_direction = safe_normalize(
-                scene.eye.xyz - input.world_position,
+                scene.eye.xyz - world_position,
                 vec3<f32>(0.0, 0.0, 1.0),
             );
             let side_axis = safe_normalize(
@@ -823,7 +844,7 @@ macro_rules! hair_shader_source {
                 vec3<f32>(1.0, 0.0, 0.0),
             );
             var normal = safe_normalize(cross(side_axis, tangent), view_direction);
-            let random_angle = (input.strand_noise * 2.0 - 1.0)
+            let random_angle = (strand_noise * 2.0 - 1.0)
                 * clamp(part.variation.w, 0.0, 1.0) * 0.9;
             normal = safe_normalize(
                 normal * cos(random_angle) + side_axis * sin(random_angle),
@@ -831,7 +852,7 @@ macro_rules! hair_shader_source {
             );
 
             let color_t = pow(
-                clamp(input.strand_t, 0.0, 1.0),
+                clamp(strand_t, 0.0, 1.0),
                 clamp(part.root_color.w, 0.05, 16.0),
             );
             let ramp = mix(part.root_color.rgb, part.tip_color.rgb, color_t);
@@ -840,12 +861,12 @@ macro_rules! hair_shader_source {
                 0.0,
                 1.0
                     + clamp(part.variation.x, 0.0, 4.0)
-                        * (input.strand_noise + clamp(part.variation.y, -1.0, 1.0) - 1.0),
+                        * (strand_noise + clamp(part.variation.y, -1.0, 1.0) - 1.0),
             );
             albedo = albedo * random_gain;
 
             let pseudo_normal = safe_normalize(
-                input.world_position - input.light_centre,
+                world_position - light_centre,
                 normal,
             );
             // The game reads the shift from the red of its own colour ramp, not
@@ -863,7 +884,7 @@ macro_rules! hair_shader_source {
                 rotated_key_direction(),
                 scene.key_light.rgb,
                 albedo,
-                input.strand_t,
+                strand_t,
                 shift,
                 part,
             ) + fibre_lighting(
@@ -874,7 +895,7 @@ macro_rules! hair_shader_source {
                 rotated_fill_direction(),
                 scene.fill_light.rgb,
                 albedo,
-                input.strand_t,
+                strand_t,
                 shift,
                 part,
             );
@@ -888,13 +909,18 @@ macro_rules! hair_shader_source {
             let ambient = albedo
                 * (environment_radiance(pseudo_normal) * clamp(part.variation.z, 0.0, 1.0)
                     + scene.environment_bottom.rgb);
+            return ambient + direct;
+        }
 
+        @fragment
+        fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+            let part = parts[input.part_index];
             let softness = clamp((input.half_pixels - 1.0) / 3.0, 0.0, 1.0);
             let feather_start = mix(0.995, 0.72, softness);
             let edge_coverage = 1.0 - smoothstep(feather_start, 1.0, abs(input.ribbon_side));
             if (edge_coverage < 0.02) { discard; }
             return vec4<f32>(
-                display_color(ambient + direct),
+                display_color(input.radiance),
                 part.width.y * edge_coverage,
             );
         }
@@ -1025,6 +1051,12 @@ impl CallbackTrait for ScalpPaintCallback {
 }
 
 const SCALP_SCENE_CACHE_CAP: usize = 8;
+
+/// Every hair scene owns a whole physics scene — particles, constraints and a
+/// render segment buffer that runs to millions of entries for a dense style.
+/// Without a cap the map keeps one for every key it has ever been handed:
+/// each layer, each pane, each portrait, for the life of the process.
+const HAIR_SCENE_CACHE_CAP: usize = 12;
 
 struct ScalpGpuScene {
     signature: (usize, u64, u64, u64, u64, u64, u64),
@@ -1693,6 +1725,7 @@ struct HairGpuScene {
     physics: HairPhysicsScene,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    last_used: u64,
 }
 
 pub(crate) struct HairRenderResources {
@@ -1701,6 +1734,7 @@ pub(crate) struct HairRenderResources {
     bind_group_layout: wgpu::BindGroupLayout,
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
+    use_counter: u64,
     target_is_srgb: bool,
 }
 
@@ -1791,6 +1825,7 @@ impl HairRenderResources {
             bind_group_layout,
             physics_pipelines: HairPhysicsPipelines::new(device),
             scenes: BTreeMap::new(),
+            use_counter: 0,
             target_is_srgb: target_format.is_srgb(),
         }
     }
@@ -1844,12 +1879,14 @@ impl HairRenderResources {
                 0.0,
             ],
         };
+        self.use_counter += 1;
         if let Some(scene) = self.scenes.get_mut(&callback.scene_key)
             && scene
                 .physics
                 .matches(&callback.preview, &callback.mesh, callback.simulate_hair)
         {
             uniform.grading[3] = scene.physics.render_subdivisions() as f32;
+            scene.last_used = self.use_counter;
             queue.write_buffer(&scene.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
             scene
                 .physics
@@ -1912,7 +1949,14 @@ impl HairRenderResources {
                 physics,
                 uniform_buffer,
                 bind_group,
+                last_used: self.use_counter,
             },
+        );
+        crate::renderer::evict_lru_scenes(
+            &mut self.scenes,
+            callback.scene_key,
+            HAIR_SCENE_CACHE_CAP,
+            |scene| scene.last_used,
         );
     }
 
