@@ -5,6 +5,10 @@ use egui_wgpu::wgpu;
 use glam::Vec3;
 use wgpu::util::DeviceExt as _;
 
+use rayon::prelude::*;
+use vkit_core::formats::Mesh;
+use vkit_core::spatial::{SurfaceProjector, projector_for_mesh};
+
 use crate::{
     hair_preview::{HairPreview, HairPreviewGuide, HairRootBinding, HairStrandSource},
     scene::SurfaceMesh,
@@ -123,12 +127,12 @@ const WARMUP_STILL_FRAMES: u32 = 20u;
 
 const DISTANCE_JOINT_POWER: f32 = 0.5;
 
-fn head_field_cell_radius(x: i32, y: i32, width: u32, height: u32) -> f32 {
-
-    let cx = u32(((x % i32(width)) + i32(width)) % i32(width));
-    let cy = u32(clamp(y, 0, i32(height) - 1));
-    let index = cy * width + cx;
-    let packed = head_field[1u + index / 4u];
+fn head_sdf_cell(x: i32, y: i32, z: i32, resolution: i32) -> f32 {
+    let cx = clamp(x, 0, resolution - 1);
+    let cy = clamp(y, 0, resolution - 1);
+    let cz = clamp(z, 0, resolution - 1);
+    let index = u32((cz * resolution + cy) * resolution + cx);
+    let packed = head_field[2u + index / 4u];
     let lane = index % 4u;
     if (lane == 0u) { return packed.x; }
     if (lane == 1u) { return packed.y; }
@@ -136,41 +140,49 @@ fn head_field_cell_radius(x: i32, y: i32, width: u32, height: u32) -> f32 {
     return packed.w;
 }
 
-fn head_surface_radius(direction: vec3<f32>) -> f32 {
+fn head_distance(position: vec3<f32>) -> f32 {
     let header = head_field[0];
-    let width = u32(header.w);
-    if (width == 0u || physics.collider_count == 0u) {
-        return -1.0;
+    let resolution = i32(header.w);
+    let cell = head_field[1].x;
+    if (resolution <= 0 || cell <= 0.0 || physics.collider_count == 0u) {
+        return 1.0e9;
     }
-    let height = max(physics.collider_count / width, 1u);
-    let azimuth = (atan2(direction.z, direction.x) + 3.14159265) / 6.28318531;
-    let elevation = acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265;
-
-    let fx = clamp(azimuth, 0.0, 0.9999) * f32(width) - 0.5;
-    let fy = clamp(elevation, 0.0, 0.9999) * f32(height) - 0.5;
-    let x0 = i32(floor(fx));
-    let y0 = i32(floor(fy));
-    let tx = fx - f32(x0);
-    let ty = fy - f32(y0);
+    let grid = (position - header.xyz) / cell;
+    let base = floor(grid);
+    let t = grid - base;
+    let x0 = i32(base.x);
+    let y0 = i32(base.y);
+    let z0 = i32(base.z);
     var total = 0.0;
-    var weight = 0.0;
-    for (var j = 0; j < 2; j = j + 1) {
-        for (var i = 0; i < 2; i = i + 1) {
-            let radius = head_field_cell_radius(x0 + i, y0 + j, width, height);
-
-            if (radius <= 0.0) {
-                continue;
+    for (var k = 0; k < 2; k = k + 1) {
+        let wz = select(1.0 - t.z, t.z, k == 1);
+        for (var j = 0; j < 2; j = j + 1) {
+            let wy = select(1.0 - t.y, t.y, j == 1);
+            for (var i = 0; i < 2; i = i + 1) {
+                let wx = select(1.0 - t.x, t.x, i == 1);
+                total = total
+                    + head_sdf_cell(x0 + i, y0 + j, z0 + k, resolution) * wx * wy * wz;
             }
-            let wx = select(1.0 - tx, tx, i == 1);
-            let wy = select(1.0 - ty, ty, j == 1);
-            total = total + radius * wx * wy;
-            weight = weight + wx * wy;
         }
     }
-    if (weight <= 1.0e-4) {
-        return -1.0;
+    return total;
+}
+
+fn head_gradient(position: vec3<f32>) -> vec3<f32> {
+    let cell = head_field[1].x;
+    let step = max(cell, 1.0e-6) * 0.5;
+    let dx = head_distance(position + vec3<f32>(step, 0.0, 0.0))
+        - head_distance(position - vec3<f32>(step, 0.0, 0.0));
+    let dy = head_distance(position + vec3<f32>(0.0, step, 0.0))
+        - head_distance(position - vec3<f32>(0.0, step, 0.0));
+    let dz = head_distance(position + vec3<f32>(0.0, 0.0, step))
+        - head_distance(position - vec3<f32>(0.0, 0.0, step));
+    let gradient = vec3<f32>(dx, dy, dz);
+    let magnitude = length(gradient);
+    if (magnitude <= 1.0e-9) {
+        return vec3<f32>(0.0, 1.0, 0.0);
     }
-    return total / weight;
+    return gradient / magnitude;
 }
 
 fn part_iterations(part: PartSettings) -> f32 {
@@ -412,16 +424,9 @@ fn collide(@builtin(global_invocation_id) invocation: vec3<u32>) {
     var position = particles[index].position.xyz;
     let original = position;
     if (collides) {
-        let centre = head_field[0].xyz;
-        let offset = position - centre;
-        let distance = length(offset);
-        if (distance > 1.0e-5) {
-            let direction = offset / distance;
-            let surface = head_surface_radius(direction);
-            let clearance = surface + strand_radius;
-            if (surface > 0.0 && distance < clearance) {
-                position = centre + direction * clearance;
-            }
+        let distance = head_distance(position);
+        if (distance < strand_radius) {
+            position = position + head_gradient(position) * (strand_radius - distance);
         }
         for (var capsule = 0u; capsule < physics.capsule_count; capsule = capsule + 1u) {
             position = resolve_capsule(position, strand_radius, capsules[capsule]);
@@ -572,10 +577,6 @@ struct GpuConstraint {
 struct GpuHeadFieldElement {
     lanes: [f32; 4],
 }
-
-const HEAD_FIELD_AZIMUTH: usize = 64;
-
-const HEAD_FIELD_ELEVATION: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -1620,98 +1621,160 @@ fn render_segments(
     result
 }
 
-fn head_field_for_mesh(mesh: &SurfaceMesh) -> (Vec<GpuHeadFieldElement>, u32) {
-    let vertices = &mesh.mesh.vertices;
+const HEAD_SDF_RESOLUTION: usize = 64;
 
-    let mut visible: Vec<Vec3> = Vec::new();
-    for triangle in mesh.render_triangles.iter() {
-        for index in triangle {
-            if let Some(point) = vertices.get(*index as usize) {
-                visible.push(Vec3::new(point[0] as f32, point[1] as f32, point[2] as f32));
+const HEAD_SDF_MARGIN_CELLS: f32 = 3.0;
+
+struct HeadSdfGrid {
+    origin: Vec3,
+    cell: f32,
+    distances: Vec<f32>,
+}
+
+impl HeadSdfGrid {
+    #[cfg(test)]
+    fn sample(&self, point: Vec3) -> f32 {
+        let grid = (point - self.origin) / self.cell;
+        let base = grid.floor();
+        let t = grid - base;
+        let read = |x: i32, y: i32, z: i32| -> f32 {
+            let last = HEAD_SDF_RESOLUTION as i32 - 1;
+            let x = x.clamp(0, last) as usize;
+            let y = y.clamp(0, last) as usize;
+            let z = z.clamp(0, last) as usize;
+            self.distances[(z * HEAD_SDF_RESOLUTION + y) * HEAD_SDF_RESOLUTION + x]
+        };
+        let mut total = 0.0;
+        for k in 0..2 {
+            let wz = if k == 1 { t.z } else { 1.0 - t.z };
+            for j in 0..2 {
+                let wy = if j == 1 { t.y } else { 1.0 - t.y };
+                for i in 0..2 {
+                    let wx = if i == 1 { t.x } else { 1.0 - t.x };
+                    total +=
+                        read(base.x as i32 + i, base.y as i32 + j, base.z as i32 + k) * wx * wy * wz;
+                }
             }
         }
+        total
     }
+}
 
-    if visible.is_empty() {
-        return (vec![GpuHeadFieldElement { lanes: [0.0; 4] }], 0);
+fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
+    let visible = Mesh {
+        vertices: mesh.mesh.vertices.clone(),
+        triangles: (*mesh.render_triangles).clone(),
+    };
+    if visible.triangles.is_empty() {
+        return None;
     }
-    let centre = visible.iter().copied().sum::<Vec3>() / visible.len() as f32;
+    let projector = projector_for_mesh(&visible).ok()?;
 
-    let cells = HEAD_FIELD_AZIMUTH * HEAD_FIELD_ELEVATION;
-    let mut radii = vec![0.0_f32; cells];
-    for point in &visible {
-        let offset = *point - centre;
-        let distance = offset.length();
-        if distance <= 1.0e-5 {
-            continue;
+    let mut minimum = Vec3::splat(f32::MAX);
+    let mut maximum = Vec3::splat(f32::MIN);
+    for triangle in &visible.triangles {
+        for index in triangle {
+            let Some(point) = visible.vertices.get(*index as usize) else {
+                continue;
+            };
+            let point = Vec3::new(point[0] as f32, point[1] as f32, point[2] as f32);
+            minimum = minimum.min(point);
+            maximum = maximum.max(point);
         }
-        let direction = offset / distance;
-        let cell = head_field_cell(direction);
-        radii[cell] = radii[cell].max(distance);
     }
+    let span = (maximum - minimum).max_element();
+    if !span.is_finite() || span <= 1.0e-6 {
+        return None;
+    }
+    let steps = HEAD_SDF_RESOLUTION as f32 - 1.0 - 2.0 * HEAD_SDF_MARGIN_CELLS;
+    let cell = span / steps.max(1.0);
+    let centre = (minimum + maximum) * 0.5;
+    let origin = centre - Vec3::splat(cell * (HEAD_SDF_RESOLUTION as f32 - 1.0) * 0.5);
 
-    close_holes_in_shell(&mut radii);
+    let distances = (0..HEAD_SDF_RESOLUTION.pow(3))
+        .into_par_iter()
+        .map(|index| {
+            let x = index % HEAD_SDF_RESOLUTION;
+            let y = (index / HEAD_SDF_RESOLUTION) % HEAD_SDF_RESOLUTION;
+            let z = index / (HEAD_SDF_RESOLUTION * HEAD_SDF_RESOLUTION);
+            let point = origin + Vec3::new(x as f32, y as f32, z as f32) * cell;
+            signed_distance_to(&visible, &projector, point).unwrap_or(span)
+        })
+        .collect();
 
-    let mut packed = Vec::with_capacity(1 + cells.div_ceil(4));
+    Some(HeadSdfGrid {
+        origin,
+        cell,
+        distances,
+    })
+}
+
+fn signed_distance_to(
+    mesh: &Mesh,
+    projector: &SurfaceProjector,
+    point: Vec3,
+) -> Option<f32> {
+    let hit = projector
+        .project([
+            f64::from(point.x),
+            f64::from(point.y),
+            f64::from(point.z),
+        ])
+        .ok()?;
+    let surface = Vec3::new(
+        hit.point[0] as f32,
+        hit.point[1] as f32,
+        hit.point[2] as f32,
+    );
+    let normal = mesh
+        .triangles
+        .get(hit.primitive_id as usize)
+        .and_then(|triangle| face_normal(mesh, *triangle))?;
+    let offset = point - surface;
+    let distance = offset.length();
+    Some(if offset.dot(normal) < 0.0 {
+        -distance
+    } else {
+        distance
+    })
+}
+
+fn face_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
+    let corner = |index: u32| -> Option<Vec3> {
+        mesh.vertices
+            .get(index as usize)
+            .map(|point| Vec3::new(point[0] as f32, point[1] as f32, point[2] as f32))
+    };
+    let a = corner(triangle[0])?;
+    let b = corner(triangle[1])?;
+    let c = corner(triangle[2])?;
+    let normal = (b - a).cross(c - a);
+    (normal.length_squared() > 1.0e-20).then(|| normal.normalize())
+}
+
+fn head_field_for_mesh(mesh: &SurfaceMesh) -> (Vec<GpuHeadFieldElement>, u32) {
+    let Some(grid) = head_sdf_for_mesh(mesh) else {
+        return (vec![GpuHeadFieldElement { lanes: [0.0; 4] }], 0);
+    };
+    let mut packed = Vec::with_capacity(2 + grid.distances.len().div_ceil(4));
     packed.push(GpuHeadFieldElement {
-        lanes: [centre.x, centre.y, centre.z, HEAD_FIELD_AZIMUTH as f32],
+        lanes: [
+            grid.origin.x,
+            grid.origin.y,
+            grid.origin.z,
+            HEAD_SDF_RESOLUTION as f32,
+        ],
     });
-    for chunk in radii.chunks(4) {
+    packed.push(GpuHeadFieldElement {
+        lanes: [grid.cell, 0.0, 0.0, 0.0],
+    });
+    for chunk in grid.distances.chunks(4) {
         let mut lanes = [0.0_f32; 4];
         lanes[..chunk.len()].copy_from_slice(chunk);
         packed.push(GpuHeadFieldElement { lanes });
     }
-    (packed, cells as u32)
-}
-
-fn head_field_cell(direction: Vec3) -> usize {
-    let azimuth = (direction.z.atan2(direction.x) + std::f32::consts::PI) / std::f32::consts::TAU;
-    let elevation = direction.y.clamp(-1.0, 1.0).acos() / std::f32::consts::PI;
-    let x = ((azimuth.clamp(0.0, 0.9999) * HEAD_FIELD_AZIMUTH as f32) as usize)
-        .min(HEAD_FIELD_AZIMUTH - 1);
-    let y = ((elevation.clamp(0.0, 0.9999) * HEAD_FIELD_ELEVATION as f32) as usize)
-        .min(HEAD_FIELD_ELEVATION - 1);
-    y * HEAD_FIELD_AZIMUTH + x
-}
-
-fn close_holes_in_shell(radii: &mut [f32]) {
-    for _ in 0..HEAD_FIELD_AZIMUTH.max(HEAD_FIELD_ELEVATION) {
-        if radii.iter().all(|radius| *radius > 0.0) {
-            return;
-        }
-        let previous = radii.to_vec();
-        let mut changed = false;
-        for y in 0..HEAD_FIELD_ELEVATION {
-            for x in 0..HEAD_FIELD_AZIMUTH {
-                let cell = y * HEAD_FIELD_AZIMUTH + x;
-                if previous[cell] > 0.0 {
-                    continue;
-                }
-                let at = |dx: isize, dy: isize| -> f32 {
-                    let nx = (x as isize + dx).rem_euclid(HEAD_FIELD_AZIMUTH as isize) as usize;
-                    let ny = y as isize + dy;
-                    if ny < 0 || ny >= HEAD_FIELD_ELEVATION as isize {
-                        return 0.0;
-                    }
-                    previous[ny as usize * HEAD_FIELD_AZIMUTH + nx]
-                };
-
-                let pairs = [(at(1, 0), at(-1, 0)), (at(0, 1), at(0, -1))];
-                let closed = pairs
-                    .iter()
-                    .filter(|(low, high)| *low > 0.0 && *high > 0.0)
-                    .map(|(low, high)| low.min(*high))
-                    .fold(f32::MAX, f32::min);
-                if closed < f32::MAX {
-                    radii[cell] = closed;
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            return;
-        }
-    }
+    let count = grid.distances.len() as u32;
+    (packed, count)
 }
 
 fn deformed_guide_points(guide: &HairPreviewGuide, mesh: &SurfaceMesh) -> Option<Vec<Vec3>> {
@@ -1917,7 +1980,6 @@ fn nonempty_or_default<T: Pod + Zeroable + Copy>(values: Vec<T>) -> Vec<T> {
 
 #[cfg(test)]
 mod tests {
-    use vkit_core::formats::Mesh;
 
     use super::*;
 
@@ -1951,135 +2013,6 @@ mod tests {
                 expected,
                 "{declared} differs between Rust and WGSL"
             );
-        }
-    }
-
-    #[test]
-    fn the_head_field_measures_the_surface_it_was_built_from() {
-        let centre = Vec3::new(3.0, -2.0, 1.5);
-        let radius = 7.0_f32;
-        let mut vertices = Vec::new();
-        let rings = 64_u32;
-        for ring in 0..=rings {
-            let elevation = std::f32::consts::PI * ring as f32 / rings as f32;
-            for step in 0..rings * 2 {
-                let azimuth = std::f32::consts::TAU * step as f32 / (rings * 2) as f32;
-                let point = centre
-                    + Vec3::new(
-                        elevation.sin() * azimuth.cos(),
-                        elevation.cos(),
-                        elevation.sin() * azimuth.sin(),
-                    ) * radius;
-                vertices.push([f64::from(point.x), f64::from(point.y), f64::from(point.z)]);
-            }
-        }
-        let triangles: Vec<[u32; 3]> = (0..vertices.len() as u32 / 3)
-            .map(|index| [index * 3, index * 3 + 1, index * 3 + 2])
-            .collect();
-        let mesh = SurfaceMesh::new(Mesh {
-            vertices,
-            triangles,
-        })
-        .expect("a sphere is a mesh");
-
-        let (field, count) = head_field_for_mesh(&mesh);
-        assert_eq!(count as usize, HEAD_FIELD_AZIMUTH * HEAD_FIELD_ELEVATION);
-        let header = field[0].lanes;
-        assert!(
-            (Vec3::new(header[0], header[1], header[2]) - centre).length() < 0.05,
-            "centre found: {header:?}"
-        );
-        assert_eq!(header[3] as usize, HEAD_FIELD_AZIMUTH);
-
-        let radii: Vec<f32> = field[1..]
-            .iter()
-            .flat_map(|element| element.lanes)
-            .take(count as usize)
-            .collect();
-        let worst = radii
-            .iter()
-            .map(|value| (value - radius).abs())
-            .fold(0.0_f32, f32::max);
-        assert!(worst < 0.2, "worst radius error {worst}");
-    }
-
-    #[test]
-    fn a_gap_below_the_shell_is_not_a_surface_but_a_hole_in_it_is() {
-        let cells = HEAD_FIELD_AZIMUTH * HEAD_FIELD_ELEVATION;
-        let mut radii = vec![0.0_f32; cells];
-
-        let equator = HEAD_FIELD_ELEVATION / 2;
-        for y in 0..equator {
-            for x in 0..HEAD_FIELD_AZIMUTH {
-                radii[y * HEAD_FIELD_AZIMUTH + x] = 10.0;
-            }
-        }
-
-        let hole = (equator / 2) * HEAD_FIELD_AZIMUTH + HEAD_FIELD_AZIMUTH / 2;
-        radii[hole] = 0.0;
-
-        close_holes_in_shell(&mut radii);
-
-        assert_eq!(radii[hole], 10.0, "a hole surrounded by surface is closed");
-        for y in equator..HEAD_FIELD_ELEVATION {
-            for x in 0..HEAD_FIELD_AZIMUTH {
-                assert_eq!(
-                    radii[y * HEAD_FIELD_AZIMUTH + x],
-                    0.0,
-                    "invented surface below the shell at {x},{y}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_shader_reads_back_the_cell_the_builder_wrote() {
-        fn shader_cell(direction: Vec3) -> usize {
-            let azimuth = (direction.z.atan2(direction.x) + std::f32::consts::PI)
-                / (2.0 * std::f32::consts::PI);
-            let elevation = direction.y.clamp(-1.0, 1.0).acos() / std::f32::consts::PI;
-            let x = ((azimuth.clamp(0.0, 0.9999) * HEAD_FIELD_AZIMUTH as f32) as usize)
-                .min(HEAD_FIELD_AZIMUTH - 1);
-            let y = ((elevation.clamp(0.0, 0.9999) * HEAD_FIELD_ELEVATION as f32) as usize)
-                .min(HEAD_FIELD_ELEVATION - 1);
-            y * HEAD_FIELD_AZIMUTH + x
-        }
-        fn shader_radius(packed: &[GpuHeadFieldElement], cell: usize) -> f32 {
-            let element = packed[1 + cell / 4].lanes;
-            element[cell % 4]
-        }
-
-        let cells = HEAD_FIELD_AZIMUTH * HEAD_FIELD_ELEVATION;
-        let mut packed = vec![GpuHeadFieldElement {
-            lanes: [0.0, 0.0, 0.0, HEAD_FIELD_AZIMUTH as f32],
-        }];
-        for chunk in (0..cells).collect::<Vec<_>>().chunks(4) {
-            let mut lanes = [0.0_f32; 4];
-            for (lane, cell) in chunk.iter().enumerate() {
-                lanes[lane] = *cell as f32;
-            }
-            packed.push(GpuHeadFieldElement { lanes });
-        }
-
-        for y in 0..HEAD_FIELD_ELEVATION {
-            for x in 0..HEAD_FIELD_AZIMUTH {
-                let azimuth = (x as f32 + 0.5) / HEAD_FIELD_AZIMUTH as f32 * std::f32::consts::TAU
-                    - std::f32::consts::PI;
-                let elevation =
-                    (y as f32 + 0.5) / HEAD_FIELD_ELEVATION as f32 * std::f32::consts::PI;
-                let direction = Vec3::new(
-                    elevation.sin() * azimuth.cos(),
-                    elevation.cos(),
-                    elevation.sin() * azimuth.sin(),
-                );
-                let cell = y * HEAD_FIELD_AZIMUTH + x;
-                assert_eq!(head_field_cell(direction), cell, "builder at {x},{y}");
-                assert_eq!(shader_cell(direction), cell, "shader at {x},{y}");
-                assert!(
-                    (shader_radius(&packed, cell) - cell as f32).abs() < f32::EPSILON,
-                    "packing at {x},{y}"
-                );
-            }
         }
     }
 
@@ -2328,6 +2261,111 @@ mod tests {
         drop(view);
         staging.unmap();
         points
+    }
+
+    fn sphere_shell(centre: Vec3, radius: f32, rings: u32) -> (Vec<[f64; 3]>, Vec<[u32; 3]>) {
+        let mut vertices = Vec::new();
+        let columns = rings * 2;
+        for ring in 0..=rings {
+            let elevation = std::f32::consts::PI * ring as f32 / rings as f32;
+            for step in 0..columns {
+                let azimuth = std::f32::consts::TAU * step as f32 / columns as f32;
+                let point = centre
+                    + Vec3::new(
+                        elevation.sin() * azimuth.cos(),
+                        elevation.cos(),
+                        elevation.sin() * azimuth.sin(),
+                    ) * radius;
+                vertices.push([f64::from(point.x), f64::from(point.y), f64::from(point.z)]);
+            }
+        }
+        let mut triangles = Vec::new();
+        for ring in 0..rings {
+            for step in 0..columns {
+                let next = (step + 1) % columns;
+                let a = ring * columns + step;
+                let b = ring * columns + next;
+                let c = (ring + 1) * columns + step;
+                let d = (ring + 1) * columns + next;
+                triangles.push([a, d, c]);
+                triangles.push([a, b, d]);
+            }
+        }
+        (vertices, triangles)
+    }
+
+    #[test]
+    fn the_head_field_measures_the_surface_it_was_built_from() {
+        let centre = Vec3::new(3.0, -2.0, 1.5);
+        let radius = 7.0_f32;
+        let (vertices, triangles) = sphere_shell(centre, radius, 48);
+        let mesh = SurfaceMesh::new(Mesh {
+            vertices,
+            triangles,
+        })
+        .expect("a sphere is a mesh");
+
+        let grid = head_sdf_for_mesh(&mesh).expect("a sphere has a field");
+        let tolerance = grid.cell * 1.2;
+
+        for step in 0..64 {
+            let angle = std::f32::consts::TAU * step as f32 / 64.0;
+            let direction = Vec3::new(angle.cos(), (angle * 0.37).sin(), angle.sin()).normalize();
+            for offset in [-1.5_f32, -0.4, 0.0, 0.4, 1.5] {
+                let point = centre + direction * (radius + offset);
+                let read = grid.sample(point);
+                assert!(
+                    (read - offset).abs() < tolerance,
+                    "at {offset} from the surface the field read {read} (tolerance {tolerance})",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_crevice_stays_open_where_a_star_field_would_fill_it() {
+        let radius = 7.0_f32;
+        let left = Vec3::new(-5.0, 0.0, 0.0);
+        let right = Vec3::new(5.0, 0.0, 0.0);
+        let (mut vertices, mut triangles) = sphere_shell(left, radius, 48);
+        let (other_vertices, other_triangles) = sphere_shell(right, radius, 48);
+        let offset = vertices.len() as u32;
+        vertices.extend(other_vertices);
+        triangles.extend(
+            other_triangles
+                .into_iter()
+                .map(|triangle| triangle.map(|index| index + offset)),
+        );
+        let mesh = SurfaceMesh::new(Mesh {
+            vertices,
+            triangles,
+        })
+        .expect("two spheres are a mesh");
+
+        let grid = head_sdf_for_mesh(&mesh).expect("two spheres have a field");
+        let tolerance = grid.cell * 1.5;
+
+        // The seam sits between the two spheres, outside both, and a star field
+        // built from the pair's centre reports it buried under the far surfaces.
+        for height in [5.5_f32, 6.5, 7.5] {
+            let seam = Vec3::new(0.0, height, 0.0);
+            let truth = (seam - left).length().min((seam - right).length()) - radius;
+            let read = grid.sample(seam);
+            assert!(
+                (read - truth).abs() < tolerance,
+                "at height {height} the crevice reads {read} where the surface is {truth} away",
+            );
+            assert!(
+                read > 0.0,
+                "the crevice at height {height} is open space, not solid",
+            );
+        }
+
+        let buried = Vec3::new(0.0, 0.0, 0.0);
+        assert!(
+            grid.sample(buried) < 0.0,
+            "the overlap of the two spheres is solid",
+        );
     }
 
     #[test]
