@@ -296,6 +296,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsShortcuts => "Shortcuts",
         TextKey::ShortcutsCapturing => "Press…",
         TextKey::ShortcutsResetAll => "Reset every shortcut",
+        TextKey::ShortcutGroupSystem => "System",
+        TextKey::ShortcutGroupAlignment => "Alignment",
+        TextKey::ShortcutGroupSculpt => "Sculpting",
+        TextKey::ShortcutGroupHair => "Hair",
         TextKey::ShortcutsExport => "Save keymap to a file",
         TextKey::ShortcutsImport => "Load a keymap file",
         TextKey::ShortcutsTaken => "Another action already answers to that",
@@ -316,10 +320,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::AboutOpenLogs => "Open the log folder",
         TextKey::AboutReportIssue => "Report a problem",
-        TextKey::SettingsLightingGroup => "Lighting",
         TextKey::SettingsLightingPreset => "Preset",
         TextKey::SettingsExposure => "Exposure",
-        TextKey::SettingsGeometryGroup => "Geometry",
         TextKey::SettingsSmoothPasses => "Surface smoothing",
         TextKey::SettingsSmoothPassesHint => {
             "Smooths the display only, the way VaM does. The saved shape is unchanged."
@@ -368,7 +370,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "That session's look is not installed yet — textures were restored, and the edits will apply when the look is selected."
         }
-        TextKey::SettingsVignetteGroup => "Vignette",
         TextKey::SettingsBrushSweepGroup => "Brush size gesture",
         TextKey::BrushSweepBlender => "Blender",
         TextKey::BrushSweepZBrush => "ZBrush",
@@ -400,7 +401,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsGraphicsLighting => "Lighting",
         TextKey::SettingsGraphicsEffects => "Effects",
         TextKey::SettingsGraphicsQuality => "Quality",
-        TextKey::SettingsQualityAntialiasing => "Antialiasing",
         TextKey::SettingsMsaa => "MSAA",
         TextKey::SettingsMsaaTooltip => {
             "Smooths stepped edges with the sample count you pick. Higher is cleaner and costlier."

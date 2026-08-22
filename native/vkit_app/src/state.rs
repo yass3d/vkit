@@ -513,7 +513,6 @@ pub struct AppState {
     pub restore_neck_ears: bool,
     pub settings_open: bool,
     pub settings_section: crate::settings::SettingsSection,
-    pub settings_graphics_page: crate::settings::GraphicsPage,
 
     pub tooltips_enabled: bool,
 
@@ -760,7 +759,6 @@ impl Default for AppState {
             restore_neck_ears: true,
             settings_open: false,
             settings_section: crate::settings::SettingsSection::default(),
-            settings_graphics_page: crate::settings::GraphicsPage::default(),
             tooltips_enabled: true,
             settings_reset: false,
             cache_bytes: None,

@@ -274,6 +274,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("শর্টকাট"),
         TextKey::ShortcutsCapturing => Some("চাপুন…"),
         TextKey::ShortcutsResetAll => Some("সব শর্টকাট রিসেট করুন"),
+        TextKey::ShortcutGroupSystem => Some("সিস্টেম"),
+        TextKey::ShortcutGroupAlignment => Some("প্রান্তিককরণ"),
+        TextKey::ShortcutGroupSculpt => Some("ভাস্কর্য"),
+        TextKey::ShortcutGroupHair => Some("চুল"),
         TextKey::ShortcutsExport => Some("কীম্যাপ ফাইলে সংরক্ষণ"),
         TextKey::ShortcutsImport => Some("কীম্যাপ ফাইল লোড করুন"),
         TextKey::ShortcutsTaken => Some("এটি ইতিমধ্যে অন্য কাজে ব্যবহৃত"),
@@ -294,10 +298,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("লগ ফোল্ডার খুলুন"),
         TextKey::AboutReportIssue => Some("সমস্যা জানান"),
-        TextKey::SettingsLightingGroup => Some("আলো"),
         TextKey::SettingsLightingPreset => Some("প্রিসেট"),
         TextKey::SettingsExposure => Some("এক্সপোজার"),
-        TextKey::SettingsGeometryGroup => Some("জিওমেট্রি"),
         TextKey::SettingsSmoothPasses => Some("সারফেস মসৃণতা"),
         TextKey::SettingsSmoothPassesHint => {
             Some("VaM যেভাবে করে, সেভাবেই কেবল প্রদর্শনটা মসৃণ করা হয়। সংরক্ষিত আকার অপরিবর্তিত থাকে।")
@@ -343,7 +345,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "সেই সেশনের লুক এখনো তালিকায় নেই — টেক্সচার পুনরুদ্ধার হয়েছে, লুক নির্বাচন করলে সম্পাদনাগুলি প্রযোজ্য হবে।",
         ),
-        TextKey::SettingsVignetteGroup => Some("ভিনিয়েট"),
         TextKey::SettingsBrushSweepGroup => Some("ব্রাশ আকার জেসচার"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -373,7 +374,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("আলো"),
         TextKey::SettingsGraphicsEffects => Some("ইফেক্ট"),
         TextKey::SettingsGraphicsQuality => Some("মান"),
-        TextKey::SettingsQualityAntialiasing => Some("প্রান্ত মসৃণকরণ"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("নির্বাচিত স্যাম্পল অনুযায়ী ধাপে ধাপে কাটা প্রান্ত মসৃণ করে। বেশি হলে পরিষ্কার, তবে ভারী।")

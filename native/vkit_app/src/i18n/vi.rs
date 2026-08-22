@@ -294,6 +294,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Phím tắt"),
         TextKey::ShortcutsCapturing => Some("Nhấn…"),
         TextKey::ShortcutsResetAll => Some("Đặt lại mọi phím tắt"),
+        TextKey::ShortcutGroupSystem => Some("Hệ thống"),
+        TextKey::ShortcutGroupAlignment => Some("Căn chỉnh"),
+        TextKey::ShortcutGroupSculpt => Some("Điêu khắc"),
+        TextKey::ShortcutGroupHair => Some("Tóc"),
         TextKey::ShortcutsExport => Some("Lưu sơ đồ phím ra tệp"),
         TextKey::ShortcutsImport => Some("Tải tệp sơ đồ phím"),
         TextKey::ShortcutsTaken => Some("Một thao tác khác đã dùng phím này"),
@@ -314,10 +318,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Mở thư mục nhật ký"),
         TextKey::AboutReportIssue => Some("Báo một vấn đề"),
-        TextKey::SettingsLightingGroup => Some("Ánh sáng"),
         TextKey::SettingsLightingPreset => Some("Preset"),
         TextKey::SettingsExposure => Some("Phơi sáng"),
-        TextKey::SettingsGeometryGroup => Some("Hình học"),
         TextKey::SettingsSmoothPasses => Some("Làm mượt bề mặt"),
         TextKey::SettingsSmoothPassesHint => {
             Some("Chỉ làm mượt phần hiển thị, giống cách VaM làm. Hình dạng được lưu không đổi.")
@@ -368,7 +370,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Diện mạo của phiên đó chưa có trong danh sách — kết cấu đã khôi phục, chỉnh sửa sẽ áp dụng khi chọn diện mạo.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsBrushSweepGroup => Some("Thao tác cỡ cọ"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -400,7 +401,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Ánh sáng"),
         TextKey::SettingsGraphicsEffects => Some("Hiệu ứng"),
         TextKey::SettingsGraphicsQuality => Some("Chất lượng"),
-        TextKey::SettingsQualityAntialiasing => Some("Khử răng cưa"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("Làm mượt cạnh răng cưa theo số mẫu đã chọn. Càng cao càng sạch và càng nặng.")

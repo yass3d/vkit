@@ -280,6 +280,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("शॉर्टकट"),
         TextKey::ShortcutsCapturing => Some("दबाएँ…"),
         TextKey::ShortcutsResetAll => Some("सभी शॉर्टकट रीसेट करें"),
+        TextKey::ShortcutGroupSystem => Some("सिस्टम"),
+        TextKey::ShortcutGroupAlignment => Some("संरेखण"),
+        TextKey::ShortcutGroupSculpt => Some("शिल्पन"),
+        TextKey::ShortcutGroupHair => Some("बाल"),
         TextKey::ShortcutsExport => Some("कीमैप फ़ाइल में सहेजें"),
         TextKey::ShortcutsImport => Some("कीमैप फ़ाइल लोड करें"),
         TextKey::ShortcutsTaken => Some("यह पहले से किसी और क्रिया का है"),
@@ -300,10 +304,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("लॉग फ़ोल्डर खोलें"),
         TextKey::AboutReportIssue => Some("समस्या बताएँ"),
-        TextKey::SettingsLightingGroup => Some("रोशनी"),
         TextKey::SettingsLightingPreset => Some("प्रीसेट"),
         TextKey::SettingsExposure => Some("एक्सपोज़र"),
-        TextKey::SettingsGeometryGroup => Some("ज्यामिति"),
         TextKey::SettingsSmoothPasses => Some("सतह स्मूदिंग"),
         TextKey::SettingsSmoothPassesHint => {
             Some("सिर्फ़ प्रदर्शन को स्मूद करता है, जैसे VaM करता है। सहेजा गया आकार नहीं बदलता।")
@@ -349,7 +351,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("उस सत्र का लुक अभी सूची में नहीं है — बनावटें बहाल हो गईं, और लुक चुनते ही संपादन लागू होंगे।")
         }
-        TextKey::SettingsVignetteGroup => Some("विनेट"),
         TextKey::SettingsBrushSweepGroup => Some("ब्रश आकार जेस्चर"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -381,7 +382,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("रोशनी"),
         TextKey::SettingsGraphicsEffects => Some("इफ़ेक्ट"),
         TextKey::SettingsGraphicsQuality => Some("गुणवत्ता"),
-        TextKey::SettingsQualityAntialiasing => Some("एंटीएलियasing"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("चुने गए सैंपल के अनुसार किनारों की सीढ़ियाँ चिकनी करता है। अधिक साफ़, पर भारी।")

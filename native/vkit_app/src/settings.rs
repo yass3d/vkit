@@ -45,26 +45,6 @@ impl SettingsSection {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum GraphicsPage {
-    #[default]
-    Lighting,
-    Effects,
-    Quality,
-}
-
-impl GraphicsPage {
-    const ALL: [Self; 3] = [Self::Lighting, Self::Effects, Self::Quality];
-
-    const fn label(self) -> TextKey {
-        match self {
-            Self::Lighting => TextKey::SettingsGraphicsLighting,
-            Self::Effects => TextKey::SettingsGraphicsEffects,
-            Self::Quality => TextKey::SettingsGraphicsQuality,
-        }
-    }
-}
-
 const PAGE_MAX_WIDTH: f32 = 760.0;
 const PAGE_MAX_HEIGHT: f32 = 560.0;
 
@@ -154,10 +134,17 @@ fn draw_section_column(ui: &mut Ui, locale: Locale, rect: Rect, section: &mut Se
     }
 }
 
+/// How much room the settings content keeps down each side.
+///
+/// Wider than the vertical margin on purpose: a row is a label on the left and
+/// a control on the right, and with the pane's own edge close to both of them
+/// the row reads as though it is falling off.
+const PANE_SIDE_MARGIN: f32 = 24.0;
+
 fn draw_section_pane(ui: &mut Ui, state: &mut AppState, rect: Rect, section: SettingsSection) {
     let mut pane = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(rect.shrink(SPACE_4))
+            .max_rect(rect.shrink2(vec2(PANE_SIDE_MARGIN, SPACE_4)))
             .layout(Layout::top_down(Align::Min)),
     );
     pane.spacing_mut().item_spacing.y = SPACE_2;
@@ -259,38 +246,18 @@ fn group_heading(ui: &mut Ui, locale: Locale, key: TextKey) {
     ui.add_space(SPACE_2);
 }
 
+/// Quality, then effects, then lighting, down one page.
+///
+/// They were three segments of a picker, which asked the reader to remember
+/// which of three places a setting was in before they could look for it. There
+/// are eleven controls between them; a picker is for pages that do not fit
+/// beside each other, and these do.
 fn draw_graphics_settings(ui: &mut Ui, state: &mut AppState) {
-    let locale = state.locale;
-    let mut page = state.settings_graphics_page;
-    crate::ui_components::animated_segmented_group(
-        ui,
-        "vkit.settings.graphics-page",
-        GraphicsPage::ALL.len(),
-        GraphicsPage::ALL
-            .iter()
-            .position(|candidate| *candidate == page)
-            .unwrap_or(0),
-        |ui, segment_width| {
-            for candidate in GraphicsPage::ALL {
-                if crate::ui_components::segment_button(
-                    ui,
-                    segment_width,
-                    text(locale, candidate.label()),
-                    candidate == page,
-                )
-                .clicked()
-                {
-                    page = candidate;
-                }
-            }
-        },
-    );
-    state.settings_graphics_page = page;
-    match page {
-        GraphicsPage::Lighting => draw_lighting_settings(ui, state),
-        GraphicsPage::Effects => draw_effect_settings(ui, state),
-        GraphicsPage::Quality => draw_quality_settings(ui, state),
-    }
+    draw_quality_settings(ui, state);
+    ui.add_space(SPACE_4);
+    draw_effect_settings(ui, state);
+    ui.add_space(SPACE_4);
+    draw_lighting_settings(ui, state);
 }
 
 fn msaa_label(samples: u32) -> String {
@@ -303,7 +270,29 @@ fn msaa_label(samples: u32) -> String {
 
 fn draw_quality_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
-    group_heading(ui, locale, TextKey::SettingsQualityAntialiasing);
+
+    // Smoothing passes decide how the surface is shaded, which is the same
+    // question antialiasing asks about its edges. It sat under the viewport,
+    // beside the background colour.
+    group_heading(ui, locale, TextKey::SettingsGraphicsQuality);
+    let mut passes = f32::from(state.surface_smooth_passes);
+    let changed = setting_row(
+        ui,
+        locale,
+        TextKey::SettingsSmoothPasses,
+        Some(TextKey::SettingsSmoothPassesHint),
+        |ui| {
+            ui.add(
+                FilledNumericSlider::new(&mut passes, 0.0..=4.0)
+                    .decimals(0)
+                    .min_width(CONTROL_COLUMN_WIDTH),
+            )
+            .changed()
+        },
+    );
+    if changed {
+        state.dispatch(Action::SetSurfaceSmoothPasses(passes.round() as u8));
+    }
 
     let mut wanted = state.msaa_samples;
     let offered = crate::renderer::supported_msaa_samples();
@@ -331,7 +320,7 @@ fn draw_quality_settings(ui: &mut Ui, state: &mut AppState) {
 fn draw_lighting_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
 
-    group_heading(ui, locale, TextKey::SettingsLightingGroup);
+    group_heading(ui, locale, TextKey::SettingsGraphicsLighting);
     let mut preset = state.lighting_preset;
     setting_row(ui, locale, TextKey::SettingsLightingPreset, None, |ui| {
         egui::ComboBox::from_id_salt("vkit.settings.lighting")
@@ -393,7 +382,7 @@ fn draw_lighting_settings(ui: &mut Ui, state: &mut AppState) {
 fn draw_effect_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
 
-    group_heading(ui, locale, TextKey::SettingsVignetteGroup);
+    group_heading(ui, locale, TextKey::SettingsGraphicsEffects);
     let mut vignette = state.vignette;
     let mut changed = effect_switch(
         ui,
@@ -439,26 +428,6 @@ fn draw_effect_settings(ui: &mut Ui, state: &mut AppState) {
 
 fn draw_viewport_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
-
-    group_heading(ui, locale, TextKey::SettingsGeometryGroup);
-    let mut passes = f32::from(state.surface_smooth_passes);
-    let changed = setting_row(
-        ui,
-        locale,
-        TextKey::SettingsSmoothPasses,
-        Some(TextKey::SettingsSmoothPassesHint),
-        |ui| {
-            ui.add(
-                FilledNumericSlider::new(&mut passes, 0.0..=4.0)
-                    .decimals(0)
-                    .min_width(CONTROL_COLUMN_WIDTH),
-            )
-            .changed()
-        },
-    );
-    if changed {
-        state.dispatch(Action::SetSurfaceSmoothPasses(passes.round() as u8));
-    }
 
     group_heading(ui, locale, TextKey::SettingsBackgroundGroup);
     let mut background = state.viewport_background_mode;
@@ -1171,6 +1140,85 @@ fn captured_binding(ui: &Ui) -> Option<Binding> {
     })
 }
 
+/// Which group of the shortcut list a binding belongs to.
+///
+/// The contexts already exist — the keymap uses them to decide which bindings
+/// can share a key — so the list is grouped by the same answer rather than by a
+/// second opinion about where a shortcut belongs.
+const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey {
+    match context {
+        crate::shortcuts::ShortcutContext::Global => TextKey::ShortcutGroupSystem,
+        crate::shortcuts::ShortcutContext::Alignment => TextKey::ShortcutGroupAlignment,
+        crate::shortcuts::ShortcutContext::DetailEdit => TextKey::ShortcutGroupSculpt,
+        crate::shortcuts::ShortcutContext::HairEdit => TextKey::ShortcutGroupHair,
+    }
+}
+
+/// System first because it is true everywhere, then the three places a binding
+/// only means something in.
+const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 4] = [
+    crate::shortcuts::ShortcutContext::Global,
+    crate::shortcuts::ShortcutContext::Alignment,
+    crate::shortcuts::ShortcutContext::DetailEdit,
+    crate::shortcuts::ShortcutContext::HairEdit,
+];
+
+/// Reset, save and load, as icons at the top right.
+///
+/// They act on the whole keymap rather than on any one binding, so they belong
+/// above the list rather than after the last row of it, where they read as
+/// though they belonged to whatever binding happened to be last.
+fn draw_keymap_actions(ui: &mut Ui, state: &mut AppState) {
+    let locale = state.locale;
+    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        if crate::ui_components::icon_button(
+            ui,
+            crate::ui_components::Icon::Folder,
+            text(locale, TextKey::ShortcutsImport),
+        )
+        .clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .pick_file()
+            && let Ok(body) = std::fs::read_to_string(path)
+            && let Ok(stored) =
+                serde_json::from_str::<std::collections::BTreeMap<String, String>>(&body)
+        {
+            let loaded = crate::shortcuts::Keymap::from_stored(&stored);
+            for shortcut in Shortcut::ALL {
+                state.dispatch(Action::RebindShortcut(shortcut, loaded.binding(shortcut)));
+            }
+        }
+        if crate::ui_components::icon_button(
+            ui,
+            crate::ui_components::Icon::Save,
+            text(locale, TextKey::ShortcutsExport),
+        )
+        .clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .set_file_name("vkit-keymap.json")
+                .save_file()
+            && let Err(detail) = export_keymap(&path, &state.keymap)
+        {
+            state.status = crate::state::StatusMessage::with_detail(
+                TextKey::ExportFailed,
+                crate::state::StatusTone::Error,
+                detail,
+            );
+        }
+        if crate::ui_components::icon_button(
+            ui,
+            crate::ui_components::Icon::Refresh,
+            text(locale, TextKey::ShortcutsResetAll),
+        )
+        .clicked()
+        {
+            state.dispatch(Action::ResetKeymap);
+        }
+    });
+}
+
 fn draw_shortcut_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
     let armed = capturing(ui);
@@ -1191,69 +1239,40 @@ fn draw_shortcut_settings(ui: &mut Ui, state: &mut AppState) {
         }
     }
 
-    for shortcut in Shortcut::ALL {
-        let binding = state.keymap.binding(shortcut);
-        let waiting = capturing(ui) == Some(shortcut);
-        setting_row(ui, locale, shortcut_label(shortcut), None, |ui| {
-            if !state.keymap.is_default(shortcut)
-                && ui
-                    .add(egui::Button::new(text(locale, TextKey::Reset)).small())
-                    .clicked()
-            {
-                state.dispatch(Action::RebindShortcut(shortcut, shortcut.default_binding()));
+    draw_keymap_actions(ui, state);
+
+    for context in SHORTCUT_GROUPS {
+        let mut named = false;
+        for shortcut in Shortcut::ALL {
+            if shortcut.context() != context {
+                continue;
             }
-            let caption = if waiting {
-                text(locale, TextKey::ShortcutsCapturing).to_owned()
-            } else {
-                binding.label()
-            };
-            if ui.add(egui::Button::new(caption)).clicked() {
-                ui.data_mut(|data| data.insert_temp(Id::new(CAPTURE_ID), shortcut));
+            if !named {
+                group_heading(ui, locale, context_heading(context));
+                named = true;
             }
-        });
+            let binding = state.keymap.binding(shortcut);
+            let waiting = capturing(ui) == Some(shortcut);
+            setting_row(ui, locale, shortcut_label(shortcut), None, |ui| {
+                if !state.keymap.is_default(shortcut)
+                    && ui
+                        .add(egui::Button::new(text(locale, TextKey::Reset)).small())
+                        .clicked()
+                {
+                    state.dispatch(Action::RebindShortcut(shortcut, shortcut.default_binding()));
+                }
+                let caption = if waiting {
+                    text(locale, TextKey::ShortcutsCapturing).to_owned()
+                } else {
+                    binding.label()
+                };
+                if ui.add(egui::Button::new(caption)).clicked() {
+                    ui.data_mut(|data| data.insert_temp(Id::new(CAPTURE_ID), shortcut));
+                }
+            });
+        }
     }
-
-    ui.add_space(SPACE_3);
-    ui.horizontal(|ui| {
-        if ui
-            .add(egui::Button::new(text(locale, TextKey::ShortcutsResetAll)))
-            .clicked()
-        {
-            state.dispatch(Action::ResetKeymap);
-        }
-        if ui
-            .add(egui::Button::new(text(locale, TextKey::ShortcutsExport)))
-            .clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("JSON", &["json"])
-                .set_file_name("vkit-keymap.json")
-                .save_file()
-            && let Err(detail) = export_keymap(&path, &state.keymap)
-        {
-            state.status = crate::state::StatusMessage::with_detail(
-                TextKey::ExportFailed,
-                crate::state::StatusTone::Error,
-                detail,
-            );
-        }
-        if ui
-            .add(egui::Button::new(text(locale, TextKey::ShortcutsImport)))
-            .clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("JSON", &["json"])
-                .pick_file()
-            && let Ok(body) = std::fs::read_to_string(path)
-            && let Ok(stored) =
-                serde_json::from_str::<std::collections::BTreeMap<String, String>>(&body)
-        {
-            let loaded = crate::shortcuts::Keymap::from_stored(&stored);
-            for shortcut in Shortcut::ALL {
-                state.dispatch(Action::RebindShortcut(shortcut, loaded.binding(shortcut)));
-            }
-        }
-    });
 }
-
 fn export_keymap(path: &std::path::Path, keymap: &crate::shortcuts::Keymap) -> Result<(), String> {
     let body = serde_json::to_string_pretty(&keymap.to_stored())
         .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -1308,13 +1327,19 @@ mod tests {
         }
     }
 
+    /// The graphics page is three sections down one page, in the order they are
+    /// reached for. Each is a heading, and a heading with no name is a gap.
     #[test]
-    fn every_graphics_page_is_named_in_every_language() {
-        for page in GraphicsPage::ALL {
+    fn every_graphics_section_is_named_in_every_language() {
+        for key in [
+            TextKey::SettingsGraphicsQuality,
+            TextKey::SettingsGraphicsEffects,
+            TextKey::SettingsGraphicsLighting,
+        ] {
             for locale in Locale::ALL {
                 assert!(
-                    !text(locale, page.label()).trim().is_empty(),
-                    "{page:?} has no name in {locale:?}"
+                    !text(locale, key).trim().is_empty(),
+                    "{key:?} has no name in {locale:?}"
                 );
             }
         }
@@ -1352,7 +1377,7 @@ mod tests {
     fn an_effect_switch_never_repeats_its_own_heading() {
         for locale in Locale::ALL {
             let enabled = text(locale, TextKey::SettingsEffectEnabled);
-            let heading = TextKey::SettingsVignetteGroup;
+            let heading = TextKey::SettingsGraphicsEffects;
             assert_ne!(enabled, text(locale, heading), "{heading:?} in {locale:?}");
         }
     }
@@ -1436,5 +1461,45 @@ mod tests {
         let mut seen = SettingsSection::ALL.to_vec();
         seen.dedup();
         assert_eq!(seen.len(), SettingsSection::ALL.len());
+    }
+}
+
+#[cfg(test)]
+mod shortcut_group_tests {
+    use super::*;
+
+    /// Every binding lands in exactly one group, and every group is named.
+    /// A shortcut whose context has no heading would simply not be listed.
+    #[test]
+    fn every_shortcut_falls_into_a_named_group() {
+        for shortcut in Shortcut::ALL {
+            let context = shortcut.context();
+            assert!(
+                SHORTCUT_GROUPS.contains(&context),
+                "{shortcut:?} is in {context:?}, which the list does not show",
+            );
+            for locale in Locale::ALL {
+                assert!(
+                    !text(locale, context_heading(context)).trim().is_empty(),
+                    "{context:?} has no name in {locale:?}",
+                );
+            }
+        }
+    }
+
+    /// The groups are the keymap's own contexts, so a binding cannot be filed
+    /// in one place and share a key according to another.
+    #[test]
+    fn the_groups_are_the_contexts_the_keymap_already_uses() {
+        let mut seen = Vec::new();
+        for context in SHORTCUT_GROUPS {
+            assert!(!seen.contains(&context), "{context:?} is listed twice");
+            seen.push(context);
+        }
+        assert_eq!(
+            seen.len(),
+            4,
+            "a context with no group would drop its bindings off the page",
+        );
     }
 }

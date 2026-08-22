@@ -298,6 +298,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Pintasan"),
         TextKey::ShortcutsCapturing => Some("Tekan…"),
         TextKey::ShortcutsResetAll => Some("Setel ulang semua pintasan"),
+        TextKey::ShortcutGroupSystem => Some("Sistem"),
+        TextKey::ShortcutGroupAlignment => Some("Perataan"),
+        TextKey::ShortcutGroupSculpt => Some("Pahat"),
+        TextKey::ShortcutGroupHair => Some("Rambut"),
         TextKey::ShortcutsExport => Some("Simpan peta tombol ke berkas"),
         TextKey::ShortcutsImport => Some("Muat berkas peta tombol"),
         TextKey::ShortcutsTaken => Some("Tindakan lain sudah memakainya"),
@@ -318,10 +322,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Buka folder log"),
         TextKey::AboutReportIssue => Some("Laporkan masalah"),
-        TextKey::SettingsLightingGroup => Some("Pencahayaan"),
         TextKey::SettingsLightingPreset => Some("Preset"),
         TextKey::SettingsExposure => Some("Eksposur"),
-        TextKey::SettingsGeometryGroup => Some("Geometri"),
         TextKey::SettingsSmoothPasses => Some("Penghalusan permukaan"),
         TextKey::SettingsSmoothPassesHint => Some(
             "Hanya menghaluskan tampilan, seperti yang dilakukan VaM. Bentuk yang disimpan tidak berubah.",
@@ -376,7 +378,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Look sesi itu belum terdaftar — tekstur dipulihkan, dan suntingan akan diterapkan saat look dipilih.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsBrushSweepGroup => Some("Gestur ukuran kuas"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -408,7 +409,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Pencahayaan"),
         TextKey::SettingsGraphicsEffects => Some("Efek"),
         TextKey::SettingsGraphicsQuality => Some("Kualitas"),
-        TextKey::SettingsQualityAntialiasing => Some("Antialias"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some(
             "Menghaluskan tepi bergerigi sesuai jumlah sampel yang dipilih. Makin tinggi makin bersih dan berat.",

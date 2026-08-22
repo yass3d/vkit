@@ -310,6 +310,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Raccourcis"),
         TextKey::ShortcutsCapturing => Some("Appuyez…"),
         TextKey::ShortcutsResetAll => Some("Réinitialiser tous les raccourcis"),
+        TextKey::ShortcutGroupSystem => Some("Système"),
+        TextKey::ShortcutGroupAlignment => Some("Alignement"),
+        TextKey::ShortcutGroupSculpt => Some("Sculpture"),
+        TextKey::ShortcutGroupHair => Some("Cheveux"),
         TextKey::ShortcutsExport => Some("Enregistrer le mappage dans un fichier"),
         TextKey::ShortcutsImport => Some("Charger un fichier de mappage"),
         TextKey::ShortcutsTaken => Some("Une autre action y répond déjà"),
@@ -332,10 +336,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Ouvrir le dossier des journaux"),
         TextKey::AboutReportIssue => Some("Signaler un problème"),
-        TextKey::SettingsLightingGroup => Some("Éclairage"),
         TextKey::SettingsLightingPreset => Some("Préréglage"),
         TextKey::SettingsExposure => Some("Exposition"),
-        TextKey::SettingsGeometryGroup => Some("Géométrie"),
         TextKey::SettingsSmoothPasses => Some("Lissage de surface"),
         TextKey::SettingsSmoothPassesHint => Some(
             "Lisse uniquement l'affichage, comme le fait VaM. La forme enregistrée est inchangée.",
@@ -386,7 +388,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Le look de cette session n'est pas encore listé — les textures sont restaurées et les modifications s'appliqueront à sa sélection.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Vignettage"),
         TextKey::SettingsBrushSweepGroup => Some("Geste de taille du pinceau"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -418,7 +419,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Éclairage"),
         TextKey::SettingsGraphicsEffects => Some("Effets"),
         TextKey::SettingsGraphicsQuality => Some("Qualité"),
-        TextKey::SettingsQualityAntialiasing => Some("Anticrénelage"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some(
             "Lisse les bords en escalier selon le nombre d'échantillons choisi. Plus haut est plus net et plus coûteux.",

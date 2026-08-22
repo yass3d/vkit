@@ -9,6 +9,7 @@ pub enum Icon {
     Refresh,
     UpdateAvailable,
     Folder,
+    Save,
     Camera,
 
     HeadTexture,
@@ -99,7 +100,7 @@ pub enum Icon {
 
 impl Icon {
     #[cfg(test)]
-    pub const ALL: [Self; 60] = [
+    pub const ALL: [Self; 61] = [
         Self::Copy,
         Self::Paste,
         Self::Plus,
@@ -114,6 +115,7 @@ impl Icon {
         Self::SplitRows,
         Self::Refresh,
         Self::Folder,
+        Self::Save,
         Self::Camera,
         Self::HeadTexture,
         Self::EyeOpen,
@@ -277,6 +279,7 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::Refresh => include_str!("../../resources/icons/refresh-cw.svg"),
         Icon::UpdateAvailable => include_str!("../../resources/icons/circle-arrow-up.svg"),
         Icon::Folder => include_str!("../../resources/icons/folder.svg"),
+        Icon::Save => include_str!("../../resources/icons/save.svg"),
         Icon::Camera => include_str!("../../resources/icons/camera.svg"),
         Icon::HeadTexture => include_str!("../../resources/icons/scan-face.svg"),
         Icon::EyeOpen => include_str!("../../resources/icons/eye.svg"),
@@ -454,6 +457,7 @@ mod tests {
                 Icon::Refresh => {}
                 Icon::UpdateAvailable => {}
                 Icon::Folder => {}
+                Icon::Save => {}
                 Icon::Camera => {}
                 Icon::HeadTexture => {}
                 Icon::EyeOpen => {}
@@ -524,7 +528,7 @@ mod tests {
         let count = seen.len();
         seen.dedup();
         assert_eq!(seen.len(), count, "an icon is listed twice");
-        assert_eq!(count, 60, "the enum has 60 icons");
+        assert_eq!(count, 61, "the enum has 61 icons");
     }
 
     #[test]
@@ -588,7 +592,7 @@ mod tests {
             }
         }
 
-        assert_eq!(from_svg, 51);
+        assert_eq!(from_svg, 52);
         assert_eq!(drawn, 9);
     }
 

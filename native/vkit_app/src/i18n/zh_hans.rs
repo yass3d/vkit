@@ -270,6 +270,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("快捷键"),
         TextKey::ShortcutsCapturing => Some("请按键…"),
         TextKey::ShortcutsResetAll => Some("重置所有快捷键"),
+        TextKey::ShortcutGroupSystem => Some("系统"),
+        TextKey::ShortcutGroupAlignment => Some("对齐"),
+        TextKey::ShortcutGroupSculpt => Some("造型"),
+        TextKey::ShortcutGroupHair => Some("头发"),
         TextKey::ShortcutsExport => Some("将键位保存为文件"),
         TextKey::ShortcutsImport => Some("载入键位文件"),
         TextKey::ShortcutsTaken => Some("该按键已被其他操作占用"),
@@ -290,10 +294,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("打开日志文件夹"),
         TextKey::AboutReportIssue => Some("反馈问题"),
-        TextKey::SettingsLightingGroup => Some("灯光"),
         TextKey::SettingsLightingPreset => Some("预设"),
         TextKey::SettingsExposure => Some("曝光"),
-        TextKey::SettingsGeometryGroup => Some("几何体"),
         TextKey::SettingsSmoothPasses => Some("表面平滑"),
         TextKey::SettingsSmoothPassesHint => {
             Some("仅平滑显示效果，与 VaM 的做法一致。保存的形状不受影响。")
@@ -337,7 +339,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("该会话的外观尚未在列表中 — 纹理已恢复,编辑将在选择该外观后应用。")
         }
-        TextKey::SettingsVignetteGroup => Some("暗角"),
         TextKey::SettingsBrushSweepGroup => Some("笔刷大小手势"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -367,7 +368,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("灯光"),
         TextKey::SettingsGraphicsEffects => Some("效果"),
         TextKey::SettingsGraphicsQuality => Some("质量"),
-        TextKey::SettingsQualityAntialiasing => Some("抗锯齿"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("按所选采样数平滑边缘锯齿。数值越高越干净，也越耗资源。")

@@ -280,6 +280,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsShortcuts => "단축키",
         TextKey::ShortcutsCapturing => "누르세요…",
         TextKey::ShortcutsResetAll => "모든 단축키 초기화",
+        TextKey::ShortcutGroupSystem => "시스템",
+        TextKey::ShortcutGroupAlignment => "정렬",
+        TextKey::ShortcutGroupSculpt => "조형",
+        TextKey::ShortcutGroupHair => "헤어",
         TextKey::ShortcutsExport => "키맵 파일로 저장",
         TextKey::ShortcutsImport => "키맵 파일 불러오기",
         TextKey::ShortcutsTaken => "이미 다른 기능이 쓰는 키입니다",
@@ -300,10 +304,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::AboutOpenLogs => "로그 폴더 열기",
         TextKey::AboutReportIssue => "문제 신고",
-        TextKey::SettingsLightingGroup => "조명",
         TextKey::SettingsLightingPreset => "조명 프리셋",
         TextKey::SettingsExposure => "밝기",
-        TextKey::SettingsGeometryGroup => "지오메트리",
         TextKey::SettingsSmoothPasses => "표면 스무딩",
         TextKey::SettingsSmoothPassesHint => {
             "VaM과 같은 방식으로 표시할 때만 부드럽게 합니다. 저장되는 형태는 그대로입니다."
@@ -352,7 +354,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::RecoveryLookMissing => {
             "그 세션의 외형이 아직 목록에 없습니다 — 텍스처는 복원됐고, 편집 내용은 외형을 선택하면 적용됩니다."
         }
-        TextKey::SettingsVignetteGroup => "비네트",
         TextKey::SettingsBrushSweepGroup => "브러시 크기 제스처",
         TextKey::BrushSweepBlender => "블렌더",
         TextKey::BrushSweepZBrush => "지브러시",
@@ -384,7 +385,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SettingsGraphicsLighting => "조명",
         TextKey::SettingsGraphicsEffects => "효과",
         TextKey::SettingsGraphicsQuality => "품질",
-        TextKey::SettingsQualityAntialiasing => "안티에일리어싱",
         TextKey::SettingsMsaa => "MSAA",
         TextKey::SettingsMsaaTooltip => {
             "가장자리 계단을 샘플 수만큼 부드럽게 한다. 높을수록 선명하고 무겁다."

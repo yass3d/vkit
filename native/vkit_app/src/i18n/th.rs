@@ -268,6 +268,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("ทางลัด"),
         TextKey::ShortcutsCapturing => Some("กดปุ่ม…"),
         TextKey::ShortcutsResetAll => Some("รีเซ็ตทางลัดทั้งหมด"),
+        TextKey::ShortcutGroupSystem => Some("ระบบ"),
+        TextKey::ShortcutGroupAlignment => Some("การจัดตำแหน่ง"),
+        TextKey::ShortcutGroupSculpt => Some("การปั้น"),
+        TextKey::ShortcutGroupHair => Some("ผม"),
         TextKey::ShortcutsExport => Some("บันทึกผังปุ่มเป็นไฟล์"),
         TextKey::ShortcutsImport => Some("โหลดไฟล์ผังปุ่ม"),
         TextKey::ShortcutsTaken => Some("มีคำสั่งอื่นใช้ปุ่มนี้แล้ว"),
@@ -288,10 +292,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("เปิดโฟลเดอร์บันทึก"),
         TextKey::AboutReportIssue => Some("รายงานปัญหา"),
-        TextKey::SettingsLightingGroup => Some("แสง"),
         TextKey::SettingsLightingPreset => Some("พรีเซ็ต"),
         TextKey::SettingsExposure => Some("ค่าแสง"),
-        TextKey::SettingsGeometryGroup => Some("จีออเมทรี"),
         TextKey::SettingsSmoothPasses => Some("การปรับเรียบพื้นผิว"),
         TextKey::SettingsSmoothPassesHint => {
             Some("ปรับเรียบเฉพาะการแสดงผลแบบเดียวกับที่ VaM ทำ รูปทรงที่บันทึกไว้ไม่เปลี่ยน")
@@ -337,7 +339,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("ลุคของเซสชันนั้นยังไม่อยู่ในรายการ — พื้นผิวถูกกู้คืนแล้ว และการแก้ไขจะมีผลเมื่อเลือกลุคนั้น")
         }
-        TextKey::SettingsVignetteGroup => Some("วิกเน็ตต์"),
         TextKey::SettingsBrushSweepGroup => Some("ท่าทางขนาดแปรง"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -367,7 +368,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("แสง"),
         TextKey::SettingsGraphicsEffects => Some("เอฟเฟกต์"),
         TextKey::SettingsGraphicsQuality => Some("คุณภาพ"),
-        TextKey::SettingsQualityAntialiasing => Some("ลบรอยหยัก"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some("ลดรอยหยักที่ขอบตามจำนวนตัวอย่างที่เลือก คมขึ้นแต่หนักขึ้น"),
         TextKey::SoloViewHint => Some("แสดงเฉพาะส่วนนี้"),

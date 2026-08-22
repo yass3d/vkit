@@ -295,6 +295,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("ショートカット"),
         TextKey::ShortcutsCapturing => Some("押してください…"),
         TextKey::ShortcutsResetAll => Some("すべてのショートカットをリセット"),
+        TextKey::ShortcutGroupSystem => Some("システム"),
+        TextKey::ShortcutGroupAlignment => Some("位置合わせ"),
+        TextKey::ShortcutGroupSculpt => Some("造形"),
+        TextKey::ShortcutGroupHair => Some("ヘア"),
         TextKey::ShortcutsExport => Some("キーマップをファイルに保存"),
         TextKey::ShortcutsImport => Some("キーマップファイルを読み込む"),
         TextKey::ShortcutsTaken => Some("他の操作が既に使っています"),
@@ -315,10 +319,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("ログフォルダーを開く"),
         TextKey::AboutReportIssue => Some("不具合を報告"),
-        TextKey::SettingsLightingGroup => Some("ライティング"),
         TextKey::SettingsLightingPreset => Some("プリセット"),
         TextKey::SettingsExposure => Some("明るさ"),
-        TextKey::SettingsGeometryGroup => Some("ジオメトリ"),
         TextKey::SettingsSmoothPasses => Some("サーフェススムージング"),
         TextKey::SettingsSmoothPassesHint => {
             Some("表示のみをVaMと同じ方式でなめらかにします。保存される形状は変わりません。")
@@ -369,7 +371,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "そのセッションの外見はまだ一覧にありません — テクスチャは復元済みで、編集内容は外見を選ぶと適用されます。",
         ),
-        TextKey::SettingsVignetteGroup => Some("ビネット"),
         TextKey::SettingsBrushSweepGroup => Some("ブラシサイズ操作"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -401,7 +402,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("ライティング"),
         TextKey::SettingsGraphicsEffects => Some("エフェクト"),
         TextKey::SettingsGraphicsQuality => Some("品質"),
-        TextKey::SettingsQualityAntialiasing => Some("アンチエイリアス"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("サンプル数の分だけ輪郭のギザギザをならす。高いほど滑らかで重い。")

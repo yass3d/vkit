@@ -324,6 +324,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Tastenkürzel"),
         TextKey::ShortcutsCapturing => Some("Drücken…"),
         TextKey::ShortcutsResetAll => Some("Alle Tastenkürzel zurücksetzen"),
+        TextKey::ShortcutGroupSystem => Some("System"),
+        TextKey::ShortcutGroupAlignment => Some("Ausrichtung"),
+        TextKey::ShortcutGroupSculpt => Some("Modellierung"),
+        TextKey::ShortcutGroupHair => Some("Haar"),
         TextKey::ShortcutsExport => Some("Belegung als Datei speichern"),
         TextKey::ShortcutsImport => Some("Belegungsdatei laden"),
         TextKey::ShortcutsTaken => Some("Eine andere Aktion hört darauf"),
@@ -344,10 +348,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Protokollordner öffnen"),
         TextKey::AboutReportIssue => Some("Problem melden"),
-        TextKey::SettingsLightingGroup => Some("Beleuchtung"),
         TextKey::SettingsLightingPreset => Some("Preset"),
         TextKey::SettingsExposure => Some("Belichtung"),
-        TextKey::SettingsGeometryGroup => Some("Geometrie"),
         TextKey::SettingsSmoothPasses => Some("Oberflächenglättung"),
         TextKey::SettingsSmoothPassesHint => Some(
             "Glättet nur die Anzeige, so wie VaM es tut. Die gespeicherte Form bleibt unverändert.",
@@ -398,7 +400,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Der Look dieser Sitzung ist noch nicht gelistet — Texturen wurden wiederhergestellt; die Änderungen greifen, sobald der Look gewählt wird.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Vignette"),
         TextKey::SettingsBrushSweepGroup => Some("Pinselgrößen-Geste"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -430,7 +431,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Beleuchtung"),
         TextKey::SettingsGraphicsEffects => Some("Effekte"),
         TextKey::SettingsGraphicsQuality => Some("Qualität"),
-        TextKey::SettingsQualityAntialiasing => Some("Kantenglättung"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some(
             "Glättet Treppenkanten mit der gewählten Sample-Zahl. Höher ist sauberer und teurer.",

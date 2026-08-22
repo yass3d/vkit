@@ -270,6 +270,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("快速鍵"),
         TextKey::ShortcutsCapturing => Some("請按鍵…"),
         TextKey::ShortcutsResetAll => Some("重設所有快速鍵"),
+        TextKey::ShortcutGroupSystem => Some("系統"),
+        TextKey::ShortcutGroupAlignment => Some("對齊"),
+        TextKey::ShortcutGroupSculpt => Some("造型"),
+        TextKey::ShortcutGroupHair => Some("頭髮"),
         TextKey::ShortcutsExport => Some("將鍵位儲存為檔案"),
         TextKey::ShortcutsImport => Some("載入鍵位檔案"),
         TextKey::ShortcutsTaken => Some("該按鍵已被其他操作佔用"),
@@ -290,10 +294,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("開啟記錄檔資料夾"),
         TextKey::AboutReportIssue => Some("回報問題"),
-        TextKey::SettingsLightingGroup => Some("燈光"),
         TextKey::SettingsLightingPreset => Some("預設"),
         TextKey::SettingsExposure => Some("曝光度"),
-        TextKey::SettingsGeometryGroup => Some("幾何"),
         TextKey::SettingsSmoothPasses => Some("表面平滑"),
         TextKey::SettingsSmoothPassesHint => {
             Some("只平滑顯示效果，做法與 VaM 相同。儲存的形狀不會改變。")
@@ -340,7 +342,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => {
             Some("該工作階段的外觀尚未在清單中 — 紋理已還原,編輯將在選擇該外觀後套用。")
         }
-        TextKey::SettingsVignetteGroup => Some("暈影"),
         TextKey::SettingsBrushSweepGroup => Some("筆刷大小手勢"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -370,7 +371,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("燈光"),
         TextKey::SettingsGraphicsEffects => Some("效果"),
         TextKey::SettingsGraphicsQuality => Some("品質"),
-        TextKey::SettingsQualityAntialiasing => Some("抗鋸齒"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("依所選取樣數平滑邊緣鋸齒。數值越高越乾淨，也越耗資源。")

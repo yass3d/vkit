@@ -302,6 +302,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Горячие клавиши"),
         TextKey::ShortcutsCapturing => Some("Нажмите…"),
         TextKey::ShortcutsResetAll => Some("Сбросить все сочетания"),
+        TextKey::ShortcutGroupSystem => Some("Система"),
+        TextKey::ShortcutGroupAlignment => Some("Выравнивание"),
+        TextKey::ShortcutGroupSculpt => Some("Лепка"),
+        TextKey::ShortcutGroupHair => Some("Волосы"),
         TextKey::ShortcutsExport => Some("Сохранить раскладку в файл"),
         TextKey::ShortcutsImport => Some("Загрузить файл раскладки"),
         TextKey::ShortcutsTaken => Some("Это сочетание уже занято"),
@@ -324,10 +328,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Открыть папку журналов"),
         TextKey::AboutReportIssue => Some("Сообщить о проблеме"),
-        TextKey::SettingsLightingGroup => Some("Освещение"),
         TextKey::SettingsLightingPreset => Some("Пресет"),
         TextKey::SettingsExposure => Some("Экспозиция"),
-        TextKey::SettingsGeometryGroup => Some("Геометрия"),
         TextKey::SettingsSmoothPasses => Some("Сглаживание поверхности"),
         TextKey::SettingsSmoothPassesHint => Some(
             "Сглаживает только отображение, как это делает VaM. Сохраняемая форма не меняется.",
@@ -378,7 +380,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "Образ той сессии ещё не в списке — текстуры восстановлены, правки применятся при его выборе.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Виньетка"),
         TextKey::SettingsBrushSweepGroup => Some("Жест размера кисти"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -410,7 +411,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Освещение"),
         TextKey::SettingsGraphicsEffects => Some("Эффекты"),
         TextKey::SettingsGraphicsQuality => Some("Качество"),
-        TextKey::SettingsQualityAntialiasing => Some("Сглаживание"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => {
             Some("Сглаживает ступенчатые края по выбранному числу выборок. Выше — чище и дороже.")

@@ -314,6 +314,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsShortcuts => Some("Atajos"),
         TextKey::ShortcutsCapturing => Some("Pulsa…"),
         TextKey::ShortcutsResetAll => Some("Restablecer todos los atajos"),
+        TextKey::ShortcutGroupSystem => Some("Sistema"),
+        TextKey::ShortcutGroupAlignment => Some("Alineación"),
+        TextKey::ShortcutGroupSculpt => Some("Escultura"),
+        TextKey::ShortcutGroupHair => Some("Cabello"),
         TextKey::ShortcutsExport => Some("Guardar el mapa en un archivo"),
         TextKey::ShortcutsImport => Some("Cargar un archivo de mapa"),
         TextKey::ShortcutsTaken => Some("Otra acción ya responde a eso"),
@@ -338,10 +342,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::AboutOpenLogs => Some("Abrir la carpeta de registros"),
         TextKey::AboutReportIssue => Some("Informar de un problema"),
-        TextKey::SettingsLightingGroup => Some("Iluminación"),
         TextKey::SettingsLightingPreset => Some("Preajuste"),
         TextKey::SettingsExposure => Some("Exposición"),
-        TextKey::SettingsGeometryGroup => Some("Geometría"),
         TextKey::SettingsSmoothPasses => Some("Suavizado de superficie"),
         TextKey::SettingsSmoothPassesHint => {
             Some("Solo suaviza la visualización, igual que VaM. La forma guardada no cambia.")
@@ -392,7 +394,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::RecoveryLookMissing => Some(
             "El look de esa sesión aún no está en la lista — las texturas se restauraron y las ediciones se aplicarán al seleccionarlo.",
         ),
-        TextKey::SettingsVignetteGroup => Some("Viñeta"),
         TextKey::SettingsBrushSweepGroup => Some("Gesto de tamaño de pincel"),
         TextKey::BrushSweepBlender => Some("Blender"),
         TextKey::BrushSweepZBrush => Some("ZBrush"),
@@ -424,7 +425,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SettingsGraphicsLighting => Some("Iluminación"),
         TextKey::SettingsGraphicsEffects => Some("Efectos"),
         TextKey::SettingsGraphicsQuality => Some("Calidad"),
-        TextKey::SettingsQualityAntialiasing => Some("Suavizado"),
         TextKey::SettingsMsaa => Some("MSAA"),
         TextKey::SettingsMsaaTooltip => Some(
             "Suaviza los bordes escalonados según las muestras elegidas. Más alto es más limpio y más costoso.",
