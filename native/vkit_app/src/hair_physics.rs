@@ -1363,8 +1363,19 @@ fn rest_fingerprint(rests: &[GpuRestParticle]) -> u64 {
     hasher.finish()
 }
 
-fn part_subdivisions(curve_density: u32) -> u32 {
-    curve_density.clamp(1, MAX_RENDER_SUBDIVISIONS)
+/// How many quads one segment of a strand is drawn with.
+///
+/// This has to agree exactly with the shader, which reads the density from
+/// `spread_b.w` — clamped to 2..=64, NOT to the subdivision ceiling — and
+/// divides it by the strand's segment count. Clamping first and dividing after
+/// gives a smaller answer, and the shader then draws half the samples it wanted:
+/// each quad spans an arc it was never meant to, and a curl comes out as flat
+/// black shards.
+fn segment_subdivisions(curve_density: u32, segment_count: u32) -> u32 {
+    curve_density
+        .clamp(2, 64)
+        .div_ceil(segment_count.max(1))
+        .clamp(1, MAX_RENDER_SUBDIVISIONS)
 }
 
 #[repr(C)]
@@ -1615,8 +1626,10 @@ fn render_segments(
                 continue;
             }
             let packed = (part_index as u32) | ((segment_count as u32) << 16);
-            let density = part_subdivisions(part.curve_density);
-            subdivisions = subdivisions.max(density.div_ceil(segment_count as u32).max(1));
+            subdivisions = subdivisions.max(segment_subdivisions(
+                part.curve_density,
+                segment_count as u32,
+            ));
             for segment in 0..segment_count {
                 if result.len() >= limit {
                     break 'parts;
@@ -2409,14 +2422,28 @@ mod tests {
     }
 
     #[test]
-    fn a_part_is_tessellated_as_finely_as_it_asked_to_be() {
-        assert_eq!(part_subdivisions(1), 1);
-        assert_eq!(part_subdivisions(4), 4);
-
-        assert_eq!(part_subdivisions(30), MAX_RENDER_SUBDIVISIONS);
-        assert_eq!(part_subdivisions(64), MAX_RENDER_SUBDIVISIONS);
-
-        assert_eq!(part_subdivisions(0), 1);
+    fn a_part_is_tessellated_as_finely_as_the_shader_will_ask_for() {
+        // The shader's own arithmetic, which this has to agree with exactly:
+        // it reads the density clamped to 2..=64 and divides by the segments.
+        let shader_wants = |density: u32, segments: u32| {
+            let density = density.clamp(2, 64) as f32;
+            (density / segments as f32).ceil() as u32
+        };
+        for density in [0_u32, 1, 2, 4, 8, 16, 24, 32, 64, 200] {
+            for segments in [1_u32, 2, 4, 8, 15, 23, 40] {
+                let ours = segment_subdivisions(density, segments);
+                let theirs = shader_wants(density, segments).clamp(1, MAX_RENDER_SUBDIVISIONS);
+                assert_eq!(
+                    ours, theirs,
+                    "density {density} over {segments} segments: the stride has to be what                      the shader asks for, or it draws half the samples and a curl comes out                      as flat shards",
+                );
+            }
+        }
+        // The whole point of computing it per segment rather than per part.
+        assert!(
+            segment_subdivisions(16, 4) < 16,
+            "sixteen points spread over four segments is four apiece, not sixteen",
+        );
     }
 
     #[test]
