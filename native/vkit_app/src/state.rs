@@ -318,9 +318,13 @@ pub struct AppState {
 
     pub tone_mapping: ToneMapping,
 
-    /// The multisample count the user has asked for. What this session is
-    /// actually drawing at is `renderer::msaa_samples()`, which is fixed for
-    /// the life of the process; the two differ until a restart.
+    /// The multisample count being drawn at.
+    ///
+    /// A mirror of `renderer::msaa_samples()`, which is the one that decides:
+    /// it is what the adapter was asked about and what the pipelines and the
+    /// scene surface are built at. This copy exists so the panel and the
+    /// preference file can read it without reaching into the renderer, and it
+    /// is only ever written with what the renderer answered.
     pub msaa_samples: u32,
 
     pub camera_control: crate::camera_control::ControlMode,
@@ -632,7 +636,7 @@ impl Default for AppState {
             lighting_preset: LightingPreset::default(),
             light_brightness: DEFAULT_LIGHT_BRIGHTNESS,
             tone_mapping: ToneMapping::default(),
-            msaa_samples: crate::renderer::DEFAULT_MSAA_SAMPLES,
+            msaa_samples: crate::renderer::msaa_samples(),
             camera_control: crate::camera_control::ControlMode::default(),
             pending_recovery: None,
             vignette: VignetteSettings::default(),

@@ -113,8 +113,8 @@ impl CallbackTrait for MeshPaintCallback {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        _screen_descriptor: &ScreenDescriptor,
-        _egui_encoder: &mut wgpu::CommandEncoder,
+        screen_descriptor: &ScreenDescriptor,
+        egui_encoder: &mut wgpu::CommandEncoder,
         callback_resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         crate::renderer::sync_scene_samples(device, queue, callback_resources);
@@ -128,9 +128,9 @@ impl CallbackTrait for MeshPaintCallback {
         // finished surface back in front of egui.
         let Some(mut pass) = crate::renderer::begin_scene_layer(
             device,
-            _egui_encoder,
+            egui_encoder,
             callback_resources,
-            _screen_descriptor,
+            screen_descriptor,
             self.spot,
         ) else {
             return Vec::new();

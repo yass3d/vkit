@@ -27,7 +27,8 @@ mod skin;
 use self::mesh::*;
 pub use self::mesh::{MeshPaintCallback, RenderStyle};
 pub use self::offscreen::OffscreenTarget;
-pub use self::scene_surface::{ScenePlacement, SceneSpot, SceneSurface};
+use self::scene_surface::ScenePlacement;
+pub use self::scene_surface::{SceneSpot, SceneSurface};
 pub(crate) use self::skin::SkinRenderResources;
 pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroups};
 #[cfg(test)]
