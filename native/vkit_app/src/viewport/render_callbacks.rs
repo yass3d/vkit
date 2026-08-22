@@ -143,6 +143,7 @@ pub(super) fn add_hair_callback(
             let scale = ui.ctx().pixels_per_point();
             [rect.width() * scale, rect.height() * scale]
         },
+        frame: ui.ctx().cumulative_pass_nr(),
     };
     ui.painter().add(callback.paint_callback(rect));
     if pump_frames {

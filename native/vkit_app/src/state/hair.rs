@@ -395,6 +395,8 @@ impl AppState {
             }
             hair.push(crate::hair_renderer::HairPaintCallback {
                 scene_key,
+                // A portrait is rendered in one pass of its own.
+                frame: 0,
                 mesh: std::sync::Arc::clone(&head),
                 preview,
                 view_projection,

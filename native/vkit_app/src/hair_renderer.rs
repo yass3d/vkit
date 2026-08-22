@@ -1056,7 +1056,11 @@ const SCALP_SCENE_CACHE_CAP: usize = 8;
 /// render segment buffer that runs to millions of entries for a dense style.
 /// Without a cap the map keeps one for every key it has ever been handed:
 /// each layer, each pane, each portrait, for the life of the process.
-const HAIR_SCENE_CACHE_CAP: usize = 12;
+///
+/// The cap is a floor on what a frame may hold, never a ceiling: a style with
+/// more layers than this, drawn into two panes, needs every one of them at
+/// once, and eviction must not take a scene the frame it is being drawn.
+const HAIR_SCENE_CACHE_CAP: usize = 24;
 
 struct ScalpGpuScene {
     signature: (usize, u64, u64, u64, u64, u64, u64),
@@ -1686,6 +1690,11 @@ pub struct HairPaintCallback {
     pub solve: bool,
 
     pub viewport_pixels: [f32; 2],
+
+    /// Which frame asked for this. Scenes prepared for the frame being drawn
+    /// must survive it: dropping one loses a whole layer of hair from the
+    /// picture, and its physics state with it.
+    pub frame: u64,
 }
 
 impl HairPaintCallback {
@@ -1734,7 +1743,6 @@ pub(crate) struct HairRenderResources {
     bind_group_layout: wgpu::BindGroupLayout,
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
-    use_counter: u64,
     /// One `0,1,2, 2,1,3` per quad, shared by every scene and grown to fit the
     /// largest one drawn. The pattern never varies, so neither does the buffer.
     quad_indices: Option<(wgpu::Buffer, u32)>,
@@ -1842,7 +1850,6 @@ impl HairRenderResources {
             bind_group_layout,
             physics_pipelines: HairPhysicsPipelines::new(device),
             scenes: BTreeMap::new(),
-            use_counter: 0,
             quad_indices: None,
             target_is_srgb: target_format.is_srgb(),
         }
@@ -1897,14 +1904,13 @@ impl HairRenderResources {
                 0.0,
             ],
         };
-        self.use_counter += 1;
         if let Some(scene) = self.scenes.get_mut(&callback.scene_key)
             && scene
                 .physics
                 .matches(&callback.preview, &callback.mesh, callback.simulate_hair)
         {
             uniform.grading[3] = scene.physics.render_subdivisions() as f32;
-            scene.last_used = self.use_counter;
+            scene.last_used = callback.frame;
             queue.write_buffer(&scene.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
             scene
                 .physics
@@ -1967,16 +1973,29 @@ impl HairRenderResources {
                 physics,
                 uniform_buffer,
                 bind_group,
-                last_used: self.use_counter,
+                last_used: callback.frame,
             },
         );
-        crate::renderer::evict_lru_scenes(
-            &mut self.scenes,
-            callback.scene_key,
-            HAIR_SCENE_CACHE_CAP,
-            |scene| scene.last_used,
-        );
+        self.evict_stale_scenes(callback.frame);
         self.ensure_quad_indices(device);
+    }
+
+    /// Drop the least recently drawn scenes, but never one this frame asked
+    /// for: everything prepared for a frame is painted in that same frame, so
+    /// taking one here means a layer of hair simply is not drawn.
+    fn evict_stale_scenes(&mut self, frame: u64) {
+        while self.scenes.len() > HAIR_SCENE_CACHE_CAP {
+            let stale = self
+                .scenes
+                .iter()
+                .filter(|(_, scene)| scene.last_used != frame)
+                .min_by_key(|(_, scene)| scene.last_used)
+                .map(|(&key, _)| key);
+            let Some(stale) = stale else {
+                return;
+            };
+            self.scenes.remove(&stale);
+        }
     }
 
     fn ensure_quad_indices(&mut self, device: &wgpu::Device) {
@@ -2151,6 +2170,7 @@ mod tests {
         });
         let mut callback = HairPaintCallback {
             scene_key: 1,
+            frame: 0,
             mesh,
             preview,
             simulate_hair: crate::hair_physics::HairSimulation::Off,
@@ -2239,5 +2259,49 @@ mod scalp_mask_tests {
                 "anything higher throws away the soft edge of every strand",
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod scene_cache_tests {
+    /// The rule the eviction has to keep, on its own so it can be exercised
+    /// without a GPU: a scene drawn this frame is never the one thrown away.
+    fn evict(scenes: &mut Vec<(u64, u64)>, cap: usize, frame: u64) {
+        while scenes.len() > cap {
+            let stale = scenes
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, used))| *used != frame)
+                .min_by_key(|(_, (_, used))| *used)
+                .map(|(index, _)| index);
+            let Some(stale) = stale else {
+                return;
+            };
+            scenes.remove(stale);
+        }
+    }
+
+    #[test]
+    fn a_frame_that_needs_more_scenes_than_the_cap_keeps_all_of_them() {
+        // Seven layers drawn into two panes is fourteen scenes at once, and
+        // every one of them is painted. Dropping any is a missing layer.
+        let mut scenes: Vec<(u64, u64)> = (0..14).map(|key| (key, 9)).collect();
+        evict(&mut scenes, 4, 9);
+        assert_eq!(
+            scenes.len(),
+            14,
+            "eviction took a scene the frame was about to draw",
+        );
+    }
+
+    #[test]
+    fn scenes_from_older_frames_go_oldest_first() {
+        let mut scenes: Vec<(u64, u64)> = vec![(0, 1), (1, 5), (2, 3), (3, 9), (4, 9)];
+        evict(&mut scenes, 3, 9);
+        assert_eq!(scenes.len(), 3);
+        let kept: Vec<u64> = scenes.iter().map(|(key, _)| *key).collect();
+        assert!(kept.contains(&3) && kept.contains(&4), "this frame stays");
+        assert!(kept.contains(&1), "and the newest of the old ones");
+        assert!(!kept.contains(&0), "the oldest goes first");
     }
 }
