@@ -23,13 +23,39 @@ pub enum SweepPhase {
 pub struct SweepInput {
     pub active: bool,
     pub key_pressed: bool,
+    pub key_released: bool,
     pub primary_pressed: bool,
     pub can_start: bool,
 }
 
-pub const fn sweep_phase(input: SweepInput) -> SweepPhase {
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SweepCommit {
+    #[default]
+    Blender,
+
+    ZBrush,
+}
+
+impl SweepCommit {
+    pub const ALL: [Self; 2] = [Self::Blender, Self::ZBrush];
+
+    #[must_use]
+    pub const fn label_key(self) -> crate::i18n::TextKey {
+        match self {
+            Self::Blender => crate::i18n::TextKey::BrushSweepBlender,
+            Self::ZBrush => crate::i18n::TextKey::BrushSweepZBrush,
+        }
+    }
+}
+
+pub const fn sweep_phase(input: SweepInput, commit: SweepCommit) -> SweepPhase {
     if input.active {
-        if input.key_pressed || input.primary_pressed {
+        let ends = match commit {
+            SweepCommit::Blender => input.key_pressed,
+            SweepCommit::ZBrush => input.key_released,
+        };
+        if ends || input.primary_pressed {
             SweepPhase::Finish
         } else {
             SweepPhase::Update
@@ -64,6 +90,18 @@ pub struct SweepUpdate {
 }
 
 const PRESS_SPENT_ID: &str = "vkit.sweep.press-spent";
+
+const COMMIT_STYLE_ID: &str = "vkit.sweep.commit-style";
+
+pub fn set_commit_style(ui: &Ui, commit: SweepCommit) {
+    ui.data_mut(|data| data.insert_temp(Id::new(COMMIT_STYLE_ID), commit));
+}
+
+#[must_use]
+pub fn commit_style(ui: &Ui) -> SweepCommit {
+    ui.data(|data| data.get_temp::<SweepCommit>(Id::new(COMMIT_STYLE_ID)))
+        .unwrap_or_default()
+}
 
 pub const fn sweep_spends_press(finished: bool, primary_pressed: bool) -> bool {
     finished && primary_pressed
@@ -106,7 +144,9 @@ pub fn handle_sweep(
     sensitivity: f32,
     range: Option<RangeInclusive<f32>>,
 ) -> SweepUpdate {
+    let commit = commit_style(ui);
     let key_pressed = arm.pressed(ui);
+    let key_released = arm.released(ui);
     let (pointer, primary_pressed) = ui.input(|input| {
         (
             input.pointer.hover_pos(),
@@ -125,12 +165,16 @@ pub fn handle_sweep(
                 .map(|sweep| swept_value(sweep, pointer, sensitivity, range.clone()))
         })
     };
-    match sweep_phase(SweepInput {
-        active,
-        key_pressed,
-        primary_pressed,
-        can_start,
-    }) {
+    match sweep_phase(
+        SweepInput {
+            active,
+            key_pressed,
+            key_released,
+            primary_pressed,
+            can_start,
+        },
+        commit,
+    ) {
         SweepPhase::Idle => SweepUpdate::default(),
         SweepPhase::Start => {
             ui.data_mut(|data| {
@@ -189,6 +233,7 @@ mod tests {
     const RUNNING: SweepInput = SweepInput {
         active: true,
         key_pressed: false,
+        key_released: false,
         primary_pressed: false,
         can_start: true,
     };
@@ -196,27 +241,39 @@ mod tests {
     #[test]
     fn the_key_and_a_click_both_end_it() {
         assert_eq!(
-            sweep_phase(SweepInput {
-                key_pressed: true,
-                ..RUNNING
-            }),
+            sweep_phase(
+                SweepInput {
+                    key_pressed: true,
+                    ..RUNNING
+                },
+                SweepCommit::Blender
+            ),
             SweepPhase::Finish,
             "the arming key must also disarm"
         );
         assert_eq!(
-            sweep_phase(SweepInput {
-                primary_pressed: true,
-                ..RUNNING
-            }),
+            sweep_phase(
+                SweepInput {
+                    primary_pressed: true,
+                    ..RUNNING
+                },
+                SweepCommit::Blender
+            ),
             SweepPhase::Finish,
             "a click must disarm"
         );
-        assert_eq!(sweep_phase(RUNNING), SweepPhase::Update);
+        assert_eq!(
+            sweep_phase(RUNNING, SweepCommit::Blender),
+            SweepPhase::Update
+        );
     }
 
     #[test]
     fn letting_the_key_go_leaves_the_sweep_where_it_is() {
-        assert_eq!(sweep_phase(RUNNING), SweepPhase::Update);
+        assert_eq!(
+            sweep_phase(RUNNING, SweepCommit::Blender),
+            SweepPhase::Update
+        );
     }
 
     #[test]
@@ -226,25 +283,34 @@ mod tests {
             ..RUNNING
         };
         assert_eq!(
-            sweep_phase(SweepInput {
-                key_pressed: true,
-                can_start: false,
-                ..idle
-            }),
+            sweep_phase(
+                SweepInput {
+                    key_pressed: true,
+                    can_start: false,
+                    ..idle
+                },
+                SweepCommit::Blender
+            ),
             SweepPhase::Idle
         );
         assert_eq!(
-            sweep_phase(SweepInput {
-                key_pressed: true,
-                ..idle
-            }),
+            sweep_phase(
+                SweepInput {
+                    key_pressed: true,
+                    ..idle
+                },
+                SweepCommit::Blender
+            ),
             SweepPhase::Start
         );
         assert_eq!(
-            sweep_phase(SweepInput {
-                primary_pressed: true,
-                ..idle
-            }),
+            sweep_phase(
+                SweepInput {
+                    primary_pressed: true,
+                    ..idle
+                },
+                SweepCommit::Blender
+            ),
             SweepPhase::Idle
         );
     }
@@ -287,12 +353,15 @@ mod tests {
             (false, true),
             (false, false),
         ] {
-            let phase = sweep_phase(SweepInput {
-                active,
-                key_pressed: key,
-                primary_pressed: click,
-                ..RUNNING
-            });
+            let phase = sweep_phase(
+                SweepInput {
+                    active,
+                    key_pressed: key,
+                    primary_pressed: click,
+                    ..RUNNING
+                },
+                SweepCommit::Blender,
+            );
             active = match phase {
                 SweepPhase::Start | SweepPhase::Update => true,
                 SweepPhase::Finish | SweepPhase::Idle => false,
@@ -309,5 +378,61 @@ mod tests {
                 SweepPhase::Idle,
             ]
         );
+    }
+    #[test]
+    fn zbrush_commits_on_the_key_coming_up_and_blender_ignores_it() {
+        let holding = SweepInput {
+            key_released: false,
+            ..RUNNING
+        };
+        assert_eq!(
+            sweep_phase(holding, SweepCommit::ZBrush),
+            SweepPhase::Update
+        );
+        assert_eq!(
+            sweep_phase(holding, SweepCommit::Blender),
+            SweepPhase::Update
+        );
+
+        let let_go = SweepInput {
+            key_released: true,
+            ..RUNNING
+        };
+        assert_eq!(
+            sweep_phase(let_go, SweepCommit::ZBrush),
+            SweepPhase::Finish,
+            "letting the key go is the whole gesture in ZBrush",
+        );
+        assert_eq!(
+            sweep_phase(let_go, SweepCommit::Blender),
+            SweepPhase::Update,
+            "Blender waits for a second press or a click",
+        );
+
+        let pressed_again = SweepInput {
+            key_pressed: true,
+            ..RUNNING
+        };
+        assert_eq!(
+            sweep_phase(pressed_again, SweepCommit::Blender),
+            SweepPhase::Finish
+        );
+        assert_eq!(
+            sweep_phase(pressed_again, SweepCommit::ZBrush),
+            SweepPhase::Update,
+            "a repeat press is not a release",
+        );
+
+        let clicked = SweepInput {
+            primary_pressed: true,
+            ..RUNNING
+        };
+        for style in SweepCommit::ALL {
+            assert_eq!(
+                sweep_phase(clicked, style),
+                SweepPhase::Finish,
+                "{style:?} must let a click settle it",
+            );
+        }
     }
 }

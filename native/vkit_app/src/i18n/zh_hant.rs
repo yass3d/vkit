@@ -338,6 +338,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("該工作階段的外觀尚未在清單中 — 紋理已還原,編輯將在選擇該外觀後套用。")
         }
         TextKey::SettingsVignetteGroup => Some("暈影"),
+        TextKey::SettingsBrushSweepGroup => Some("筆刷大小手勢"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => Some("Blender 需點擊或再次按鍵確認，ZBrush 放開按鍵即確認"),
         TextKey::SettingsVignetteIntensity => Some("強度"),
         TextKey::SettingsVignetteSmoothness => Some("柔和度"),
         TextKey::SettingsVignetteRoundness => Some("圓度"),

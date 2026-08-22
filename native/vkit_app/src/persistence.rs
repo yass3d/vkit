@@ -139,6 +139,8 @@ pub struct Preferences {
     pub package_promotional_link: Option<String>,
     #[serde(default, deserialize_with = "permissive_enum")]
     pub viewport_background_mode: ViewportBackgroundMode,
+    #[serde(default, deserialize_with = "permissive_enum")]
+    pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
     #[serde(default)]
     pub wireframe_visible: bool,
     #[serde(default = "default_wireframe_opacity")]
@@ -222,6 +224,7 @@ impl Default for Preferences {
             last_skin_id: None,
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::default(),
+            brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             wireframe_visible: false,
             wireframe_opacity: default_wireframe_opacity(),
             xray_visible: false,
@@ -774,6 +777,7 @@ mod tests {
             last_skin_id: None,
             default_skin_id: None,
             viewport_background_mode: ViewportBackgroundMode::Flat,
+            brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             wireframe_visible: true,
             wireframe_opacity: 0.61,
             xray_visible: true,

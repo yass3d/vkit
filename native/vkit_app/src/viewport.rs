@@ -298,6 +298,7 @@ struct RadialBackgroundGeometry {
 }
 
 pub fn draw_edit(ui: &mut Ui, state: &mut AppState, scan_rect: Rect, template_rect: Rect) {
+    crate::sweep_gesture::set_commit_style(ui, state.brush_sweep_commit);
     let workspace_rect = scan_rect.union(template_rect);
 
     let hovered = if ui
@@ -458,6 +459,7 @@ fn draw_result_in(
     camera_keys: bool,
     chrome: Option<Rect>,
 ) {
+    crate::sweep_gesture::set_commit_style(ui, state.brush_sweep_commit);
     paint_viewport_background(ui, state, rect);
     let response = ui.interact(
         rect,

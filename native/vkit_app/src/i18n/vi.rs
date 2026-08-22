@@ -362,6 +362,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "Diện mạo của phiên đó chưa có trong danh sách — kết cấu đã khôi phục, chỉnh sửa sẽ áp dụng khi chọn diện mạo.",
         ),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
+        TextKey::SettingsBrushSweepGroup => Some("Thao tác cỡ cọ"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blender xác nhận khi nhấp hoặc nhấn lại; ZBrush xác nhận khi nhả phím")
+        }
         TextKey::SettingsVignetteIntensity => Some("Mức"),
         TextKey::SettingsVignetteSmoothness => Some("Độ mềm"),
         TextKey::SettingsVignetteRoundness => Some("Độ tròn"),

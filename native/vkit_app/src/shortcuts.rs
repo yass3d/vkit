@@ -524,6 +524,27 @@ impl Shortcut {
                 }
         })
     }
+
+    #[must_use]
+    pub fn released(self, ui: &Ui) -> bool {
+        if ui.ctx().egui_wants_keyboard_input() {
+            return false;
+        }
+        let binding = self.binding(ui);
+        ui.input(|input| match binding.trigger {
+            Trigger::Key(key) => input.events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: struck,
+                        pressed: false,
+                        ..
+                    } if *struck == key
+                )
+            }),
+            Trigger::Mouse(button) => input.pointer.button_released(button),
+        })
+    }
 }
 
 pub const BRUSH_SIZE_HINT: &str = "[ / ] / F";

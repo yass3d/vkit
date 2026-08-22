@@ -370,6 +370,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "Look sesi itu belum terdaftar — tekstur dipulihkan, dan suntingan akan diterapkan saat look dipilih.",
         ),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
+        TextKey::SettingsBrushSweepGroup => Some("Gestur ukuran kuas"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blender dikunci dengan klik atau tekan ulang; ZBrush saat tombol dilepas")
+        }
         TextKey::SettingsVignetteIntensity => Some("Kekuatan"),
         TextKey::SettingsVignetteSmoothness => Some("Kelembutan"),
         TextKey::SettingsVignetteRoundness => Some("Kebulatan"),

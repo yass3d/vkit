@@ -365,6 +365,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "そのセッションの外見はまだ一覧にありません — テクスチャは復元済みで、編集内容は外見を選ぶと適用されます。",
         ),
         TextKey::SettingsVignetteGroup => Some("ビネット"),
+        TextKey::SettingsBrushSweepGroup => Some("ブラシサイズ操作"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blenderはクリックか再押下で確定、ZBrushはキーを離すと確定します")
+        }
         TextKey::SettingsVignetteIntensity => Some("強さ"),
         TextKey::SettingsVignetteSmoothness => Some("柔らかさ"),
         TextKey::SettingsVignetteRoundness => Some("丸み"),

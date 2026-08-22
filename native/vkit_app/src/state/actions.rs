@@ -181,6 +181,8 @@ pub enum Action {
     MeasureCache,
     ClearCache,
     SetViewportBackgroundMode(ViewportBackgroundMode),
+
+    SetBrushSweepCommit(crate::sweep_gesture::SweepCommit),
     SetManualEyeGaze([f32; 2]),
     SetEyeGazeMode(EyeGazeMode),
     ResetEyeGaze,
@@ -648,6 +650,7 @@ impl Action {
             | Self::MeasureCache
             | Self::ClearCache
             | Self::SetViewportBackgroundMode(_)
+            | Self::SetBrushSweepCommit(_)
             | Self::SetManualEyeGaze(_)
             | Self::SetEyeGazeMode(_)
             | Self::ResetEyeGaze

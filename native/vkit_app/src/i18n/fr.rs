@@ -380,6 +380,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "Le look de cette session n'est pas encore listé — les textures sont restaurées et les modifications s'appliqueront à sa sélection.",
         ),
         TextKey::SettingsVignetteGroup => Some("Vignettage"),
+        TextKey::SettingsBrushSweepGroup => Some("Geste de taille du pinceau"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blender valide par un clic ou une seconde pression ; ZBrush au relâchement")
+        }
         TextKey::SettingsVignetteIntensity => Some("Quantité"),
         TextKey::SettingsVignetteSmoothness => Some("Douceur"),
         TextKey::SettingsVignetteRoundness => Some("Rondeur"),

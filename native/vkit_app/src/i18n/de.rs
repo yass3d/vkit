@@ -392,6 +392,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "Der Look dieser Sitzung ist noch nicht gelistet — Texturen wurden wiederhergestellt; die Änderungen greifen, sobald der Look gewählt wird.",
         ),
         TextKey::SettingsVignetteGroup => Some("Vignette"),
+        TextKey::SettingsBrushSweepGroup => Some("Pinselgrößen-Geste"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blender bestätigt per Klick oder zweitem Druck; ZBrush beim Loslassen")
+        }
         TextKey::SettingsVignetteIntensity => Some("Stärke"),
         TextKey::SettingsVignetteSmoothness => Some("Weichheit"),
         TextKey::SettingsVignetteRoundness => Some("Rundheit"),

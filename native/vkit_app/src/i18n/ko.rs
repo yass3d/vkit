@@ -350,6 +350,12 @@ pub(super) const fn label(key: TextKey) -> &'static str {
             "그 세션의 외형이 아직 목록에 없습니다 — 텍스처는 복원됐고, 편집 내용은 외형을 선택하면 적용됩니다."
         }
         TextKey::SettingsVignetteGroup => "비네트",
+        TextKey::SettingsBrushSweepGroup => "브러시 크기 제스처",
+        TextKey::BrushSweepBlender => "블렌더",
+        TextKey::BrushSweepZBrush => "지브러시",
+        TextKey::BrushSweepTooltip => {
+            "블렌더는 클릭하거나 키를 다시 눌러야 확정되고, 지브러시는 키를 떼면 확정됩니다"
+        }
         TextKey::SettingsVignetteIntensity => "강도",
         TextKey::SettingsVignetteSmoothness => "부드러움",
         TextKey::SettingsVignetteRoundness => "원형도",

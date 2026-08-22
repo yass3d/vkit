@@ -271,6 +271,8 @@ pub struct AppState {
     pub surface_smooth_passes: u8,
     pub viewport_background_mode: ViewportBackgroundMode,
 
+    pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
+
     pub manual_eye_gaze: [f32; 2],
     pub eye_gaze_mode: EyeGazeMode,
 
@@ -586,6 +588,7 @@ impl Default for AppState {
             base_view_mode: BaseViewMode::Solid,
             surface_smooth_passes: VAM_SMOOTH_PASSES_DEFAULT,
             viewport_background_mode: ViewportBackgroundMode::Radial,
+            brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
             frozen_eye_gaze: None,
@@ -1459,6 +1462,7 @@ impl AppState {
             Action::SetViewportBackgroundMode(mode) => {
                 self.viewport_background_mode = mode;
             }
+            Action::SetBrushSweepCommit(commit) => self.brush_sweep_commit = commit,
             Action::SetManualEyeGaze(value) => {
                 self.manual_eye_gaze = value.map(sanitize_eye_gaze_axis);
                 self.eye_gaze_mode = EyeGazeMode::Manual;

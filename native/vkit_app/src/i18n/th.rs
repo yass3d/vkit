@@ -335,6 +335,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("ลุคของเซสชันนั้นยังไม่อยู่ในรายการ — พื้นผิวถูกกู้คืนแล้ว และการแก้ไขจะมีผลเมื่อเลือกลุคนั้น")
         }
         TextKey::SettingsVignetteGroup => Some("วิกเน็ตต์"),
+        TextKey::SettingsBrushSweepGroup => Some("ท่าทางขนาดแปรง"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => Some("Blender ยืนยันด้วยการคลิกหรือกดซ้ำ ส่วน ZBrush ยืนยันเมื่อปล่อยปุ่ม"),
         TextKey::SettingsVignetteIntensity => Some("ปริมาณ"),
         TextKey::SettingsVignetteSmoothness => Some("ความนุ่ม"),
         TextKey::SettingsVignetteRoundness => Some("ความกลม"),

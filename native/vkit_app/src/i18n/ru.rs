@@ -372,6 +372,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             "Образ той сессии ещё не в списке — текстуры восстановлены, правки применятся при его выборе.",
         ),
         TextKey::SettingsVignetteGroup => Some("Виньетка"),
+        TextKey::SettingsBrushSweepGroup => Some("Жест размера кисти"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => Some(
+            "Blender подтверждает щелчком или повторным нажатием; ZBrush — отпусканием клавиши",
+        ),
         TextKey::SettingsVignetteIntensity => Some("Величина"),
         TextKey::SettingsVignetteSmoothness => Some("Мягкость"),
         TextKey::SettingsVignetteRoundness => Some("Округлость"),

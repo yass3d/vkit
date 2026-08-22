@@ -1913,6 +1913,7 @@ fn preferences_from_state(state: &AppState) -> Preferences {
         package_license: Some(state.var_metadata.license.clone()),
         package_promotional_link: Some(state.var_metadata.promotional_link.clone()),
         viewport_background_mode: state.viewport_background_mode,
+        brush_sweep_commit: state.brush_sweep_commit,
         wireframe_visible: state.wireframe_visible,
         wireframe_opacity: state.wireframe_opacity,
         xray_visible: state.xray_visible,
@@ -1962,6 +1963,7 @@ fn apply_saved_preferences(state: &mut AppState, saved: &Preferences) {
     state.dispatch(Action::SetViewportBackgroundMode(
         saved.viewport_background_mode,
     ));
+    state.dispatch(Action::SetBrushSweepCommit(saved.brush_sweep_commit));
     state.dispatch(Action::SetCustomHeadSolidColor(
         saved.custom_head_solid_color_rgb,
     ));

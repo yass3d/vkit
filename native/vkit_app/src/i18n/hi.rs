@@ -347,6 +347,12 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("उस सत्र का लुक अभी सूची में नहीं है — बनावटें बहाल हो गईं, और लुक चुनते ही संपादन लागू होंगे।")
         }
         TextKey::SettingsVignetteGroup => Some("विनेट"),
+        TextKey::SettingsBrushSweepGroup => Some("ब्रश आकार जेस्चर"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => {
+            Some("Blender क्लिक या दूसरी बार दबाने पर तय होता है; ZBrush कुंजी छोड़ने पर")
+        }
         TextKey::SettingsVignetteIntensity => Some("मात्रा"),
         TextKey::SettingsVignetteSmoothness => Some("कोमलता"),
         TextKey::SettingsVignetteRoundness => Some("गोलाई"),

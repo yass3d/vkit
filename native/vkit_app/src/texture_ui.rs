@@ -67,6 +67,7 @@ struct TextureAutoBakeTimer {
 const TEXTURE_THUMBNAIL_NS: &str = "vkit.texture.thumbnail";
 
 pub fn draw_texture_inspector(ui: &mut Ui, state: &mut AppState) {
+    crate::sweep_gesture::set_commit_style(ui, state.brush_sweep_commit);
     Frame::new()
         .inner_margin(Margin {
             left: PANEL_INSET as i8,

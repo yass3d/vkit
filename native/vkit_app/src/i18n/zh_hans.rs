@@ -335,6 +335,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("该会话的外观尚未在列表中 — 纹理已恢复,编辑将在选择该外观后应用。")
         }
         TextKey::SettingsVignetteGroup => Some("暗角"),
+        TextKey::SettingsBrushSweepGroup => Some("笔刷大小手势"),
+        TextKey::BrushSweepBlender => Some("Blender"),
+        TextKey::BrushSweepZBrush => Some("ZBrush"),
+        TextKey::BrushSweepTooltip => Some("Blender 需点击或再次按键确认，ZBrush 松开按键即确认"),
         TextKey::SettingsVignetteIntensity => Some("强度"),
         TextKey::SettingsVignetteSmoothness => Some("柔和度"),
         TextKey::SettingsVignetteRoundness => Some("圆度"),

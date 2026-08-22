@@ -362,6 +362,12 @@ pub(super) const fn label(key: TextKey) -> &'static str {
             "That session's look is not installed yet — textures were restored, and the edits will apply when the look is selected."
         }
         TextKey::SettingsVignetteGroup => "Vignette",
+        TextKey::SettingsBrushSweepGroup => "Brush size gesture",
+        TextKey::BrushSweepBlender => "Blender",
+        TextKey::BrushSweepZBrush => "ZBrush",
+        TextKey::BrushSweepTooltip => {
+            "Blender commits on a click or a second press; ZBrush commits when the key comes up"
+        }
         TextKey::SettingsVignetteIntensity => "Amount",
         TextKey::SettingsVignetteSmoothness => "Softness",
         TextKey::SettingsVignetteRoundness => "Roundness",

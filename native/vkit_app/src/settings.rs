@@ -490,6 +490,32 @@ fn draw_viewport_settings(ui: &mut Ui, state: &mut AppState) {
     if changed {
         state.dispatch(Action::SetCustomHeadSolidColor(solid));
     }
+
+    group_heading(ui, locale, TextKey::SettingsBrushSweepGroup);
+    let mut commit = state.brush_sweep_commit;
+    setting_row(
+        ui,
+        locale,
+        TextKey::SettingsBrushSweepGroup,
+        Some(TextKey::BrushSweepTooltip),
+        |ui| {
+            egui::ComboBox::from_id_salt("vkit.settings.brush-sweep")
+                .width(CONTROL_COLUMN_WIDTH)
+                .selected_text(text(locale, commit.label_key()))
+                .show_ui(ui, |ui| {
+                    for candidate in crate::sweep_gesture::SweepCommit::ALL {
+                        ui.selectable_value(
+                            &mut commit,
+                            candidate,
+                            text(locale, candidate.label_key()),
+                        );
+                    }
+                });
+        },
+    );
+    if commit != state.brush_sweep_commit {
+        state.dispatch(Action::SetBrushSweepCommit(commit));
+    }
 }
 
 const fn morph_name_display_key(display: MorphNameDisplay) -> TextKey {
