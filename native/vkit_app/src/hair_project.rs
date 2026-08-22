@@ -1013,15 +1013,14 @@ mod tests {
     }
 
     #[test]
-    fn the_base_cap_wears_the_root_colour_and_a_copy_of_it_wears_nothing() {
+    fn a_new_cap_wears_the_colour_a_visible_scalp_wears_and_a_copy_of_it_wears_nothing() {
         use crate::hair_settings::{
-            COLOR_CHANNELS, ROOT_COLOR_KEY, SCALP_COLOR_KEY, SCALP_OPACITY_KEY, param_by_key,
-            scalp_tint_from_root,
+            COLOR_CHANNELS, SCALP_COLOR_KEY, SCALP_OPACITY_KEY, VISIBLE_SCALP_COLOR, param_by_key,
         };
 
         let opacity = param_by_key(SCALP_OPACITY_KEY).expect("the cap has an opacity");
         let cap = param_by_key(SCALP_COLOR_KEY).expect("the cap has a colour");
-        let root = param_by_key(ROOT_COLOR_KEY).expect("the strands have a root colour");
+        let root = param_by_key("rootColor").expect("the strands have a root colour");
 
         let mut project = HairProject::default();
         let base = project.add_scalp_part("UdaneScalp");
@@ -1037,20 +1036,19 @@ mod tests {
         let plain = HairSettings::default();
         let worn = settings(&project, base);
         for channel in 0..COLOR_CHANNELS.len() {
-            let root_channel = plain.color_channel(root, channel);
             assert_eq!(
                 worn.color_channel(cap, channel),
-                scalp_tint_from_root(root_channel),
-                "channel {channel} of the cap follows the root, one step lifted"
+                VISIBLE_SCALP_COLOR[channel.min(2)],
+                "channel {channel} of the cap is what a scalp meant to be seen wears"
             );
             assert!(
-                worn.color_channel(cap, channel) > root_channel,
+                worn.color_channel(cap, channel) > plain.color_channel(root, channel),
                 "the cap has to read apart from the strands standing on it"
             );
         }
         assert!(
-            worn.color_channel(cap, 0) > 0.0,
-            "pure black is a hole, not a scalp"
+            worn.color_channel(cap, 0) > 3.0 * plain.color_channel(root, 0).max(8.0),
+            "a scalp is skin, not the hair colour lifted a step: the library puts              it around twelve times the root's luminance"
         );
         assert!(
             worn.color_channel(cap, 0) < plain.color_channel(cap, 0),

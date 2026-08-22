@@ -17,6 +17,24 @@ pub const HEAD_SCALP_PROVIDERS: [&str; 6] = [
 
 const SCALP_TEXTURE_DIR: &str = "textures";
 
+const HIDDEN_SCALP_SHEET: &str = "scalp_hidden.png";
+
+#[must_use]
+pub fn scalp_is_hidden(settings: &HairSettings) -> bool {
+    crate::hair_settings::param_by_key(crate::hair_settings::SCALP_OPACITY_KEY)
+        .is_some_and(|param| settings.get(param) <= param.min + 1.0e-4)
+}
+
+fn transparent_sheet() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let sheet = image::RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 0]));
+    let _ = image::DynamicImage::ImageRgba8(sheet).write_to(
+        &mut std::io::Cursor::new(&mut bytes),
+        image::ImageFormat::Png,
+    );
+    bytes
+}
+
 const SIM_TABLE: [(&str, &str); 68] = [
     ("styleModeAllowControlOtherNodes", "false"),
     ("styleModeShowCurls", "false"),
@@ -140,7 +158,8 @@ fn scalp_material_storable(
     for (key, value) in settings.scalp_material_entries() {
         map.insert(key.to_owned(), json!(value));
     }
-    if !scalp_texture.is_builtin() {
+    let hides_the_cap = scalp_is_hidden(settings) && scalp_texture.alpha.is_none();
+    if !scalp_texture.is_builtin() || hides_the_cap {
         for slot in 1..=4 {
             for (axis, value) in [
                 ("TileX", "1"),
@@ -164,6 +183,15 @@ fn scalp_material_storable(
             map.insert(
                 slot.vam_key().to_owned(),
                 json!(format!("./{SCALP_TEXTURE_DIR}/{name}")),
+            );
+        }
+        // Alpha Adjust is all that hides the cap, and at shader quality Low the
+        // shader that owns it is disqualified for a cutout fallback with no such
+        // property. A sheet with nothing in it is clipped by either of them.
+        if hides_the_cap {
+            map.insert(
+                crate::hair_project::ScalpSlot::Alpha.vam_key().to_owned(),
+                json!(format!("./{SCALP_TEXTURE_DIR}/{HIDDEN_SCALP_SHEET}")),
             );
         }
     }
@@ -450,6 +478,15 @@ fn write_hair_item(
     let vab_path = item_dir.join(format!("{name}.vab"));
     std::fs::write(&vab_path, &vab)
         .map_err(|err| format!("cannot write {}: {err}", vab_path.display()))?;
+    if scalp_is_hidden(&part.settings) && part.scalp_texture.alpha.is_none() {
+        // The cap the style does not want anyone to see.
+        let textures = item_dir.join(SCALP_TEXTURE_DIR);
+        std::fs::create_dir_all(&textures)
+            .map_err(|err| format!("cannot create {}: {err}", textures.display()))?;
+        let target = textures.join(HIDDEN_SCALP_SHEET);
+        std::fs::write(&target, transparent_sheet())
+            .map_err(|err| format!("cannot write {}: {err}", target.display()))?;
+    }
     if !part.scalp_texture.is_builtin() {
         let textures = item_dir.join(SCALP_TEXTURE_DIR);
         std::fs::create_dir_all(&textures)
@@ -1048,14 +1085,26 @@ mod settings_export_tests {
         let scalp =
             scalp_material_storable("Vkit:Bob", "UdaneScalp", &settings, &texture, "Bob").unwrap();
         assert_eq!(scalp["customTexture_MainTex"], "./textures/Bob_scalp.png");
-        for key in [
-            "customTexture_AlphaTex",
-            "customTexture_SpecTex",
-            "customTexture_GlossTex",
-        ] {
+        for key in ["customTexture_SpecTex", "customTexture_GlossTex"] {
             assert_eq!(scalp[key], "", "{key} should be empty");
         }
+        assert_eq!(
+            scalp["customTexture_AlphaTex"],
+            format!("./{SCALP_TEXTURE_DIR}/{HIDDEN_SCALP_SHEET}"),
+            "these settings still hide the cap, and hiding has to survive the fallback",
+        );
         assert_eq!(scalp["customTexture4TileX"], "1");
+
+        let mut shown = HairSettings::default();
+        let opacity = crate::hair_settings::param_by_key(crate::hair_settings::SCALP_OPACITY_KEY)
+            .expect("the cap has an opacity");
+        shown.set(opacity, opacity.max);
+        let seen =
+            scalp_material_storable("Vkit:Bob", "UdaneScalp", &shown, &texture, "Bob").unwrap();
+        assert_eq!(
+            seen["customTexture_AlphaTex"], "",
+            "raise the opacity and the erasing sheet goes away",
+        );
 
         let built_in = scalp_material_storable(
             "Vkit:Bob",
@@ -1065,13 +1114,27 @@ mod settings_export_tests {
             "Bob",
         )
         .unwrap();
+        assert_eq!(
+            built_in["customTexture_AlphaTex"],
+            format!("./{SCALP_TEXTURE_DIR}/{HIDDEN_SCALP_SHEET}"),
+            "a built-in cap that is hidden still needs the sheet that clips it",
+        );
+
+        let built_in_shown = scalp_material_storable(
+            "Vkit:Bob",
+            "UdaneScalp",
+            &shown,
+            &HairScalpTexture::default(),
+            "Bob",
+        )
+        .unwrap();
         assert!(
-            built_in
+            built_in_shown
                 .as_object()
                 .unwrap()
                 .keys()
                 .all(|key| !key.starts_with("customTexture")),
-            "built-in must say nothing about textures",
+            "a built-in cap meant to be seen says nothing about textures",
         );
 
         let cutout = dir.path().join("hairline mask.jpg");
@@ -1163,6 +1226,67 @@ mod settings_export_tests {
         assert_eq!(scalp["Diffuse Color"]["v"], "1.00000");
         assert_eq!(scalp["Specular Color"]["s"], "1.00000");
         assert_eq!(scalp["Specular Color"]["v"], "1.00000");
+    }
+
+    #[test]
+    fn a_hidden_cap_carries_a_sheet_that_clips_it_at_every_shader_quality() {
+        let hidden = HairSettings::default();
+        assert!(
+            scalp_is_hidden(&hidden),
+            "the default cap is meant to vanish"
+        );
+        let material = scalp_material_storable(
+            "Vkit:Test",
+            "UdaneScalp",
+            &hidden,
+            &crate::hair_project::HairScalpTexture::default(),
+            "Test",
+        )
+        .expect("scalp material");
+        assert_eq!(
+            material["customTexture_AlphaTex"],
+            format!("./{SCALP_TEXTURE_DIR}/{HIDDEN_SCALP_SHEET}"),
+            "Alpha Adjust alone stops hiding it the moment the shader falls back",
+        );
+        assert_eq!(
+            material["customTexture1TileX"], "1",
+            "the siblings come too"
+        );
+
+        let mut shown = HairSettings::default();
+        let opacity = crate::hair_settings::param_by_key(crate::hair_settings::SCALP_OPACITY_KEY)
+            .expect("the cap has an opacity");
+        shown.set(opacity, opacity.max);
+        assert!(!scalp_is_hidden(&shown));
+        let material = scalp_material_storable(
+            "Vkit:Test",
+            "UdaneScalp",
+            &shown,
+            &crate::hair_project::HairScalpTexture::default(),
+            "Test",
+        )
+        .expect("scalp material");
+        assert!(
+            material.get("customTexture_AlphaTex").is_none(),
+            "a cap meant to be seen is not handed a sheet that erases it",
+        );
+    }
+
+    #[test]
+    fn the_transparent_sheet_is_a_png_with_nothing_in_it() {
+        let bytes = transparent_sheet();
+        assert_eq!(
+            &bytes[..8],
+            &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+            "it has to be a PNG",
+        );
+        let decoded = image::load_from_memory(&bytes)
+            .expect("it decodes")
+            .to_rgba8();
+        assert!(
+            decoded.pixels().all(|pixel| pixel.0[3] == 0),
+            "every pixel has to fall under any cutoff the fallback picks",
+        );
     }
 
     #[test]

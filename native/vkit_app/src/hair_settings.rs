@@ -634,13 +634,9 @@ impl HairSettings {
         if let Some(param) = param_by_key(SCALP_OPACITY_KEY) {
             settings.set(param, param.max);
         }
-        if let (Some(cap), Some(root)) =
-            (param_by_key(SCALP_COLOR_KEY), param_by_key(ROOT_COLOR_KEY))
-        {
-            let plain = Self::default();
+        if let Some(cap) = param_by_key(SCALP_COLOR_KEY) {
             for channel in 0..COLOR_CHANNELS.len() {
-                let tint = scalp_tint_from_root(plain.color_channel(root, channel));
-                settings.set_color_channel(cap, channel, tint);
+                settings.set_color_channel(cap, channel, VISIBLE_SCALP_COLOR[channel.min(2)]);
             }
         }
         settings
@@ -867,16 +863,7 @@ pub const SCALP_OPACITY_KEY: &str = "Alpha Adjust";
 
 pub const SCALP_COLOR_KEY: &str = "Diffuse Color";
 
-pub const ROOT_COLOR_KEY: &str = "rootColor";
-
-pub const SCALP_LIFT_ABOVE_ROOT: f32 = 0.2;
-
-#[must_use]
-pub fn scalp_tint_from_root(root_channel: f32) -> f32 {
-    (root_channel + (255.0 - root_channel) * SCALP_LIFT_ABOVE_ROOT)
-        .clamp(0.0, 255.0)
-        .round()
-}
+pub const VISIBLE_SCALP_COLOR: [f32; 3] = [108.0, 74.0, 44.0];
 
 #[must_use]
 pub fn param_by_key(key: &str) -> Option<&'static HairParam> {
