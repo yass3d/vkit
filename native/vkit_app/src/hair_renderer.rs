@@ -189,11 +189,21 @@ macro_rules! scalp_shader_source {
                 );
             var coverage = scene.tint.a;
             if (scene.map_flags.y > 0.5) {
-
                 let sampled = textureSample(alpha_map, map_sampler, input.uv);
-                coverage = coverage * min(sampled.a, min(sampled.r, min(sampled.g, sampled.b)));
+                // Some sheets keep the mask in alpha, some are JPEGs with no
+                // alpha at all and keep it in the ink. Which one was settled
+                // when the sheet was uploaded.
+                let masked = select(
+                    map_luminance(sampled.rgb),
+                    sampled.a,
+                    scene.map_flags_2.w > 0.5,
+                );
+                coverage = coverage * masked;
             }
             coverage = clamp(coverage + scene.map_flags_2.y, 0.0, 1.0);
+            // Only what is wholly invisible goes, and only so it does not write
+            // depth over the hair behind it. The rest is blended, which is what
+            // keeps the soft edge of a strand a soft edge.
             if (coverage < scene.flags.x) {
                 discard;
             }
@@ -945,7 +955,9 @@ struct ScalpVertex {
     normal: [f32; 3],
 }
 
-const SCALP_ALPHA_CUTOFF: f32 = 0.45;
+/// Below this a texel is invisible and may as well not write depth. It is not
+/// a cutout threshold: the scalp is alpha blended, the way the game blends it.
+const SCALP_ALPHA_FLOOR: f32 = 1.0 / 255.0;
 
 #[derive(Clone)]
 pub struct ScalpPaintCallback {
@@ -1152,7 +1164,7 @@ impl ScalpRenderResources {
                     targets: &[Some(wgpu::ColorTargetState {
                         format: target_format,
 
-                        blend: None,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
@@ -1163,7 +1175,11 @@ impl ScalpRenderResources {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(true),
+                    // A blended surface that writes depth hides whatever is
+                    // drawn after it, and hair is drawn after it. The skull has
+                    // already written depth, so the far side of the cap is still
+                    // rejected without this.
+                    depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
                     bias: Default::default(),
@@ -1171,7 +1187,10 @@ impl ScalpRenderResources {
                 multisample: wgpu::MultisampleState {
                     count: sample_count,
                     mask: !0,
-                    alpha_to_coverage_enabled: true,
+                    // Coverage from alpha gives as many levels of opacity as
+                    // there are samples — four, here — which is what turned a
+                    // fine strand mask into stepped blocks.
+                    alpha_to_coverage_enabled: false,
                 },
                 multiview_mask: None,
                 cache: None,
@@ -1247,7 +1266,7 @@ impl ScalpRenderResources {
                 1.0,
             ],
             flags: [
-                SCALP_ALPHA_CUTOFF,
+                SCALP_ALPHA_FLOOR,
                 material.roughness(),
                 material.specular_intensity,
                 material.specular_fresnel,
@@ -1262,7 +1281,9 @@ impl ScalpRenderResources {
                 f32::from(u8::from(part.gloss.is_some())),
                 material.alpha_adjust,
                 material.diffuse_offset,
-                0.0,
+                f32::from(u8::from(
+                    part.alpha.as_deref().is_some_and(mask_lives_in_alpha),
+                )),
             ],
             eye: callback.eye.extend(1.0).to_array(),
             lighting: [
@@ -1516,6 +1537,26 @@ pub(crate) fn anchored_position(
     let surface = a * weights[0] + b * weights[1] + c * weights[2];
     let normal = (b - a).cross(c - a).try_normalize().unwrap_or(Vec3::Y);
     surface + normal * anchor.normal_offset
+}
+
+/// Whether a mask sheet keeps its holes in the alpha channel or in the ink.
+///
+/// Both are shipped. The stock provider sheets carry the same picture in every
+/// channel; a creator's is often a JPEG, which has no alpha at all, and a few
+/// keep a near-black ink with the whole mask in alpha. Reading the wrong one
+/// either erases the scalp or leaves it solid, so it is decided per sheet by
+/// looking, once, at whether the alpha channel says anything.
+#[must_use]
+fn mask_lives_in_alpha(image: &crate::skin_preview::SkinImage) -> bool {
+    let pixels = image.rgba8.as_ref();
+    let mut lowest = 255_u8;
+    let mut highest = 0_u8;
+    // A sheet is millions of texels; a stride reads enough to tell flat from not.
+    for alpha in pixels.iter().skip(3).step_by(4 * 97) {
+        lowest = lowest.min(*alpha);
+        highest = highest.max(*alpha);
+    }
+    highest.saturating_sub(lowest) > 8
 }
 
 fn upload_scalp_texture(
@@ -2034,5 +2075,66 @@ mod tests {
             error.is_none(),
             "hair GPU pipeline validation failed: {error:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod scalp_mask_tests {
+    use super::*;
+    use crate::skin_preview::{SkinImage, SkinUvOrientation};
+
+    fn sheet(pixels: Vec<u8>) -> SkinImage {
+        let count = pixels.len() / 4;
+        SkinImage {
+            revision: 1,
+            width: count as u32,
+            height: 1,
+            rgba8: std::sync::Arc::new(pixels),
+            uv_orientation: SkinUvOrientation::ObjFlipV,
+        }
+    }
+
+    #[test]
+    fn a_jpeg_mask_is_read_from_its_ink() {
+        // No alpha channel to speak of: a JPEG decodes to alpha 255 throughout,
+        // and the holes are in the ink.
+        let mut pixels = Vec::new();
+        for step in 0..600_u32 {
+            let ink = (step % 256) as u8;
+            pixels.extend_from_slice(&[ink, ink, ink, 255]);
+        }
+        assert!(
+            !mask_lives_in_alpha(&sheet(pixels)),
+            "a flat alpha channel says nothing, so the ink has to be believed",
+        );
+    }
+
+    #[test]
+    fn a_sheet_that_speaks_through_alpha_is_read_there() {
+        let mut pixels = Vec::new();
+        for step in 0..600_u32 {
+            pixels.extend_from_slice(&[20, 20, 20, (step % 256) as u8]);
+        }
+        assert!(
+            mask_lives_in_alpha(&sheet(pixels)),
+            "near-black ink with a varying alpha is the other convention, and \
+             reading the ink would erase the scalp",
+        );
+    }
+
+    #[test]
+    fn a_solid_sheet_is_not_mistaken_for_an_alpha_one() {
+        let pixels = vec![255_u8; 4 * 600];
+        assert!(!mask_lives_in_alpha(&sheet(pixels)));
+    }
+
+    #[test]
+    fn the_floor_is_a_floor_and_not_a_cutout_threshold() {
+        const {
+            assert!(
+                SCALP_ALPHA_FLOOR < 0.01,
+                "anything higher throws away the soft edge of every strand",
+            );
+        }
     }
 }
