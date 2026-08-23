@@ -20,7 +20,7 @@ const MARKER_POINTS: f32 = 3.0;
 const SELECTED_MARKER_POINTS: f32 = 5.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Joint {
+pub(super) struct Joint {
     part: u64,
     strand: u32,
     point: usize,
@@ -57,13 +57,21 @@ pub fn move_strand_point(points: &[[f32; 3]], point: usize, wanted: Vec3) -> Opt
     Some(moved)
 }
 
+/// The joint nearest the pointer that the reader can actually see.
+///
+/// `field` is the same far-side mask every hair overlay asks. Without it a
+/// click in empty space could land on a joint behind the skull that happened to
+/// project under the cursor — invisible, and then dragged. What is hidden is
+/// not pickable, which is the only rule that matches what is on screen.
 fn joints_near(
     state: &AppState,
     viewport: Rect,
     camera: TurntableCamera,
     pointer: Pos2,
     reach_points: f32,
+    field: &super::hair_overlays::HairDepthField,
 ) -> Option<Joint> {
+    let eye = camera.eye();
     let mut best: Option<(f32, Joint)> = None;
     for part_id in state.hair_project.editable_parts() {
         let Some(part) = state.hair_project.part(part_id) else {
@@ -78,6 +86,9 @@ fn joints_near(
                 };
                 let reach = seen.screen.distance(pointer);
                 if reach > reach_points || best.is_some_and(|(closest, _)| reach >= closest) {
+                    continue;
+                }
+                if field.hides(seen.screen, (at - eye).length()) {
                     continue;
                 }
                 best = Some((
@@ -95,21 +106,77 @@ fn joints_near(
     best.map(|(_, joint)| joint)
 }
 
-fn selected_joint(state: &AppState) -> Option<Joint> {
-    let (part, strand, point) = state.hair_vertex_selection?;
-    let position = state
-        .hair_project
-        .part(part)?
-        .strands
-        .get(&strand)?
-        .points_cm
-        .get(point)?;
-    Some(Joint {
-        part,
-        strand,
-        point,
-        at: Vec3::from_array(*position),
-    })
+/// Where every selected joint is right now.
+pub(super) fn selected_joints(state: &AppState) -> Vec<Joint> {
+    state
+        .hair_vertex_selection
+        .iter()
+        .filter_map(|&(part, strand, point)| {
+            let position = state
+                .hair_project
+                .part(part)?
+                .strands
+                .get(&strand)?
+                .points_cm
+                .get(point)?;
+            Some(Joint {
+                part,
+                strand,
+                point,
+                at: Vec3::from_array(*position),
+            })
+        })
+        .collect()
+}
+
+/// The middle of the selection, which is where the gizmo stands.
+pub(super) fn selection_centre(state: &AppState) -> Option<Vec3> {
+    let joints = selected_joints(state);
+    if joints.is_empty() {
+        return None;
+    }
+    let sum: Vec3 = joints.iter().map(|joint| joint.at).sum();
+    Some(sum / joints.len() as f32)
+}
+
+/// What a click does to the selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PickIntent {
+    /// Plain click: this joint and nothing else.
+    Replace,
+    /// Shift: add it, or take it back out if it was already in.
+    Toggle,
+    /// Alt: take it out and leave the rest.
+    Remove,
+}
+
+/// Fold one pick into a selection.
+///
+/// Split out from the input so it can be checked without a pointer: the rules
+/// are small and they are the part a reader notices when they are wrong.
+fn apply_pick(
+    selection: &mut std::collections::BTreeSet<(u64, u32, usize)>,
+    picked: Option<(u64, u32, usize)>,
+    intent: PickIntent,
+) {
+    match (picked, intent) {
+        // Clicking nothing clears, the way it does everywhere. Holding a
+        // modifier means "adjust what I have", so an empty click keeps it.
+        (None, PickIntent::Replace) => selection.clear(),
+        (None, _) => {}
+        (Some(joint), PickIntent::Replace) => {
+            selection.clear();
+            selection.insert(joint);
+        }
+        (Some(joint), PickIntent::Toggle) => {
+            if !selection.remove(&joint) {
+                selection.insert(joint);
+            }
+        }
+        (Some(joint), PickIntent::Remove) => {
+            selection.remove(&joint);
+        }
+    }
 }
 
 pub(super) fn handle(
@@ -122,13 +189,29 @@ pub(super) fn handle(
     let Some(pointer) = ui.input(|input| input.pointer.interact_pos()) else {
         return;
     };
+    let field = super::hair_overlays::hair_depth_field(ui, state, viewport, camera);
     if response.drag_started() || (response.clicked() && !response.dragged()) {
-        state.hair_vertex_selection = joints_near(state, viewport, camera, pointer, GRAB_POINTS)
+        let intent = if crate::shortcuts::Shortcut::VertexAddToSelectionHold.held(ui) {
+            PickIntent::Toggle
+        } else if crate::shortcuts::Shortcut::VertexRemoveFromSelectionHold.held(ui) {
+            PickIntent::Remove
+        } else {
+            PickIntent::Replace
+        };
+        let picked = joints_near(state, viewport, camera, pointer, GRAB_POINTS, &field)
             .map(|joint| (joint.part, joint.strand, joint.point));
+        // A modifier click that lands on nothing must not start a drag either,
+        // or the reader would haul the whole selection about by empty space.
+        let dragging_from_a_joint = picked.is_some();
+        apply_pick(&mut state.hair_vertex_selection, picked, intent);
+        if !dragging_from_a_joint {
+            return;
+        }
     }
-    let Some(joint) = selected_joint(state) else {
+    let joints = selected_joints(state);
+    if joints.is_empty() {
         return;
-    };
+    }
     if !response.dragged() {
         if response.drag_stopped() {
             state.dispatch(Action::EndHairStroke);
@@ -139,33 +222,99 @@ pub(super) fn handle(
     if delta == egui::Vec2::ZERO {
         return;
     }
-    let wanted = joint.at + camera.world_drag_delta_at(joint.at, delta, viewport.height());
-    let Some(part) = state.hair_project.part(joint.part) else {
+    // One screen delta, turned into world at the middle of the selection, so
+    // every joint travels together rather than each by its own depth.
+    let Some(centre) = selection_centre(state) else {
         return;
     };
-    let Some(strand) = part.strands.get(&joint.strand) else {
-        return;
-    };
-    let Some(moved) = move_strand_point(&strand.points_cm, joint.point, wanted) else {
-        return;
-    };
-    let mut strands = vec![(joint.strand, moved)];
-    if state.hair_mirror_edit
-        && let Some(scalp) = state.posed_hair_scalps.get(&part.provider_name)
-        && let Some(&pair) = scalp.mirror_pair.get(joint.strand as usize)
-        && pair != joint.strand
-        && let Some(other) = part.strands.get(&pair)
-    {
-        let mirrored = Vec3::new(-wanted.x, wanted.y, wanted.z);
-        if let Some(moved) = move_strand_point(&other.points_cm, joint.point, mirrored) {
-            strands.push((pair, moved));
+    let shift = camera.world_drag_delta_at(centre, delta, viewport.height());
+    move_selection(state, &joints, shift);
+    ui.ctx().request_repaint();
+}
+
+/// Turn every selected joint about a point.
+pub(super) fn turn_selection(
+    state: &mut AppState,
+    joints: &[Joint],
+    about: Vec3,
+    turn: glam::Quat,
+) {
+    let placed: Vec<(Joint, Vec3)> = joints
+        .iter()
+        .map(|joint| (*joint, about + turn * (joint.at - about)))
+        .collect();
+    move_placed(state, &placed);
+}
+
+/// Move every selected joint by one world shift, mirrors included.
+pub(super) fn move_selection(state: &mut AppState, joints: &[Joint], shift: Vec3) {
+    let placed: Vec<(Joint, Vec3)> = joints
+        .iter()
+        .map(|joint| (*joint, joint.at + shift))
+        .collect();
+    move_placed(state, &placed);
+}
+
+/// Put each named joint at the place given for it, mirrors included.
+///
+/// One writer for every way the joints move — a drag, an axis, a ring — so the
+/// mirroring and the root rule are decided once rather than three times.
+fn move_placed(state: &mut AppState, placed: &[(Joint, Vec3)]) {
+    use std::collections::BTreeMap;
+
+    let mut wanted: BTreeMap<u64, BTreeMap<u32, Vec<(usize, Vec3)>>> = BTreeMap::new();
+    for (joint, to) in placed {
+        wanted
+            .entry(joint.part)
+            .or_default()
+            .entry(joint.strand)
+            .or_default()
+            .push((joint.point, *to));
+    }
+
+    for (part_id, by_strand) in wanted {
+        let Some(part) = state.hair_project.part(part_id) else {
+            continue;
+        };
+        let mirror = state
+            .hair_mirror_edit
+            .then(|| state.posed_hair_scalps.get(&part.provider_name))
+            .flatten();
+        let mut strands = Vec::new();
+        for (strand_id, points) in by_strand {
+            let Some(strand) = part.strands.get(&strand_id) else {
+                continue;
+            };
+            // Through `move_strand_point` rather than writing the slot here:
+            // that is where "one joint, and never the root" is decided, and it
+            // should be decided once.
+            let mut moved = strand.points_cm.clone();
+            for (point, to) in &points {
+                if let Some(next) = move_strand_point(&moved, *point, *to) {
+                    moved = next;
+                }
+            }
+            strands.push((strand_id, moved));
+
+            if let Some(scalp) = mirror
+                && let Some(&pair) = scalp.mirror_pair.get(strand_id as usize)
+                && pair != strand_id
+                && let Some(other) = part.strands.get(&pair)
+            {
+                let mut mirrored = other.points_cm.clone();
+                for (point, to) in &points {
+                    let across = Vec3::new(-to.x, to.y, to.z);
+                    if let Some(next) = move_strand_point(&mirrored, *point, across) {
+                        mirrored = next;
+                    }
+                }
+                strands.push((pair, mirrored));
+            }
+        }
+        if !strands.is_empty() {
+            state.dispatch(Action::SetHairStrandPoints { part_id, strands });
         }
     }
-    state.dispatch(Action::SetHairStrandPoints {
-        part_id: joint.part,
-        strands,
-    });
-    ui.ctx().request_repaint();
 }
 
 /// Mark what can be taken hold of, and what already is.
@@ -179,11 +328,12 @@ pub(super) fn paint(
     let painter = ui
         .painter()
         .with_clip_rect(ui.clip_rect().intersect(viewport));
+    let field = super::hair_overlays::hair_depth_field(ui, state, viewport, camera);
     let hovered = response
         .hovered()
         .then(|| ui.input(|input| input.pointer.hover_pos()))
         .flatten()
-        .and_then(|pointer| joints_near(state, viewport, camera, pointer, GRAB_POINTS));
+        .and_then(|pointer| joints_near(state, viewport, camera, pointer, GRAB_POINTS, &field));
 
     if let Some(joint) = hovered
         && let Some(seen) = camera.project(joint.at, viewport)
@@ -196,27 +346,26 @@ pub(super) fn paint(
         );
     }
 
-    let Some(joint) = selected_joint(state) else {
-        return;
-    };
-    let Some(seen) = camera.project(joint.at, viewport) else {
-        return;
-    };
-    let marker =
-        Rect::from_center_size(seen.screen, egui::Vec2::splat(SELECTED_MARKER_POINTS * 2.0));
-    painter.rect_filled(marker, 1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE);
-    // A short cross so the anchor reads as a handle rather than a dot.
-    for (from, to) in [
-        (marker.left_center(), marker.right_center()),
-        (marker.center_top(), marker.center_bottom()),
-    ] {
-        painter.line_segment(
-            [
-                from - (to - from).normalized() * 6.0,
-                to + (to - from).normalized() * 6.0,
-            ],
-            egui::Stroke::new(1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE),
-        );
+    for joint in selected_joints(state) {
+        let Some(seen) = camera.project(joint.at, viewport) else {
+            continue;
+        };
+        let marker =
+            Rect::from_center_size(seen.screen, egui::Vec2::splat(SELECTED_MARKER_POINTS * 2.0));
+        painter.rect_filled(marker, 1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE);
+        // A short cross so the anchor reads as a handle rather than a dot.
+        for (from, to) in [
+            (marker.left_center(), marker.right_center()),
+            (marker.center_top(), marker.center_bottom()),
+        ] {
+            painter.line_segment(
+                [
+                    from - (to - from).normalized() * 6.0,
+                    to + (to - from).normalized() * 6.0,
+                ],
+                egui::Stroke::new(1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE),
+            );
+        }
     }
 }
 
@@ -233,6 +382,60 @@ mod tests {
             .windows(2)
             .map(|pair| (Vec3::from_array(pair[1]) - Vec3::from_array(pair[0])).length())
             .collect()
+    }
+
+    /// Plain click replaces, Shift adds and takes back, Alt only removes.
+    #[test]
+    fn the_three_ways_a_click_changes_a_selection() {
+        use std::collections::BTreeSet;
+
+        let one = (1_u64, 2_u32, 3_usize);
+        let two = (1, 2, 4);
+        let mut selection = BTreeSet::new();
+
+        apply_pick(&mut selection, Some(one), PickIntent::Replace);
+        assert_eq!(selection, BTreeSet::from([one]));
+
+        apply_pick(&mut selection, Some(two), PickIntent::Toggle);
+        assert_eq!(selection, BTreeSet::from([one, two]), "shift adds");
+
+        apply_pick(&mut selection, Some(two), PickIntent::Toggle);
+        assert_eq!(selection, BTreeSet::from([one]), "and shift takes back");
+
+        apply_pick(&mut selection, Some(two), PickIntent::Remove);
+        assert_eq!(
+            selection,
+            BTreeSet::from([one]),
+            "alt on an outsider is nothing"
+        );
+
+        apply_pick(&mut selection, Some(one), PickIntent::Remove);
+        assert!(selection.is_empty(), "alt takes out what is in");
+
+        apply_pick(&mut selection, Some(one), PickIntent::Replace);
+        apply_pick(&mut selection, Some(two), PickIntent::Replace);
+        assert_eq!(selection, BTreeSet::from([two]), "a plain click replaces");
+    }
+
+    /// Clicking empty space clears — but only when no modifier is down.
+    ///
+    /// A reader holding shift is saying "adjust what I have"; losing the lot
+    /// because they missed a joint by two pixels is the opposite of that.
+    #[test]
+    fn an_empty_click_clears_only_when_it_is_a_plain_one() {
+        use std::collections::BTreeSet;
+
+        let held = BTreeSet::from([(1_u64, 2_u32, 3_usize)]);
+
+        let mut selection = held.clone();
+        apply_pick(&mut selection, None, PickIntent::Replace);
+        assert!(selection.is_empty());
+
+        for intent in [PickIntent::Toggle, PickIntent::Remove] {
+            let mut selection = held.clone();
+            apply_pick(&mut selection, None, intent);
+            assert_eq!(selection, held, "{intent:?} on empty space keeps it");
+        }
     }
 
     /// Only the joint under the hand moves.

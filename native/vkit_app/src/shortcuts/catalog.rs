@@ -31,6 +31,14 @@ pub enum ShortcutContext {
     /// the pointer.
     TextureEdit,
 
+    /// Editing a strand's own joints.
+    ///
+    /// Its own context because `Alt` reverses the hair BRUSH, and the vertex
+    /// tool is not a brush — it has a selection, and `Alt` there is what takes
+    /// something out of one. The two are never reachable at the same moment:
+    /// the vertex tool is chosen or it is not.
+    VertexEdit,
+
     /// The part, layer and morph lists down the side.
     ///
     /// Its own context so that `Shift` can mean "add to the selection" here and
@@ -139,10 +147,13 @@ pub enum Shortcut {
     LayerIsolate,
     LayerLocalView,
     LayerInvertSelection,
+
+    VertexAddToSelectionHold,
+    VertexRemoveFromSelectionHold,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 59] = [
+    pub const ALL: [Self; 61] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -202,6 +213,8 @@ impl Shortcut {
         Self::LayerIsolate,
         Self::LayerLocalView,
         Self::LayerInvertSelection,
+        Self::VertexAddToSelectionHold,
+        Self::VertexRemoveFromSelectionHold,
     ];
 
     pub const fn slot(self) -> usize {
@@ -276,6 +289,8 @@ impl Shortcut {
             Self::LayerIsolate => "layer-isolate",
             Self::LayerLocalView => "layer-local-view",
             Self::LayerInvertSelection => "layer-invert-selection",
+            Self::VertexAddToSelectionHold => "vertex-add-to-selection-hold",
+            Self::VertexRemoveFromSelectionHold => "vertex-remove-from-selection-hold",
         }
     }
 
@@ -316,14 +331,16 @@ impl Shortcut {
             Self::ViewFrontLowerLeft => Trigger::Numpad(NumpadKey::One),
             Self::ViewFrontLowerRight => Trigger::Numpad(NumpadKey::Three),
 
-            Self::SculptSmoothHold | Self::HairSmoothHold | Self::ListAddToSelectionHold => {
-                Trigger::Held(ModifierKey::Shift)
-            }
+            Self::SculptSmoothHold
+            | Self::HairSmoothHold
+            | Self::ListAddToSelectionHold
+            | Self::VertexAddToSelectionHold => Trigger::Held(ModifierKey::Shift),
             Self::SculptInflateHold => Trigger::Held(ModifierKey::Ctrl),
             Self::SculptAlternateHold
             | Self::HairInvertHold
             | Self::TextureInvertHold
-            | Self::ListSoloHold => Trigger::Held(ModifierKey::Alt),
+            | Self::ListSoloHold
+            | Self::VertexRemoveFromSelectionHold => Trigger::Held(ModifierKey::Alt),
 
             other => Trigger::Key(other.key()),
         }
@@ -384,6 +401,8 @@ impl Shortcut {
             | Self::TextureInvertHold
             | Self::ListAddToSelectionHold
             | Self::ListSoloHold
+            | Self::VertexAddToSelectionHold
+            | Self::VertexRemoveFromSelectionHold
             | Self::LightRotate
             | Self::LayerLocalView => Key::Escape,
         }
@@ -446,6 +465,10 @@ impl Shortcut {
             Self::HairSmoothHold | Self::HairInvertHold => ShortcutContext::HairEdit,
 
             Self::ListAddToSelectionHold | Self::ListSoloHold => ShortcutContext::Lists,
+
+            Self::VertexAddToSelectionHold | Self::VertexRemoveFromSelectionHold => {
+                ShortcutContext::VertexEdit
+            }
 
             Self::TextureCanvasPan => ShortcutContext::TextureEdit,
 
@@ -523,7 +546,9 @@ impl Shortcut {
             | Self::HairInvertHold
             | Self::TextureInvertHold
             | Self::ListAddToSelectionHold
-            | Self::ListSoloHold => ModifierPolicy::Ignored,
+            | Self::ListSoloHold
+            | Self::VertexAddToSelectionHold
+            | Self::VertexRemoveFromSelectionHold => ModifierPolicy::Ignored,
 
             // Held while something else is happening: the canvas is already
             // being dragged, so demanding a bare Space would let a stray Shift

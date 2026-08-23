@@ -1225,13 +1225,14 @@ const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey 
         crate::shortcuts::ShortcutContext::View => TextKey::ShortcutGroupView,
         crate::shortcuts::ShortcutContext::Navigation => TextKey::ShortcutGroupNavigation,
         crate::shortcuts::ShortcutContext::Lists => TextKey::ShortcutGroupLists,
+        crate::shortcuts::ShortcutContext::VertexEdit => TextKey::ShortcutGroupVertex,
         crate::shortcuts::ShortcutContext::TextureEdit => TextKey::ShortcutGroupTexture,
     }
 }
 
 /// System first because it is true everywhere, then the three places a binding
 /// only means something in.
-const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 8] = [
+const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 9] = [
     crate::shortcuts::ShortcutContext::Global,
     crate::shortcuts::ShortcutContext::Navigation,
     crate::shortcuts::ShortcutContext::View,
@@ -1240,6 +1241,7 @@ const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 8] = [
     crate::shortcuts::ShortcutContext::TextureEdit,
     crate::shortcuts::ShortcutContext::HairEdit,
     crate::shortcuts::ShortcutContext::Lists,
+    crate::shortcuts::ShortcutContext::VertexEdit,
 ];
 
 /// Reset, save and load, as icons at the top right.
@@ -1423,6 +1425,8 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::LayerIsolate => TextKey::ShortcutLayerIsolate,
         Shortcut::LayerLocalView => TextKey::ShortcutLayerLocalView,
         Shortcut::LayerInvertSelection => TextKey::ShortcutLayerInvertSelection,
+        Shortcut::VertexAddToSelectionHold => TextKey::ShortcutVertexAdd,
+        Shortcut::VertexRemoveFromSelectionHold => TextKey::ShortcutVertexRemove,
     }
 }
 

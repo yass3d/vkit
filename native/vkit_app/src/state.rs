@@ -277,7 +277,11 @@ pub struct AppState {
     pub hair_export_files: Vec<std::path::PathBuf>,
 
     /// The point joint the vertex tool has hold of: part, strand, point.
-    pub hair_vertex_selection: Option<(u64, u32, usize)>,
+    /// The strand joints being edited: part, strand, point index.
+    ///
+    /// A set rather than one, because moving two joints at once is the first
+    /// thing a hand reaches for once it can move one.
+    pub hair_vertex_selection: std::collections::BTreeSet<(u64, u32, usize)>,
 
     /// The cap wrapped onto the head as it is now, refreshed by the viewport.
     /// Planting reads it so a root lands where the socket was clicked.
@@ -618,7 +622,7 @@ impl Default for AppState {
             viewport_background_mode: ViewportBackgroundMode::Radial,
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             hair_export_files: Vec::new(),
-            hair_vertex_selection: None,
+            hair_vertex_selection: std::collections::BTreeSet::new(),
             posed_hair_scalps: std::collections::HashMap::new(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,

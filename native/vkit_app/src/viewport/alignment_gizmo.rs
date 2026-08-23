@@ -382,7 +382,20 @@ pub(super) fn alignment_gizmo_hit(
     pointer: Pos2,
     geometry: &AlignmentGizmoGeometry,
 ) -> Option<AlignmentGizmoHit> {
-    if pointer.distance(geometry.scale_handle) <= GIZMO_HIT_RADIUS * 1.4 {
+    gizmo_hit(pointer, geometry, true)
+}
+
+/// What the pointer is on, with or without the scale handle in the middle.
+///
+/// Strand joints are spaced by the lengths the solver is handed as rest
+/// lengths; pulling them apart uniformly is not an edit anybody reached for, so
+/// that tool asks with `false` and the centre answers nothing.
+pub(super) fn gizmo_hit(
+    pointer: Pos2,
+    geometry: &AlignmentGizmoGeometry,
+    scale: bool,
+) -> Option<AlignmentGizmoHit> {
+    if scale && pointer.distance(geometry.scale_handle) <= GIZMO_HIT_RADIUS * 1.4 {
         return Some(AlignmentGizmoHit::Scale);
     }
 
@@ -474,6 +487,20 @@ pub(super) fn apply_alignment_gizmo_drag(
     }
 }
 
+/// How far the pointer swung about a point, in degrees, since last frame.
+///
+/// Not the same question as `rotation_drag_degrees`, which SNAPS an angle that
+/// has already been accumulated. This is the accumulating.
+pub(super) fn drag_swept_degrees(previous: Pos2, current: Pos2, about: Pos2) -> f32 {
+    let from = previous - about;
+    let to = current - about;
+    if from.length() < 4.0 || to.length() < 4.0 {
+        // Too close to the middle for an angle to mean anything.
+        return 0.0;
+    }
+    wrapped_angle_delta(from.y.atan2(from.x), to.y.atan2(to.x)).to_degrees()
+}
+
 pub(super) fn rotation_drag_degrees(
     accumulated_degrees: f64,
     shift_down: bool,
@@ -506,7 +533,11 @@ pub(super) fn paint_alignment_gizmo(
     let Some(geometry) = alignment_gizmo_geometry(state, scan, viewport, camera) else {
         return;
     };
+    paint_gizmo_geometry(ui, &geometry, true);
+}
 
+/// Draw a handle that has already been placed.
+pub(super) fn paint_gizmo_geometry(ui: &Ui, geometry: &AlignmentGizmoGeometry, scale: bool) {
     for (axis, ring) in geometry.rings.iter().enumerate() {
         if ring.len() >= 2 {
             ui.painter().add(egui::Shape::line(
@@ -528,11 +559,13 @@ pub(super) fn paint_alignment_gizmo(
             ));
         }
     }
-    ui.painter().rect_filled(
-        Rect::from_center_size(geometry.scale_handle, Vec2::splat(GIZMO_SCALE_HANDLE_SIZE)),
-        2.0,
-        Color32::WHITE,
-    );
+    if scale {
+        ui.painter().rect_filled(
+            Rect::from_center_size(geometry.scale_handle, Vec2::splat(GIZMO_SCALE_HANDLE_SIZE)),
+            2.0,
+            Color32::WHITE,
+        );
+    }
 }
 
 pub(super) fn gizmo_arrowhead(origin: Pos2, end: Pos2) -> Option<[Pos2; 3]> {
@@ -559,12 +592,26 @@ pub(super) fn alignment_gizmo_geometry(
 ) -> Option<AlignmentGizmoGeometry> {
     let transform = scan_transform(state);
     let world_bounds = transform.bounds_to_world(scan.facial_focus_bounds());
-    let world_center = world_bounds.center();
-    let origin = camera.project(world_center, viewport)?.screen;
     let world_size = world_bounds
         .radius()
         .max(camera.frame_radius * 0.08)
         .clamp(camera.frame_radius * 0.08, camera.frame_radius * 0.42);
+    gizmo_geometry_at(world_bounds.center(), world_size, viewport, camera)
+}
+
+/// The handle itself: three axes and three rings about a point.
+///
+/// Where it stands and how big it is are the caller's business — the alignment
+/// tab takes both from the scan's bounds, and the strand-joint tool takes them
+/// from the middle of what is selected. Everything below that is the same
+/// handle and is written once.
+pub(super) fn gizmo_geometry_at(
+    world_center: glam::Vec3,
+    world_size: f32,
+    viewport: Rect,
+    camera: TurntableCamera,
+) -> Option<AlignmentGizmoGeometry> {
+    let origin = camera.project(world_center, viewport)?.screen;
     let axes = [glam::Vec3::X, glam::Vec3::Y, glam::Vec3::Z];
     let axis_ends = axes.map(|axis| {
         camera

@@ -161,7 +161,11 @@ pub(super) fn handle_hair_interaction(
     match tool {
         HairTool::Pick => {}
         HairTool::Vertex => {
-            crate::viewport::hair_vertex::handle(ui, state, viewport, response, camera);
+            // The handle is asked first: grabbing an axis must not also pick
+            // whatever joint happens to sit behind it.
+            if !crate::viewport::vertex_gizmo::handle(ui, state, viewport, response, camera) {
+                crate::viewport::hair_vertex::handle(ui, state, viewport, response, camera);
+            }
         }
         HairTool::Plant => {
             let Some(primary) = state

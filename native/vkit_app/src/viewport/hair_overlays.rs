@@ -1028,8 +1028,9 @@ fn draw_hair_streams(
                         run.push(projected.screen);
                         // Every point, not only the one being dragged. You
                         // cannot correct a strand you cannot see the joints of.
-                        let editing =
-                            state.hair_vertex_selection == Some((part_id, *strand_id, index));
+                        let editing = state
+                            .hair_vertex_selection
+                            .contains(&(part_id, *strand_id, index));
                         painter.circle_filled(
                             projected.screen,
                             if editing {

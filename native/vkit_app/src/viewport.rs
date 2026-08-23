@@ -658,6 +658,7 @@ fn draw_result_in(
     if state.is_hair_editing() && state.hair_thumbnail.is_none() {
         if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
             hair_vertex::paint(ui, state, rect, &response, swept);
+            vertex_gizmo::paint(ui, state, rect, swept);
         } else {
             hair_input::paint_hair_brush_hud(ui, state, &response);
         }
@@ -995,6 +996,7 @@ mod sculpt_input;
 mod sculpt_toolbox;
 mod texture_toolbox;
 mod toolbox;
+mod vertex_gizmo;
 mod work_nav;
 
 pub(crate) use sculpt_input::clear_sculpt_pointer_stroke;
