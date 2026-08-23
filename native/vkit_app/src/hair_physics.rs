@@ -925,11 +925,10 @@ impl HairPhysicsScene {
         mesh: &Arc<SurfaceMesh>,
         simulate: HairSimulation,
     ) -> bool {
-        self.simulate == simulate
-            && Arc::ptr_eq(&self.preview, preview)
-            && self.mesh.topology_revision == mesh.topology_revision
-            && self.mesh.mesh.vertices.len() == mesh.mesh.vertices.len()
-            && self.mesh.mesh.triangles.len() == mesh.mesh.triangles.len()
+        same_inputs(
+            (&self.preview, &self.mesh, self.simulate),
+            (preview, mesh, simulate),
+        )
     }
 
     pub(crate) fn update_head_if_needed(&mut self, queue: &wgpu::Queue, mesh: Arc<SurfaceMesh>) {
@@ -1086,6 +1085,63 @@ impl HairPhysicsScene {
     pub(crate) fn render_run_buffer(&self) -> &wgpu::Buffer {
         &self.render_run_buffer
     }
+}
+
+/// What a hair scene is built from.
+///
+/// Kept so a build that produced NOTHING can be remembered as well as one that
+/// produced something. A part with no strands used to fail the scene lookup
+/// every frame, rebuild everything — the rest particles, the constraint graph,
+/// and a 64-cubed distance field against the head — and be thrown away again,
+/// for as long as it was on screen.
+#[derive(Clone)]
+pub(crate) struct SceneInputs {
+    preview: Arc<HairPreview>,
+    mesh: Arc<SurfaceMesh>,
+    simulate: HairSimulation,
+}
+
+impl SceneInputs {
+    #[must_use]
+    pub(crate) const fn of(
+        preview: Arc<HairPreview>,
+        mesh: Arc<SurfaceMesh>,
+        simulate: HairSimulation,
+    ) -> Self {
+        Self {
+            preview,
+            mesh,
+            simulate,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn matches(
+        &self,
+        preview: &Arc<HairPreview>,
+        mesh: &Arc<SurfaceMesh>,
+        simulate: HairSimulation,
+    ) -> bool {
+        same_inputs(
+            (&self.preview, &self.mesh, self.simulate),
+            (preview, mesh, simulate),
+        )
+    }
+}
+
+/// The one rule for "these are the same inputs", used by the live scene and by
+/// the record of an empty one alike.
+fn same_inputs(
+    held: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
+    asked: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
+) -> bool {
+    let (held_preview, held_mesh, held_simulate) = held;
+    let (preview, mesh, simulate) = asked;
+    held_simulate == simulate
+        && Arc::ptr_eq(held_preview, preview)
+        && held_mesh.topology_revision == mesh.topology_revision
+        && held_mesh.mesh.vertices.len() == mesh.mesh.vertices.len()
+        && held_mesh.mesh.triangles.len() == mesh.mesh.triangles.len()
 }
 
 struct SceneData {
@@ -1294,6 +1350,15 @@ fn build_scene_data(
             built.flat_quads as f64 / built.run_quads.max(1) as f64,
         ),
     );
+    // Nothing to draw, so nothing to collide with. `head_field_for_mesh`
+    // measures a 64-cubed grid against the head — 262,144 point-to-mesh
+    // distances — and the caller was about to throw the result away.
+    // Nothing to draw, so nothing to collide with. `head_field_for_mesh`
+    // measures a 64-cubed grid against the head — 262,144 point-to-mesh
+    // distances — and the caller was about to throw the result away.
+    if rests.is_empty() || render_segments.is_empty() {
+        return None;
+    }
     let (colliders, collider_count) = head_field_for_mesh(mesh);
     let strands = guide_ranges
         .iter()
@@ -2274,6 +2339,55 @@ mod tests {
             })
             .expect("a sphere is a mesh"),
         )
+    }
+
+    /// A preview with nothing to draw refuses BEFORE the expensive half.
+    ///
+    /// This is what the log caught: eighty-seven consecutive frames of
+    /// `particles=0; segments=0`. A part with no strands failed the scene
+    /// lookup, rebuilt everything a scene needs, found it had no segments, and
+    /// was discarded — then did it again next frame. The costly part is
+    /// `head_field_for_mesh`, a 64-cubed grid of point-to-mesh distances, and
+    /// it ran every one of those times for a result nobody kept.
+    #[test]
+    fn a_preview_with_no_strands_stops_before_the_distance_field() {
+        use crate::hair_preview::HairPreviewStrand;
+
+        let mut preview = two_strand_preview();
+        for part in &mut preview.parts {
+            part.strands = Arc::new(Vec::<HairPreviewStrand>::new());
+        }
+        let mesh = sphere_mesh(Vec3::ZERO, 1.0);
+
+        // `build_scene_data` itself refuses. The check used to live one level
+        // up, in `HairPhysicsScene::new`, which meant the field had already
+        // been built by the time anybody noticed there was nothing to draw —
+        // so moving it back there fails here, which is the ordering this pins.
+        assert!(
+            build_scene_data(&preview, &mesh, usize::MAX, usize::MAX, HairSimulation::Off)
+                .is_none(),
+            "an empty preview must be refused before the distance field is built",
+        );
+    }
+
+    /// The two records of "what this was built from" answer alike.
+    #[test]
+    fn an_empty_record_and_a_live_scene_agree_on_what_changed() {
+        let preview = Arc::new(two_strand_preview());
+        let mesh = sphere_mesh(Vec3::ZERO, 1.0);
+        let inputs = SceneInputs::of(Arc::clone(&preview), Arc::clone(&mesh), HairSimulation::Off);
+
+        assert!(inputs.matches(&preview, &mesh, HairSimulation::Off));
+        assert!(
+            !inputs.matches(&preview, &mesh, HairSimulation::Every),
+            "a change of simulation is a change of scene"
+        );
+
+        let same_shape = Arc::new(two_strand_preview());
+        assert!(
+            !inputs.matches(&same_shape, &mesh, HairSimulation::Off),
+            "a rebuilt preview is a different preview, whatever it holds"
+        );
     }
 
     /// Every segment lands in a run whose stride is its OWN subdivision count.

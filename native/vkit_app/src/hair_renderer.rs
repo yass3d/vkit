@@ -1805,6 +1805,15 @@ pub(crate) struct HairRenderResources {
     bind_group_layout: wgpu::BindGroupLayout,
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
+
+    /// Keys whose inputs were already found to draw nothing.
+    ///
+    /// A part with no strands fails the scene lookup, rebuilds everything the
+    /// scene needs — rest particles, the constraint graph, a 64-cubed distance
+    /// field against the head — discovers it has no segments, and is thrown
+    /// away. Without this it does that again on the very next frame, forever,
+    /// for as long as the part is on screen.
+    empty: BTreeMap<u64, crate::hair_physics::SceneInputs>,
     /// One `0,1,2, 2,1,3` per quad, shared by every scene and grown to fit the
     /// largest one drawn. The pattern never varies, so neither does the buffer.
     quad_indices: Option<(wgpu::Buffer, u32)>,
@@ -1919,6 +1928,7 @@ impl HairRenderResources {
             bind_group_layout,
             physics_pipelines: HairPhysicsPipelines::new(device),
             scenes: BTreeMap::new(),
+            empty: BTreeMap::new(),
             quad_indices: None,
             target_is_srgb: target_format.is_srgb(),
         }
@@ -1973,6 +1983,11 @@ impl HairRenderResources {
                 0.0,
             ],
         };
+        if self.empty.get(&callback.scene_key).is_some_and(|inputs| {
+            inputs.matches(&callback.preview, &callback.mesh, callback.simulate_hair)
+        }) {
+            return;
+        }
         if let Some(scene) = self.scenes.get_mut(&callback.scene_key)
             && scene
                 .physics
@@ -2002,8 +2017,17 @@ impl HairRenderResources {
             callback.simulate_hair,
         ) else {
             self.scenes.remove(&callback.scene_key);
+            self.empty.insert(
+                callback.scene_key,
+                crate::hair_physics::SceneInputs::of(
+                    Arc::clone(&callback.preview),
+                    Arc::clone(&callback.mesh),
+                    callback.simulate_hair,
+                ),
+            );
             return;
         };
+        self.empty.remove(&callback.scene_key);
         uniform.grading[3] = physics.render_subdivisions() as f32;
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vkit.hair.uniform"),
