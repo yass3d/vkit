@@ -551,8 +551,9 @@ pub(crate) fn authoring_hair_preview(
         "hair",
         "preview_built",
         &format!(
-            "part={}; bed_ms={bed_ms:.1}; guides_ms={geometry_ms:.1}; scalp_ms={scalp_ms:.1}; preview_ms={:.1}",
+            "part={}; rev={revision}; stroke_open={}; tint={tinted}; lit={lit}; bed_ms={bed_ms:.1}; guides_ms={geometry_ms:.1}; scalp_ms={scalp_ms:.1}; preview_ms={:.1}",
             part.id,
+            state.hair_project.stroke_open(),
             preview_started.elapsed().as_secs_f64() * 1000.0,
         ),
     );
