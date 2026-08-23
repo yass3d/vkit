@@ -413,8 +413,12 @@ pub(crate) fn authoring_hair_preview(
     {
         return Some(preview);
     }
+    let bed_started = std::time::Instant::now();
     let bed = head_bed(ctx, state)?;
+    let bed_ms = bed_started.elapsed().as_secs_f64() * 1000.0;
+    let geometry_started = std::time::Instant::now();
     let geometry = crate::hair_export::authoring_guide_geometry(part, scalp, false)?;
+    let geometry_ms = geometry_started.elapsed().as_secs_f64() * 1000.0;
     let mut look = crate::hair_export::authoring_look(part);
     if tinted {
         let tint = part_tint_color(part.id);
@@ -443,16 +447,30 @@ pub(crate) fn authoring_hair_preview(
         look.root_color = Some(lift_active_layer(look.root_color));
         look.tip_color = Some(lift_active_layer(look.tip_color));
     }
+    let scalp_started = std::time::Instant::now();
+    let scalp_layer = authoring_scalp_layer(ctx, state, part, scalp, &bed);
+    let scalp_ms = scalp_started.elapsed().as_secs_f64() * 1000.0;
+    let preview_started = std::time::Instant::now();
     let preview = crate::hair_preview::authoring_hair_preview(
         Arc::new(geometry),
         look,
         crate::hair_export::authoring_physics(part),
         &bed,
         HAIR_PREVIEW_CHILD_BUDGET,
-        authoring_scalp_layer(ctx, state, part, scalp, &bed),
+        scalp_layer,
     )
     .ok()
     .map(Arc::new)?;
+    let _ = crate::diagnostics::record(
+        crate::diagnostics::Severity::Info,
+        "hair",
+        "preview_built",
+        &format!(
+            "part={}; bed_ms={bed_ms:.1}; guides_ms={geometry_ms:.1}; scalp_ms={scalp_ms:.1}; preview_ms={:.1}",
+            part.id,
+            preview_started.elapsed().as_secs_f64() * 1000.0,
+        ),
+    );
     ctx.data_mut(|data| {
         data.insert_temp(cache_id, (revision, tinted, lit, now, Arc::clone(&preview)));
     });

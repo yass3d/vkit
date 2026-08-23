@@ -769,7 +769,10 @@ impl HairPhysicsScene {
         let max_segments = (max_segment_bytes / std::mem::size_of::<GpuHairRenderSegment>())
             .min(u32::MAX as usize / 6);
         let max_constraints = storage_limit / std::mem::size_of::<GpuConstraint>();
+        let build_started = std::time::Instant::now();
         let data = build_scene_data(&preview, &mesh, max_segments, max_constraints, simulate)?;
+        let build_ms = build_started.elapsed().as_secs_f64() * 1000.0;
+        let upload_started = std::time::Instant::now();
         if data.rests.is_empty() || data.render_segments.is_empty() {
             return None;
         }
@@ -902,6 +905,15 @@ impl HairPhysicsScene {
                     .iter()
                     .map(|phase| u64::from(phase.workgroups))
                     .sum::<u64>(),
+            ),
+        );
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "scene_timing",
+            &format!(
+                "build_ms={build_ms:.1}; upload_ms={:.1}",
+                upload_started.elapsed().as_secs_f64() * 1000.0,
             ),
         );
         Some(Self {
