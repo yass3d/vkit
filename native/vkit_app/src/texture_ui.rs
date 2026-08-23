@@ -1,9 +1,9 @@
 use std::time::Duration;
 
 use egui::{
-    Align, Align2, Button, Color32, CursorIcon, FontId, Frame, Id, Key, Layout, Margin,
-    PointerButton, Pos2, Rect, Response, RichText, ScrollArea, Sense, Stroke, TextureHandle,
-    TextureOptions, Ui, UiBuilder, Vec2, containers::scroll_area::ScrollBarVisibility, pos2, vec2,
+    Align, Align2, Button, Color32, CursorIcon, FontId, Frame, Id, Layout, Margin, PointerButton,
+    Pos2, Rect, Response, RichText, ScrollArea, Sense, Stroke, TextureHandle, TextureOptions, Ui,
+    UiBuilder, Vec2, containers::scroll_area::ScrollBarVisibility, pos2, vec2,
 };
 use vkit_core::texture_bake::{
     TextureBlendMode, TextureColorAdjustments, TextureWarpPin, apply_color_adjustments,
@@ -1347,7 +1347,7 @@ fn texture_brush_controls(hud: &mut Ui, state: &mut AppState) {
         _ => None,
     };
     if let Some((forward, inverse)) = directions {
-        let alt = hud.input(|input| input.modifiers.alt);
+        let alt = crate::shortcuts::Shortcut::TextureInvertHold.held(hud);
         let reverse = state.texture_project.retouch_reverse ^ alt;
         let (rect, _) = hud.allocate_exact_size(
             vec2(TEXTURE_RETOUCH_DIRECTION_WIDTH, CONTROL_H_DENSE),
@@ -1463,7 +1463,7 @@ fn handle_source_texture_tools(
             state.texture_project.mask_brush_opacity,
         )),
     );
-    let alt = ui.input(|input| input.modifiers.alt);
+    let alt = crate::shortcuts::Shortcut::TextureInvertHold.held(ui);
     if let Some(cursor) = cursor
         && image_rect.contains(cursor.at)
     {
@@ -1716,7 +1716,7 @@ fn handle_source_navigation(
     let hovered = pointer.is_some_and(|pointer| bounds.contains(pointer));
     let middle_down = ui.input(|input| input.pointer.button_down(PointerButton::Middle));
     let primary_down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
-    let space_down = ui.input(|input| input.key_down(Key::Space));
+    let space_down = crate::shortcuts::Shortcut::TextureCanvasPan.held(ui);
     let panning = response.dragged_by(PointerButton::Middle)
         || (space_down && response.dragged_by(PointerButton::Primary))
         || (hovered && (middle_down || (space_down && primary_down)));
@@ -1867,7 +1867,7 @@ fn handle_projection_canvas_tools(
         );
         return;
     }
-    let alt = ui.input(|input| input.modifiers.alt);
+    let alt = crate::shortcuts::Shortcut::TextureInvertHold.held(ui);
 
     let size = handle_brush_size_gesture(
         ui,

@@ -361,77 +361,127 @@ mod registry_tests {
 
 #[cfg(test)]
 mod untokenised_input_tests {
-    /// Every raw modifier read left outside the catalog, by file, with a reason.
+    /// Every way this program reads a key, a button or a modifier for itself,
+    /// by file, with a count and a reason.
     ///
-    /// Not a ban. Some of these should never be bindings: `settings.rs` reads
-    /// modifiers to CAPTURE a new binding, `pins.rs` gates a click that has no
-    /// name a reader would look up, and `runtime.rs` is deciding whether egui
-    /// wants the keystroke at all. What this stops is the thing that happened
-    /// before: a tenth file quietly reading `.shift` and meaning something by
-    /// it, with nothing in Settings to say so.
+    /// Not a ban — several of these should never be bindings. `settings.rs`
+    /// reads keys in order to BIND them; `ui_components.rs` answers Space and
+    /// Enter on a focused widget, which is how a keyboard reaches a button in
+    /// any program; `runtime.rs` is deciding whether egui wants the keystroke
+    /// before anything else looks at it.
+    ///
+    /// What it stops is the thing that had already happened three times over:
+    /// a file quietly reading an input and meaning something by it, with
+    /// nothing in Settings to say the shortcut exists. The number-pad views,
+    /// the tab keys, space-to-pan, the log's copy key and the light's
+    /// right-drag were all found this way after the first, narrower sweep
+    /// missed them.
     ///
     /// Adding a read fails this test. Either name it in the catalog and read it
-    /// through `Shortcut::held`, or add the file here with a line saying why it
-    /// is not a binding.
+    /// through `Shortcut`, or add it here with a line saying why it is not a
+    /// binding.
     const ALLOWED: &[(&str, usize, &str)] = &[
         (
             "runtime.rs",
-            1,
-            "deciding whether egui wants the key at all",
+            2,
+            "the winit arm the catalog's own number-pad path goes through",
         ),
         (
             "settings.rs",
-            3,
-            "the capture field, reading a modifier to BIND it",
+            5,
+            "the capture field: reading keys and modifiers in order to bind them",
         ),
         (
             "texture_ui.rs",
-            3,
-            "panel affordances, not stroke behaviour",
+            13,
+            "which button is down while the canvas is being painted or dragged",
         ),
-        ("ui.rs", 1, "the diagnostic log's copy shortcut"),
+        (
+            "ui.rs",
+            3,
+            "the diagnostic log's own bound copy key, and a paste event",
+        ),
+        (
+            "ui_components.rs",
+            1,
+            "Space and Enter reaching a focused widget, as in any program",
+        ),
         (
             "viewport/alignment_gizmo.rs",
-            1,
-            "axis constraint while a gizmo drags",
+            4,
+            "which button is down mid-drag, and the axis constraint the gizmo shows on screen",
         ),
         (
             "viewport/camera_input.rs",
-            2,
-            "camera drag bindings own their own map",
+            1,
+            "the alt snap on an orbit whose BUTTON already comes from a Shortcut",
         ),
         (
             "viewport/detail_panels.rs",
-            2,
-            "list ordering and nudge step",
+            11,
+            "button state mid-drag, plus list ordering and the nudge step, which are panel affordances",
         ),
         (
             "viewport/hair_input.rs",
-            1,
-            "the pick fallback, which follows the tool",
+            12,
+            "button state mid-stroke, and the pick fallback that follows the tool",
         ),
         (
-            "viewport/pins.rs",
+            "viewport/panels.rs",
+            1,
+            "whether a tool button is being pressed, for how it is drawn",
+        ),
+        (
+            "viewport/reference_overlay.rs",
             3,
-            "click gating with no name to look up",
+            "button state while a reference is being dragged",
         ),
         (
             "viewport/sculpt_input.rs",
-            1,
-            "stroke bookkeeping, not a mode",
+            6,
+            "button state mid-stroke, not a mode",
+        ),
+        (
+            "sweep_gesture.rs",
+            2,
+            "pointer bookkeeping for a sweep whose KEY already comes from a Shortcut",
+        ),
+        (
+            "ui/hair_ui.rs",
+            2,
+            "Escape cancelling a rename inside a text field, which is not a shortcut",
+        ),
+        (
+            "viewport/pins.rs",
+            6,
+            "click gating for placing and picking pins, with no name a reader would look up",
         ),
     ];
 
-    #[test]
-    fn no_new_file_reads_a_modifier_the_catalog_has_not_named() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let needles = [
-            "modifiers.shift",
-            "modifiers.alt",
-            "modifiers.ctrl",
-            "modifiers.command",
-        ];
+    /// The spellings that reach the input queue directly.
+    const NEEDLES: &[&str] = &[
+        "modifiers.shift",
+        "modifiers.alt",
+        "modifiers.ctrl",
+        "modifiers.command",
+        "key_pressed(",
+        "key_down(",
+        "key_released(",
+        "consume_key(",
+        "keys_down",
+        "button_pressed(",
+        "button_released(",
+        "button_down(",
+        "primary_pressed(",
+        "primary_released(",
+        "primary_down(",
+        "secondary_pressed(",
+        "secondary_released(",
+        "secondary_down(",
+    ];
 
+    fn counted() -> std::collections::BTreeMap<String, usize> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut counted: std::collections::BTreeMap<String, usize> =
             std::collections::BTreeMap::new();
         let mut pending = vec![root.clone()];
@@ -439,6 +489,7 @@ mod untokenised_input_tests {
             for entry in std::fs::read_dir(&directory).expect("read the source tree") {
                 let path = entry.expect("read a source entry").path();
                 if path.is_dir() {
+                    // The catalog is where reading input is the job.
                     if path.file_name().is_some_and(|name| name == "shortcuts") {
                         continue;
                     }
@@ -459,38 +510,58 @@ mod untokenised_input_tests {
                 let body = std::fs::read_to_string(&path).expect("read a source file");
                 let mut in_tests = false;
                 for line in body.lines() {
-                    if line.trim_start().starts_with("mod tests") {
+                    let trimmed = line.trim_start();
+                    if trimmed.starts_with("mod tests") || trimmed.starts_with("mod capture_tests")
+                    {
                         in_tests = true;
                     }
-                    if in_tests || line.trim_start().starts_with("//") {
+                    if in_tests || trimmed.starts_with("//") || trimmed.starts_with("///") {
                         continue;
                     }
-                    if needles.iter().any(|needle| line.contains(needle)) {
+                    if NEEDLES.iter().any(|needle| line.contains(needle)) {
                         *counted.entry(relative.clone()).or_default() += 1;
                     }
                 }
             }
         }
+        counted
+    }
 
+    #[test]
+    fn no_file_reads_an_input_the_catalog_has_not_accounted_for() {
+        let counted = counted();
         let allowed: std::collections::BTreeMap<&str, usize> = ALLOWED
             .iter()
             .map(|(file, count, _)| (*file, *count))
             .collect();
+
+        let mut wrong = Vec::new();
         for (file, count) in &counted {
             let permitted = allowed.get(file.as_str()).copied().unwrap_or(0);
-            assert!(
-                *count <= permitted,
-                "{file} reads a modifier {count} times and {permitted} are accounted for. \
-                 Name it in the catalog, or add it to ALLOWED with a reason.",
-            );
+            if *count != permitted {
+                wrong.push(format!("{file}: {count} reads, {permitted} accounted for"));
+            }
         }
         for (file, count, _) in ALLOWED {
-            let found = counted.get(*file).copied().unwrap_or(0);
-            assert_eq!(
-                found, *count,
-                "{file} is down for {count} raw reads and has {found}; \
-                 update ALLOWED so the inventory stays true",
-            );
+            if !counted.contains_key(*file) && *count != 0 {
+                wrong.push(format!("{file}: down for {count} reads and has none"));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "the inventory is out of date. Name the input in the catalog and read \
+             it through `Shortcut`, or update ALLOWED with a reason: {}",
+            wrong.join("; ")
+        );
+    }
+
+    /// Every reason is written down, and no file is listed twice.
+    #[test]
+    fn every_allowance_carries_a_reason() {
+        let mut seen = std::collections::BTreeSet::new();
+        for (file, _, reason) in ALLOWED {
+            assert!(seen.insert(*file), "{file} is allowed twice");
+            assert!(reason.len() > 12, "{file} has no real reason: {reason}");
         }
     }
 }

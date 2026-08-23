@@ -241,11 +241,7 @@ pub(super) fn nearest_visible_world_hit(
 }
 
 pub(super) fn handle_light_interaction(ui: &Ui, state: &mut AppState, response: &Response) {
-    let rotate = ui.input(|input| {
-        input.modifiers.shift
-            && input.pointer.button_down(PointerButton::Secondary)
-            && response.hovered()
-    });
+    let rotate = response.hovered() && crate::shortcuts::Shortcut::LightRotate.held(ui);
     if rotate {
         let delta = ui.input(|input| input.pointer.delta().x);
         if delta != 0.0 {

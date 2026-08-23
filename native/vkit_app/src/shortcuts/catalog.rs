@@ -129,10 +129,14 @@ pub enum Shortcut {
 
     ListAddToSelectionHold,
     ListSoloHold,
+
+    TextureCanvasPan,
+    DiagnosticLogCopy,
+    LightRotate,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 54] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -184,6 +188,9 @@ impl Shortcut {
         Self::TextureInvertHold,
         Self::ListAddToSelectionHold,
         Self::ListSoloHold,
+        Self::TextureCanvasPan,
+        Self::DiagnosticLogCopy,
+        Self::LightRotate,
     ];
 
     pub const fn slot(self) -> usize {
@@ -250,6 +257,9 @@ impl Shortcut {
             Self::TextureInvertHold => "texture-invert-hold",
             Self::ListAddToSelectionHold => "list-add-to-selection-hold",
             Self::ListSoloHold => "list-solo-hold",
+            Self::TextureCanvasPan => "texture-canvas-pan",
+            Self::DiagnosticLogCopy => "diagnostic-log-copy",
+            Self::LightRotate => "light-rotate",
         }
     }
 
@@ -271,6 +281,7 @@ impl Shortcut {
             Self::ViewOrbit | Self::ViewPan | Self::ViewDolly => {
                 Trigger::Mouse(egui::PointerButton::Middle)
             }
+            Self::LightRotate => Trigger::Mouse(egui::PointerButton::Secondary),
             // Blender's pad, which every modelling program copied.
             Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
             Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
@@ -327,6 +338,8 @@ impl Shortcut {
             Self::TabTexture => Key::Num3,
             Self::TabHair => Key::Num4,
             Self::TabSave => Key::Num5,
+            Self::TextureCanvasPan => Key::Space,
+            Self::DiagnosticLogCopy => Key::C,
             // The pad keys answer through `trigger`; this arm is unreachable for
             // them and returns a key nothing is bound to rather than panicking.
             Self::ViewReset
@@ -347,7 +360,8 @@ impl Shortcut {
             | Self::HairInvertHold
             | Self::TextureInvertHold
             | Self::ListAddToSelectionHold
-            | Self::ListSoloHold => Key::Escape,
+            | Self::ListSoloHold
+            | Self::LightRotate => Key::Escape,
         }
     }
 
@@ -408,6 +422,10 @@ impl Shortcut {
             Self::HairSmoothHold | Self::HairInvertHold => ShortcutContext::HairEdit,
 
             Self::ListAddToSelectionHold | Self::ListSoloHold => ShortcutContext::Lists,
+
+            Self::TextureCanvasPan => ShortcutContext::TextureEdit,
+
+            Self::DiagnosticLogCopy | Self::LightRotate => ShortcutContext::Global,
         }
     }
 
@@ -476,6 +494,13 @@ impl Shortcut {
             | Self::TextureInvertHold
             | Self::ListAddToSelectionHold
             | Self::ListSoloHold => ModifierPolicy::Ignored,
+
+            // Held while something else is happening: the canvas is already
+            // being dragged, so demanding a bare Space would let a stray Shift
+            // drop the pan mid-stroke.
+            Self::TextureCanvasPan | Self::LightRotate => ModifierPolicy::Ignored,
+
+            Self::DiagnosticLogCopy => ModifierPolicy::Exactly(Modifiers::COMMAND),
         }
     }
 
@@ -515,9 +540,21 @@ impl Shortcut {
     /// would let the answer change halfway through one stroke.
     #[must_use]
     pub fn held_in(self, ui: &Ui, modifiers: egui::Modifiers) -> bool {
-        match self.binding(ui).trigger {
+        let binding = self.binding(ui);
+        match binding.trigger {
             Trigger::Held(modifier) => modifier.held_in(modifiers),
-            _ => false,
+            // A key or a button can be held too, and three shortcuts are read
+            // that way: space pans the texture canvas, the right button turns
+            // the light. The modifier policy still has to be satisfied, or
+            // Shift+right-drag would rotate the light without the Shift.
+            Trigger::Key(key) => {
+                binding.modifiers.admits(modifiers) && ui.input(|input| input.key_down(key))
+            }
+            Trigger::Mouse(button) => {
+                binding.modifiers.admits(modifiers)
+                    && ui.input(|input| input.pointer.button_down(button))
+            }
+            Trigger::Numpad(_) => false,
         }
     }
 

@@ -1277,8 +1277,21 @@ fn draw_diagnostic_log_modal(root: &mut Ui, locale: Locale) {
                 .stick_to_bottom(true)
                 .max_height(log_height)
                 .show(ui, |ui| {
+                    // Read before the input is borrowed: `consume_key` takes
+                    // the key out of the queue, and it has to be told which key
+                    // the reader bound rather than a literal Ctrl+C.
+                    let copy = crate::shortcuts::Shortcut::DiagnosticLogCopy.binding(ui);
                     let copy_requested = ui.input_mut(|input| {
-                        let shortcut = input.consume_key(egui::Modifiers::COMMAND, egui::Key::C);
+                        let shortcut = match (copy.trigger, copy.modifiers) {
+                            (
+                                crate::shortcuts::Trigger::Key(key),
+                                crate::shortcuts::ModifierPolicy::Exactly(modifiers),
+                            ) => input.consume_key(modifiers, key),
+                            (crate::shortcuts::Trigger::Key(key), _) => {
+                                input.consume_key(egui::Modifiers::NONE, key)
+                            }
+                            _ => false,
+                        };
                         let mut copy_event = false;
                         input.events.retain(|event| {
                             if matches!(event, egui::Event::Copy) {

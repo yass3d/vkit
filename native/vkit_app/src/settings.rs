@@ -1410,6 +1410,9 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::TextureInvertHold => TextKey::ShortcutTextureInvertHold,
         Shortcut::ListAddToSelectionHold => TextKey::ShortcutListAddToSelection,
         Shortcut::ListSoloHold => TextKey::ShortcutListSolo,
+        Shortcut::TextureCanvasPan => TextKey::ShortcutTextureCanvasPan,
+        Shortcut::DiagnosticLogCopy => TextKey::ShortcutDiagnosticLogCopy,
+        Shortcut::LightRotate => TextKey::ShortcutLightRotate,
     }
 }
 

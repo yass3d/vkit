@@ -112,7 +112,7 @@ pub(super) fn handle_sculpt_interaction(
             visible_targets: hit_targets,
         };
         if input_mode == SculptInputMode::Mask {
-            let alt = ui.input(|input| input.modifiers.alt);
+            let alt = Shortcut::SculptAlternateHold.held(ui);
             let mut gathered: std::collections::BTreeMap<u32, f32> =
                 std::collections::BTreeMap::new();
             for sample_pointer in &sample_pointers {
