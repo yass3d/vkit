@@ -315,6 +315,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("लेयर छिपाएँ"),
         TextKey::ShortcutLayerUnhideAll => Some("सभी लेयर दिखाएँ"),
         TextKey::ShortcutLayerIsolate => Some("बाकी लेयर छिपाएँ"),
+        TextKey::ShortcutLayerLocalView => Some("केवल यही दिखाएँ (टॉगल)"),
         TextKey::ShortcutLayerInvertSelection => Some("चयन उलटें"),
         TextKey::ShortcutSculptSmoothHold => Some("स्मूद करने के लिए दबाए रखें"),
         TextKey::ShortcutSculptInflateHold => Some("फुलाने के लिए दबाए रखें"),

@@ -345,6 +345,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Masquer le calque"),
         TextKey::ShortcutLayerUnhideAll => Some("Afficher tous les calques"),
         TextKey::ShortcutLayerIsolate => Some("Masquer les autres calques"),
+        TextKey::ShortcutLayerLocalView => Some("Afficher seulement celui-ci (bascule)"),
         TextKey::ShortcutLayerInvertSelection => Some("Inverser la sélection"),
         TextKey::ShortcutSculptSmoothHold => Some("Maintenir pour lisser"),
         TextKey::ShortcutSculptInflateHold => Some("Maintenir pour gonfler"),

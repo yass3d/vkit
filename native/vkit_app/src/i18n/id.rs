@@ -333,6 +333,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Sembunyikan lapisan"),
         TextKey::ShortcutLayerUnhideAll => Some("Tampilkan semua lapisan"),
         TextKey::ShortcutLayerIsolate => Some("Sembunyikan lapisan lain"),
+        TextKey::ShortcutLayerLocalView => Some("Tampilkan ini saja (alih)"),
         TextKey::ShortcutLayerInvertSelection => Some("Balik pilihan"),
         TextKey::ShortcutSculptSmoothHold => Some("Tahan untuk menghaluskan"),
         TextKey::ShortcutSculptInflateHold => Some("Tahan untuk mengembang"),

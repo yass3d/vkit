@@ -198,7 +198,7 @@ pub(super) fn paint(
     };
     let marker =
         Rect::from_center_size(seen.screen, egui::Vec2::splat(SELECTED_MARKER_POINTS * 2.0));
-    painter.rect_filled(marker, 1.0, crate::theme::COLOR_EMPHASIS);
+    painter.rect_filled(marker, 1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE);
     // A short cross so the anchor reads as a handle rather than a dot.
     for (from, to) in [
         (marker.left_center(), marker.right_center()),
@@ -209,7 +209,7 @@ pub(super) fn paint(
                 from - (to - from).normalized() * 6.0,
                 to + (to - from).normalized() * 6.0,
             ],
-            egui::Stroke::new(1.0, crate::theme::COLOR_EMPHASIS),
+            egui::Stroke::new(1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE),
         );
     }
 }

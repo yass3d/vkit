@@ -305,6 +305,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("隱藏圖層"),
         TextKey::ShortcutLayerUnhideAll => Some("顯示全部圖層"),
         TextKey::ShortcutLayerIsolate => Some("隱藏其他圖層"),
+        TextKey::ShortcutLayerLocalView => Some("只看這一個（切換）"),
         TextKey::ShortcutLayerInvertSelection => Some("反轉選取"),
         TextKey::ShortcutSculptSmoothHold => Some("按住平滑"),
         TextKey::ShortcutSculptInflateHold => Some("按住膨脹"),

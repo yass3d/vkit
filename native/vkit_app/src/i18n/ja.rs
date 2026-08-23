@@ -330,6 +330,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("レイヤーを隠す"),
         TextKey::ShortcutLayerUnhideAll => Some("すべて表示"),
         TextKey::ShortcutLayerIsolate => Some("他のレイヤーを隠す"),
+        TextKey::ShortcutLayerLocalView => Some("これだけ表示（切替）"),
         TextKey::ShortcutLayerInvertSelection => Some("選択を反転"),
         TextKey::ShortcutSculptSmoothHold => Some("押している間スムーズ"),
         TextKey::ShortcutSculptInflateHold => Some("押している間膨らませる"),

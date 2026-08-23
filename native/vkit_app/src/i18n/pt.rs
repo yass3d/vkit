@@ -351,6 +351,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Ocultar camada"),
         TextKey::ShortcutLayerUnhideAll => Some("Mostrar todas as camadas"),
         TextKey::ShortcutLayerIsolate => Some("Ocultar as outras camadas"),
+        TextKey::ShortcutLayerLocalView => Some("Ver apenas este (alternar)"),
         TextKey::ShortcutLayerInvertSelection => Some("Inverter a seleção"),
         TextKey::ShortcutSculptSmoothHold => Some("Segurar para suavizar"),
         TextKey::ShortcutSculptInflateHold => Some("Segurar para inflar"),

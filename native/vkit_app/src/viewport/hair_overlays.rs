@@ -793,6 +793,10 @@ pub(super) fn hair_depth_field(
     field
 }
 
+/// How big a strand joint is drawn, and how big the one under the hand is.
+const STREAM_POINT_RADIUS: f32 = 1.6;
+const STREAM_POINT_ACTIVE_RADIUS: f32 = 3.0;
+
 fn draw_hair_streams(
     ui: &Ui,
     painter: &egui::Painter,
@@ -812,7 +816,7 @@ fn draw_hair_streams(
         } else {
             crate::theme::COLOR_PRIMARY
         };
-        for strand in part.strands.values() {
+        for (strand_id, strand) in &part.strands {
             let mut run: Vec<Pos2> = Vec::new();
             let flush = |run: &mut Vec<Pos2>| {
                 if run.len() >= 2 {
@@ -824,11 +828,28 @@ fn draw_hair_streams(
                     run.clear();
                 }
             };
-            for point in &strand.points_cm {
+            for (index, point) in strand.points_cm.iter().enumerate() {
                 let world = glam::Vec3::from_array(*point);
                 match camera.project(world, rect) {
                     Some(projected) if !field.hides(projected.screen, (world - eye).length()) => {
                         run.push(projected.screen);
+                        // Every point, not only the one being dragged. You
+                        // cannot correct a strand you cannot see the joints of.
+                        let editing =
+                            state.hair_vertex_selection == Some((part_id, *strand_id, index));
+                        painter.circle_filled(
+                            projected.screen,
+                            if editing {
+                                STREAM_POINT_ACTIVE_RADIUS
+                            } else {
+                                STREAM_POINT_RADIUS
+                            },
+                            if editing {
+                                crate::theme::COLOR_HAIR_POINT_ACTIVE
+                            } else {
+                                crate::theme::COLOR_HAIR_POINT
+                            },
+                        );
                     }
                     _ => flush(&mut run),
                 }

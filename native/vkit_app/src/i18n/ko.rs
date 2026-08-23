@@ -315,6 +315,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutLayerHide => "레이어 숨김",
         TextKey::ShortcutLayerUnhideAll => "레이어 숨김 해제",
         TextKey::ShortcutLayerIsolate => "다른 레이어 숨김",
+        TextKey::ShortcutLayerLocalView => "이것만 보기 (토글)",
         TextKey::ShortcutLayerInvertSelection => "선택 반전",
         TextKey::ShortcutSculptSmoothHold => "누르는 동안 스무딩",
         TextKey::ShortcutSculptInflateHold => "누르는 동안 부풀리기",

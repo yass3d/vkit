@@ -759,7 +759,7 @@ impl Default for AppState {
             hair_part_tint: false,
             hair_show_points: true,
             hair_viewport_physics: false,
-            hair_show_streams: false,
+            hair_show_streams: true,
             hair_hide_strands: false,
             hair_mirror_edit: false,
             hair_auto_part: false,

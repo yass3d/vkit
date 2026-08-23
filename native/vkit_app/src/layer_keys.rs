@@ -38,6 +38,15 @@ pub enum LayerOperation {
     Hide,
     UnhideAll,
     Isolate,
+
+    /// Isolate, and un-isolate when it is already isolated.
+    ///
+    /// Separate from `Isolate` because it is a TOGGLE. `Shift+H` hides the
+    /// others and leaves them hidden — press it twice and you have hidden two
+    /// rounds of things. Local view is the one you press again to come back,
+    /// which is what a pad key is for.
+    LocalView,
+
     Invert,
 }
 
@@ -51,12 +60,16 @@ pub fn handle_layer_shortcuts(ui: &egui::Ui, state: &mut AppState) {
         return;
     };
     use crate::shortcuts::Shortcut;
+    // Unhide first: `Alt+H` and `H` differ only by a modifier, and a policy
+    // that admits either would answer to both if `H` were asked first.
     let operation = if Shortcut::LayerUnhideAll.pressed(ui) {
         LayerOperation::UnhideAll
-    } else if Shortcut::LayerHide.pressed(ui) {
-        LayerOperation::Hide
     } else if Shortcut::LayerIsolate.pressed(ui) {
         LayerOperation::Isolate
+    } else if Shortcut::LayerHide.pressed(ui) {
+        LayerOperation::Hide
+    } else if Shortcut::LayerLocalView.pressed(ui) {
+        LayerOperation::LocalView
     } else if Shortcut::LayerInvertSelection.pressed(ui) {
         LayerOperation::Invert
     } else {
@@ -104,6 +117,20 @@ fn hair_actions(state: &AppState, operation: LayerOperation) -> Vec<Action> {
             .filter(|(id, visible)| *visible != active.contains(id))
             .map(|(id, _)| Action::ToggleHairPartVisible(*id))
             .collect(),
+        // Already alone? Then this press is the second one, and it brings the
+        // rest back. That is the whole difference from `Isolate`.
+        LayerOperation::LocalView => {
+            let isolated = parts
+                .iter()
+                .all(|(id, visible)| *visible == active.contains(id))
+                && parts.iter().any(|(_, visible)| !*visible);
+            let wanted = |id: &u64| isolated || active.contains(id);
+            parts
+                .iter()
+                .filter(|(id, visible)| *visible != wanted(id))
+                .map(|(id, _)| Action::ToggleHairPartVisible(*id))
+                .collect()
+        }
         // Hair parts are the one list that holds more than one selection, so
         // here "invert" is the selection, exactly as it reads.
         LayerOperation::Invert => {
@@ -172,6 +199,15 @@ fn visibility_actions(
                 .iter()
                 .filter(|(id, visible)| *visible != (*id == kept))
                 .map(|(id, _)| action(*id, *id == kept))
+                .collect()
+        }),
+        LayerOperation::LocalView => selected.map_or_else(Vec::new, |kept| {
+            let isolated =
+                layers.iter().all(|(id, visible)| *visible == (*id == kept)) && layers.len() > 1;
+            layers
+                .iter()
+                .filter(|(id, visible)| *visible != (isolated || *id == kept))
+                .map(|(id, _)| action(*id, isolated || *id == kept))
                 .collect()
         }),
         LayerOperation::Invert => layers
@@ -255,6 +291,60 @@ mod tests {
             })
             .collect();
         assert_eq!(changed, vec![(1, false), (2, true), (3, false)]);
+    }
+
+    /// `Shift+H` hides the others and leaves them hidden. `Num /` comes back.
+    ///
+    /// That is the whole difference, and it is why they are two operations and
+    /// not one key doing both: pressing isolate twice should not hide two
+    /// rounds of things, and pressing local view twice should undo itself.
+    #[test]
+    fn local_view_comes_back_and_isolate_does_not() {
+        let hidden_others = vec![(1, true), (2, false), (3, false)];
+        let build = |rows: &[(u64, bool)], operation| {
+            visibility_actions(rows, Some(1), operation, |id, visible| {
+                Action::SetAppearanceLayerVisible { id, visible }
+            })
+        };
+
+        assert!(
+            build(&hidden_others, LayerOperation::Isolate).is_empty(),
+            "already isolated, so isolating again asks for nothing",
+        );
+
+        let coming_back = build(&hidden_others, LayerOperation::LocalView);
+        let mut restored: Vec<(u64, bool)> = coming_back
+            .iter()
+            .map(|action| match action {
+                Action::SetAppearanceLayerVisible { id, visible } => (*id, *visible),
+                _ => unreachable!(),
+            })
+            .collect();
+        restored.sort_unstable();
+        assert_eq!(restored, vec![(2, true), (3, true)], "the rest come back");
+
+        // And from a normal state it isolates, same as `Shift+H` would.
+        let all_visible = vec![(1, true), (2, true), (3, true)];
+        let going_in = build(&all_visible, LayerOperation::LocalView);
+        let mut hidden: Vec<(u64, bool)> = going_in
+            .iter()
+            .map(|action| match action {
+                Action::SetAppearanceLayerVisible { id, visible } => (*id, *visible),
+                _ => unreachable!(),
+            })
+            .collect();
+        hidden.sort_unstable();
+        assert_eq!(hidden, vec![(2, false), (3, false)]);
+    }
+
+    /// One row on its own is not "isolated" — there is nothing to come back to.
+    #[test]
+    fn a_single_row_list_never_thinks_it_is_isolated() {
+        let alone = vec![(1, true)];
+        let actions = visibility_actions(&alone, Some(1), LayerOperation::LocalView, |id, on| {
+            Action::SetAppearanceLayerVisible { id, visible: on }
+        });
+        assert!(actions.is_empty(), "nothing to hide and nothing to restore");
     }
 
     /// A tab with no list of its own answers with no scope, so the keys do

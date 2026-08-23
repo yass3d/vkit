@@ -889,6 +889,21 @@ impl HairPhysicsScene {
             data.max_iterations,
             &data.constraint_ranges,
         );
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "physics_built",
+            &format!(
+                "particles={}; iterations={}; dispatches_per_step={}; workgroups_per_step={}",
+                data.rests.len(),
+                data.max_iterations,
+                phases.len(),
+                phases
+                    .iter()
+                    .map(|phase| u64::from(phase.workgroups))
+                    .sum::<u64>(),
+            ),
+        );
         Some(Self {
             simulate,
             mesh_revision: mesh.revision,

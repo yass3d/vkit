@@ -331,6 +331,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutLayerHide => "Hide layer",
         TextKey::ShortcutLayerUnhideAll => "Unhide every layer",
         TextKey::ShortcutLayerIsolate => "Hide the other layers",
+        TextKey::ShortcutLayerLocalView => "Show only this one (toggle)",
         TextKey::ShortcutLayerInvertSelection => "Invert the selection",
         TextKey::ShortcutSculptSmoothHold => "Hold to smooth",
         TextKey::ShortcutSculptInflateHold => "Hold to inflate",

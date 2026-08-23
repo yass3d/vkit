@@ -329,6 +329,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Ẩn lớp"),
         TextKey::ShortcutLayerUnhideAll => Some("Hiện mọi lớp"),
         TextKey::ShortcutLayerIsolate => Some("Ẩn các lớp khác"),
+        TextKey::ShortcutLayerLocalView => Some("Chỉ hiện cái này (bật/tắt)"),
         TextKey::ShortcutLayerInvertSelection => Some("Đảo vùng chọn"),
         TextKey::ShortcutSculptSmoothHold => Some("Giữ để làm mượt"),
         TextKey::ShortcutSculptInflateHold => Some("Giữ để phồng lên"),

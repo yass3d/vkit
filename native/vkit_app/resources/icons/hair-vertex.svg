@@ -1,3 +1,6 @@
+<!-- Three points on a strand, chained corner to corner. The connector used to
+     be a single S-curve that met neither box, which read as a stray hair
+     rather than as a link. -->
 <svg
   xmlns="http://www.w3.org/2000/svg"
   width="24"
@@ -9,8 +12,9 @@
   stroke-linecap="round"
   stroke-linejoin="round"
 >
-  <path d="M5 6c5 0 4 12 9 12" />
-  <rect x="2" y="3" width="5" height="5" rx="1" />
-  <rect x="17" y="15" width="5" height="5" rx="1" />
-  <rect x="9" y="9" width="6" height="6" rx="1" />
+  <rect x="2" y="2" width="5" height="5" rx="1" />
+  <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
+  <rect x="17" y="17" width="5" height="5" rx="1" />
+  <path d="M7 7 L9.5 9.5" />
+  <path d="M14.5 14.5 L17 17" />
 </svg>

@@ -359,6 +359,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Ebene ausblenden"),
         TextKey::ShortcutLayerUnhideAll => Some("Alle Ebenen einblenden"),
         TextKey::ShortcutLayerIsolate => Some("Die anderen Ebenen ausblenden"),
+        TextKey::ShortcutLayerLocalView => Some("Nur diese zeigen (umschalten)"),
         TextKey::ShortcutLayerInvertSelection => Some("Auswahl umkehren"),
         TextKey::ShortcutSculptSmoothHold => Some("Halten zum Glätten"),
         TextKey::ShortcutSculptInflateHold => Some("Halten zum Aufblähen"),

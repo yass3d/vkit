@@ -1421,6 +1421,7 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::LayerHide => TextKey::ShortcutLayerHide,
         Shortcut::LayerUnhideAll => TextKey::ShortcutLayerUnhideAll,
         Shortcut::LayerIsolate => TextKey::ShortcutLayerIsolate,
+        Shortcut::LayerLocalView => TextKey::ShortcutLayerLocalView,
         Shortcut::LayerInvertSelection => TextKey::ShortcutLayerInvertSelection,
     }
 }

@@ -137,11 +137,12 @@ pub enum Shortcut {
     LayerHide,
     LayerUnhideAll,
     LayerIsolate,
+    LayerLocalView,
     LayerInvertSelection,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 58] = [
+    pub const ALL: [Self; 59] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -199,6 +200,7 @@ impl Shortcut {
         Self::LayerHide,
         Self::LayerUnhideAll,
         Self::LayerIsolate,
+        Self::LayerLocalView,
         Self::LayerInvertSelection,
     ];
 
@@ -272,6 +274,7 @@ impl Shortcut {
             Self::LayerHide => "layer-hide",
             Self::LayerUnhideAll => "layer-unhide-all",
             Self::LayerIsolate => "layer-isolate",
+            Self::LayerLocalView => "layer-local-view",
             Self::LayerInvertSelection => "layer-invert-selection",
         }
     }
@@ -297,7 +300,9 @@ impl Shortcut {
             Self::LightRotate => Trigger::Mouse(egui::PointerButton::Secondary),
             // The pad's own key for "show me this one alone", which is where a
             // modeller's hand already is when the other hand is on the mouse.
-            Self::LayerIsolate => Trigger::Numpad(NumpadKey::Divide),
+            // A toggle, the way local view is a toggle: press it again and
+            // everything comes back.
+            Self::LayerLocalView => Trigger::Numpad(NumpadKey::Divide),
             // Blender's pad, which every modelling program copied.
             Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
             Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
@@ -356,7 +361,7 @@ impl Shortcut {
             Self::TabSave => Key::Num5,
             Self::TextureCanvasPan => Key::Space,
             Self::DiagnosticLogCopy => Key::C,
-            Self::LayerHide | Self::LayerUnhideAll => Key::H,
+            Self::LayerHide | Self::LayerUnhideAll | Self::LayerIsolate => Key::H,
             Self::LayerInvertSelection => Key::I,
             // The pad keys answer through `trigger`; this arm is unreachable for
             // them and returns a key nothing is bound to rather than panicking.
@@ -380,7 +385,7 @@ impl Shortcut {
             | Self::ListAddToSelectionHold
             | Self::ListSoloHold
             | Self::LightRotate
-            | Self::LayerIsolate => Key::Escape,
+            | Self::LayerLocalView => Key::Escape,
         }
     }
 
@@ -449,6 +454,7 @@ impl Shortcut {
             Self::LayerHide
             | Self::LayerUnhideAll
             | Self::LayerIsolate
+            | Self::LayerLocalView
             | Self::LayerInvertSelection => ShortcutContext::Lists,
         }
     }
@@ -526,9 +532,11 @@ impl Shortcut {
 
             Self::DiagnosticLogCopy => ModifierPolicy::Exactly(Modifiers::COMMAND),
 
-            // `H` hides, `Alt+H` brings everything back: one letter for one
-            // idea, with the modifier saying which direction.
-            Self::LayerHide | Self::LayerIsolate => ModifierPolicy::Exactly(Modifiers::NONE),
+            // One letter for one idea, and the modifier says which way, exactly
+            // as a modeller already knows it: `H` hides what is selected,
+            // `Shift+H` hides everything else, `Alt+H` brings it all back.
+            Self::LayerHide | Self::LayerLocalView => ModifierPolicy::Exactly(Modifiers::NONE),
+            Self::LayerIsolate => ModifierPolicy::Exactly(Modifiers::SHIFT),
             Self::LayerUnhideAll => ModifierPolicy::Exactly(Modifiers::ALT),
             Self::LayerInvertSelection => ModifierPolicy::Exactly(Modifiers::COMMAND),
         }

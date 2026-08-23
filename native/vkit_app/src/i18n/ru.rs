@@ -337,6 +337,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("Скрыть слой"),
         TextKey::ShortcutLayerUnhideAll => Some("Показать все слои"),
         TextKey::ShortcutLayerIsolate => Some("Скрыть остальные слои"),
+        TextKey::ShortcutLayerLocalView => Some("Показать только этот (переключатель)"),
         TextKey::ShortcutLayerInvertSelection => Some("Инвертировать выделение"),
         TextKey::ShortcutSculptSmoothHold => Some("Удерживать для сглаживания"),
         TextKey::ShortcutSculptInflateHold => Some("Удерживать для раздувания"),

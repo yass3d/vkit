@@ -379,11 +379,15 @@ mod registry_tests {
             keymap.binding(Shortcut::LayerInvertSelection).label(),
             "Ctrl+I"
         );
-        assert_eq!(keymap.binding(Shortcut::LayerIsolate).label(), "Num /");
+        // The letter carries the idea and the modifier says which way, exactly
+        // as a modeller already knows it from Blender.
+        assert_eq!(keymap.binding(Shortcut::LayerIsolate).label(), "Shift+H");
+        assert_eq!(keymap.binding(Shortcut::LayerLocalView).label(), "Num /");
         for shortcut in [
             Shortcut::LayerHide,
             Shortcut::LayerUnhideAll,
             Shortcut::LayerIsolate,
+            Shortcut::LayerLocalView,
             Shortcut::LayerInvertSelection,
         ] {
             assert!(

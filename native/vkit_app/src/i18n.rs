@@ -464,6 +464,7 @@ text_keys! {
     ShortcutLayerHide,
     ShortcutLayerUnhideAll,
     ShortcutLayerIsolate,
+    ShortcutLayerLocalView,
     ShortcutLayerInvertSelection,
     ShortcutSculptSmoothHold,
     ShortcutSculptInflateHold,

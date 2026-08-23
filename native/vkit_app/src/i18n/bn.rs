@@ -309,6 +309,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("লেয়ার লুকান"),
         TextKey::ShortcutLayerUnhideAll => Some("সব লেয়ার দেখান"),
         TextKey::ShortcutLayerIsolate => Some("বাকি লেয়ার লুকান"),
+        TextKey::ShortcutLayerLocalView => Some("কেবল এটি দেখান (টগল)"),
         TextKey::ShortcutLayerInvertSelection => Some("নির্বাচন উল্টান"),
         TextKey::ShortcutSculptSmoothHold => Some("চেপে ধরে স্মুথ"),
         TextKey::ShortcutSculptInflateHold => Some("চেপে ধরে ফোলানো"),

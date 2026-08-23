@@ -303,6 +303,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerHide => Some("ซ่อนเลเยอร์"),
         TextKey::ShortcutLayerUnhideAll => Some("แสดงทุกเลเยอร์"),
         TextKey::ShortcutLayerIsolate => Some("ซ่อนเลเยอร์อื่น"),
+        TextKey::ShortcutLayerLocalView => Some("แสดงเฉพาะอันนี้ (สลับ)"),
         TextKey::ShortcutLayerInvertSelection => Some("กลับด้านการเลือก"),
         TextKey::ShortcutSculptSmoothHold => Some("กดค้างเพื่อเกลี่ย"),
         TextKey::ShortcutSculptInflateHold => Some("กดค้างเพื่อพองขึ้น"),
