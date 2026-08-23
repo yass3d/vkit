@@ -12,7 +12,7 @@ mod trigger;
 pub use binding::{Binding, ModifierPolicy};
 pub use catalog::{Shortcut, ShortcutContext};
 pub use keymap::Keymap;
-pub use trigger::Trigger;
+pub use trigger::{NumpadKey, Trigger};
 
 use egui::Ui;
 
@@ -162,5 +162,171 @@ mod tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use egui::{Modifiers, PointerButton};
+
+    use super::*;
+
+    /// Every shortcut has a slot of its own.
+    ///
+    /// `slot` scans `ALL` for the discriminant and falls back to 0 when it does
+    /// not find one, so a shortcut left out of `ALL` would silently read and
+    /// write `Undo`'s binding. Nothing else would say a word.
+    #[test]
+    fn every_shortcut_owns_one_slot_and_no_two_share_it() {
+        assert_eq!(
+            Shortcut::ALL.len(),
+            Shortcut::ALL
+                .into_iter()
+                .map(|shortcut| shortcut.name())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            "two shortcuts answer to one name",
+        );
+        for (index, shortcut) in Shortcut::ALL.into_iter().enumerate() {
+            assert_eq!(
+                shortcut.slot(),
+                index,
+                "{shortcut:?} sits in the wrong slot"
+            );
+        }
+    }
+
+    /// No two shortcuts that can both fire start out on the same binding.
+    ///
+    /// The capture field refuses a collision the reader makes. This says the
+    /// factory keymap does not ship with one already in it.
+    #[test]
+    fn no_two_reachable_shortcuts_ship_on_the_same_binding() {
+        let keymap = Keymap::default();
+        for shortcut in Shortcut::ALL {
+            let clash = keymap.conflict(shortcut, keymap.binding(shortcut));
+            assert!(
+                clash.is_none(),
+                "{shortcut:?} and {:?} both answer {}",
+                clash.unwrap(),
+                keymap.binding(shortcut).label(),
+            );
+        }
+    }
+
+    /// A keymap file cannot smuggle a collision past the capture field.
+    #[test]
+    fn an_imported_keymap_refuses_a_binding_another_shortcut_already_holds() {
+        let taken = Keymap::default().binding(Shortcut::HairCutTool);
+        let stored = std::collections::BTreeMap::from([(
+            Shortcut::HairPlantTool.name().to_owned(),
+            format!("none+{}", taken.trigger.stored_name()),
+        )]);
+
+        let keymap = Keymap::from_stored(&stored);
+        assert_eq!(
+            keymap.binding(Shortcut::HairPlantTool),
+            Shortcut::HairPlantTool.default_binding(),
+            "the collided entry is dropped, not applied",
+        );
+        assert_eq!(keymap.binding(Shortcut::HairCutTool), taken);
+    }
+
+    /// What a keymap writes, a keymap reads back.
+    #[test]
+    fn every_kind_of_trigger_survives_the_round_trip() {
+        let mut keymap = Keymap::default();
+        // The two pad entries are a SWAP. Each one collides with the other's
+        // factory binding halfway through the read, which is exactly the case
+        // that made checking-as-we-go wrong.
+        let cases = [
+            (
+                Shortcut::ViewTop,
+                Trigger::Numpad(NumpadKey::Two),
+                ModifierPolicy::Exactly(Modifiers::NONE),
+            ),
+            (
+                Shortcut::ViewBottom,
+                Trigger::Numpad(NumpadKey::Eight),
+                ModifierPolicy::Exactly(Modifiers::NONE),
+            ),
+            (
+                Shortcut::TabSave,
+                Trigger::Key(egui::Key::Q),
+                ModifierPolicy::Exactly(Modifiers::SHIFT),
+            ),
+            (
+                Shortcut::HairPickTool,
+                Trigger::Mouse(PointerButton::Extra1),
+                ModifierPolicy::Ignored,
+            ),
+        ];
+        for (shortcut, trigger, modifiers) in cases {
+            keymap.rebind(shortcut, Binding { trigger, modifiers });
+        }
+
+        let read_back = Keymap::from_stored(&keymap.to_stored());
+        for (shortcut, trigger, modifiers) in cases {
+            assert_eq!(
+                read_back.binding(shortcut),
+                Binding { trigger, modifiers },
+                "{shortcut:?} did not survive being written down",
+            );
+        }
+    }
+
+    /// The number pad answers through the catalog and through nothing else.
+    #[test]
+    fn every_pad_key_stands_for_exactly_one_shortcut() {
+        let keymap = Keymap::default();
+        for key in NumpadKey::ALL {
+            let shortcut = keymap.shortcut_for(Trigger::Numpad(key));
+            assert!(
+                shortcut.is_some(),
+                "{key:?} is taken from egui and answers to nothing",
+            );
+            assert_eq!(
+                Shortcut::ALL
+                    .into_iter()
+                    .filter(|candidate| keymap.binding(*candidate).trigger == Trigger::Numpad(key))
+                    .count(),
+                1,
+            );
+        }
+    }
+
+    /// A view key and a tab key are as reachable as a global one.
+    #[test]
+    fn a_context_that_fires_anywhere_is_checked_against_everything() {
+        for context in [
+            ShortcutContext::Global,
+            ShortcutContext::View,
+            ShortcutContext::Navigation,
+        ] {
+            assert!(context.is_everywhere());
+            for other in [
+                ShortcutContext::Alignment,
+                ShortcutContext::DetailEdit,
+                ShortcutContext::HairEdit,
+            ] {
+                assert!(context.overlaps(other), "{context:?} vs {other:?}");
+                assert!(other.overlaps(context), "{other:?} vs {context:?}");
+            }
+        }
+        assert!(!ShortcutContext::HairEdit.overlaps(ShortcutContext::DetailEdit));
+    }
+
+    /// The factory label is derived from the factory binding, not listed beside
+    /// it. Two tables holding one value is how a rebound key kept showing the
+    /// letter it used to be on.
+    #[test]
+    fn a_label_is_read_off_the_binding_it_describes() {
+        for shortcut in Shortcut::ALL {
+            assert_eq!(shortcut.label(), shortcut.default_binding().label());
+        }
+        assert_eq!(Shortcut::Undo.label(), "Ctrl+Z");
+        assert_eq!(Shortcut::BrushSizeDown.label(), "[");
+        assert_eq!(Shortcut::ViewFront.label(), "Num 5");
+        assert_eq!(Shortcut::ViewPan.label(), "Shift+Wheel click");
     }
 }

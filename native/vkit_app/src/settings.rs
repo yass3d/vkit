@@ -1187,13 +1187,17 @@ const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey 
         crate::shortcuts::ShortcutContext::Alignment => TextKey::ShortcutGroupAlignment,
         crate::shortcuts::ShortcutContext::DetailEdit => TextKey::ShortcutGroupSculpt,
         crate::shortcuts::ShortcutContext::HairEdit => TextKey::ShortcutGroupHair,
+        crate::shortcuts::ShortcutContext::View => TextKey::ShortcutGroupView,
+        crate::shortcuts::ShortcutContext::Navigation => TextKey::ShortcutGroupNavigation,
     }
 }
 
 /// System first because it is true everywhere, then the three places a binding
 /// only means something in.
-const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 4] = [
+const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 6] = [
     crate::shortcuts::ShortcutContext::Global,
+    crate::shortcuts::ShortcutContext::Navigation,
+    crate::shortcuts::ShortcutContext::View,
     crate::shortcuts::ShortcutContext::Alignment,
     crate::shortcuts::ShortcutContext::DetailEdit,
     crate::shortcuts::ShortcutContext::HairEdit,
@@ -1346,6 +1350,22 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::ViewOrbit => TextKey::ShortcutViewOrbit,
         Shortcut::ViewPan => TextKey::ShortcutViewPan,
         Shortcut::ViewDolly => TextKey::ShortcutViewDolly,
+        Shortcut::ViewReset => TextKey::ShortcutViewReset,
+        Shortcut::ViewToggleProjection => TextKey::ShortcutViewProjection,
+        Shortcut::ViewFront => TextKey::ShortcutViewFront,
+        Shortcut::ViewLeftSide => TextKey::ShortcutViewLeftSide,
+        Shortcut::ViewRightSide => TextKey::ShortcutViewRightSide,
+        Shortcut::ViewTop => TextKey::ShortcutViewTop,
+        Shortcut::ViewBottom => TextKey::ShortcutViewBottom,
+        Shortcut::ViewFrontUpperLeft => TextKey::ShortcutViewFrontUpperLeft,
+        Shortcut::ViewFrontUpperRight => TextKey::ShortcutViewFrontUpperRight,
+        Shortcut::ViewFrontLowerLeft => TextKey::ShortcutViewFrontLowerLeft,
+        Shortcut::ViewFrontLowerRight => TextKey::ShortcutViewFrontLowerRight,
+        Shortcut::TabFaceMatch => TextKey::ShortcutTabFaceMatch,
+        Shortcut::TabDetail => TextKey::ShortcutTabDetail,
+        Shortcut::TabTexture => TextKey::ShortcutTabTexture,
+        Shortcut::TabHair => TextKey::ShortcutTabHair,
+        Shortcut::TabSave => TextKey::ShortcutTabSave,
     }
 }
 
@@ -1571,10 +1591,16 @@ mod shortcut_group_tests {
             assert!(!seen.contains(&context), "{context:?} is listed twice");
             seen.push(context);
         }
-        assert_eq!(
-            seen.len(),
-            4,
-            "a context with no group would drop its bindings off the page",
-        );
+        // Counted off the catalog, not written down. A literal here would have
+        // to be edited by whoever adds a context, and the failure if they forget
+        // is that a whole group of bindings is silently absent from the page.
+        for shortcut in Shortcut::ALL {
+            assert!(
+                seen.contains(&shortcut.context()),
+                "{:?} is in {:?}, which no group draws",
+                shortcut,
+                shortcut.context(),
+            );
+        }
     }
 }

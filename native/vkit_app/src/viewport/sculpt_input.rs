@@ -244,12 +244,12 @@ fn morph_mask_vertices(
         .collect()
 }
 
-pub(super) const fn sculpt_brush_hint(brush: SculptBrush) -> &'static str {
+pub(super) fn sculpt_brush_hint(ui: &Ui, brush: SculptBrush) -> String {
     match brush {
-        SculptBrush::Move => Shortcut::SculptGrabBrush.label(),
-        SculptBrush::Smooth => "Shift",
-        SculptBrush::Restore => Shortcut::SculptRestoreBrush.label(),
-        SculptBrush::Mask => "Alt",
+        SculptBrush::Move => Shortcut::SculptGrabBrush.label_now(ui),
+        SculptBrush::Smooth => "Shift".to_owned(),
+        SculptBrush::Restore => Shortcut::SculptRestoreBrush.label_now(ui),
+        SculptBrush::Mask => "Alt".to_owned(),
     }
 }
 

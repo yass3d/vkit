@@ -608,13 +608,14 @@ pub(super) fn detail_hud_brush(hud: &mut Ui, state: &mut AppState, compact: bool
 }
 
 pub(super) fn detail_hud_toggles(hud: &mut Ui, state: &mut AppState) {
+    let symmetry_key = crate::shortcuts::Shortcut::XSymmetry.label_now(hud);
     let x = detail_hud_toggle_icon(
         hud,
         Icon::MirrorX,
         state.sculpt_x_symmetry,
         text(state.locale, TextKey::SculptXSymmetry),
         text(state.locale, TextKey::SculptXSymmetryTooltip),
-        Some(crate::shortcuts::Shortcut::XSymmetry.label()),
+        Some(symmetry_key.as_str()),
     );
     if x.clicked() {
         state.dispatch(Action::SetSculptXSymmetry(!state.sculpt_x_symmetry));

@@ -255,7 +255,7 @@ pub(super) fn draw_pin_island(ui: &mut Ui, state: &mut AppState, workspace: Rect
     let undo = crate::ui_components::tooltip(
         crate::ui::island_capsule_button(ui, undo_rect, undo_label, false),
         undo_label,
-        Some(crate::shortcuts::Shortcut::Undo.label()),
+        Some(crate::shortcuts::Shortcut::Undo.label_now(ui)),
     );
     if undo.clicked() {
         state.dispatch(Action::Undo);

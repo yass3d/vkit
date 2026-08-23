@@ -946,7 +946,7 @@ fn sculpt_brush_selector(
     let response = crate::ui_components::tooltip(
         response,
         text(locale, sculpt_brush_tooltip_key(current)),
-        Some(sculpt_brush_hint(current)),
+        Some(sculpt_brush_hint(ui, current).as_str()),
     );
     let fill = if open || response.hovered() {
         crate::theme::hover_fill(crate::theme::COLOR_FIELD)
@@ -1010,7 +1010,7 @@ fn sculpt_brush_selector(
                     ui,
                     sculpt_brush_icon(brush),
                     text(locale, sculpt_brush_text_key(brush)),
-                    Some(sculpt_brush_hint(brush)),
+                    Some(sculpt_brush_hint(ui, brush).as_str()),
                     brush == current,
                 )
                 .on_hover_text(text(locale, sculpt_brush_tooltip_key(brush)));

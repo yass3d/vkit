@@ -183,22 +183,24 @@ fn top_tab_target(state: &AppState, tab: Tab) -> Tab {
     }
 }
 
+/// The key that stands for each top tab, in the order the tabs are drawn.
+///
+/// Same order as `TOP_TABS`, and a test holds them to the same length. These
+/// used to be a private `Num1..Num5` array read here and nowhere else, so
+/// Settings could not show them and nothing checked them against the rest of
+/// the keymap.
+const TOP_TAB_SHORTCUTS: [crate::shortcuts::Shortcut; TOP_TABS.len()] = [
+    crate::shortcuts::Shortcut::TabFaceMatch,
+    crate::shortcuts::Shortcut::TabDetail,
+    crate::shortcuts::Shortcut::TabTexture,
+    crate::shortcuts::Shortcut::TabHair,
+    crate::shortcuts::Shortcut::TabSave,
+];
+
 fn handle_top_tab_keys(ui: &Ui, state: &mut AppState) {
-    if ui.ctx().egui_wants_keyboard_input() {
-        return;
-    }
-    const DIGITS: [egui::Key; 5] = [
-        egui::Key::Num1,
-        egui::Key::Num2,
-        egui::Key::Num3,
-        egui::Key::Num4,
-        egui::Key::Num5,
-    ];
-    let pressed = ui.input(|input| {
-        DIGITS
-            .iter()
-            .position(|key| input.key_pressed(*key) && input.modifiers.is_none())
-    });
+    let pressed = TOP_TAB_SHORTCUTS
+        .iter()
+        .position(|shortcut| shortcut.pressed(ui));
     if let Some(index) = pressed {
         let (tab, _) = TOP_TABS[index];
         if top_tab_available(state, tab) {

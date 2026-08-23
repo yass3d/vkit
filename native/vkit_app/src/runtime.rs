@@ -32,6 +32,7 @@ use crate::{
     persistence::{PreferenceStore, Preferences},
     renderer,
     scene::PreparedScan,
+    shortcuts::{Keymap, NumpadKey, Shortcut, Trigger},
     state::{
         Action, AppState, ExportOutcome, GenerationOutcome, JobStage, VaMCatalogStatus,
         VarMetadataField, WorkspaceLoadJob, WorkspaceLoadOutcome,
@@ -405,10 +406,14 @@ impl ApplicationHandler<RuntimeEvent> for NativeApplication {
         if let WindowEvent::KeyboardInput { event: key, .. } = &event
             && claims_numpad(key, runtime.context.egui_wants_keyboard_input())
         {
-            if let Some(shortcut) =
-                runtime_shortcut_for_physical_key(key.physical_key, key.state, key.repeat, false)
-            {
-                runtime.state.dispatch(shortcut.into_action());
+            if let Some(action) = numpad_shortcut_action(
+                &runtime.state.keymap,
+                key.physical_key,
+                key.state,
+                key.repeat,
+                false,
+            ) {
+                runtime.state.dispatch(action);
             }
             runtime.window.request_redraw();
             return;
@@ -433,13 +438,14 @@ impl ApplicationHandler<RuntimeEvent> for NativeApplication {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let keyboard_captured = runtime.context.egui_wants_keyboard_input();
-                if let Some(shortcut) = runtime_shortcut_for_physical_key(
+                if let Some(action) = numpad_shortcut_action(
+                    &runtime.state.keymap,
                     event.physical_key,
                     event.state,
                     event.repeat,
                     keyboard_captured,
                 ) {
-                    runtime.state.dispatch(shortcut.into_action());
+                    runtime.state.dispatch(action);
                     runtime.window.request_redraw();
                 }
             }
@@ -697,87 +703,74 @@ fn bind_windows_window_icons(window: &Window) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RuntimeShortcut {
-    ResetCamera,
-    ToggleProjection,
-    StandardView(crate::camera::StandardView),
-}
-
-impl RuntimeShortcut {
-    const fn into_action(self) -> Action {
-        match self {
-            Self::ResetCamera => Action::ResetCamera,
-            Self::ToggleProjection => Action::ToggleProjection,
-            Self::StandardView(view) => Action::SetStandardView(view),
+/// What a shortcut fired from the number pad does.
+///
+/// The catalog says which key; this says what happens. Keeping the two apart is
+/// what lets Settings rebind a view key without this file knowing.
+const fn numpad_action(shortcut: Shortcut) -> Option<Action> {
+    use crate::camera::StandardView;
+    match shortcut {
+        Shortcut::ViewReset => Some(Action::ResetCamera),
+        Shortcut::ViewToggleProjection => Some(Action::ToggleProjection),
+        Shortcut::ViewFront => Some(Action::SetStandardView(StandardView::Front)),
+        Shortcut::ViewLeftSide => Some(Action::SetStandardView(StandardView::LeftSide)),
+        Shortcut::ViewRightSide => Some(Action::SetStandardView(StandardView::RightSide)),
+        Shortcut::ViewTop => Some(Action::SetStandardView(StandardView::Top)),
+        Shortcut::ViewBottom => Some(Action::SetStandardView(StandardView::Bottom)),
+        Shortcut::ViewFrontUpperLeft => Some(Action::SetStandardView(StandardView::FrontUpperLeft)),
+        Shortcut::ViewFrontUpperRight => {
+            Some(Action::SetStandardView(StandardView::FrontUpperRight))
         }
+        Shortcut::ViewFrontLowerLeft => Some(Action::SetStandardView(StandardView::FrontLowerLeft)),
+        Shortcut::ViewFrontLowerRight => {
+            Some(Action::SetStandardView(StandardView::FrontLowerRight))
+        }
+        _ => None,
     }
 }
 
 fn claims_numpad(key: &winit::event::KeyEvent, keyboard_captured: bool) -> bool {
-    !keyboard_captured && matches!(key.physical_key, PhysicalKey::Code(code) if is_numpad(code))
+    !keyboard_captured
+        && matches!(key.physical_key, PhysicalKey::Code(code) if numpad_key(code).is_some())
 }
 
-const fn is_numpad(code: KeyCode) -> bool {
-    matches!(
-        code,
-        KeyCode::Numpad0
-            | KeyCode::Numpad1
-            | KeyCode::Numpad2
-            | KeyCode::Numpad3
-            | KeyCode::Numpad4
-            | KeyCode::Numpad5
-            | KeyCode::Numpad6
-            | KeyCode::Numpad7
-            | KeyCode::Numpad8
-            | KeyCode::Numpad9
-            | KeyCode::NumpadDecimal
-    )
+const fn numpad_key(code: KeyCode) -> Option<NumpadKey> {
+    match code {
+        KeyCode::Numpad0 => Some(NumpadKey::Zero),
+        KeyCode::Numpad1 => Some(NumpadKey::One),
+        KeyCode::Numpad2 => Some(NumpadKey::Two),
+        KeyCode::Numpad3 => Some(NumpadKey::Three),
+        KeyCode::Numpad4 => Some(NumpadKey::Four),
+        KeyCode::Numpad5 => Some(NumpadKey::Five),
+        KeyCode::Numpad6 => Some(NumpadKey::Six),
+        KeyCode::Numpad7 => Some(NumpadKey::Seven),
+        KeyCode::Numpad8 => Some(NumpadKey::Eight),
+        KeyCode::Numpad9 => Some(NumpadKey::Nine),
+        KeyCode::NumpadDecimal => Some(NumpadKey::Decimal),
+        _ => None,
+    }
 }
 
-fn runtime_shortcut_for_physical_key(
+/// The action a number-pad press stands for under the keymap in force.
+///
+/// `Home` used to be a second, silent way to reset the camera. It is not one
+/// any more: one shortcut carries one binding, which is what lets Settings show
+/// it and what stops two things claiming one key. `Home` is free to bind.
+fn numpad_shortcut_action(
+    keymap: &Keymap,
     physical_key: PhysicalKey,
     state: ElementState,
     repeat: bool,
     keyboard_captured: bool,
-) -> Option<RuntimeShortcut> {
+) -> Option<Action> {
     if keyboard_captured || repeat || state != ElementState::Pressed {
         return None;
     }
-
-    match physical_key {
-        PhysicalKey::Code(KeyCode::Home | KeyCode::Numpad0) => Some(RuntimeShortcut::ResetCamera),
-        PhysicalKey::Code(KeyCode::NumpadDecimal) => Some(RuntimeShortcut::ToggleProjection),
-
-        PhysicalKey::Code(KeyCode::Numpad5) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::Front,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad4) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::LeftSide,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad6) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::RightSide,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad8) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::Top,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad2) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::Bottom,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad7) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::FrontUpperLeft,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad9) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::FrontUpperRight,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad1) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::FrontLowerLeft,
-        )),
-        PhysicalKey::Code(KeyCode::Numpad3) => Some(RuntimeShortcut::StandardView(
-            crate::camera::StandardView::FrontLowerRight,
-        )),
-        _ => None,
-    }
+    let PhysicalKey::Code(code) = physical_key else {
+        return None;
+    };
+    let shortcut = keymap.shortcut_for(Trigger::Numpad(numpad_key(code)?))?;
+    numpad_action(shortcut)
 }
 
 #[cfg(target_os = "windows")]
@@ -2304,42 +2297,26 @@ mod tests {
 
     #[test]
     fn camera_shortcuts_use_physical_numpad_keys_and_ignore_text_or_repeats() {
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Home),
+        let keymap = Keymap::default();
+        let press = |code| {
+            numpad_shortcut_action(
+                &keymap,
+                PhysicalKey::Code(code),
                 ElementState::Pressed,
                 false,
                 false,
-            ),
-            Some(RuntimeShortcut::ResetCamera)
-        );
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::NumpadDecimal),
-                ElementState::Pressed,
-                false,
-                false,
-            ),
-            Some(RuntimeShortcut::ToggleProjection)
-        );
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Numpad0),
-                ElementState::Pressed,
-                false,
-                false,
-            ),
-            Some(RuntimeShortcut::ResetCamera)
-        );
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::NumpadDecimal),
-                ElementState::Released,
-                false,
-                false,
-            ),
-            None
-        );
+            )
+        };
+
+        assert!(matches!(press(KeyCode::Numpad0), Some(Action::ResetCamera)));
+        assert!(matches!(
+            press(KeyCode::NumpadDecimal),
+            Some(Action::ToggleProjection)
+        ));
+        // `Home` was a second, silent binding for the reset. One shortcut now
+        // carries one binding, which is what lets Settings show it, so `Home`
+        // does nothing until somebody binds it.
+        assert!(press(KeyCode::Home).is_none());
 
         for (code, view) in [
             (KeyCode::Numpad5, crate::camera::StandardView::Front),
@@ -2364,51 +2341,77 @@ mod tests {
                 crate::camera::StandardView::FrontLowerRight,
             ),
         ] {
-            assert_eq!(
-                runtime_shortcut_for_physical_key(
-                    PhysicalKey::Code(code),
-                    ElementState::Pressed,
-                    false,
-                    false,
-                ),
-                Some(RuntimeShortcut::StandardView(view))
+            assert!(
+                matches!(press(code), Some(Action::SetStandardView(stood)) if stood == view),
+                "{code:?} should stand the camera at {view:?}"
             );
-            assert_eq!(
-                runtime_shortcut_for_physical_key(
+            assert!(
+                numpad_shortcut_action(
+                    &keymap,
                     PhysicalKey::Code(code),
                     ElementState::Pressed,
                     false,
                     true,
-                ),
-                None
+                )
+                .is_none(),
+                "a pad key must not fire while a text field has the keyboard"
+            );
+            assert!(
+                numpad_shortcut_action(
+                    &keymap,
+                    PhysicalKey::Code(code),
+                    ElementState::Released,
+                    false,
+                    false,
+                )
+                .is_none()
+            );
+            assert!(
+                numpad_shortcut_action(
+                    &keymap,
+                    PhysicalKey::Code(code),
+                    ElementState::Pressed,
+                    true,
+                    false,
+                )
+                .is_none(),
+                "held-down repeats must not sweep the camera through views"
             );
         }
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Home),
-                ElementState::Pressed,
-                true,
-                false,
-            ),
-            None
+    }
+
+    /// The pad reads the keymap, so rebinding a view key moves the view.
+    ///
+    /// This is the whole reason the second registry was retired: it kept its
+    /// own table of physical keys, so nothing the reader did in Settings could
+    /// reach it, and Settings could not even list what it held.
+    #[test]
+    fn a_rebound_pad_key_moves_the_view_with_it() {
+        let mut keymap = Keymap::default();
+        keymap.rebind(
+            Shortcut::ViewTop,
+            crate::shortcuts::Binding {
+                trigger: Trigger::Numpad(NumpadKey::One),
+                modifiers: crate::shortcuts::ModifierPolicy::Exactly(egui::Modifiers::NONE),
+            },
         );
-        assert_eq!(
-            runtime_shortcut_for_physical_key(
-                PhysicalKey::Code(KeyCode::Home),
+        let press = |code| {
+            numpad_shortcut_action(
+                &keymap,
+                PhysicalKey::Code(code),
                 ElementState::Pressed,
                 false,
-                true,
-            ),
-            None
+                false,
+            )
+        };
+        assert!(matches!(
+            press(KeyCode::Numpad1),
+            Some(Action::SetStandardView(crate::camera::StandardView::Top))
+        ));
+        assert!(
+            press(KeyCode::Numpad8).is_none(),
+            "the key it used to be on now stands for nothing"
         );
-        assert!(matches!(
-            RuntimeShortcut::ResetCamera.into_action(),
-            Action::ResetCamera
-        ));
-        assert!(matches!(
-            RuntimeShortcut::ToggleProjection.into_action(),
-            Action::ToggleProjection
-        ));
     }
 
     #[test]
@@ -2517,7 +2520,7 @@ mod drop_tests {
             KeyCode::NumpadDecimal,
         ];
         for code in numpad {
-            assert!(is_numpad(code), "{code:?} is on the numpad");
+            assert!(numpad_key(code).is_some(), "{code:?} is on the numpad");
         }
 
         for code in [
@@ -2528,12 +2531,17 @@ mod drop_tests {
             KeyCode::Digit4,
             KeyCode::Digit9,
         ] {
-            assert!(!is_numpad(code), "{code:?} belongs to the number row");
+            assert!(
+                numpad_key(code).is_none(),
+                "{code:?} belongs to the number row"
+            );
         }
 
+        let keymap = Keymap::default();
         for code in numpad {
             assert!(
-                runtime_shortcut_for_physical_key(
+                numpad_shortcut_action(
+                    &keymap,
                     PhysicalKey::Code(code),
                     ElementState::Pressed,
                     false,

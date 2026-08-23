@@ -6,7 +6,7 @@
 
 use egui::{Key, Modifiers, Ui};
 
-use super::{Binding, ModifierPolicy, Trigger, current};
+use super::{Binding, ModifierPolicy, NumpadKey, Trigger, current};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShortcutContext {
@@ -17,11 +17,27 @@ pub enum ShortcutContext {
     DetailEdit,
 
     HairEdit,
+
+    /// Standing the camera in a named place. Live wherever the pointer is.
+    View,
+
+    /// Moving between the top tabs. Live wherever the pointer is.
+    Navigation,
 }
 
 impl ShortcutContext {
+    /// Whether a shortcut in this context can fire anywhere.
+    ///
+    /// Separate from how the list is grouped on purpose. A view key and a tab
+    /// key are as reachable as `Global` and must be checked for collisions
+    /// against everything, but a reader looking for "the key that shows the
+    /// left side" wants them under their own heading and not in one wall.
+    pub const fn is_everywhere(self) -> bool {
+        matches!(self, Self::Global | Self::View | Self::Navigation)
+    }
+
     pub const fn overlaps(self, other: Self) -> bool {
-        matches!(self, Self::Global) || matches!(other, Self::Global) || self as u8 == other as u8
+        self.is_everywhere() || other.is_everywhere() || self as u8 == other as u8
     }
 }
 
@@ -68,10 +84,28 @@ pub enum Shortcut {
     HairPuffTool,
     HairPinchTool,
     HairPickTool,
+
+    ViewReset,
+    ViewToggleProjection,
+    ViewFront,
+    ViewLeftSide,
+    ViewRightSide,
+    ViewTop,
+    ViewBottom,
+    ViewFrontUpperLeft,
+    ViewFrontUpperRight,
+    ViewFrontLowerLeft,
+    ViewFrontLowerRight,
+
+    TabFaceMatch,
+    TabDetail,
+    TabTexture,
+    TabHair,
+    TabSave,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 43] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -99,6 +133,22 @@ impl Shortcut {
         Self::ViewOrbit,
         Self::ViewPan,
         Self::ViewDolly,
+        Self::ViewReset,
+        Self::ViewToggleProjection,
+        Self::ViewFront,
+        Self::ViewLeftSide,
+        Self::ViewRightSide,
+        Self::ViewTop,
+        Self::ViewBottom,
+        Self::ViewFrontUpperLeft,
+        Self::ViewFrontUpperRight,
+        Self::ViewFrontLowerLeft,
+        Self::ViewFrontLowerRight,
+        Self::TabFaceMatch,
+        Self::TabDetail,
+        Self::TabTexture,
+        Self::TabHair,
+        Self::TabSave,
     ];
 
     pub const fn slot(self) -> usize {
@@ -141,6 +191,22 @@ impl Shortcut {
             Self::ViewOrbit => "view-orbit",
             Self::ViewPan => "view-pan",
             Self::ViewDolly => "view-dolly",
+            Self::ViewReset => "view-reset",
+            Self::ViewToggleProjection => "view-toggle-projection",
+            Self::ViewFront => "view-front",
+            Self::ViewLeftSide => "view-left-side",
+            Self::ViewRightSide => "view-right-side",
+            Self::ViewTop => "view-top",
+            Self::ViewBottom => "view-bottom",
+            Self::ViewFrontUpperLeft => "view-front-upper-left",
+            Self::ViewFrontUpperRight => "view-front-upper-right",
+            Self::ViewFrontLowerLeft => "view-front-lower-left",
+            Self::ViewFrontLowerRight => "view-front-lower-right",
+            Self::TabFaceMatch => "tab-face-match",
+            Self::TabDetail => "tab-detail",
+            Self::TabTexture => "tab-texture",
+            Self::TabHair => "tab-hair",
+            Self::TabSave => "tab-save",
         }
     }
 
@@ -162,6 +228,18 @@ impl Shortcut {
             Self::ViewOrbit | Self::ViewPan | Self::ViewDolly => {
                 Trigger::Mouse(egui::PointerButton::Middle)
             }
+            // Blender's pad, which every modelling program copied.
+            Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
+            Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
+            Self::ViewFront => Trigger::Numpad(NumpadKey::Five),
+            Self::ViewLeftSide => Trigger::Numpad(NumpadKey::Four),
+            Self::ViewRightSide => Trigger::Numpad(NumpadKey::Six),
+            Self::ViewTop => Trigger::Numpad(NumpadKey::Eight),
+            Self::ViewBottom => Trigger::Numpad(NumpadKey::Two),
+            Self::ViewFrontUpperLeft => Trigger::Numpad(NumpadKey::Seven),
+            Self::ViewFrontUpperRight => Trigger::Numpad(NumpadKey::Nine),
+            Self::ViewFrontLowerLeft => Trigger::Numpad(NumpadKey::One),
+            Self::ViewFrontLowerRight => Trigger::Numpad(NumpadKey::Three),
             other => Trigger::Key(other.key()),
         }
     }
@@ -191,6 +269,24 @@ impl Shortcut {
             Self::FrameSelected => Key::F,
             Self::XSymmetry => Key::X,
             Self::ViewOrbit | Self::ViewPan | Self::ViewDolly => Key::X,
+            Self::TabFaceMatch => Key::Num1,
+            Self::TabDetail => Key::Num2,
+            Self::TabTexture => Key::Num3,
+            Self::TabHair => Key::Num4,
+            Self::TabSave => Key::Num5,
+            // The pad keys answer through `trigger`; this arm is unreachable for
+            // them and returns a key nothing is bound to rather than panicking.
+            Self::ViewReset
+            | Self::ViewToggleProjection
+            | Self::ViewFront
+            | Self::ViewLeftSide
+            | Self::ViewRightSide
+            | Self::ViewTop
+            | Self::ViewBottom
+            | Self::ViewFrontUpperLeft
+            | Self::ViewFrontUpperRight
+            | Self::ViewFrontLowerLeft
+            | Self::ViewFrontLowerRight => Key::Escape,
         }
     }
 
@@ -223,6 +319,24 @@ impl Shortcut {
             | Self::BrushSizeSweep
             | Self::BrushStrengthSweep
             | Self::CancelStencil => ShortcutContext::DetailEdit,
+
+            Self::ViewReset
+            | Self::ViewToggleProjection
+            | Self::ViewFront
+            | Self::ViewLeftSide
+            | Self::ViewRightSide
+            | Self::ViewTop
+            | Self::ViewBottom
+            | Self::ViewFrontUpperLeft
+            | Self::ViewFrontUpperRight
+            | Self::ViewFrontLowerLeft
+            | Self::ViewFrontLowerRight => ShortcutContext::View,
+
+            Self::TabFaceMatch
+            | Self::TabDetail
+            | Self::TabTexture
+            | Self::TabHair
+            | Self::TabSave => ShortcutContext::Navigation,
         }
     }
 
@@ -262,39 +376,36 @@ impl Shortcut {
             | Self::FrameSelected
             | Self::XSymmetry
             | Self::ViewOrbit => ModifierPolicy::Exactly(Modifiers::NONE),
+
+            Self::ViewReset
+            | Self::ViewToggleProjection
+            | Self::ViewFront
+            | Self::ViewLeftSide
+            | Self::ViewRightSide
+            | Self::ViewTop
+            | Self::ViewBottom
+            | Self::ViewFrontUpperLeft
+            | Self::ViewFrontUpperRight
+            | Self::ViewFrontLowerLeft
+            | Self::ViewFrontLowerRight
+            | Self::TabFaceMatch
+            | Self::TabDetail
+            | Self::TabTexture
+            | Self::TabHair
+            | Self::TabSave => ModifierPolicy::Exactly(Modifiers::NONE),
         }
     }
 
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::SculptGrabBrush => "G",
-            Self::HairCombBrush => "G",
-            Self::HairPlantTool => "A",
-            Self::HairGrowTool => "E",
-            Self::HairCutTool => "X",
-            Self::HairEraseTool => "T",
-            Self::HairMirrorPart => "M",
-            Self::HairPuffTool => "B",
-            Self::HairPinchTool => "P",
-            Self::HairPickTool => "V",
-            Self::SculptRestoreBrush => "H",
-            Self::TexturePinBrush => "P",
-            Self::TextureCloneBrush => "C",
-            Self::BrushSizeDown => "[",
-            Self::BrushSizeUp => "]",
-            Self::Undo => "Ctrl+Z",
-            Self::Redo => "Ctrl+Y",
-            Self::BrushSizeSweep => "F",
-            Self::BrushStrengthSweep => "Shift+F",
-            Self::ViewTrackball => "R",
-            Self::ViewLevelRoll => "Alt+R",
-            Self::CancelStencil => "Esc",
-            Self::FrameSelected => "F",
-            Self::XSymmetry => "X",
-            Self::ViewOrbit => "Wheel click",
-            Self::ViewPan => "Shift+Wheel click",
-            Self::ViewDolly => "Ctrl+Wheel click",
-        }
+    /// What this shortcut is bound to out of the box, spelled for a reader.
+    ///
+    /// Derived, never listed. A second table of "G", "A", "[" beside the table
+    /// that produces them drifts the moment one is edited, and this one had a
+    /// test pinning the two to each other, which is a tautology and not a check.
+    ///
+    /// This is the FACTORY binding. Anywhere the reader is being told which key
+    /// to press right now, use `label_now`, which reads the keymap in force.
+    pub fn label(self) -> String {
+        self.default_binding().label()
     }
 
     pub fn binding(self, ui: &Ui) -> Binding {
@@ -325,6 +436,9 @@ impl Shortcut {
                         )
                     }),
                     Trigger::Mouse(button) => input.pointer.button_pressed(button),
+                    // The pad never reaches egui as itself. `runtime.rs` reads
+                    // the physical key and dispatches through the same keymap.
+                    Trigger::Numpad(_) => false,
                 }
         })
     }
@@ -347,6 +461,7 @@ impl Shortcut {
                 )
             }),
             Trigger::Mouse(button) => input.pointer.button_released(button),
+            Trigger::Numpad(_) => false,
         })
     }
 }
