@@ -625,80 +625,66 @@ fn overlay_alpha_and_sculpt_wire_palette_are_explicit() {
 
 #[test]
 fn the_island_names_whatever_a_stroke_would_actually_do() {
-    for brush in SculptBrush::ALL {
-        for modifiers in [
-            egui::Modifiers::default(),
-            egui::Modifiers::SHIFT,
-            egui::Modifiers::CTRL,
-            egui::Modifiers::ALT,
-            egui::Modifiers::SHIFT | egui::Modifiers::ALT,
-            egui::Modifiers::SHIFT | egui::Modifiers::CTRL,
-        ] {
-            let mode = sculpt_input_mode(modifiers, brush);
-            let shown = brush_shown_for(mode, brush);
-            if mode == SculptInputMode::Smooth {
-                assert_eq!(
-                    shown,
-                    SculptBrush::Smooth,
-                    "{modifiers:?} on {brush:?} smooths, so the island has to say so"
+    egui::__run_test_ui(|ui| {
+        for brush in SculptBrush::ALL {
+            for modifiers in [
+                egui::Modifiers::default(),
+                egui::Modifiers::SHIFT,
+                egui::Modifiers::CTRL,
+                egui::Modifiers::ALT,
+                egui::Modifiers::SHIFT | egui::Modifiers::ALT,
+                egui::Modifiers::SHIFT | egui::Modifiers::CTRL,
+            ] {
+                let mode = sculpt_input_mode(ui, modifiers, brush);
+                let shown = brush_shown_for(mode, brush);
+                if mode == SculptInputMode::Smooth {
+                    assert_eq!(
+                        shown,
+                        SculptBrush::Smooth,
+                        "{modifiers:?} on {brush:?} smooths, so the island has to say so"
+                    );
+                }
+                assert!(
+                    shown == brush || mode == SculptInputMode::Smooth,
+                    "{modifiers:?} moved the island off {brush:?} for something other than a held Shift"
                 );
             }
-            assert!(
-                shown == brush || mode == SculptInputMode::Smooth,
-                "{modifiers:?} moved the island off {brush:?} for something other than a held Shift"
+        }
+
+        for brush in SculptBrush::ALL {
+            assert_eq!(
+                brush_shown_for(
+                    sculpt_input_mode(ui, egui::Modifiers::default(), brush),
+                    brush
+                ),
+                brush
             );
         }
-    }
-
-    for brush in SculptBrush::ALL {
-        assert_eq!(
-            brush_shown_for(sculpt_input_mode(egui::Modifiers::default(), brush), brush),
-            brush
-        );
-    }
+    });
 }
 
 #[test]
 fn sculpt_modifier_shortcuts_override_the_selected_brush() {
-    for brush in SculptBrush::ALL
-        .into_iter()
-        .filter(|brush| brush.edits_geometry())
-    {
-        assert_eq!(
-            sculpt_input_mode(
-                egui::Modifiers {
-                    shift: true,
-                    ..Default::default()
-                },
-                brush
-            ),
-            SculptInputMode::Smooth
-        );
-        assert_eq!(
-            sculpt_input_mode(
-                egui::Modifiers {
-                    ctrl: true,
-                    ..Default::default()
-                },
-                brush
-            ),
-            SculptInputMode::Inflate
-        );
-
-        let alt_only = egui::Modifiers {
-            alt: true,
-            ..Default::default()
-        };
-        if matches!(brush, SculptBrush::Restore) {
-            assert_eq!(
-                sculpt_input_mode(alt_only, brush),
-                SculptInputMode::RestoreFit
-            );
-
+    egui::__run_test_ui(|ui| {
+        for brush in SculptBrush::ALL
+            .into_iter()
+            .filter(|brush| brush.edits_geometry())
+        {
             assert_eq!(
                 sculpt_input_mode(
+                    ui,
                     egui::Modifiers {
-                        alt: true,
+                        shift: true,
+                        ..Default::default()
+                    },
+                    brush
+                ),
+                SculptInputMode::Smooth
+            );
+            assert_eq!(
+                sculpt_input_mode(
+                    ui,
+                    egui::Modifiers {
                         ctrl: true,
                         ..Default::default()
                     },
@@ -706,28 +692,55 @@ fn sculpt_modifier_shortcuts_override_the_selected_brush() {
                 ),
                 SculptInputMode::Inflate
             );
-        } else {
-            assert_eq!(sculpt_input_mode(alt_only, brush), SculptInputMode::Inflate);
+
+            let alt_only = egui::Modifiers {
+                alt: true,
+                ..Default::default()
+            };
+            if matches!(brush, SculptBrush::Restore) {
+                assert_eq!(
+                    sculpt_input_mode(ui, alt_only, brush),
+                    SculptInputMode::RestoreFit
+                );
+
+                assert_eq!(
+                    sculpt_input_mode(
+                        ui,
+                        egui::Modifiers {
+                            alt: true,
+                            ctrl: true,
+                            ..Default::default()
+                        },
+                        brush
+                    ),
+                    SculptInputMode::Inflate
+                );
+            } else {
+                assert_eq!(
+                    sculpt_input_mode(ui, alt_only, brush),
+                    SculptInputMode::Inflate
+                );
+            }
         }
-    }
 
-    assert_eq!(
-        sculpt_input_mode(egui::Modifiers::default(), SculptBrush::Move),
-        SculptInputMode::Grab
-    );
-    assert_eq!(
-        sculpt_input_mode(egui::Modifiers::default(), SculptBrush::Smooth),
-        SculptInputMode::Smooth
-    );
-    assert_eq!(
-        sculpt_input_mode(egui::Modifiers::default(), SculptBrush::Restore),
-        SculptInputMode::Restore
-    );
+        assert_eq!(
+            sculpt_input_mode(ui, egui::Modifiers::default(), SculptBrush::Move),
+            SculptInputMode::Grab
+        );
+        assert_eq!(
+            sculpt_input_mode(ui, egui::Modifiers::default(), SculptBrush::Smooth),
+            SculptInputMode::Smooth
+        );
+        assert_eq!(
+            sculpt_input_mode(ui, egui::Modifiers::default(), SculptBrush::Restore),
+            SculptInputMode::Restore
+        );
 
-    assert!(SculptInputMode::Smooth.is_paint_style());
-    assert!(SculptInputMode::Restore.is_paint_style());
-    assert!(!SculptInputMode::Grab.is_paint_style());
-    assert!(!SculptInputMode::Inflate.is_paint_style());
+        assert!(SculptInputMode::Smooth.is_paint_style());
+        assert!(SculptInputMode::Restore.is_paint_style());
+        assert!(!SculptInputMode::Grab.is_paint_style());
+        assert!(!SculptInputMode::Inflate.is_paint_style());
+    });
 }
 
 #[test]
@@ -3256,33 +3269,35 @@ fn the_blend_stands_aside_until_a_layer_is_on_the_stack() {
 
 #[test]
 fn the_mask_brush_stays_a_mask_brush_under_every_modifier() {
-    for modifiers in [
-        egui::Modifiers::default(),
-        egui::Modifiers {
-            shift: true,
-            ..Default::default()
-        },
-        egui::Modifiers {
-            alt: true,
-            ..Default::default()
-        },
-        egui::Modifiers {
-            ctrl: true,
-            ..Default::default()
-        },
-        egui::Modifiers {
-            alt: true,
-            ctrl: true,
-            shift: true,
-            ..Default::default()
-        },
-    ] {
-        assert_eq!(
-            sculpt_input_mode(modifiers, SculptBrush::Mask),
-            SculptInputMode::Mask,
-            "the mask brush must never edit geometry, held keys included",
-        );
-    }
+    egui::__run_test_ui(|ui| {
+        for modifiers in [
+            egui::Modifiers::default(),
+            egui::Modifiers {
+                shift: true,
+                ..Default::default()
+            },
+            egui::Modifiers {
+                alt: true,
+                ..Default::default()
+            },
+            egui::Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+            egui::Modifiers {
+                alt: true,
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+        ] {
+            assert_eq!(
+                sculpt_input_mode(ui, modifiers, SculptBrush::Mask),
+                SculptInputMode::Mask,
+                "the mask brush must never edit geometry, held keys included",
+            );
+        }
+    });
 }
 
 #[test]

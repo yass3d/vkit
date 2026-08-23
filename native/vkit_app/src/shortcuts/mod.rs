@@ -12,7 +12,7 @@ mod trigger;
 pub use binding::{Binding, ModifierPolicy};
 pub use catalog::{Shortcut, ShortcutContext};
 pub use keymap::Keymap;
-pub use trigger::{NumpadKey, Trigger};
+pub use trigger::{ModifierKey, NumpadKey, Trigger};
 
 use egui::Ui;
 
@@ -328,5 +328,141 @@ mod registry_tests {
         assert_eq!(Shortcut::BrushSizeDown.label(), "[");
         assert_eq!(Shortcut::ViewFront.label(), "Num 5");
         assert_eq!(Shortcut::ViewPan.label(), "Shift+Wheel click");
+    }
+}
+
+#[cfg(test)]
+mod untokenised_input_tests {
+    /// Every raw modifier read left outside the catalog, by file, with a reason.
+    ///
+    /// Not a ban. Some of these should never be bindings: `settings.rs` reads
+    /// modifiers to CAPTURE a new binding, `pins.rs` gates a click that has no
+    /// name a reader would look up, and `runtime.rs` is deciding whether egui
+    /// wants the keystroke at all. What this stops is the thing that happened
+    /// before: a tenth file quietly reading `.shift` and meaning something by
+    /// it, with nothing in Settings to say so.
+    ///
+    /// Adding a read fails this test. Either name it in the catalog and read it
+    /// through `Shortcut::held`, or add the file here with a line saying why it
+    /// is not a binding.
+    const ALLOWED: &[(&str, usize, &str)] = &[
+        (
+            "runtime.rs",
+            1,
+            "deciding whether egui wants the key at all",
+        ),
+        (
+            "settings.rs",
+            3,
+            "the capture field, reading a modifier to BIND it",
+        ),
+        (
+            "texture_ui.rs",
+            3,
+            "panel affordances, not stroke behaviour",
+        ),
+        ("ui.rs", 1, "the diagnostic log's copy shortcut"),
+        (
+            "viewport/alignment_gizmo.rs",
+            1,
+            "axis constraint while a gizmo drags",
+        ),
+        (
+            "viewport/camera_input.rs",
+            2,
+            "camera drag bindings own their own map",
+        ),
+        (
+            "viewport/detail_panels.rs",
+            2,
+            "list ordering and nudge step",
+        ),
+        (
+            "viewport/hair_input.rs",
+            1,
+            "the pick fallback, which follows the tool",
+        ),
+        (
+            "viewport/pins.rs",
+            3,
+            "click gating with no name to look up",
+        ),
+        (
+            "viewport/sculpt_input.rs",
+            1,
+            "stroke bookkeeping, not a mode",
+        ),
+    ];
+
+    #[test]
+    fn no_new_file_reads_a_modifier_the_catalog_has_not_named() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let needles = [
+            "modifiers.shift",
+            "modifiers.alt",
+            "modifiers.ctrl",
+            "modifiers.command",
+        ];
+
+        let mut counted: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        let mut pending = vec![root.clone()];
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(&directory).expect("read the source tree") {
+                let path = entry.expect("read a source entry").path();
+                if path.is_dir() {
+                    if path.file_name().is_some_and(|name| name == "shortcuts") {
+                        continue;
+                    }
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|extension| extension != "rs") {
+                    continue;
+                }
+                if path.file_name().is_some_and(|name| name == "tests.rs") {
+                    continue;
+                }
+                let relative = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let body = std::fs::read_to_string(&path).expect("read a source file");
+                let mut in_tests = false;
+                for line in body.lines() {
+                    if line.trim_start().starts_with("mod tests") {
+                        in_tests = true;
+                    }
+                    if in_tests || line.trim_start().starts_with("//") {
+                        continue;
+                    }
+                    if needles.iter().any(|needle| line.contains(needle)) {
+                        *counted.entry(relative.clone()).or_default() += 1;
+                    }
+                }
+            }
+        }
+
+        let allowed: std::collections::BTreeMap<&str, usize> = ALLOWED
+            .iter()
+            .map(|(file, count, _)| (*file, *count))
+            .collect();
+        for (file, count) in &counted {
+            let permitted = allowed.get(file.as_str()).copied().unwrap_or(0);
+            assert!(
+                *count <= permitted,
+                "{file} reads a modifier {count} times and {permitted} are accounted for. \
+                 Name it in the catalog, or add it to ALLOWED with a reason.",
+            );
+        }
+        for (file, count, _) in ALLOWED {
+            let found = counted.get(*file).copied().unwrap_or(0);
+            assert_eq!(
+                found, *count,
+                "{file} is down for {count} raw reads and has {found}; \
+                 update ALLOWED so the inventory stays true",
+            );
+        }
     }
 }

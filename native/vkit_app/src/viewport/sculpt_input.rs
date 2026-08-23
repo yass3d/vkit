@@ -41,7 +41,7 @@ pub(super) fn handle_sculpt_interaction(
     let pointer = ui.input(|input| input.pointer.hover_pos());
     let primary_pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
     let modifiers = ui.input(|input| input.modifiers);
-    let press_input_mode = sculpt_input_mode(modifiers, state.sculpt_brush);
+    let press_input_mode = sculpt_input_mode(ui, modifiers, state.sculpt_brush);
     if primary_pressed
         && response.hovered()
         && let Some(pointer) = pointer
@@ -247,9 +247,9 @@ fn morph_mask_vertices(
 pub(super) fn sculpt_brush_hint(ui: &Ui, brush: SculptBrush) -> String {
     match brush {
         SculptBrush::Move => Shortcut::SculptGrabBrush.label_now(ui),
-        SculptBrush::Smooth => "Shift".to_owned(),
+        SculptBrush::Smooth => Shortcut::SculptSmoothHold.label_now(ui),
         SculptBrush::Restore => Shortcut::SculptRestoreBrush.label_now(ui),
-        SculptBrush::Mask => "Alt".to_owned(),
+        SculptBrush::Mask => Shortcut::SculptAlternateHold.label_now(ui),
     }
 }
 
@@ -298,17 +298,27 @@ pub(super) fn handle_sculpt_brush_hotkeys(ui: &Ui, state: &mut AppState) {
     }
 }
 
-pub(super) const fn sculpt_input_mode(
+/// Which stroke a held modifier turns this brush into.
+///
+/// The three modifiers are bindings like any other — `Shortcut::SculptSmoothHold`
+/// and friends — so this asks the keymap rather than reading `.shift` off the
+/// input. They were read raw here and in eight other files, which is why
+/// Settings had nothing to say about the most-used gesture in the program.
+pub(super) fn sculpt_input_mode(
+    ui: &Ui,
     modifiers: egui::Modifiers,
     brush: SculptBrush,
 ) -> SculptInputMode {
+    let smooth = Shortcut::SculptSmoothHold.held_in(ui, modifiers);
+    let inflate = Shortcut::SculptInflateHold.held_in(ui, modifiers);
+    let alternate = Shortcut::SculptAlternateHold.held_in(ui, modifiers);
     if matches!(brush, SculptBrush::Mask) {
         SculptInputMode::Mask
-    } else if modifiers.shift {
+    } else if smooth {
         SculptInputMode::Smooth
-    } else if modifiers.alt && matches!(brush, SculptBrush::Restore) && !modifiers.ctrl {
+    } else if alternate && matches!(brush, SculptBrush::Restore) && !inflate {
         SculptInputMode::RestoreFit
-    } else if modifiers.ctrl || modifiers.alt {
+    } else if inflate || alternate {
         SculptInputMode::Inflate
     } else {
         match brush {
@@ -338,7 +348,7 @@ pub(super) fn displayed_sculpt_brush(ui: &Ui, state: &AppState) -> SculptBrush {
     }
     let modifiers = ui.input(|input| input.modifiers);
     brush_shown_for(
-        sculpt_input_mode(modifiers, state.sculpt_brush),
+        sculpt_input_mode(ui, modifiers, state.sculpt_brush),
         state.sculpt_brush,
     )
 }
@@ -522,9 +532,9 @@ pub(super) fn paint_sculpt_brush_hud(ui: &Ui, state: &AppState, response: &Respo
     let modifiers = ui.input(|input| input.modifiers);
     let color = if sizing || cursor.fill.is_some() {
         COLOR_TEXT
-    } else if modifiers.shift {
+    } else if Shortcut::SculptSmoothHold.held_in(ui, modifiers) {
         COLOR_SUCCESS
-    } else if modifiers.ctrl {
+    } else if Shortcut::SculptInflateHold.held_in(ui, modifiers) {
         COLOR_WARNING
     } else {
         COLOR_PRIMARY

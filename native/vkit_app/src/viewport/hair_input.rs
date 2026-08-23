@@ -530,7 +530,7 @@ fn pick_part_under_pointer(ui: &Ui, state: &mut AppState, viewport: Rect, camera
     ) else {
         return;
     };
-    let additive = ui.input(|input| input.modifiers.shift);
+    let additive = crate::shortcuts::Shortcut::ListAddToSelectionHold.held(ui);
     state.dispatch(Action::ActivateHairPart {
         id: part_id,
         additive,
@@ -833,7 +833,7 @@ fn handle_grow_brush(
         return;
     }
     let dt = ui.input(|input| input.stable_dt).clamp(0.0, 0.1);
-    let shrink = ui.input(|input| input.modifiers.alt);
+    let shrink = crate::shortcuts::Shortcut::HairInvertHold.held(ui);
     let strength = state.hair_brush_strength.clamp(0.05, 1.0);
     let rate = (HAIR_GROW_RATE * strength * dt).exp();
     let factor = if shrink { 1.0 / rate } else { rate };
@@ -1112,17 +1112,18 @@ fn handle_comb_brush(
     let strength = state.hair_brush_strength.clamp(0.05, 1.0) * 2.0;
     let delta_points = pointer - stroke.last_pointer;
 
-    let smoothing = ui.input(|input| input.modifiers.shift);
+    let smoothing = crate::shortcuts::Shortcut::HairSmoothHold.held(ui);
+    let inverting = crate::shortcuts::Shortcut::HairInvertHold.held(ui);
     let pinching = matches!(state.hair_project.active_tool, HairTool::Pinch) && !smoothing;
     let puffing = matches!(state.hair_project.active_tool, HairTool::Puff) && !smoothing;
-    let flattening = puffing && ui.input(|input| input.modifiers.alt);
+    let flattening = puffing && inverting;
     let puff_rate = if puffing {
         let dt = ui.input(|input| input.stable_dt).clamp(0.0, 0.1);
         HAIR_PUFF_RATE * strength * dt * if flattening { -1.0 } else { 1.0 }
     } else {
         0.0
     };
-    let spreading = pinching && ui.input(|input| input.modifiers.alt);
+    let spreading = pinching && inverting;
     let pinch_rate = if pinching {
         let dt = ui.input(|input| input.stable_dt).clamp(0.0, 0.1);
         (HAIR_PINCH_RATE * strength * dt).min(1.0) * if spreading { -1.0 } else { 1.0 }

@@ -6,7 +6,7 @@
 
 use egui::{Key, Modifiers, Ui};
 
-use super::{Binding, ModifierPolicy, NumpadKey, Trigger, current};
+use super::{Binding, ModifierKey, ModifierPolicy, NumpadKey, Trigger, current};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShortcutContext {
@@ -23,6 +23,21 @@ pub enum ShortcutContext {
 
     /// Moving between the top tabs. Live wherever the pointer is.
     Navigation,
+
+    /// The texture canvas and the tools that paint on it.
+    ///
+    /// Its own context because `Alt` reverses the texture tool there and
+    /// reverses the sculpt brush on the model, and the two are never both under
+    /// the pointer.
+    TextureEdit,
+
+    /// The part, layer and morph lists down the side.
+    ///
+    /// Its own context so that `Shift` can mean "add to the selection" here and
+    /// "smooth" on the surface without the two being called a collision. They
+    /// are never both reachable by one press: the pointer is over a list or it
+    /// is over the model.
+    Lists,
 }
 
 impl ShortcutContext {
@@ -102,10 +117,22 @@ pub enum Shortcut {
     TabTexture,
     TabHair,
     TabSave,
+
+    SculptSmoothHold,
+    SculptInflateHold,
+    SculptAlternateHold,
+
+    HairSmoothHold,
+    HairInvertHold,
+
+    TextureInvertHold,
+
+    ListAddToSelectionHold,
+    ListSoloHold,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 43] = [
+    pub const ALL: [Self; 51] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -149,6 +176,14 @@ impl Shortcut {
         Self::TabTexture,
         Self::TabHair,
         Self::TabSave,
+        Self::SculptSmoothHold,
+        Self::SculptInflateHold,
+        Self::SculptAlternateHold,
+        Self::HairSmoothHold,
+        Self::HairInvertHold,
+        Self::TextureInvertHold,
+        Self::ListAddToSelectionHold,
+        Self::ListSoloHold,
     ];
 
     pub const fn slot(self) -> usize {
@@ -207,6 +242,14 @@ impl Shortcut {
             Self::TabTexture => "tab-texture",
             Self::TabHair => "tab-hair",
             Self::TabSave => "tab-save",
+            Self::SculptSmoothHold => "sculpt-smooth-hold",
+            Self::SculptInflateHold => "sculpt-inflate-hold",
+            Self::SculptAlternateHold => "sculpt-alternate-hold",
+            Self::HairSmoothHold => "hair-smooth-hold",
+            Self::HairInvertHold => "hair-invert-hold",
+            Self::TextureInvertHold => "texture-invert-hold",
+            Self::ListAddToSelectionHold => "list-add-to-selection-hold",
+            Self::ListSoloHold => "list-solo-hold",
         }
     }
 
@@ -240,6 +283,16 @@ impl Shortcut {
             Self::ViewFrontUpperRight => Trigger::Numpad(NumpadKey::Nine),
             Self::ViewFrontLowerLeft => Trigger::Numpad(NumpadKey::One),
             Self::ViewFrontLowerRight => Trigger::Numpad(NumpadKey::Three),
+
+            Self::SculptSmoothHold | Self::HairSmoothHold | Self::ListAddToSelectionHold => {
+                Trigger::Held(ModifierKey::Shift)
+            }
+            Self::SculptInflateHold => Trigger::Held(ModifierKey::Ctrl),
+            Self::SculptAlternateHold
+            | Self::HairInvertHold
+            | Self::TextureInvertHold
+            | Self::ListSoloHold => Trigger::Held(ModifierKey::Alt),
+
             other => Trigger::Key(other.key()),
         }
     }
@@ -286,7 +339,15 @@ impl Shortcut {
             | Self::ViewFrontUpperLeft
             | Self::ViewFrontUpperRight
             | Self::ViewFrontLowerLeft
-            | Self::ViewFrontLowerRight => Key::Escape,
+            | Self::ViewFrontLowerRight
+            | Self::SculptSmoothHold
+            | Self::SculptInflateHold
+            | Self::SculptAlternateHold
+            | Self::HairSmoothHold
+            | Self::HairInvertHold
+            | Self::TextureInvertHold
+            | Self::ListAddToSelectionHold
+            | Self::ListSoloHold => Key::Escape,
         }
     }
 
@@ -310,10 +371,10 @@ impl Shortcut {
             | Self::HairPuffTool
             | Self::HairPinchTool
             | Self::HairPickTool => ShortcutContext::HairEdit,
+            Self::TexturePinBrush | Self::TextureCloneBrush => ShortcutContext::TextureEdit,
+
             Self::SculptGrabBrush
             | Self::SculptRestoreBrush
-            | Self::TexturePinBrush
-            | Self::TextureCloneBrush
             | Self::BrushSizeDown
             | Self::BrushSizeUp
             | Self::BrushSizeSweep
@@ -337,6 +398,16 @@ impl Shortcut {
             | Self::TabTexture
             | Self::TabHair
             | Self::TabSave => ShortcutContext::Navigation,
+
+            Self::SculptSmoothHold | Self::SculptInflateHold | Self::SculptAlternateHold => {
+                ShortcutContext::DetailEdit
+            }
+
+            Self::TextureInvertHold => ShortcutContext::TextureEdit,
+
+            Self::HairSmoothHold | Self::HairInvertHold => ShortcutContext::HairEdit,
+
+            Self::ListAddToSelectionHold | Self::ListSoloHold => ShortcutContext::Lists,
         }
     }
 
@@ -393,6 +464,18 @@ impl Shortcut {
             | Self::TabTexture
             | Self::TabHair
             | Self::TabSave => ModifierPolicy::Exactly(Modifiers::NONE),
+
+            // A held modifier IS the binding. Asking which others are down
+            // besides it would make `Shift` stop smoothing the moment the
+            // reader also reached for `Alt`.
+            Self::SculptSmoothHold
+            | Self::SculptInflateHold
+            | Self::SculptAlternateHold
+            | Self::HairSmoothHold
+            | Self::HairInvertHold
+            | Self::TextureInvertHold
+            | Self::ListAddToSelectionHold
+            | Self::ListSoloHold => ModifierPolicy::Ignored,
         }
     }
 
@@ -414,6 +497,28 @@ impl Shortcut {
 
     pub fn label_now(self, ui: &Ui) -> String {
         self.binding(ui).label()
+    }
+
+    /// Whether this gesture's modifier is down right now.
+    ///
+    /// Answers `false` for anything not bound to a held modifier, so a reader
+    /// who moves a gesture onto a letter key does not get a stuck stroke.
+    #[must_use]
+    pub fn held(self, ui: &Ui) -> bool {
+        self.held_in(ui, ui.input(|input| input.modifiers))
+    }
+
+    /// The same question against modifiers already in hand.
+    ///
+    /// The sculpt and hair strokes read `input.modifiers` once and pass it down
+    /// through several decisions; making each of them re-enter `ui.input`
+    /// would let the answer change halfway through one stroke.
+    #[must_use]
+    pub fn held_in(self, ui: &Ui, modifiers: egui::Modifiers) -> bool {
+        match self.binding(ui).trigger {
+            Trigger::Held(modifier) => modifier.held_in(modifiers),
+            _ => false,
+        }
     }
 
     pub fn pressed(self, ui: &Ui) -> bool {
@@ -438,7 +543,9 @@ impl Shortcut {
                     Trigger::Mouse(button) => input.pointer.button_pressed(button),
                     // The pad never reaches egui as itself. `runtime.rs` reads
                     // the physical key and dispatches through the same keymap.
-                    Trigger::Numpad(_) => false,
+                    // Neither is a press. The pad is read a layer earlier in
+                    // `runtime.rs`; a held modifier is asked about by `held`.
+                    Trigger::Numpad(_) | Trigger::Held(_) => false,
                 }
         })
     }
@@ -461,7 +568,7 @@ impl Shortcut {
                 )
             }),
             Trigger::Mouse(button) => input.pointer.button_released(button),
-            Trigger::Numpad(_) => false,
+            Trigger::Numpad(_) | Trigger::Held(_) => false,
         })
     }
 }

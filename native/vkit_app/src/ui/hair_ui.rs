@@ -637,7 +637,7 @@ fn draw_sidebar_part_row(
         if label.clicked() {
             state.dispatch(Action::ActivateHairPart {
                 id: part_id,
-                additive: row_ui.input(|input| input.modifiers.shift),
+                additive: crate::shortcuts::Shortcut::ListAddToSelectionHold.held(&row_ui),
             });
         }
         let (pencil, _) = row_ui.allocate_exact_size(egui::Vec2::splat(22.0), Sense::hover());
@@ -715,7 +715,7 @@ fn draw_sidebar_part_row(
     } else if eye.clicked() {
         // Alt on the eye isolates, the way a layer list does; alt again on the
         // same part brings the rest back.
-        if row_ui.input(|input| input.modifiers.alt) {
+        if crate::shortcuts::Shortcut::ListSoloHold.held(&row_ui) {
             state.dispatch(Action::SoloHairPart(part_id));
         } else {
             state.dispatch(Action::ToggleHairPartVisible(part_id));
@@ -725,7 +725,7 @@ fn draw_sidebar_part_row(
     } else if row_response.clicked() && !on_control && !hovered_controls {
         state.dispatch(Action::ActivateHairPart {
             id: part_id,
-            additive: row_ui.input(|input| input.modifiers.shift),
+            additive: crate::shortcuts::Shortcut::ListAddToSelectionHold.held(&row_ui),
         });
     }
 }

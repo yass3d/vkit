@@ -478,7 +478,7 @@ pub(super) fn draw_detail_group_row(ui: &mut Ui, state: &mut AppState, target: S
         return;
     }
 
-    let solo_click = ui.input(|input| input.modifiers.shift)
+    let solo_click = crate::shortcuts::Shortcut::ListSoloHold.held(ui)
         && (row_response.clicked() || label_response.clicked() || lock.clicked());
     if solo_click {
         state.sculpt.toggle_solo_target(target);
@@ -893,8 +893,8 @@ pub(super) fn paint_texture_brush_cursor(
     let radius = (state.texture_project.mask_brush_radius
         * texture_brush_points_per_uv(ui, state, viewport, camera))
     .max(2.0);
-    let reverse =
-        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
+    let reverse = crate::shortcuts::Shortcut::TextureInvertHold.held(ui)
+        && state.texture_project.active_tool.alt_inverts();
     let color = if reverse {
         crate::theme::COLOR_DESTRUCTIVE
     } else {
@@ -930,8 +930,8 @@ pub(super) fn paint_stencil_brush_cursor(
     ) else {
         return;
     };
-    let erase =
-        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
+    let erase = crate::shortcuts::Shortcut::TextureInvertHold.held(ui)
+        && state.texture_project.active_tool.alt_inverts();
     let color = if erase {
         crate::theme::COLOR_DESTRUCTIVE
     } else {
@@ -1209,8 +1209,8 @@ pub(super) fn handle_projection_stencil(
             ui.data_mut(|data| data.insert_temp(cache_id, std::sync::Arc::clone(&projected)));
             projected
         });
-    let erase =
-        ui.input(|input| input.modifiers.alt) && state.texture_project.active_tool.alt_inverts();
+    let erase = crate::shortcuts::Shortcut::TextureInvertHold.held(ui)
+        && state.texture_project.active_tool.alt_inverts();
     for point in stroke_points {
         stamp_projection_dab(state, stencil, &triangles, point, radius, erase);
     }

@@ -1189,18 +1189,22 @@ const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey 
         crate::shortcuts::ShortcutContext::HairEdit => TextKey::ShortcutGroupHair,
         crate::shortcuts::ShortcutContext::View => TextKey::ShortcutGroupView,
         crate::shortcuts::ShortcutContext::Navigation => TextKey::ShortcutGroupNavigation,
+        crate::shortcuts::ShortcutContext::Lists => TextKey::ShortcutGroupLists,
+        crate::shortcuts::ShortcutContext::TextureEdit => TextKey::ShortcutGroupTexture,
     }
 }
 
 /// System first because it is true everywhere, then the three places a binding
 /// only means something in.
-const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 6] = [
+const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 8] = [
     crate::shortcuts::ShortcutContext::Global,
     crate::shortcuts::ShortcutContext::Navigation,
     crate::shortcuts::ShortcutContext::View,
     crate::shortcuts::ShortcutContext::Alignment,
     crate::shortcuts::ShortcutContext::DetailEdit,
+    crate::shortcuts::ShortcutContext::TextureEdit,
     crate::shortcuts::ShortcutContext::HairEdit,
+    crate::shortcuts::ShortcutContext::Lists,
 ];
 
 /// Reset, save and load, as icons at the top right.
@@ -1366,6 +1370,14 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::TabTexture => TextKey::ShortcutTabTexture,
         Shortcut::TabHair => TextKey::ShortcutTabHair,
         Shortcut::TabSave => TextKey::ShortcutTabSave,
+        Shortcut::SculptSmoothHold => TextKey::ShortcutSculptSmoothHold,
+        Shortcut::SculptInflateHold => TextKey::ShortcutSculptInflateHold,
+        Shortcut::SculptAlternateHold => TextKey::ShortcutSculptAlternateHold,
+        Shortcut::HairSmoothHold => TextKey::ShortcutHairSmoothHold,
+        Shortcut::HairInvertHold => TextKey::ShortcutHairInvertHold,
+        Shortcut::TextureInvertHold => TextKey::ShortcutTextureInvertHold,
+        Shortcut::ListAddToSelectionHold => TextKey::ShortcutListAddToSelection,
+        Shortcut::ListSoloHold => TextKey::ShortcutListSolo,
     }
 }
 

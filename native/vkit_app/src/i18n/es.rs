@@ -336,6 +336,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutTabTexture => Some("Pestaña de textura"),
         TextKey::ShortcutTabHair => Some("Pestaña de pelo"),
         TextKey::ShortcutTabSave => Some("Pestaña de guardado"),
+        TextKey::ShortcutGroupLists => Some("Listas"),
+        TextKey::ShortcutGroupTexture => Some("Textura"),
+        TextKey::ShortcutSculptSmoothHold => Some("Mantener para suavizar"),
+        TextKey::ShortcutSculptInflateHold => Some("Mantener para inflar"),
+        TextKey::ShortcutSculptAlternateHold => Some("Mantener para invertir"),
+        TextKey::ShortcutHairSmoothHold => Some("Mantener para suavizar el pelo"),
+        TextKey::ShortcutHairInvertHold => Some("Mantener para invertir la herramienta de pelo"),
+        TextKey::ShortcutTextureInvertHold => {
+            Some("Mantener para invertir la herramienta de textura")
+        }
+        TextKey::ShortcutListAddToSelection => Some("Mantener para añadir a la selección"),
+        TextKey::ShortcutListSolo => Some("Mantener para aislar"),
         TextKey::ShortcutsExport => Some("Guardar el mapa en un archivo"),
         TextKey::ShortcutsImport => Some("Cargar un archivo de mapa"),
         TextKey::ShortcutsTaken => Some("Otra acción ya responde a eso"),

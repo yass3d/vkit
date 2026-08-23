@@ -324,6 +324,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutTabTexture => Some("Вкладка текстуры"),
         TextKey::ShortcutTabHair => Some("Вкладка волос"),
         TextKey::ShortcutTabSave => Some("Вкладка сохранения"),
+        TextKey::ShortcutGroupLists => Some("Списки"),
+        TextKey::ShortcutGroupTexture => Some("Текстура"),
+        TextKey::ShortcutSculptSmoothHold => Some("Удерживать для сглаживания"),
+        TextKey::ShortcutSculptInflateHold => Some("Удерживать для раздувания"),
+        TextKey::ShortcutSculptAlternateHold => Some("Удерживать для обратного действия"),
+        TextKey::ShortcutHairSmoothHold => Some("Удерживать для сглаживания волос"),
+        TextKey::ShortcutHairInvertHold => Some("Удерживать, чтобы обратить инструмент волос"),
+        TextKey::ShortcutTextureInvertHold => {
+            Some("Удерживать, чтобы обратить инструмент текстуры")
+        }
+        TextKey::ShortcutListAddToSelection => Some("Удерживать, чтобы добавить к выделению"),
+        TextKey::ShortcutListSolo => Some("Удерживать, чтобы показать по одному"),
         TextKey::ShortcutsExport => Some("Сохранить раскладку в файл"),
         TextKey::ShortcutsImport => Some("Загрузить файл раскладки"),
         TextKey::ShortcutsTaken => Some("Это сочетание уже занято"),

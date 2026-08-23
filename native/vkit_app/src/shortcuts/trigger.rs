@@ -78,11 +78,63 @@ impl NumpadKey {
     }
 }
 
+/// A modifier read while something else is already happening.
+///
+/// Held, not struck. `Shift` while a sculpt stroke is in flight means smooth,
+/// and there is no press to catch — the stroke asks, every frame, whether the
+/// key is down. These were read straight off `input.modifiers` in nine files,
+/// so Settings could not name them and nothing checked one against another.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModifierKey {
+    Shift,
+    Ctrl,
+    Alt,
+}
+
+impl ModifierKey {
+    pub const ALL: [Self; 3] = [Self::Shift, Self::Ctrl, Self::Alt];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Shift => "Shift",
+            Self::Ctrl => "Ctrl",
+            Self::Alt => "Alt",
+        }
+    }
+
+    const fn stored_name(self) -> &'static str {
+        match self {
+            Self::Shift => "hold:shift",
+            Self::Ctrl => "hold:ctrl",
+            Self::Alt => "hold:alt",
+        }
+    }
+
+    fn by_stored_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|candidate| candidate.stored_name() == name)
+    }
+
+    /// Whether this modifier is down right now.
+    pub const fn held_in(self, modifiers: egui::Modifiers) -> bool {
+        match self {
+            Self::Shift => modifiers.shift,
+            // Either spelling. `command` is what the backend sets on a Mac, and
+            // `ctrl` is what a hand-built `Modifiers` carries; reading only one
+            // of them makes this answer no on a platform or in a test.
+            Self::Ctrl => modifiers.ctrl || modifiers.command,
+            Self::Alt => modifiers.alt,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Trigger {
     Key(Key),
     Mouse(PointerButton),
     Numpad(NumpadKey),
+    Held(ModifierKey),
 }
 
 impl Trigger {
@@ -91,6 +143,7 @@ impl Trigger {
             Self::Key(key) => key.name().to_owned(),
             Self::Mouse(button) => format!("mouse:{}", mouse_name(button)),
             Self::Numpad(key) => key.stored_name().to_owned(),
+            Self::Held(modifier) => modifier.stored_name().to_owned(),
         }
     }
 
@@ -100,6 +153,9 @@ impl Trigger {
         }
         if let Some(key) = NumpadKey::by_stored_name(text) {
             return Some(Self::Numpad(key));
+        }
+        if let Some(modifier) = ModifierKey::by_stored_name(text) {
+            return Some(Self::Held(modifier));
         }
         Key::from_name(text).map(Self::Key)
     }
@@ -112,6 +168,7 @@ impl Trigger {
             Self::Key(key) => key.name(),
             Self::Mouse(button) => mouse_name(button),
             Self::Numpad(key) => key.label(),
+            Self::Held(modifier) => modifier.label(),
         }
     }
 }
