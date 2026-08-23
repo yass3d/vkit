@@ -91,7 +91,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuffHint => Some("ブラシ下の毛を肌から立てます。Altで寝かせます"),
         TextKey::HairToolRigidity => Some("剛性"),
         TextKey::HairToolRigidityHint => Some(
-            "各ポイントを描いた姿勢にどれだけ強く留めるかを塗ります。Altで緩め、緑が固定、赤が自由です。",
+            "VaM の rigidity ペイントです。各関節を作成時の姿勢へ引き戻す強さを塗ります。硬く塗った区間は物理が動いても形を保ち一塊で揺れ、緩く塗った区間は重力で自由に垂れます。Alt で緩めます。緑が固定、赤が自由です。",
         ),
         TextKey::HairToolVertex => Some("ポイント"),
         TextKey::HairToolVertexHint => Some("毛束の関節を1つ掴んで動かします。長さは保たれます"),

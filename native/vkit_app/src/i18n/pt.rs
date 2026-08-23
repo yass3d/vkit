@@ -99,7 +99,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuffHint => Some("Levanta as mechas sob o pincel. Alt as achata"),
         TextKey::HairToolRigidity => Some("Rigidez"),
         TextKey::HairToolRigidityHint => Some(
-            "Pinta com que força cada ponto é preso à pose desenhada. Alt afrouxa. Verde é preso, vermelho é livre.",
+            "A pintura de rigidez do VaM: com que força cada nó é puxado de volta à pose desenhada. O que for pintado duro mantém a forma e balança como uma peça; o pintado solto pende livre. Alt afrouxa. Verde é preso, vermelho é livre.",
         ),
         TextKey::HairToolVertex => Some("Ponto"),
         TextKey::HairToolVertexHint => {

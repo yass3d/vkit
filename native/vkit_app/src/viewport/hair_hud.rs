@@ -147,46 +147,53 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
         state.dispatch(Action::SetHairBrushRadius(radius));
     }
 
-    if shapes_existing_hair(state.hair_project.active_tool) {
-        let mut strength = state.hair_brush_strength;
-        if detail_numeric_control(
-            &mut hud,
-            text(state.locale, TextKey::Strength),
-            &mut strength,
-            NumericFormat {
-                range: 0.05..=1.0,
-                decimals: 0,
-                percent: true,
-            },
-            numeric_width,
-            Some(crate::shortcuts::BRUSH_STRENGTH_HINT),
-        ) {
-            state.dispatch(Action::SetHairBrushStrength(strength));
+    match brush_slot(state.hair_project.active_tool) {
+        BrushSlot::Strength => {
+            let mut strength = state.hair_brush_strength;
+            if detail_numeric_control(
+                &mut hud,
+                text(state.locale, TextKey::Strength),
+                &mut strength,
+                NumericFormat {
+                    range: 0.05..=1.0,
+                    decimals: 0,
+                    percent: true,
+                },
+                numeric_width,
+                Some(crate::shortcuts::BRUSH_STRENGTH_HINT),
+            ) {
+                state.dispatch(Action::SetHairBrushStrength(strength));
+            }
         }
-    } else {
-        let mut value = segments as f32;
-        let changed = hud
-            .add_enabled_ui(selected.is_some(), |hud| {
-                detail_numeric_control(
-                    hud,
-                    text(state.locale, TextKey::HairSegmentsShort),
-                    &mut value,
-                    NumericFormat {
-                        range: 2.0..=crate::hair_project::MAX_HAIR_SEGMENTS as f32,
-                        decimals: 0,
-                        percent: false,
-                    },
-                    numeric_width,
-                    None,
-                )
-            })
-            .inner;
-        if changed && selected.is_some() {
-            state.dispatch(Action::SetHairPartSegments {
-                id: part_id,
-                segments: value.round() as usize,
-            });
+        BrushSlot::Segments => {
+            let mut value = segments as f32;
+            let changed = hud
+                .add_enabled_ui(selected.is_some(), |hud| {
+                    detail_numeric_control(
+                        hud,
+                        text(state.locale, TextKey::HairSegmentsShort),
+                        &mut value,
+                        NumericFormat {
+                            range: 2.0..=crate::hair_project::MAX_HAIR_SEGMENTS as f32,
+                            decimals: 0,
+                            percent: false,
+                        },
+                        numeric_width,
+                        None,
+                    )
+                })
+                .inner;
+            if changed && selected.is_some() {
+                state.dispatch(Action::SetHairPartSegments {
+                    id: part_id,
+                    segments: value.round() as usize,
+                });
+            }
         }
+        // Hold the space open. The toggles to the right of it are the same
+        // controls whichever tool is out, and having them jump left when one
+        // has no second number reads as the island losing them.
+        BrushSlot::Empty => hud.add_space(numeric_width),
     }
 
     draw_detail_separator(&mut hud);
@@ -369,10 +376,37 @@ const fn tool_shortcut(tool: HairTool) -> Option<crate::shortcuts::Shortcut> {
     }
 }
 
-pub(crate) const fn shapes_existing_hair(tool: crate::hair_project::HairTool) -> bool {
+/// What the second slot in the brush island holds, for a given tool.
+///
+/// Segment count is the *plant* tool's number and nobody else's: it decides how
+/// many joints a new strand is born with, and changing it on a part that is
+/// already grown resamples every strand in it. A comb or an eraser having that
+/// under the same slider — and under the same `Shift`-drag — means a gesture
+/// meant to adjust a brush quietly rebuilds the hair instead.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BrushSlot {
+    /// How many joints a planted strand gets.
+    Segments,
+    /// How hard the brush presses.
+    Strength,
+    /// Nothing. The slot is still reserved, so the toggles beside it do not
+    /// slide left when the tool changes.
+    Empty,
+}
+
+#[must_use]
+pub(crate) const fn brush_slot(tool: crate::hair_project::HairTool) -> BrushSlot {
     use crate::hair_project::HairTool;
-    matches!(
-        tool,
-        HairTool::Comb | HairTool::Pinch | HairTool::Cut | HairTool::Grow | HairTool::Puff
-    )
+    match tool {
+        HairTool::Plant => BrushSlot::Segments,
+        HairTool::Comb
+        | HairTool::Pinch
+        | HairTool::Cut
+        | HairTool::Grow
+        | HairTool::Puff
+        | HairTool::Rigidity => BrushSlot::Strength,
+        // An eraser has no strength — a strand is planted or it is not — and
+        // Pick and Vertex are not brushes at all.
+        HairTool::Erase | HairTool::Pick | HairTool::Vertex => BrushSlot::Empty,
+    }
 }

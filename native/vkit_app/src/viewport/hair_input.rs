@@ -45,7 +45,11 @@ pub(super) fn handle_hair_interaction(
         return;
     }
 
-    let shaping = crate::viewport::hair_hud::shapes_existing_hair(state.hair_project.active_tool);
+    // The `Shift` drag adjusts whatever the island's second slot holds, and
+    // nothing when it holds nothing — a gesture that resampled every strand
+    // because the eraser was out is not an adjustment.
+    let slot = crate::viewport::hair_hud::brush_slot(state.hair_project.active_tool);
+    let shaping = slot == crate::viewport::hair_hud::BrushSlot::Strength;
     let strength_sweep = crate::ui_components::handle_brush_strength_gesture(
         ui,
         crate::ui_components::BrushSweeps::HAIR.strength(),
@@ -72,13 +76,18 @@ pub(super) fn handle_hair_interaction(
         },
     );
     if let Some(value) = strength_sweep.strength {
-        if shaping {
-            state.dispatch(Action::SetHairBrushStrength(value));
-        } else if let Some(id) = state.hair_project.selected_part_id {
-            state.dispatch(Action::SetHairPartSegments {
-                id,
-                segments: value.round() as usize,
-            });
+        use crate::viewport::hair_hud::BrushSlot;
+        match slot {
+            BrushSlot::Strength => state.dispatch(Action::SetHairBrushStrength(value)),
+            BrushSlot::Segments => {
+                if let Some(id) = state.hair_project.selected_part_id {
+                    state.dispatch(Action::SetHairPartSegments {
+                        id,
+                        segments: value.round() as usize,
+                    });
+                }
+            }
+            BrushSlot::Empty => {}
         }
     }
     if strength_sweep.consumed {

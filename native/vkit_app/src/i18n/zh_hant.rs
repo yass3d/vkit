@@ -78,9 +78,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuff => Some("蓬鬆"),
         TextKey::HairToolPuffHint => Some("讓筆刷下的髮絲立起離開皮膚。按 Alt 壓平"),
         TextKey::HairToolRigidity => Some("剛性"),
-        TextKey::HairToolRigidityHint => {
-            Some("塗抹每個點被固定在繪製姿態上的強度。Alt 放鬆，綠色為固定，紅色為自由。")
-        }
+        TextKey::HairToolRigidityHint => Some(
+            "VaM 的剛性繪製：每個關節被拉回繪製姿態的強度。塗得硬的區段在物理運動中保持形狀並整體擺動，塗得軟的區段則在重力下自由垂落。Alt 放鬆。綠色為固定，紅色為自由。",
+        ),
         TextKey::HairToolVertex => Some("控制點"),
         TextKey::HairToolVertexHint => Some("抓住髮絲上的一個關節並移動，長度保持不變"),
         TextKey::HairCopySettings => Some("全部複製"),

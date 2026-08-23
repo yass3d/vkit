@@ -93,7 +93,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuffHint => Some("Menegakkan helai di bawah kuas. Alt merebahkannya"),
         TextKey::HairToolRigidity => Some("Kekakuan"),
         TextKey::HairToolRigidityHint => Some(
-            "Mewarnai seberapa kuat tiap titik ditahan pada pose gambarnya. Alt melonggarkan. Hijau ditahan, merah bebas.",
+            "Pengecatan kekakuan VaM: seberapa kuat tiap sendi ditarik kembali ke pose gambarnya. Bagian yang dicat kaku menjaga bentuk dan berayun sebagai satu kesatuan; yang lunak menjuntai bebas. Alt melonggarkan. Hijau ditahan, merah bebas.",
         ),
         TextKey::HairToolVertex => Some("Titik"),
         TextKey::HairToolVertexHint => {

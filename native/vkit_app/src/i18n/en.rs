@@ -97,9 +97,9 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolPuffHint => {
             "Stand the strands under the brush up off the skin. Alt lays them down"
         }
-        TextKey::HairToolRigidity => "Rigidity",
+        TextKey::HairToolRigidity => "Stiffness",
         TextKey::HairToolRigidityHint => {
-            "Paints how hard each point is held to the pose it was drawn in. Alt loosens. Green is held, red is free."
+            "VaM's rigidity paint: how hard each joint is pulled back to the pose you drew it in. Painted stiff, that stretch keeps its shape and swings as one piece; painted loose, it hangs free under gravity. Alt loosens. Green is held, red is free."
         }
         TextKey::HairToolVertex => "Point",
         TextKey::HairToolVertexHint => {

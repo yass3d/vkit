@@ -3620,23 +3620,32 @@ fn cutting_shortens_in_proportion_and_keeps_every_point() {
 #[test]
 fn the_hair_strength_slot_follows_the_tool() {
     use crate::hair_project::HairTool;
-    use crate::viewport::hair_hud::shapes_existing_hair;
+    use crate::viewport::hair_hud::{BrushSlot, brush_slot};
 
     for tool in [
         HairTool::Comb,
         HairTool::Pinch,
         HairTool::Cut,
         HairTool::Grow,
+        HairTool::Puff,
+        HairTool::Rigidity,
     ] {
-        assert!(
-            shapes_existing_hair(tool),
-            "{tool:?} reshapes hair, so it wants a strength",
+        assert_eq!(
+            brush_slot(tool),
+            BrushSlot::Strength,
+            "{tool:?} presses on hair, so it wants a strength",
         );
     }
-    for tool in [HairTool::Plant, HairTool::Erase] {
-        assert!(
-            !shapes_existing_hair(tool),
-            "{tool:?} makes or removes hair, so it wants the segment count",
+    // Segment count decides how many joints a *new* strand is born with, and
+    // setting it on a grown part resamples every strand. Only the tool that
+    // makes strands gets to touch it — under the slider or under `Shift`-drag,
+    // which is the same number either way.
+    assert_eq!(brush_slot(HairTool::Plant), BrushSlot::Segments);
+    for tool in [HairTool::Erase, HairTool::Pick, HairTool::Vertex] {
+        assert_eq!(
+            brush_slot(tool),
+            BrushSlot::Empty,
+            "{tool:?} has no second number, and must not borrow the plant tool's",
         );
     }
 

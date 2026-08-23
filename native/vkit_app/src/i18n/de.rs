@@ -105,7 +105,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::HairToolRigidity => Some("Steifigkeit"),
         TextKey::HairToolRigidityHint => Some(
-            "Malt, wie fest jeder Punkt in der gezeichneten Pose gehalten wird. Alt lockert. Grün gehalten, Rot frei.",
+            "VaMs Steifigkeits-Malen: wie stark jedes Gelenk in die gezeichnete Pose zurückgezogen wird. Steif Gemaltes behält seine Form und schwingt als ein Stück; locker Gemaltes hängt frei. Alt lockert. Grün gehalten, Rot frei.",
         ),
         TextKey::HairToolVertex => Some("Punkt"),
         TextKey::HairToolVertexHint => {

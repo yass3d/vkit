@@ -78,9 +78,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuff => Some("ทำให้ฟู"),
         TextKey::HairToolPuffHint => Some("ยกเส้นผมใต้หัวแปรงให้ตั้งขึ้น กด Alt เพื่อกดลง"),
         TextKey::HairToolRigidity => Some("ความแข็ง"),
-        TextKey::HairToolRigidityHint => {
-            Some("ระบายว่าแต่ละจุดถูกยึดกับท่าที่วาดไว้แน่นแค่ไหน Alt เพื่อคลาย เขียวคือยึด แดงคืออิสระ")
-        }
+        TextKey::HairToolRigidityHint => Some(
+            "การระบายความแข็งของ VaM: แต่ละข้อถูกดึงกลับสู่ท่าที่วาดไว้แรงแค่ไหน ช่วงที่ระบายแข็งจะคงรูปและแกว่งเป็นชิ้นเดียว ช่วงที่ระบายอ่อนจะห้อยอิสระตามแรงโน้มถ่วง Alt เพื่อคลาย เขียวคือยึด แดงคืออิสระ",
+        ),
         TextKey::HairToolVertex => Some("จุด"),
         TextKey::HairToolVertexHint => Some("จับข้อต่อหนึ่งจุดบนเส้นผมแล้วย้าย ความยาวคงเดิม"),
         TextKey::HairCopySettings => Some("คัดลอกทั้งหมด"),

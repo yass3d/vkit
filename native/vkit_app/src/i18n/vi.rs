@@ -90,9 +90,9 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuff => Some("Lam phong"),
         TextKey::HairToolPuffHint => Some("Dung cac soi toc duoi co len. Alt de vuot xuong"),
         TextKey::HairToolRigidity => Some("Độ cứng"),
-        TextKey::HairToolRigidityHint => {
-            Some("Tô mức giữ mỗi điểm ở tư thế đã vẽ. Alt nới lỏng. Xanh là giữ, đỏ là tự do.")
-        }
+        TextKey::HairToolRigidityHint => Some(
+            "Tô độ cứng của VaM: mức mỗi khớp bị kéo về tư thế đã vẽ. Đoạn tô cứng giữ dáng và đung đưa nguyên khối; đoạn tô mềm rủ tự do. Alt nới lỏng. Xanh là giữ, đỏ là tự do.",
+        ),
         TextKey::HairToolVertex => Some("Điểm"),
         TextKey::HairToolVertexHint => {
             Some("Giữ một khớp trên sợi tóc và di chuyển; chiều dài được giữ nguyên")
