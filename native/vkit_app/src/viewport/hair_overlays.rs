@@ -44,6 +44,9 @@ pub(super) fn draw_hair_part_previews(
     if state.hair_hide_strands && state.is_hair_editing() && state.hair_thumbnail.is_none() {
         return;
     }
+    // Before the per-part loop: every part that is about to ask for a scalp
+    // sheet gets one read at the same time as the others.
+    warm_builtin_scalp_images(ui, state);
     let head = state.workspace.result.clone();
     let view = ResultRenderView {
         camera,
@@ -248,14 +251,45 @@ pub(super) fn builtin_scalp_images(
         Option<Arc<crate::skin_preview::SkinImage>>,
         Option<Arc<crate::skin_preview::SkinImage>>,
     );
-    let cache_id = Id::new(("vkit.hair.builtin-scalp-images", provider_name));
+    let cache_id = builtin_scalp_cache_id(provider_name);
     if let Some(cached) = ctx.data(|data| data.get_temp::<Cached>(cache_id)) {
         return cached;
     }
-    let set = state
+    let images = decode_builtin_scalp_images(state, provider_name);
+    ctx.data_mut(|data| data.insert_temp(cache_id, images.clone()));
+    images
+}
+
+/// The pair a provider's cache entry holds: its diffuse sheet and its alpha.
+type ScalpSheets = (
+    Option<Arc<crate::skin_preview::SkinImage>>,
+    Option<Arc<crate::skin_preview::SkinImage>>,
+);
+
+fn builtin_scalp_cache_id(provider_name: &str) -> Id {
+    Id::new(("vkit.hair.builtin-scalp-images", provider_name))
+}
+
+fn decode_builtin_scalp_images(state: &AppState, provider_name: &str) -> ScalpSheets {
+    let Some(set) = state
         .builtin_scalp_textures
         .iter()
-        .find(|set| set.provider_name == provider_name);
+        .find(|set| set.provider_name == provider_name)
+    else {
+        return (None, None);
+    };
+    decode_scalp_sheets(provider_name, set.diffuse.as_ref(), set.alpha.as_ref())
+}
+
+/// Turn one provider's two references into two images.
+///
+/// Takes the references rather than the state: `AppState` is not `Sync`, and
+/// this is the half that runs on a worker.
+fn decode_scalp_sheets(
+    provider_name: &str,
+    diffuse: Option<&vkit_core::vam::BuiltinTextureRef>,
+    alpha: Option<&vkit_core::vam::BuiltinTextureRef>,
+) -> ScalpSheets {
     let decode = |reference: Option<&vkit_core::vam::BuiltinTextureRef>, slot: u64| {
         let reference = reference?;
         let decoded =
@@ -267,15 +301,66 @@ pub(super) fn builtin_scalp_images(
             .ok()
             .map(Arc::new)
     };
-    let images: Cached = match set {
-        Some(set) => (
-            decode(set.diffuse.as_ref(), 1),
-            decode(set.alpha.as_ref(), 2),
-        ),
-        None => (None, None),
-    };
-    ctx.data_mut(|data| data.insert_temp(cache_id, images.clone()));
-    images
+    (decode(diffuse, 1), decode(alpha, 2))
+}
+
+/// Read every scalp sheet this frame is going to need, at the same time.
+///
+/// Each one is 2048x2048 — 16 MB of RGBA — and each takes 15 to 60 ms to
+/// produce even when the on-disk cache hits, because a hit still means reading
+/// a compressed blob, hashing it and inflating it. A preset with three scalp
+/// providers wants six of them, and they were read one after another inside a
+/// single `run_ui`: measured, 298 ms of a 558 ms stall on the frame a preset
+/// loaded.
+///
+/// They do not depend on each other. Reading them together costs the slowest
+/// one instead of the sum, and nothing about the images changes.
+pub(super) fn warm_builtin_scalp_images(ctx: &egui::Context, state: &AppState) {
+    use rayon::prelude::*;
+
+    let wanted: Vec<String> = state
+        .hair_project
+        .parts
+        .iter()
+        .filter(|part| part.visible)
+        .map(|part| part.provider_name.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|provider| {
+            ctx.data(|data| data.get_temp::<ScalpSheets>(builtin_scalp_cache_id(provider)))
+                .is_none()
+        })
+        .collect();
+    if wanted.len() < 2 {
+        // One sheet pair is the same work either way, and the thread pool is
+        // not free. Below two there is nothing to overlap.
+        return;
+    }
+    // The references are lifted off the state here, on this thread, because
+    // `AppState` is not `Sync`. What crosses to the workers is a path, a node
+    // name and an id — everything the read needs and nothing else.
+    let work: Vec<(String, Option<_>, Option<_>)> = wanted
+        .into_iter()
+        .filter_map(|provider| {
+            let set = state
+                .builtin_scalp_textures
+                .iter()
+                .find(|set| set.provider_name == provider)?;
+            Some((provider, set.diffuse.clone(), set.alpha.clone()))
+        })
+        .collect();
+    let decoded: Vec<(String, ScalpSheets)> = work
+        .into_par_iter()
+        .map(|(provider, diffuse, alpha)| {
+            let images = decode_scalp_sheets(&provider, diffuse.as_ref(), alpha.as_ref());
+            (provider, images)
+        })
+        .collect();
+    ctx.data_mut(|data| {
+        for (provider, images) in decoded {
+            data.insert_temp(builtin_scalp_cache_id(&provider), images);
+        }
+    });
 }
 
 pub(super) fn custom_scalp_image(
