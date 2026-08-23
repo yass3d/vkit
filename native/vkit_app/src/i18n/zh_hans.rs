@@ -706,7 +706,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilter => Some("左/右"),
         TextKey::MorphOneSidedFilterShow => Some("显示只作用于单侧的变形"),
         TextKey::MorphOneSidedFilterHide => Some("隐藏只作用于单侧的变形"),
-        TextKey::UndoMorphReset => Some("撤销重置"),
         TextKey::LightRotationGesture => Some("Shift+右键拖动"),
         TextKey::UpdateAvailable => Some("更新"),
         TextKey::PackageFromFiles => Some("选择文件"),

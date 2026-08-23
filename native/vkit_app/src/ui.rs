@@ -63,7 +63,6 @@ const MORPH_ROW_HEIGHT: f32 = 48.0;
 const MORPH_ROW_GAP: f32 = 1.0;
 const MORPH_FILTER_LIST_GAP: f32 = 6.0;
 const MORPH_APPLY_HEIGHT: f32 = CONTROL_H_PRIMARY;
-const MORPH_FOOTER_BUTTON_GAP: f32 = 8.0;
 const MORPH_ROW_HORIZONTAL_INSET: f32 = 8.0;
 const MORPH_ROW_VERTICAL_INSET: f32 = 4.0;
 const MORPH_ROW_LABEL_HEIGHT: f32 = 16.0;
@@ -128,42 +127,6 @@ const TOP_TABS: [(Tab, TextKey); 5] = [
     (Tab::Result, TextKey::Save),
 ];
 
-const MORPH_RESET_UNDO_SECONDS: f64 = 3.0;
-
-fn offer_morph_reset_undo(ui: &Ui, id: Id) {
-    let now = ui.input(|input| input.time);
-    ui.data_mut(|data| data.insert_temp(id.with("undo-until"), now + MORPH_RESET_UNDO_SECONDS));
-}
-
-fn forget_morph_reset_undo(ui: &Ui, id: Id) {
-    ui.data_mut(|data| data.remove::<f64>(id.with("undo-until")));
-}
-
-fn morph_reset_undo_is_offered(ui: &Ui, id: Id) -> bool {
-    let until = ui.data(|data| data.get_temp::<f64>(id.with("undo-until")));
-    let Some(until) = until else {
-        return false;
-    };
-    let now = ui.input(|input| input.time);
-    if now >= until {
-        forget_morph_reset_undo(ui, id);
-        return false;
-    }
-    ui.ctx()
-        .request_repaint_after(std::time::Duration::from_secs_f64((until - now).max(0.05)));
-    true
-}
-
-fn paint_shortcut_hint_below(ui: &Ui, control: Rect, shortcut: &str) {
-    ui.painter().text(
-        pos2(control.center().x, control.bottom() + crate::theme::SPACE_1),
-        Align2::CENTER_TOP,
-        shortcut,
-        FontId::proportional(FONT_XS),
-        COLOR_MUTED,
-    );
-}
-
 pub(crate) fn top_tab_available(state: &AppState, tab: Tab) -> bool {
     let base = match tab {
         Tab::Edit => state.tab_available(Tab::Alignment) || state.tab_available(Tab::Edit),
@@ -225,8 +188,6 @@ struct InspectorShellRegions {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct MorphFooterButtons {
-    undo: Rect,
-    reset: Rect,
     apply: Rect,
 }
 
@@ -361,21 +322,16 @@ fn inspector_list_budget(ui: &Ui, cursor_top: f32, footer: f32) -> Option<f32> {
     Some((limit - cursor_top - footer).max(0.0))
 }
 
+/// The footer under the morph list: one button, and it is the one that
+/// carries the reader forward.
+///
+/// Undo and "reset morphs" used to sit here as a pair. They are in the work
+/// nav at the bottom of the viewport now, where they are the same two controls
+/// on every tab and where somebody who has never met `Ctrl+Z` can find them.
 fn morph_footer_buttons(footer: Rect) -> MorphFooterButtons {
     let footer = footer.shrink2(vec2(0.0, 8.0));
-    let available = (footer.height() - MORPH_FOOTER_BUTTON_GAP).max(0.0);
-    let authored_total = CONTROL_HEIGHT + MORPH_APPLY_HEIGHT;
-    let scale = (available / authored_total).min(1.0);
-    let reset_height = CONTROL_HEIGHT * scale;
-    let apply_height = MORPH_APPLY_HEIGHT * scale;
-    let action_gap = MORPH_FOOTER_BUTTON_GAP.min(footer.width());
-    let action_width = ((footer.width() - action_gap).max(0.0) * 0.5).max(0.0);
+    let apply_height = MORPH_APPLY_HEIGHT.min(footer.height().max(0.0));
     MorphFooterButtons {
-        undo: Rect::from_min_size(footer.min, vec2(action_width, reset_height)),
-        reset: Rect::from_min_size(
-            pos2(footer.left() + action_width + action_gap, footer.top()),
-            vec2(action_width, reset_height),
-        ),
         apply: Rect::from_min_size(
             pos2(footer.left(), footer.bottom() - apply_height),
             vec2(footer.width(), apply_height),
@@ -3205,56 +3161,6 @@ fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
             }
             let buttons = morph_footer_buttons(footer);
             let busy = state.busy();
-            let undo = ui
-                .add_enabled_ui(!busy, |ui| {
-                    ui.put(
-                        buttons.undo,
-                        Button::new(text(state.locale, TextKey::Undo))
-                            .min_size(buttons.undo.size())
-                            .corner_radius(capsule_radius_for(buttons.undo)),
-                    )
-                })
-                .inner;
-            let undo = crate::ui_components::tooltip(
-                undo,
-                text(state.locale, TextKey::Undo),
-                Some(crate::shortcuts::Shortcut::Undo.label_now(ui)),
-            );
-            if undo.clicked() {
-                state.dispatch(Action::Undo);
-            }
-            let reset_id = Id::new("vkit.morph.reset-all");
-            let offer_undo = morph_reset_undo_is_offered(ui, reset_id);
-            let reset_response = ui.interact(
-                buttons.reset,
-                reset_id,
-                if busy { Sense::hover() } else { Sense::click() },
-            );
-            let reset = paint_reset_capsule_button(
-                ui,
-                reset_response,
-                text(
-                    state.locale,
-                    if offer_undo {
-                        TextKey::UndoMorphReset
-                    } else {
-                        TextKey::ResetMorphs
-                    },
-                ),
-                !busy,
-            );
-            if offer_undo {
-                paint_shortcut_hint_below(ui, buttons.reset, "Ctrl+Z");
-            }
-            if reset.clicked() {
-                if offer_undo {
-                    state.dispatch(Action::Undo);
-                    forget_morph_reset_undo(ui, reset_id);
-                } else {
-                    state.dispatch(Action::ResetMorphs);
-                    offer_morph_reset_undo(ui, reset_id);
-                }
-            }
 
             if state.morph_look_find_open {
                 return;
@@ -3809,36 +3715,6 @@ fn capsule_radius_for(rect: Rect) -> u8 {
     crate::theme::capsule_radius(rect.height())
         .clamp(0.0, f32::from(u8::MAX))
         .round() as u8
-}
-
-pub(crate) fn paint_reset_capsule_button(
-    ui: &Ui,
-    response: Response,
-    label: &str,
-    enabled: bool,
-) -> Response {
-    let fill = if enabled && response.hovered() {
-        COLOR_DESTRUCTIVE
-    } else if enabled {
-        COLOR_SURFACE_RAISED
-    } else {
-        disabled(COLOR_SURFACE_RAISED)
-    };
-    ui.painter()
-        .rect_filled(response.rect, capsule_radius_for(response.rect), fill);
-    ui.painter().text(
-        response.rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(FONT_SM),
-        if enabled {
-            COLOR_TEXT
-        } else {
-            disabled(COLOR_MUTED)
-        },
-    );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
-    response
 }
 
 fn paint_chevron(ui: &Ui, rect: Rect, color: Color32) {

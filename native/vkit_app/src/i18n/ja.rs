@@ -468,7 +468,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("表情"),
         TextKey::NoMatchingMorphs => Some("一致するモーフがありません"),
         TextKey::ResetMorphs => Some("すべてリセット"),
-        TextKey::UndoMorphReset => Some("リセットを取り消す"),
         TextKey::LightRotationGesture => Some("Shift+右ドラッグ"),
         TextKey::UpdateAvailable => Some("更新"),
         TextKey::PackageFromFiles => Some("ファイルを選ぶ"),

@@ -132,6 +132,19 @@ pub(super) fn anchor_detail_panel_to_right_corner(pos: &mut Option<[f32; 2]>, co
 }
 
 const GROUP_PANEL_SIDE_MARGIN: f32 = 2.0 * crate::viewport_chrome::EDGE_INSET;
+
+/// How tall the deform-group island is right now.
+///
+/// Split out so the toolbox above it can ask, without building a rect whose
+/// position depends on the answer.
+#[must_use]
+pub(super) fn detail_group_panel_height(state: &AppState) -> f32 {
+    if state.sculpt_groups_collapsed {
+        detail_group_collapsed_height()
+    } else {
+        detail_group_expanded_height()
+    }
+}
 pub(super) fn detail_group_panel_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
     let (width, height) = if state.sculpt_groups_collapsed {
         (
@@ -157,7 +170,7 @@ pub(super) fn detail_group_panel_rect(state: &AppState, viewport: Rect) -> Optio
 
     let default_min = pos2(
         viewport.right() - width - MARGIN,
-        viewport.center().y - height * 0.5,
+        super::sculpt_toolbox::group_panel_default_top(state, viewport, height),
     );
     Some(crate::ui_components::island_rect(
         viewport,
@@ -468,7 +481,6 @@ pub(super) fn draw_detail_hud_tiers(
     match plan.tier {
         DetailHudTier::Full => {
             let mut hud = detail_hud_row_ui(ui, id, content, 5.0);
-            detail_hud_brush(&mut hud, state, false);
             detail_hud_numeric_controls(&mut hud, state, DETAIL_HUD_FULL_NUMERIC_WIDTH);
             draw_detail_separator(&mut hud);
             detail_hud_falloff(&mut hud, state, false);
@@ -479,7 +491,6 @@ pub(super) fn draw_detail_hud_tiers(
         }
         DetailHudTier::Compact => {
             let mut hud = detail_hud_row_ui(ui, id, content, SPACE_2);
-            detail_hud_brush(&mut hud, state, true);
             let numeric_width = detail_hud_flex_numeric_width(content.width(), true);
             detail_hud_numeric_controls(&mut hud, state, numeric_width);
             detail_hud_falloff(&mut hud, state, true);
@@ -499,7 +510,6 @@ pub(super) fn draw_detail_hud_tiers(
             let numeric_width = detail_hud_flex_numeric_width(content.width(), false);
             detail_hud_numeric_controls(&mut first, state, numeric_width);
             let mut second = detail_hud_row_ui(ui, id.with("row-2"), second_row, SPACE_2);
-            detail_hud_brush(&mut second, state, true);
             detail_hud_falloff(&mut second, state, true);
             detail_hud_toggles(&mut second, state);
             detail_hud_eye_control(&mut second, state, viewport);
@@ -524,7 +534,6 @@ pub(super) fn draw_detail_hud_tiers(
             let numeric_width = detail_hud_flex_numeric_width(content.width(), false);
             detail_hud_numeric_controls(&mut first, state, numeric_width);
             let mut second = detail_hud_row_ui(ui, id.with("row-2"), second_row, SPACE_2);
-            detail_hud_brush(&mut second, state, true);
             detail_hud_falloff(&mut second, state, true);
             detail_hud_toggles(&mut second, state);
             let mut third = detail_hud_row_ui(ui, id.with("row-3"), third_row, SPACE_2);
@@ -593,13 +602,6 @@ pub(super) fn detail_hud_falloff(hud: &mut Ui, state: &mut AppState, compact: bo
     let falloff = state.sculpt.falloff_preset();
     if let Some(preset) = sculpt_falloff_selector(hud, state.locale, falloff, compact) {
         state.dispatch(Action::SetSculptFalloff(preset));
-    }
-}
-
-pub(super) fn detail_hud_brush(hud: &mut Ui, state: &mut AppState, compact: bool) {
-    let shown = displayed_sculpt_brush(hud, state);
-    if let Some(brush) = sculpt_brush_selector(hud, state.locale, shown, compact) {
-        state.dispatch(Action::SetSculptBrush(brush));
     }
 }
 

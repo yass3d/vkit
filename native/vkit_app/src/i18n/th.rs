@@ -712,7 +712,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilter => Some("ซ้าย/ขวา"),
         TextKey::MorphOneSidedFilterShow => Some("แสดงมอร์ฟที่ขยับเพียงด้านเดียว"),
         TextKey::MorphOneSidedFilterHide => Some("ซ่อนมอร์ฟที่ขยับเพียงด้านเดียว"),
-        TextKey::UndoMorphReset => Some("เลิกทำการรีเซ็ต"),
         TextKey::LightRotationGesture => Some("Shift+ลากคลิกขวา"),
         TextKey::UpdateAvailable => Some("อัปเดต"),
         TextKey::PackageFromFiles => Some("เลือกไฟล์"),

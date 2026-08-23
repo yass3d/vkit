@@ -479,7 +479,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Мимика"),
         TextKey::NoMatchingMorphs => Some("Подходящих морфов нет"),
         TextKey::ResetMorphs => Some("Сбросить все"),
-        TextKey::UndoMorphReset => Some("Отменить сброс"),
         TextKey::LightRotationGesture => Some("Shift+Перетаскивание ПКМ"),
         TextKey::UpdateAvailable => Some("Обновить"),
         TextKey::PackageFromFiles => Some("Выбрать файлы"),

@@ -437,7 +437,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("表情"),
         TextKey::NoMatchingMorphs => Some("沒有符合的變形"),
         TextKey::ResetMorphs => Some("全部重設"),
-        TextKey::UndoMorphReset => Some("復原重設"),
         TextKey::LightRotationGesture => Some("Shift+右鍵拖曳"),
         TextKey::UpdateAvailable => Some("更新"),
         TextKey::PackageFromFiles => Some("選擇檔案"),

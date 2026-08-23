@@ -467,7 +467,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphCategoryExpression => "Expression",
         TextKey::NoMatchingMorphs => "No matching morphs",
         TextKey::ResetMorphs => "Reset morphs",
-        TextKey::UndoMorphReset => "Undo reset",
         TextKey::LightRotationGesture => "Shift+Right-drag",
         TextKey::UpdateAvailable => "Update",
         TextKey::PackageFromFiles => "Pick files",

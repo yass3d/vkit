@@ -497,7 +497,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Ausdruck"),
         TextKey::NoMatchingMorphs => Some("Keine passenden Morphs"),
         TextKey::ResetMorphs => Some("Alle zurücksetzen"),
-        TextKey::UndoMorphReset => Some("Zurücksetzen rückgängig"),
         TextKey::LightRotationGesture => Some("Shift+Rechtsklick ziehen"),
         TextKey::UpdateAvailable => Some("Update"),
         TextKey::PackageFromFiles => Some("Dateien wählen"),

@@ -346,17 +346,6 @@ fn draw_reset_island(
     }
 }
 
-pub(super) fn draw_sculpt_reset_island(ui: &Ui, state: &mut AppState, rect: Rect) {
-    draw_reset_island(
-        ui,
-        state,
-        rect,
-        "vkit.viewport.sculpt-reset",
-        TextKey::ResetSculpt,
-        Action::ResetSculpt,
-    );
-}
-
 pub(super) fn draw_hair_reset_island(ui: &Ui, state: &mut AppState, rect: Rect) {
     let has_strands = state
         .hair_project

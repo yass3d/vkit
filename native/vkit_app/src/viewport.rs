@@ -40,13 +40,12 @@ use crate::{
         FONT_HEADING, FONT_SM, FONT_XS, SMALL_RADIUS, SPACE_1, SPACE_2, SPACE_3,
     },
     ui_components::{
-        BRUSH_FALLOFF_COMPACT_WIDTH, BRUSH_FALLOFF_FIELD_HEIGHT, BRUSH_FALLOFF_FIELD_WIDTH,
-        BRUSH_STRENGTH_SENSITIVITY, FilledNumericSlider, Icon, MINI_HELP_CONTENT_INSET_X,
-        MINI_HELP_CONTENT_INSET_Y, MINI_POPUP_CONTENT_INSET_X, MINI_POPUP_CONTENT_INSET_Y,
-        TEXTURE_BRUSH_SIZE_SENSITIVITY, animate_rect, animated_segmented_group,
-        brush_falloff_selector, brush_size_gesture_anchor, clear_brush_size_gesture,
-        compact_color_picker, control_affordances, ease_in_out_cubic, handle_brush_size_gesture,
-        paint_icon, paint_list_row_highlight, paint_texture_pin, segment_button, switch,
+        BRUSH_FALLOFF_COMPACT_WIDTH, BRUSH_STRENGTH_SENSITIVITY, FilledNumericSlider, Icon,
+        MINI_HELP_CONTENT_INSET_X, MINI_HELP_CONTENT_INSET_Y, MINI_POPUP_CONTENT_INSET_X,
+        MINI_POPUP_CONTENT_INSET_Y, TEXTURE_BRUSH_SIZE_SENSITIVITY, animate_rect,
+        animated_segmented_group, brush_falloff_selector, brush_size_gesture_anchor,
+        clear_brush_size_gesture, compact_color_picker, control_affordances, ease_in_out_cubic,
+        handle_brush_size_gesture, paint_icon, paint_texture_pin, segment_button, switch,
         transform_group_editability_icon,
     },
     viewport_chrome::{ChromeAnchor, ViewportChrome},
@@ -164,7 +163,6 @@ const DETAIL_GROUP_INSET_Y: f32 = 10.0;
 const DETAIL_GROUP_INSET_Y_TOP: f32 = 6.0;
 const DETAIL_GROUP_ITEM_GAP: f32 = 4.0;
 
-const SCULPT_BRUSH_FIELD_WIDTH: f32 = 104.0;
 const GIZMO_DRAG_ID: &str = "vkit.viewport.alignment.gizmo.drag";
 const SCULPT_DRAG_ID: &str = "vkit.viewport.sculpt.stroke";
 const TEXTURE_BRUSH_UV_SCALE_ID: &str = "vkit.viewport.texture.points_per_uv";
@@ -700,15 +698,14 @@ pub fn draw_result_floating_chrome(ui: &mut Ui, state: &mut AppState, rect: Rect
     if state.is_hair_editing() {
         draw_hair_reset_island(ui, state, rect);
     }
-    if state.is_sculpting() {
-        draw_sculpt_reset_island(ui, state, rect);
-    }
+    work_nav::draw_work_nav(ui, state, rect);
     if projection_stencil_mode(state) {
         draw_projection_stencil_island(ui, state, rect);
     }
     if state.is_hair_editing() {
         super::viewport::hair_hud::draw_hair_toolbox(ui, state, rect);
     }
+    sculpt_toolbox::draw_sculpt_toolbox(ui, state, rect);
     if state.shows_authored_hair() {
         if state.hair_thumbnail.is_some() {
             draw_thumbnail_frame(ui, state, rect);
@@ -961,104 +958,6 @@ fn sculpt_brush_tooltip_key(brush: SculptBrush) -> TextKey {
     }
 }
 
-fn sculpt_brush_selector(
-    ui: &mut Ui,
-    locale: Locale,
-    current: SculptBrush,
-    compact: bool,
-) -> Option<SculptBrush> {
-    let popup_id = Id::new("vkit.viewport.sculpt.brush");
-    let open = egui::Popup::is_id_open(ui.ctx(), popup_id);
-    let trigger_width = if compact {
-        DETAIL_HUD_COMPACT_BRUSH_WIDTH
-    } else {
-        SCULPT_BRUSH_FIELD_WIDTH
-    };
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(trigger_width, BRUSH_FALLOFF_FIELD_HEIGHT),
-        Sense::click(),
-    );
-
-    let response = crate::ui_components::tooltip(
-        response,
-        text(locale, sculpt_brush_tooltip_key(current)),
-        Some(sculpt_brush_hint(ui, current).as_str()),
-    );
-    let fill = if open || response.hovered() {
-        crate::theme::hover_fill(crate::theme::COLOR_FIELD)
-    } else {
-        crate::theme::COLOR_FIELD
-    };
-    ui.painter().rect_filled(rect, SMALL_RADIUS, fill);
-    ui.painter().rect_stroke(
-        rect,
-        SMALL_RADIUS,
-        Stroke::new(
-            1.0,
-            if open {
-                crate::theme::COLOR_HAIRLINE
-            } else {
-                COLOR_BORDER
-            },
-        ),
-        egui::StrokeKind::Inside,
-    );
-    control_affordances(ui, &response, rect, f32::from(SMALL_RADIUS));
-
-    let icon_rect = Rect::from_min_size(
-        Pos2::new(rect.left() + 7.0, rect.center().y - 8.0),
-        Vec2::splat(16.0),
-    );
-    paint_icon(
-        ui.painter(),
-        icon_rect,
-        sculpt_brush_icon(current),
-        COLOR_TEXT,
-    );
-    if !compact {
-        ui.painter().text(
-            Pos2::new(icon_rect.right() + 7.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            text(locale, sculpt_brush_text_key(current)),
-            FontId::proportional(FONT_SM),
-            COLOR_TEXT,
-        );
-    }
-    paint_icon(
-        ui.painter(),
-        Rect::from_center_size(
-            Pos2::new(rect.right() - 10.0, rect.center().y),
-            Vec2::splat(12.0),
-        ),
-        Icon::ChevronDown,
-        COLOR_MUTED,
-    );
-
-    let mut selected = None;
-    egui::Popup::menu(&response)
-        .id(popup_id)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show(|ui| {
-            ui.set_min_width(SCULPT_BRUSH_FIELD_WIDTH);
-            ui.spacing_mut().item_spacing.y = 3.0;
-            for brush in SculptBrush::ALL {
-                let row = selector_menu_row_with_hint(
-                    ui,
-                    sculpt_brush_icon(brush),
-                    text(locale, sculpt_brush_text_key(brush)),
-                    Some(sculpt_brush_hint(ui, brush).as_str()),
-                    brush == current,
-                )
-                .on_hover_text(text(locale, sculpt_brush_tooltip_key(brush)));
-                if row.clicked() {
-                    selected = Some(brush);
-                    ui.close();
-                }
-            }
-        });
-    selected
-}
-
 fn sculpt_falloff_selector(
     ui: &mut Ui,
     locale: Locale,
@@ -1077,41 +976,6 @@ fn sculpt_falloff_selector(
 #[cfg(test)]
 fn sculpt_falloff_icon(falloff: SculptFalloff) -> Icon {
     crate::ui_components::brush_falloff_icon(falloff)
-}
-
-fn selector_menu_row_with_hint(
-    ui: &mut Ui,
-    icon: Icon,
-    label: &str,
-    shortcut: Option<&str>,
-    selected: bool,
-) -> Response {
-    let (row, response) =
-        ui.allocate_exact_size(Vec2::new(BRUSH_FALLOFF_FIELD_WIDTH, 26.0), Sense::click());
-    paint_list_row_highlight(ui, row, selected, response.hovered());
-    let icon_rect = Rect::from_min_size(
-        Pos2::new(row.left() + 7.0, row.center().y - 8.0),
-        Vec2::splat(16.0),
-    );
-    paint_icon(ui.painter(), icon_rect, icon, COLOR_TEXT);
-    ui.painter().text(
-        Pos2::new(icon_rect.right() + 7.0, row.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::proportional(FONT_SM),
-        COLOR_TEXT,
-    );
-    if let Some(shortcut) = shortcut {
-        ui.painter().text(
-            Pos2::new(row.right() - 8.0, row.center().y),
-            Align2::RIGHT_CENTER,
-            shortcut,
-            FontId::proportional(FONT_SM),
-            COLOR_MUTED,
-        );
-    }
-    control_affordances(ui, &response, row, f32::from(SMALL_RADIUS));
-    response
 }
 
 fn draw_detail_separator(ui: &mut Ui) {
@@ -1135,6 +999,9 @@ mod hair_input;
 pub(crate) use hair_hud::draw_hair_workspace;
 pub(crate) use hair_input::clear_hair_pointer_state;
 mod sculpt_input;
+mod sculpt_toolbox;
+mod toolbox;
+mod work_nav;
 
 pub(crate) use sculpt_input::clear_sculpt_pointer_stroke;
 use sculpt_input::*;

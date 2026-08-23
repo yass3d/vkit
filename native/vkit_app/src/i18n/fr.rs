@@ -485,7 +485,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Expression"),
         TextKey::NoMatchingMorphs => Some("Aucun morph correspondant"),
         TextKey::ResetMorphs => Some("Tout réinitialiser"),
-        TextKey::UndoMorphReset => Some("Annuler la réinitialisation"),
         TextKey::LightRotationGesture => Some("Shift+Glisser clic droit"),
         TextKey::UpdateAvailable => Some("Mise à jour"),
         TextKey::PackageFromFiles => Some("Choisir des fichiers"),

@@ -451,7 +451,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphCategoryExpression => "표정",
         TextKey::NoMatchingMorphs => "일치하는 모프가 없습니다",
         TextKey::ResetMorphs => "모프 초기화",
-        TextKey::UndoMorphReset => "초기화 취소",
         TextKey::LightRotationGesture => "Shift+우클릭 드래그",
         TextKey::UpdateAvailable => "업데이트",
         TextKey::PackageFromFiles => "파일 찾기",

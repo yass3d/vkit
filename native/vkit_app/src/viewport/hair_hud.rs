@@ -265,127 +265,52 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
     }
 }
 
-const TOOLBOX_GRAB_H: f32 = 14.0;
-const TOOLBOX_INSET: f32 = 6.0;
-const TOOLBOX_CORNER: f32 = 12.0;
-
 fn toolbox_columns(state: &AppState) -> usize {
     state.hair_toolbox_columns.clamp(1, 2) as usize
+}
+
+/// One slot per tool, plus one for mirroring the selected part.
+fn toolbox_slots() -> usize {
+    HAIR_TOOLS.len() + 1
 }
 
 pub(super) fn hair_toolbox_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
     if !state.is_hair_editing() || state.hair_thumbnail.is_some() {
         return None;
     }
-    let columns = toolbox_columns(state);
-    let icons = HAIR_TOOLS.len() + 1;
-    let rows = icons.div_ceil(columns) as f32;
-    let width = columns as f32 * DETAIL_HUD_TOGGLE_SIZE
-        + (columns as f32 - 1.0) * SPACE_2
-        + TOOLBOX_INSET * 2.0;
-    let height = TOOLBOX_GRAB_H
-        + rows * DETAIL_HUD_TOGGLE_SIZE
-        + (rows - 1.0) * SPACE_2
-        + TOOLBOX_INSET * 2.0;
-    if height > viewport.height() - 24.0 {
-        return None;
-    }
-    const MARGIN: f32 = crate::viewport_chrome::EDGE_INSET;
-    let default_min = pos2(
-        viewport.right() - width - MARGIN,
-        viewport.center().y - height * 0.5,
-    );
-    Some(crate::ui_components::island_rect(
+    super::toolbox::toolbox_rect(
         viewport,
-        vec2(width, height),
+        toolbox_slots(),
+        toolbox_columns(state),
         state.hair_toolbox_pos,
-        default_min,
-        MARGIN,
-    ))
+        None,
+    )
 }
 
 pub(super) fn draw_hair_toolbox(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
     let Some(rect) = hair_toolbox_rect(state, viewport) else {
         return;
     };
-    let id = Id::new("vkit.viewport.hair.toolbox");
-    let _blocker = ui.interact(rect, id.with("blocker"), Sense::click_and_drag());
-    let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(
+    let slots = toolbox_slots();
+    let mut position = state.hair_toolbox_pos;
+    let mut columns = state.hair_toolbox_columns;
+    let cells = super::toolbox::draw_toolbox(
+        ui,
+        Id::new("vkit.viewport.hair.toolbox"),
         rect,
-        f32::from(crate::theme::RADIUS_POPOVER),
-        COLOR_TOPBAR.gamma_multiply(0.96),
+        slots,
+        &mut position,
+        &mut columns,
     );
-
-    let content = rect.shrink(TOOLBOX_INSET);
-    let grab_rect = Rect::from_min_size(content.min, vec2(content.width(), TOOLBOX_GRAB_H));
-    let grab = ui.interact(grab_rect, id.with("grab"), Sense::drag());
-    let pill = Rect::from_center_size(grab_rect.center(), vec2(26.0, 5.0));
-    let pill_color = if grab.hovered() || grab.dragged() {
-        crate::theme::COLOR_TEXT.gamma_multiply(0.55)
-    } else {
-        crate::theme::COLOR_MUTED.gamma_multiply(0.5)
-    };
-    painter.rect_filled(pill, 2.5, pill_color);
-    crate::ui_components::island_move_handle(&grab, rect, &mut state.hair_toolbox_pos);
-
-    let columns = toolbox_columns(state);
-    let corner = Rect::from_min_max(rect.max - Vec2::splat(TOOLBOX_CORNER), rect.max);
-    let corner_grab = ui.interact(corner, id.with("corner"), Sense::drag());
-    if corner_grab.hovered() || corner_grab.dragged() {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-    }
-    if corner_grab.dragged()
-        && let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
-    {
-        let one = DETAIL_HUD_TOGGLE_SIZE + TOOLBOX_INSET * 2.0;
-        let two = DETAIL_HUD_TOGGLE_SIZE * 2.0 + SPACE_2 + TOOLBOX_INSET * 2.0;
-        let desired = pointer.x - rect.left();
-        let wanted: u8 = if desired < (one + two) * 0.5 { 1 } else { 2 };
-        if wanted != state.hair_toolbox_columns {
-            state.hair_toolbox_columns = wanted;
-        }
-    }
-    for step in 1..=3 {
-        let offset = step as f32 * 3.0;
-        painter.line_segment(
-            [
-                pos2(rect.right() - offset, rect.bottom() - 3.0),
-                pos2(rect.right() - 3.0, rect.bottom() - offset),
-            ],
-            egui::Stroke::new(
-                1.0,
-                if corner_grab.hovered() || corner_grab.dragged() {
-                    crate::theme::COLOR_TEXT.gamma_multiply(0.6)
-                } else {
-                    crate::theme::COLOR_MUTED.gamma_multiply(0.45)
-                },
-            ),
-        );
-    }
+    state.hair_toolbox_pos = position;
+    state.hair_toolbox_columns = columns;
 
     let active = state.hair_project.active_tool;
     let mut chosen: Option<HairTool> = None;
     let mut mirror = false;
-    for (index, slot) in (0..HAIR_TOOLS.len() + 1).enumerate() {
-        let column = index % columns;
-        let row = index / columns;
-        let cell = Rect::from_min_size(
-            pos2(
-                content.left() + column as f32 * (DETAIL_HUD_TOGGLE_SIZE + SPACE_2),
-                content.top() + TOOLBOX_GRAB_H + row as f32 * (DETAIL_HUD_TOGGLE_SIZE + SPACE_2),
-            ),
-            Vec2::splat(DETAIL_HUD_TOGGLE_SIZE),
-        );
-        let mut cell_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt(id.with(("cell", index)))
-                .max_rect(cell)
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
-        cell_ui.shrink_clip_rect(rect);
+    for (slot, mut cell_ui) in cells.into_iter().enumerate() {
         if let Some((tool, icon, name, hint)) = HAIR_TOOLS.get(slot).copied() {
-            let shortcut = tool_shortcut(tool).map(|key| key.label_now(ui));
+            let shortcut = tool_shortcut(tool).map(|key| key.label_now(&cell_ui));
             if detail_hud_toggle_icon(
                 &mut cell_ui,
                 icon,
@@ -399,7 +324,7 @@ pub(super) fn draw_hair_toolbox(ui: &mut Ui, state: &mut AppState, viewport: Rec
                 chosen = Some(tool);
             }
         } else {
-            let shortcut = crate::shortcuts::Shortcut::HairMirrorPart.label_now(ui);
+            let shortcut = crate::shortcuts::Shortcut::HairMirrorPart.label_now(&cell_ui);
             if detail_hud_toggle_icon(
                 &mut cell_ui,
                 Icon::MirrorPart,

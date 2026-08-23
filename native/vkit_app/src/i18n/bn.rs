@@ -728,7 +728,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilter => Some("বাঁ/ডান"),
         TextKey::MorphOneSidedFilterShow => Some("কেবল এক দিক নড়ায় এমন মর্ফ দেখান"),
         TextKey::MorphOneSidedFilterHide => Some("কেবল এক দিক নড়ায় এমন মর্ফ লুকান"),
-        TextKey::UndoMorphReset => Some("রিসেট বাতিল"),
         TextKey::LightRotationGesture => Some("Shift+ডান-ক্লিক টেনে"),
         TextKey::UpdateAvailable => Some("আপডেট"),
         TextKey::PackageFromFiles => Some("ফাইল বাছুন"),

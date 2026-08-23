@@ -616,7 +616,6 @@ text_keys! {
     MorphCategoryExpression,
     NoMatchingMorphs,
     ResetMorphs,
-    UndoMorphReset,
 
     LightRotationGesture,
 

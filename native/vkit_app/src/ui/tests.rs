@@ -851,36 +851,6 @@ fn the_open_update_capsule_stays_inside_the_room_reserved_for_it() {
 }
 
 #[test]
-fn the_reset_button_offers_itself_back_and_then_stops() {
-    let context = egui::Context::default();
-    let id = Id::new("test.morph.reset");
-
-    let _ = context.run_ui(egui::RawInput::default(), |ui| {
-        assert!(!morph_reset_undo_is_offered(ui, id));
-
-        offer_morph_reset_undo(ui, id);
-        assert!(
-            morph_reset_undo_is_offered(ui, id),
-            "the offer is live the instant the reset lands"
-        );
-
-        forget_morph_reset_undo(ui, id);
-        assert!(!morph_reset_undo_is_offered(ui, id));
-
-        let lapsed = ui.input(|input| input.time) - 1.0;
-        ui.data_mut(|data| data.insert_temp(id.with("undo-until"), lapsed));
-        assert!(
-            !morph_reset_undo_is_offered(ui, id),
-            "an expired offer must not keep the label on undo"
-        );
-        assert!(
-            ui.data(|data| data.get_temp::<f64>(id.with("undo-until")).is_none()),
-            "an expired offer clears itself"
-        );
-    });
-}
-
-#[test]
 fn a_number_key_reaches_exactly_what_its_button_would() {
     let mut state = AppState::default();
     for (tab, _) in TOP_TABS {
@@ -1090,16 +1060,11 @@ fn release_size_morph_regions_and_sticky_actions_are_disjoint() {
 
     assert_eq!(regions.body.bottom(), regions.footer.top());
     assert_eq!(regions.body.x_range(), regions.footer.x_range());
-    assert_eq!(buttons.undo.size(), buttons.reset.size());
-    assert_eq!(buttons.undo.y_range(), buttons.reset.y_range());
-    assert!(buttons.undo.right() < buttons.reset.left());
-    assert!(buttons.reset.top() >= regions.footer.top());
-    assert!(buttons.reset.bottom() <= buttons.apply.top());
+    // One button now. Undo and "reset morphs" moved to the work nav at the
+    // bottom of the viewport, where they are the same two controls on every tab.
+    assert!(buttons.apply.top() >= regions.footer.top());
     assert!(buttons.apply.bottom() <= regions.footer.bottom());
-    assert!(
-        buttons.reset.bottom() + MORPH_FOOTER_BUTTON_GAP <= buttons.apply.top(),
-        "sticky reset and apply controls must retain a visible gap"
-    );
+    assert_eq!(buttons.apply.x_range(), regions.footer.x_range());
 }
 
 #[test]

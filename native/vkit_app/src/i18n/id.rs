@@ -475,7 +475,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Ekspresi"),
         TextKey::NoMatchingMorphs => Some("Tidak ada morph yang cocok"),
         TextKey::ResetMorphs => Some("Atur Ulang Semua"),
-        TextKey::UndoMorphReset => Some("Batalkan reset"),
         TextKey::LightRotationGesture => Some("Shift+Seret klik kanan"),
         TextKey::UpdateAvailable => Some("Perbarui"),
         TextKey::PackageFromFiles => Some("Pilih berkas"),

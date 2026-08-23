@@ -744,7 +744,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilter => Some("बा/दा"),
         TextKey::MorphOneSidedFilterShow => Some("केवल एक ओर हिलाने वाले मॉर्फ़ दिखाएँ"),
         TextKey::MorphOneSidedFilterHide => Some("केवल एक ओर हिलाने वाले मॉर्फ़ छिपाएँ"),
-        TextKey::UndoMorphReset => Some("रीसेट पूर्ववत करें"),
         TextKey::LightRotationGesture => Some("Shift+दायाँ-क्लिक खींचें"),
         TextKey::UpdateAvailable => Some("अपडेट"),
         TextKey::PackageFromFiles => Some("फ़ाइलें चुनें"),

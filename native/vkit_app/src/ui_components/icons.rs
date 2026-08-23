@@ -78,6 +78,10 @@ pub enum Icon {
     HairVertex,
     GlobeGravity,
     HairStream,
+    Undo,
+    Redo,
+    Hammer,
+    Broom,
     MirrorPart,
     CursorPick,
     ChevronLeft,
@@ -100,7 +104,7 @@ pub enum Icon {
 
 impl Icon {
     #[cfg(test)]
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 65] = [
         Self::Copy,
         Self::Paste,
         Self::Plus,
@@ -109,6 +113,10 @@ impl Icon {
         Self::CrosshairBox,
         Self::GlobeGravity,
         Self::HairStream,
+        Self::Undo,
+        Self::Redo,
+        Self::Hammer,
+        Self::Broom,
         Self::MirrorPart,
         Self::CursorPick,
         Self::SplitColumns,
@@ -315,6 +323,10 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::HairVertex => include_str!("../../resources/icons/hair-vertex.svg"),
         Icon::GlobeGravity => include_str!("../../resources/icons/globe-gravity.svg"),
         Icon::HairStream => include_str!("../../resources/icons/hair-stream.svg"),
+        Icon::Undo => include_str!("../../resources/icons/rotate-ccw.svg"),
+        Icon::Redo => include_str!("../../resources/icons/rotate-cw.svg"),
+        Icon::Hammer => include_str!("../../resources/icons/hammer.svg"),
+        Icon::Broom => include_str!("../../resources/icons/brush-cleaning.svg"),
         Icon::MirrorPart => include_str!("../../resources/icons/mirror-part.svg"),
         Icon::CursorPick => include_str!("../../resources/icons/cursor-pick.svg"),
         Icon::Paste => include_str!("../../resources/icons/clipboard-paste.svg"),
@@ -472,6 +484,10 @@ mod tests {
                 Icon::HairVertex => {}
                 Icon::GlobeGravity => {}
                 Icon::HairStream => {}
+                Icon::Undo => {}
+                Icon::Redo => {}
+                Icon::Hammer => {}
+                Icon::Broom => {}
                 Icon::MirrorPart => {}
                 Icon::CursorPick => {}
                 Icon::Paste => {}
@@ -528,7 +544,7 @@ mod tests {
         let count = seen.len();
         seen.dedup();
         assert_eq!(seen.len(), count, "an icon is listed twice");
-        assert_eq!(count, 61, "the enum has 61 icons");
+        assert_eq!(count, 65, "the enum has 65 icons");
     }
 
     #[test]
@@ -592,7 +608,7 @@ mod tests {
             }
         }
 
-        assert_eq!(from_svg, 52);
+        assert_eq!(from_svg, 56);
         assert_eq!(drawn, 9);
     }
 

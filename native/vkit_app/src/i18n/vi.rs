@@ -467,7 +467,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphCategoryExpression => Some("Biểu cảm"),
         TextKey::NoMatchingMorphs => Some("Không có morph phù hợp"),
         TextKey::ResetMorphs => Some("Đặt lại tất cả"),
-        TextKey::UndoMorphReset => Some("Hoàn tác đặt lại"),
         TextKey::LightRotationGesture => Some("Shift+Kéo chuột phải"),
         TextKey::UpdateAvailable => Some("Cập nhật"),
         TextKey::PackageFromFiles => Some("Chọn tệp"),
