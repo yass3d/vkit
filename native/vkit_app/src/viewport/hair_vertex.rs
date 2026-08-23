@@ -34,20 +34,26 @@ struct Joint {
 /// the segment entering the joint cannot stretch; then everything beyond the
 /// joint moves by whatever the joint actually moved.
 #[must_use]
-pub fn bend_strand(points: &[[f32; 3]], point: usize, wanted: Vec3) -> Option<Vec<[f32; 3]>> {
+/// Put one joint where the reader dragged it, and leave the rest alone.
+///
+/// It used to carry every joint below it by the same shift, holding the whole
+/// tail rigid and keeping each segment the length it was. That is a pose tool,
+/// not a vertex tool: taking hold of a joint halfway down a strand swung the
+/// entire end of it, and there was no way to move one joint by itself. Every
+/// other editor in the world moves the vertex you grabbed.
+///
+/// The segments either side stretch to reach, which is fine and is why the
+/// length constraint went with the tail drag: the authored positions ARE the
+/// rest lengths the solver is given, so a segment set longer stays longer
+/// rather than being pulled back.
+///
+/// The root stays out of it — it is bound to the scalp.
+pub fn move_strand_point(points: &[[f32; 3]], point: usize, wanted: Vec3) -> Option<Vec<[f32; 3]>> {
     if point == 0 || point >= points.len() {
         return None;
     }
-    let at = |index: usize| Vec3::from_array(points[index]);
-    let parent = at(point - 1);
-    let reach = (at(point) - parent).length();
-    let direction = (wanted - parent).try_normalize()?;
-    let placed = parent + direction * reach;
-    let shift = placed - at(point);
     let mut moved: Vec<[f32; 3]> = points.to_vec();
-    for (index, slot) in moved.iter_mut().enumerate().skip(point) {
-        *slot = (at(index) + shift).to_array();
-    }
+    moved[point] = wanted.to_array();
     Some(moved)
 }
 
@@ -140,7 +146,7 @@ pub(super) fn handle(
     let Some(strand) = part.strands.get(&joint.strand) else {
         return;
     };
-    let Some(moved) = bend_strand(&strand.points_cm, joint.point, wanted) else {
+    let Some(moved) = move_strand_point(&strand.points_cm, joint.point, wanted) else {
         return;
     };
     let mut strands = vec![(joint.strand, moved)];
@@ -151,7 +157,7 @@ pub(super) fn handle(
         && let Some(other) = part.strands.get(&pair)
     {
         let mirrored = Vec3::new(-wanted.x, wanted.y, wanted.z);
-        if let Some(moved) = bend_strand(&other.points_cm, joint.point, mirrored) {
+        if let Some(moved) = move_strand_point(&other.points_cm, joint.point, mirrored) {
             strands.push((pair, moved));
         }
     }
@@ -229,44 +235,50 @@ mod tests {
             .collect()
     }
 
+    /// Only the joint under the hand moves.
     #[test]
-    fn a_bend_keeps_every_segment_the_length_it_was() {
+    fn a_drag_moves_the_joint_it_took_hold_of_and_nothing_else() {
         let points = straight(6);
-        let before = lengths(&points);
-        let moved = bend_strand(&points, 2, Vec3::new(9.0, 1.0, -4.0)).expect("a joint bends");
-        let after = lengths(&moved);
-        assert_eq!(before.len(), after.len());
-        for (index, (was, now)) in before.iter().zip(&after).enumerate() {
-            assert!(
-                (was - now).abs() < 1.0e-4,
-                "segment {index} went from {was} to {now}: a drag must bend hair, not stretch it",
-            );
-        }
-    }
+        let wanted = Vec3::new(9.0, 1.0, -4.0);
+        let moved = move_strand_point(&points, 2, wanted).expect("a joint moves");
 
-    #[test]
-    fn everything_below_the_joint_stays_where_it_was() {
-        let points = straight(6);
-        let moved = bend_strand(&points, 3, Vec3::new(5.0, 3.0, 5.0)).expect("a joint bends");
-        for index in 0..3 {
+        assert_eq!(moved.len(), points.len());
+        assert_eq!(moved[2], wanted.to_array(), "it goes where it was dragged");
+        for index in (0..points.len()).filter(|index| *index != 2) {
             assert_eq!(
                 moved[index], points[index],
-                "point {index} is above the joint and must not move",
+                "point {index} is not the one that was grabbed",
             );
         }
-        assert_ne!(moved[3], points[3]);
     }
 
+    /// The tail used to travel with the joint, which is a pose tool and not a
+    /// vertex tool. Taking hold of a joint halfway down swung the whole end of
+    /// the strand and there was no way to move one joint by itself.
     #[test]
-    fn the_tail_travels_with_the_joint_rather_than_trailing_behind() {
+    fn the_tail_stays_where_it_was() {
         let points = straight(6);
-        let moved = bend_strand(&points, 2, Vec3::new(4.0, 2.0, 0.0)).expect("a joint bends");
-        let shift = Vec3::from_array(moved[2]) - Vec3::from_array(points[2]);
+        let moved = move_strand_point(&points, 2, Vec3::new(4.0, 2.0, 0.0)).expect("moves");
         for index in 3..points.len() {
-            let travelled = Vec3::from_array(moved[index]) - Vec3::from_array(points[index]);
+            assert_eq!(moved[index], points[index], "point {index} followed along");
+        }
+    }
+
+    /// Segments stretch to reach, and that is deliberate: the authored
+    /// positions are the rest lengths the solver is handed, so a segment set
+    /// longer stays longer instead of being pulled back.
+    #[test]
+    fn the_segments_either_side_stretch_to_reach() {
+        let points = straight(6);
+        let before = lengths(&points);
+        let moved = move_strand_point(&points, 2, Vec3::new(0.0, 40.0, 0.0)).expect("moves");
+        let after = lengths(&moved);
+        assert!(after[1] > before[1] * 2.0, "the segment above it grew");
+        assert!(after[2] > before[2] * 2.0, "and so did the one below");
+        for index in [0, 3, 4] {
             assert!(
-                (travelled - shift).length() < 1.0e-4,
-                "point {index} moved {travelled:?} where the joint moved {shift:?}",
+                (before[index] - after[index]).abs() < 1.0e-4,
+                "segment {index} touches neither side of the moved joint",
             );
         }
     }
@@ -274,7 +286,7 @@ mod tests {
     #[test]
     fn the_root_is_not_ours_to_move() {
         let points = straight(4);
-        assert!(bend_strand(&points, 0, Vec3::X).is_none());
-        assert!(bend_strand(&points, 9, Vec3::X).is_none());
+        assert!(move_strand_point(&points, 0, Vec3::X).is_none());
+        assert!(move_strand_point(&points, 9, Vec3::X).is_none());
     }
 }
