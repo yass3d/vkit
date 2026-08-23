@@ -290,6 +290,9 @@ fn decode_scalp_sheets(
     diffuse: Option<&vkit_core::vam::BuiltinTextureRef>,
     alpha: Option<&vkit_core::vam::BuiltinTextureRef>,
 ) -> ScalpSheets {
+    // The two sheets are independent, so a lone provider still has something to
+    // overlap: 2048x2048 each, 15 to 60 ms each, and neither is needed to read
+    // the other.
     let decode = |reference: Option<&vkit_core::vam::BuiltinTextureRef>, slot: u64| {
         let reference = reference?;
         let decoded =
@@ -301,7 +304,7 @@ fn decode_scalp_sheets(
             .ok()
             .map(Arc::new)
     };
-    (decode(diffuse, 1), decode(alpha, 2))
+    rayon::join(|| decode(diffuse, 1), || decode(alpha, 2))
 }
 
 /// Read every scalp sheet this frame is going to need, at the same time.
@@ -331,9 +334,11 @@ pub(super) fn warm_builtin_scalp_images(ctx: &egui::Context, state: &AppState) {
                 .is_none()
         })
         .collect();
-    if wanted.len() < 2 {
-        // One sheet pair is the same work either way, and the thread pool is
-        // not free. Below two there is nothing to overlap.
+    // Warmed even for a single provider. The first frame of a load draws one
+    // part before the rest are ready, and a `< 2` guard here sent exactly that
+    // frame down the serial path — 218 ms of the load, while the six sheets the
+    // NEXT frame wanted came back in three.
+    if wanted.is_empty() {
         return;
     }
     // The references are lifted off the state here, on this thread, because
