@@ -40,6 +40,7 @@ mod morphs;
 mod persistence;
 mod post_process;
 mod recovery;
+mod reference_board;
 mod renderer;
 mod responsive;
 mod runtime;

@@ -483,6 +483,11 @@ pub struct AppState {
 
     pub texture_project: TextureProject,
     pub hair_project: crate::hair_project::HairProject,
+
+    /// Photographs pinned behind the viewport. Never saved, never exported,
+    /// never photographed: a reference is scaffolding for the person building,
+    /// and it belongs to the session they are building in.
+    pub reference_board: crate::reference_board::ReferenceBoard,
     pub hair_scalps:
         std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
     pub appearance_stack: crate::appearance_layers::AppearanceStack,
@@ -732,6 +737,7 @@ impl Default for AppState {
             sculpt,
             texture_project: TextureProject::default(),
             hair_project: crate::hair_project::HairProject::default(),
+            reference_board: crate::reference_board::ReferenceBoard::default(),
             hair_scalps: std::collections::HashMap::new(),
             appearance_stack: crate::appearance_layers::AppearanceStack::default(),
             hair_brush_radius_points: 64.0,
@@ -1281,6 +1287,30 @@ impl AppState {
                 self.hair_project.toggle_part_visible(id);
             }
             Action::SoloHairPart(id) => self.hair_project.solo_part(id),
+
+            Action::AddReferenceImage(path) => {
+                self.reference_board.add(path);
+            }
+            Action::RemoveReferenceImage(id) => self.reference_board.remove(id),
+            Action::SelectReferenceImage(id) => self.reference_board.select(id),
+            Action::ToggleReferenceImageVisible(id) => self.reference_board.toggle_visible(id),
+            Action::ReorderReferenceImage { id, toward_front } => {
+                self.reference_board.reorder(id, toward_front);
+            }
+            Action::DragReferenceImage {
+                id,
+                viewport,
+                delta,
+            } => self.reference_board.drag(id, viewport, delta),
+            Action::ResizeReferenceImage { id, height_share } => {
+                self.reference_board.resize(id, height_share);
+            }
+            Action::SetReferenceImageOpacity { id, opacity } => {
+                self.reference_board.set_opacity(id, opacity);
+            }
+            Action::NoteReferenceImageAspect { id, aspect } => {
+                self.reference_board.note_aspect(id, aspect);
+            }
             Action::SetHairTool(tool) => self.hair_project.active_tool = tool,
             Action::SelectHairParamGroup(group) => self.hair_param_group = group,
             Action::SetHairBrushStrength(strength) => {

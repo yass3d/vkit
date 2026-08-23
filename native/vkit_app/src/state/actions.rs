@@ -47,6 +47,32 @@ pub enum Action {
     },
     ToggleHairPartVisible(u64),
     SoloHairPart(u64),
+
+    AddReferenceImage(std::path::PathBuf),
+    RemoveReferenceImage(u64),
+    SelectReferenceImage(Option<u64>),
+    ToggleReferenceImageVisible(u64),
+    ReorderReferenceImage {
+        id: u64,
+        toward_front: bool,
+    },
+    DragReferenceImage {
+        id: u64,
+        viewport: egui::Rect,
+        delta: egui::Vec2,
+    },
+    ResizeReferenceImage {
+        id: u64,
+        height_share: f32,
+    },
+    SetReferenceImageOpacity {
+        id: u64,
+        opacity: f32,
+    },
+    NoteReferenceImageAspect {
+        id: u64,
+        aspect: f32,
+    },
     SetHairTool(crate::hair_project::HairTool),
     SetHairBrushRadius(f32),
     SetHairBrushStrength(f32),
@@ -516,6 +542,15 @@ impl Action {
             | Self::RemoveHairPart(_)
             | Self::ToggleHairPartVisible(_)
             | Self::SoloHairPart(_)
+            | Self::AddReferenceImage(_)
+            | Self::RemoveReferenceImage(_)
+            | Self::SelectReferenceImage(_)
+            | Self::ToggleReferenceImageVisible(_)
+            | Self::ReorderReferenceImage { .. }
+            | Self::DragReferenceImage { .. }
+            | Self::ResizeReferenceImage { .. }
+            | Self::SetReferenceImageOpacity { .. }
+            | Self::NoteReferenceImageAspect { .. }
             | Self::PlantHairStrands { .. }
             | Self::UnplantHairStrands { .. }
             | Self::SetHairPartSegments { .. }

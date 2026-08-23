@@ -387,6 +387,7 @@ pub(super) fn draw_viewport_background_panel(ui: &mut Ui, state: &mut AppState) 
             }
         },
     );
+    super::reference_panel::draw_reference_section(ui, state);
 }
 
 pub(super) fn relevant_viewport_camera(state: &AppState) -> TurntableCamera {

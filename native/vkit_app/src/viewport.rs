@@ -68,6 +68,8 @@ mod hair_vertex;
 mod help;
 mod islands;
 mod pins;
+mod reference_overlay;
+mod reference_panel;
 mod render_callbacks;
 
 pub(crate) use alignment_gizmo::*;
@@ -462,6 +464,8 @@ fn draw_result_in(
 ) {
     crate::sweep_gesture::set_commit_style(ui, state.brush_sweep_commit);
     paint_viewport_background(ui, state, rect);
+    reference_overlay::note_reference_aspects(ui, state);
+    reference_overlay::paint_reference_images(ui, state, rect);
     let response = ui.interact(
         rect,
         Id::new(pane.interaction_id()),
@@ -477,6 +481,38 @@ fn draw_result_in(
         || crate::sweep_gesture::press_spent(ui)
         || viewport_tools_pointer_blocked(ui, state, chrome.unwrap_or(rect));
     crate::sweep_gesture::settle_press(ui);
+
+    // Asked before the camera and the brushes, and answered only for a press
+    // that missed the model: a reference is behind the head, so it takes a
+    // click nothing in front of it wanted, and nothing else.
+    let pointer_position = ui.input(|input| input.pointer.interact_pos());
+    let model_under_pointer = {
+        let camera = state.workspace.result_camera;
+        let scan_pose = scan_transform(state);
+        let scan_overlay =
+            result_scan_overlay_alpha(state).and_then(|_| state.workspace.scan.clone());
+        let result = state.workspace.result.clone();
+        move || {
+            let Some(pointer) = pointer_position else {
+                return false;
+            };
+            let Some(ray) = camera.ray_from_screen(pointer, rect) else {
+                return false;
+            };
+            nearest_visible_world_hit(
+                ray,
+                &[
+                    (result.as_deref(), ModelTransform::default()),
+                    (scan_overlay.as_deref(), scan_pose),
+                ],
+            )
+            .is_some()
+        }
+    };
+    let reference_owns_pointer = !pointer_taken
+        && reference_overlay::handle_reference_drag(ui, state, rect, model_under_pointer);
+
+    let pointer_taken = pointer_taken || reference_owns_pointer;
     let camera_blocked = pointer_taken || brush_sweep_owns_pointer(ui);
     let input_blocked = pointer_taken;
     if !camera_blocked {
