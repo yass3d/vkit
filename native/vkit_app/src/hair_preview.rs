@@ -14,7 +14,26 @@ use glam::Vec3;
 
 const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 
-const SCALP_SURFACE_LIFT_CM: f32 = 0.03;
+/// `DAZSkinWrap` puts every wrapped vertex at
+///
+/// ```text
+/// skin + n · ( max(baked, moveToSurfaceOffset) + surfaceOffset
+///              + surfaceNormalWrapNormalDot · additionalThicknessMultiplier )
+/// ```
+///
+/// `baked` is the standoff the cap was authored with, measured against the
+/// figure it was authored on. The other three are constants, and they are the
+/// reason a cap does not lie flat on the skin: together they are 1.3 mm before
+/// the authored standoff is added at all.
+const SCALP_SURFACE_OFFSET_CM: f32 = 0.03;
+
+/// The floor `baked` is held to, `moveToSurfaceOffset`.
+const SCALP_MOVE_TO_SURFACE_CM: f32 = 0.03;
+
+/// `additionalThicknessMultiplier`, scaled per vertex by the dot between the
+/// skin's normal and the cap's. A cap lying along the skin takes nearly all of
+/// it.
+const SCALP_ADDITIONAL_THICKNESS_CM: f32 = 0.1;
 
 #[derive(Clone, Debug)]
 pub struct HairPreview {
@@ -461,13 +480,25 @@ impl HairAlignment {
     }
 }
 
+/// Bind a cap to a head the way `DAZSkinWrap` does.
+///
+/// The standoff has two halves and they answer different questions. `baked` is
+/// how far the cap was authored to stand off the figure it was authored on —
+/// a property of the CAP, the same whatever look is loaded — and it is measured
+/// against `neutral`. The rest are the wrap's own constants. What must never
+/// enter it is the distance from the cap to the head currently loaded: that is
+/// the departure between two shapes, and baking it made the wrapped cap
+/// reproduce the authored skull instead of the one under it, standing off the
+/// skin at the forehead and the back of the head by exactly how far the look
+/// had moved.
 fn build_scalp_anchors(
     scalp: &HairScalpGeometry,
     alignment: HairAlignment,
     mesh: &Mesh,
     projector: &SurfaceProjector,
+    neutral: Option<(&Mesh, &SurfaceProjector)>,
 ) -> Result<Vec<ScalpAnchor>, String> {
-    let lift = SCALP_SURFACE_LIFT_CM * alignment.scale;
+    let scale = alignment.scale;
     let mut anchors = Vec::with_capacity(scalp.vertices_cm.len());
     for point in &scalp.vertices_cm {
         let placed = alignment.apply(*point);
@@ -482,6 +513,7 @@ fn build_scalp_anchors(
             .triangles
             .get(hit.primitive_id as usize)
             .ok_or("scalp anchor references a triangle outside the template")?;
+        let (baked, dot) = authored_standoff(placed, neutral).unwrap_or((0.0, 1.0));
         anchors.push(ScalpAnchor {
             triangle,
             barycentric: [
@@ -489,18 +521,47 @@ fn build_scalp_anchors(
                 hit.barycentric[1] as f32,
                 hit.barycentric[2] as f32,
             ],
-            // The lift, and nothing else. `placed` is where the BUNDLE put this
-            // cap vertex, which is a shape authored on the neutral G2 head, and
-            // the projection lands on the head actually loaded. Baking
-            // the distance between them and re-applying it made the wrapped cap
-            // reproduce the G2 cap rather than the head under it — so wherever a
-            // look departs from G2 the cap stood off the skin by exactly that
-            // departure. The forehead and the back of the skull are where looks
-            // depart most, which is where it showed.
-            normal_offset: lift,
+            normal_offset: (baked.max(SCALP_MOVE_TO_SURFACE_CM)
+                + SCALP_SURFACE_OFFSET_CM
+                + dot * SCALP_ADDITIONAL_THICKNESS_CM)
+                * scale,
         });
     }
     Ok(anchors)
+}
+
+/// How far this cap vertex stands off the figure it was authored on, and how
+/// squarely it faces it.
+///
+/// Returns `None` before a figure is loaded, which is the case the constants
+/// alone have to cover.
+fn authored_standoff(
+    placed: Vec3,
+    neutral: Option<(&Mesh, &SurfaceProjector)>,
+) -> Option<(f32, f32)> {
+    let (mesh, projector) = neutral?;
+    let hit = projector
+        .project([
+            f64::from(placed.x),
+            f64::from(placed.y),
+            f64::from(placed.z),
+        ])
+        .ok()?;
+    let triangle = *mesh.triangles.get(hit.primitive_id as usize)?;
+    let normal = triangle_normal(mesh, triangle)?;
+    let surface = Vec3::new(
+        hit.point[0] as f32,
+        hit.point[1] as f32,
+        hit.point[2] as f32,
+    );
+    let offset = placed - surface;
+    // Outside the skin only. A cap vertex that lands inside is held to the
+    // floor, which is what `max(baked, moveToSurfaceOffset)` is for.
+    let baked = offset.dot(normal).max(0.0);
+    let dot = offset
+        .try_normalize()
+        .map_or(1.0, |direction| direction.dot(normal).abs());
+    Some((baked, dot))
 }
 
 fn triangle_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
@@ -735,6 +796,24 @@ pub struct AuthoringScalp {
     pub textures: HairScalpTextures,
 }
 
+/// The figure as it was before a look, as something a cap can be measured
+/// against.
+fn neutral_surface(template: &DazGeometry) -> Option<(Mesh, SurfaceProjector)> {
+    let vertices: Vec<[f64; 3]> = template.vertices.clone();
+    let mut triangles: Vec<[u32; 3]> = Vec::new();
+    for face in &template.faces {
+        for corner in 1..face.len().saturating_sub(1) {
+            triangles.push([face[0], face[corner], face[corner + 1]]);
+        }
+    }
+    if triangles.is_empty() {
+        return None;
+    }
+    let mesh = Mesh::new(vertices, triangles).ok()?;
+    let projector = projector_for_mesh(&mesh).ok()?;
+    Some((mesh, projector))
+}
+
 pub fn wrap_scalp_to_head(
     geometry: &vkit_core::vam::HairScalpGeometry,
     bed: &HeadBed,
@@ -747,6 +826,9 @@ pub fn wrap_scalp_to_head(
         },
         &bed.mesh,
         &bed.projector,
+        bed.neutral
+            .as_ref()
+            .map(|(mesh, projector)| (mesh, projector)),
     )
 }
 
@@ -754,6 +836,11 @@ pub struct HeadBed {
     pub mesh: Mesh,
     pub projector: SurfaceProjector,
     pub body_capsules: Vec<HairBodyCapsule>,
+
+    /// The figure before any look was applied, which is what the scalp caps
+    /// were authored against. Only the standoff is read from it; where a cap
+    /// vertex BINDS is decided entirely by `mesh`.
+    pub neutral: Option<(Mesh, SurfaceProjector)>,
 
     pub generation: u64,
 }
@@ -769,8 +856,10 @@ impl HeadBed {
     /// moves the scalp with it.
     pub fn build_on(template: &DazGeometry, mesh: Mesh) -> Result<Self, String> {
         let projector = projector_for_mesh(&mesh).map_err(|error| format!("{error:?}"))?;
+        let neutral = neutral_surface(template);
         Ok(Self {
             body_capsules: body_capsules_from_template(template),
+            neutral,
             mesh,
             projector,
             generation: HEAD_BED_GENERATION
@@ -946,8 +1035,13 @@ mod scalp_wrap_tests {
         }
     }
 
-    fn hug_distances(cap: &HairScalpGeometry, head: &Mesh) -> Vec<f32> {
+    /// The standoff a cap with no authored gap gets: the wrap's own three
+    /// constants, `max(0, 0.03) + 0.03 + 1 x 0.1`.
+    const FLUSH_STANDOFF_CM: f32 = 0.16;
+
+    fn hug_distances(cap: &HairScalpGeometry, head: &Mesh, neutral: &Mesh) -> Vec<f32> {
         let projector = projector_for_mesh(head).expect("a head projects");
+        let neutral_projector = projector_for_mesh(neutral).expect("a figure projects");
         let anchors = build_scalp_anchors(
             cap,
             HairAlignment {
@@ -956,6 +1050,7 @@ mod scalp_wrap_tests {
             },
             head,
             &projector,
+            Some((neutral, &neutral_projector)),
         )
         .expect("the cap wraps");
         anchors
@@ -980,11 +1075,12 @@ mod scalp_wrap_tests {
             + normal * anchor.normal_offset
     }
 
-    /// The invariant, and the whole of it: a wrapped cap stands the lift off
-    /// the head it was wrapped to, whatever shape that head has. It does not
-    /// keep any part of the shape it was authored on.
+    /// The invariant: a wrapped cap stands the SAME distance off every head it
+    /// is wrapped to. The distance is the cap's own authored standoff plus the
+    /// wrap's constants; the shape of the head decides where it binds and
+    /// nothing else.
     #[test]
-    fn a_cap_hugs_whatever_head_it_is_given() {
+    fn a_cap_stands_the_same_distance_off_every_head() {
         let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
         let cap = cap_on(&neutral, 60);
 
@@ -995,13 +1091,48 @@ mod scalp_wrap_tests {
             ("a wider one", [1.3, 0.95, 1.05]),
         ] {
             let head = ball(10.0, squash, 12);
-            let worst = hug_distances(&cap, &head)
+            let worst = hug_distances(&cap, &head, &neutral)
                 .into_iter()
-                .fold(0.0_f32, |held, value| held.max((value - 0.03).abs()));
+                .fold(0.0_f32, |held, value| {
+                    held.max((value - FLUSH_STANDOFF_CM).abs())
+                });
             assert!(
                 worst < 1.0e-3,
-                "{label}: a cap vertex stood {worst} beyond the lift, so the cap is \
-                 keeping the shape it was authored on rather than following the head",
+                "{label}: a cap vertex sat {worst} cm off its standoff, so the wrap is \
+                 reading the head it was given instead of the figure the cap was authored on",
+            );
+        }
+    }
+
+    /// And a cap that WAS authored to stand off keeps that standoff, on every
+    /// head. Dropping it is what put the cap inside the skin.
+    #[test]
+    fn a_cap_authored_clear_of_the_skin_keeps_its_own_gap() {
+        let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
+        let flush = cap_on(&neutral, 60);
+        // The same cap, half a centimetre further out along its own normals —
+        // which for a ball is straight out from the centre.
+        let raised = HairScalpGeometry {
+            vertices_cm: flush
+                .vertices_cm
+                .iter()
+                .map(|point| {
+                    let out = Vec3::from_array(*point).normalize();
+                    (Vec3::from_array(*point) + out * 0.5).to_array()
+                })
+                .collect(),
+            ..flush.clone()
+        };
+
+        for squash in [[1.0_f32, 1.0, 1.0], [1.0, 1.0, 0.72], [1.3, 0.95, 1.05]] {
+            let head = ball(10.0, squash, 12);
+            let wanted = 0.5 + SCALP_SURFACE_OFFSET_CM + SCALP_ADDITIONAL_THICKNESS_CM;
+            let worst = hug_distances(&raised, &head, &neutral)
+                .into_iter()
+                .fold(0.0_f32, |held, value| held.max((value - wanted).abs()));
+            assert!(
+                worst < 0.02,
+                "the authored half centimetre came out {worst} cm wrong on {squash:?}",
             );
         }
     }
