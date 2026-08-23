@@ -11,6 +11,7 @@ use vkit_core::{
 
 use crate::skin_preview::SkinImage;
 use glam::Vec3;
+use rayon::prelude::*;
 
 const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 
@@ -219,6 +220,11 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
     capsules
 }
 
+/// One guide after its root has been projected onto the head: where it is
+/// bound, where its points sit in the bed's space, and what rigidity was
+/// painted on it.
+type BoundGuide = (HairRootBinding, Vec<[f32; 3]>, Vec<f32>);
+
 fn build_preview_part(
     asset: &HairPreviewAsset,
     limit: usize,
@@ -244,29 +250,47 @@ fn build_preview_part(
     let strand_randoms = crate::unity_random::strand_randoms(geometry.guides.len());
     let mut guides = Vec::with_capacity(geometry.guides.len());
     let mut guide_map = vec![None; geometry.guides.len()];
-    for (geometry_index, guide) in geometry.guides.iter().enumerate() {
-        let points = guide.points_cm.clone();
-        let Some((binding, local_points)) = bind_preview_points(
-            points,
-            alignment,
-            root_standoff,
-            tip_standoff,
-            mesh,
-            projector,
-        ) else {
+    // Binding a guide projects its root onto the head, and every guide's
+    // projection is independent of every other's. They were done one at a time,
+    // and a stroke rebuilds the whole part each time the throttle lets one
+    // through, so this loop ran hundreds of projections in the middle of a
+    // frame that was already drawing.
+    //
+    // Two passes rather than one: the map runs in parallel, and the fold that
+    // follows is sequential so `guides` and `guide_map` come out in exactly the
+    // order the single loop produced. The indices are the wire format between
+    // guides, triangles and the barycentric table — reordering them silently
+    // repaints the whole part.
+    let bound: Vec<Option<BoundGuide>> = geometry
+        .guides
+        .par_iter()
+        .map(|guide| {
+            let (binding, local_points) = bind_preview_points(
+                guide.points_cm.clone(),
+                alignment,
+                root_standoff,
+                tip_standoff,
+                mesh,
+                projector,
+            )?;
+            if local_points.len() < 2 {
+                return None;
+            }
+            // Empty means the file painted none, which is not the same as
+            // painting every point solid.
+            let painted_rigidity: Vec<f32> = if guide.rigidity.is_empty() {
+                Vec::new()
+            } else {
+                (0..local_points.len())
+                    .map(|index| guide.rigidity.get(index).copied().unwrap_or(1.0))
+                    .collect()
+            };
+            Some((binding, local_points, painted_rigidity))
+        })
+        .collect();
+    for (geometry_index, bound) in bound.into_iter().enumerate() {
+        let Some((binding, local_points, painted_rigidity)) = bound else {
             continue;
-        };
-        if local_points.len() < 2 {
-            continue;
-        }
-        // Empty means the file painted none, which is not the same as painting
-        // every point solid.
-        let painted_rigidity: Vec<f32> = if guide.rigidity.is_empty() {
-            Vec::new()
-        } else {
-            (0..local_points.len())
-                .map(|index| guide.rigidity.get(index).copied().unwrap_or(1.0))
-                .collect()
         };
         guide_map[geometry_index] = Some(guides.len() as u32);
         let curl_rand = strand_randoms
