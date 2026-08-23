@@ -382,7 +382,7 @@ pub(super) fn alignment_gizmo_hit(
     pointer: Pos2,
     geometry: &AlignmentGizmoGeometry,
 ) -> Option<AlignmentGizmoHit> {
-    gizmo_hit(pointer, geometry, true)
+    gizmo_hit(pointer, geometry, GizmoHandles::ALL)
 }
 
 /// What the pointer is on, with or without the scale handle in the middle.
@@ -393,9 +393,9 @@ pub(super) fn alignment_gizmo_hit(
 pub(super) fn gizmo_hit(
     pointer: Pos2,
     geometry: &AlignmentGizmoGeometry,
-    scale: bool,
+    handles: GizmoHandles,
 ) -> Option<AlignmentGizmoHit> {
-    if scale && pointer.distance(geometry.scale_handle) <= GIZMO_HIT_RADIUS * 1.4 {
+    if handles.scale && pointer.distance(geometry.scale_handle) <= GIZMO_HIT_RADIUS * 1.4 {
         return Some(AlignmentGizmoHit::Scale);
     }
 
@@ -409,13 +409,18 @@ pub(super) fn gizmo_hit(
             (distance <= GIZMO_HIT_RADIUS).then_some((distance, axis))
         })
         .min_by(|left, right| left.0.total_cmp(&right.0));
-    let rotate_hit = geometry
-        .rings
-        .iter()
-        .enumerate()
-        .map(|(axis, ring)| (polyline_distance(pointer, ring), axis))
-        .filter(|(distance, _)| *distance <= GIZMO_HIT_RADIUS)
-        .min_by(|left, right| left.0.total_cmp(&right.0));
+    let rotate_hit = handles
+        .rotate
+        .then(|| {
+            geometry
+                .rings
+                .iter()
+                .enumerate()
+                .map(|(axis, ring)| (polyline_distance(pointer, ring), axis))
+                .filter(|(distance, _)| *distance <= GIZMO_HIT_RADIUS)
+                .min_by(|left, right| left.0.total_cmp(&right.0))
+        })
+        .flatten();
 
     match (move_hit, rotate_hit) {
         (Some((move_distance, _)), Some((rotate_distance, rotate_axis)))
@@ -487,20 +492,6 @@ pub(super) fn apply_alignment_gizmo_drag(
     }
 }
 
-/// How far the pointer swung about a point, in degrees, since last frame.
-///
-/// Not the same question as `rotation_drag_degrees`, which SNAPS an angle that
-/// has already been accumulated. This is the accumulating.
-pub(super) fn drag_swept_degrees(previous: Pos2, current: Pos2, about: Pos2) -> f32 {
-    let from = previous - about;
-    let to = current - about;
-    if from.length() < 4.0 || to.length() < 4.0 {
-        // Too close to the middle for an angle to mean anything.
-        return 0.0;
-    }
-    wrapped_angle_delta(from.y.atan2(from.x), to.y.atan2(to.x)).to_degrees()
-}
-
 pub(super) fn rotation_drag_degrees(
     accumulated_degrees: f64,
     shift_down: bool,
@@ -533,13 +524,17 @@ pub(super) fn paint_alignment_gizmo(
     let Some(geometry) = alignment_gizmo_geometry(state, scan, viewport, camera) else {
         return;
     };
-    paint_gizmo_geometry(ui, &geometry, true);
+    paint_gizmo_geometry(ui, &geometry, GizmoHandles::ALL);
 }
 
 /// Draw a handle that has already been placed.
-pub(super) fn paint_gizmo_geometry(ui: &Ui, geometry: &AlignmentGizmoGeometry, scale: bool) {
+pub(super) fn paint_gizmo_geometry(
+    ui: &Ui,
+    geometry: &AlignmentGizmoGeometry,
+    handles: GizmoHandles,
+) {
     for (axis, ring) in geometry.rings.iter().enumerate() {
-        if ring.len() >= 2 {
+        if handles.rotate && ring.len() >= 2 {
             ui.painter().add(egui::Shape::line(
                 ring.clone(),
                 Stroke::new(1.6, gizmo_axis_color(axis).gamma_multiply(0.82)),
@@ -559,7 +554,7 @@ pub(super) fn paint_gizmo_geometry(ui: &Ui, geometry: &AlignmentGizmoGeometry, s
             ));
         }
     }
-    if scale {
+    if handles.scale {
         ui.painter().rect_filled(
             Rect::from_center_size(geometry.scale_handle, Vec2::splat(GIZMO_SCALE_HANDLE_SIZE)),
             2.0,

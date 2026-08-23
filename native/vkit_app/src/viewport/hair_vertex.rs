@@ -189,8 +189,14 @@ pub(super) fn handle(
     let Some(pointer) = ui.input(|input| input.pointer.interact_pos()) else {
         return;
     };
+    // The LEFT button, and only it. `dragged` is true for any button the sense
+    // admits, so a `Shift`-wheel pan — which is the camera's own binding — was
+    // read here as a joint drag: the selection moved by the pointer delta while
+    // the camera moved under it, and the joint left for somewhere absurd. The
+    // wheel belongs to the camera and the left button belongs to the tool.
+    let editing = response.dragged_by(egui::PointerButton::Primary);
     let field = super::hair_overlays::hair_depth_field(ui, state, viewport, camera);
-    if response.drag_started() || (response.clicked() && !response.dragged()) {
+    if (response.drag_started() && editing) || (response.clicked() && !response.dragged()) {
         let intent = if crate::shortcuts::Shortcut::VertexAddToSelectionHold.held(ui) {
             PickIntent::Toggle
         } else if crate::shortcuts::Shortcut::VertexRemoveFromSelectionHold.held(ui) {
@@ -212,7 +218,7 @@ pub(super) fn handle(
     if joints.is_empty() {
         return;
     }
-    if !response.dragged() {
+    if !editing {
         if response.drag_stopped() {
             state.dispatch(Action::EndHairStroke);
         }
@@ -230,20 +236,6 @@ pub(super) fn handle(
     let shift = camera.world_drag_delta_at(centre, delta, viewport.height());
     move_selection(state, &joints, shift);
     ui.ctx().request_repaint();
-}
-
-/// Turn every selected joint about a point.
-pub(super) fn turn_selection(
-    state: &mut AppState,
-    joints: &[Joint],
-    about: Vec3,
-    turn: glam::Quat,
-) {
-    let placed: Vec<(Joint, Vec3)> = joints
-        .iter()
-        .map(|joint| (*joint, about + turn * (joint.at - about)))
-        .collect();
-    move_placed(state, &placed);
 }
 
 /// Move every selected joint by one world shift, mirrors included.

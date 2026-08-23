@@ -15,7 +15,7 @@ use glam::Vec3;
 
 use crate::camera::TurntableCamera;
 use crate::state::AppState;
-use crate::viewport::{AlignmentGizmoGeometry, AlignmentGizmoHit};
+use crate::viewport::{AlignmentGizmoGeometry, AlignmentGizmoHit, GizmoHandles};
 
 /// What the reader took hold of, held between frames.
 const DRAG_ID: &str = "vkit.viewport.hair.vertex-gizmo";
@@ -26,6 +26,13 @@ const DRAG_ID: &str = "vkit.viewport.hair.vertex-gizmo";
 /// needs a handle big enough to grab, and one across the whole head must not
 /// grow one that fills the screen.
 const SIZE_SHARE: f32 = 0.10;
+
+/// Move, and nothing else.
+///
+/// A strand joint is a point. It has no orientation to turn about and no
+/// spacing to stretch, so a ring and a centre grip would be two controls that
+/// answer questions nobody asked.
+const HANDLES: GizmoHandles = GizmoHandles::MOVE_ONLY;
 
 #[derive(Clone, Copy, Debug)]
 struct Grab {
@@ -69,8 +76,9 @@ pub(super) fn handle(
         return false;
     };
 
+    let editing = response.dragged_by(egui::PointerButton::Primary);
     if let Some(grab) = held(ui) {
-        if !response.dragged() {
+        if !editing {
             ui.data_mut(|data| data.remove::<Grab>(id));
             state.dispatch(crate::state::Action::EndHairStroke);
             return true;
@@ -90,7 +98,8 @@ pub(super) fn handle(
     }
 
     if response.drag_started()
-        && let Some(hit) = crate::viewport::gizmo_hit(pointer, &geometry, false)
+        && editing
+        && let Some(hit) = crate::viewport::gizmo_hit(pointer, &geometry, HANDLES)
     {
         ui.data_mut(|data| {
             data.insert_temp(
@@ -127,18 +136,10 @@ fn apply(state: &mut AppState, geometry: &AlignmentGizmoGeometry, grab: Grab, po
             let direction = [Vec3::X, Vec3::Y, Vec3::Z][axis];
             super::hair_vertex::move_selection(state, &joints, direction * travel);
         }
-        AlignmentGizmoHit::Rotate(axis) => {
-            let degrees =
-                crate::viewport::drag_swept_degrees(grab.previous, pointer, geometry.origin);
-            if degrees.abs() < f32::EPSILON {
-                return;
-            }
-            let axis = [Vec3::X, Vec3::Y, Vec3::Z][axis];
-            let turn = glam::Quat::from_axis_angle(axis, degrees.to_radians());
-            super::hair_vertex::turn_selection(state, &joints, geometry.world_center, turn);
-        }
-        // Asked for with `false`, so it cannot come back.
-        AlignmentGizmoHit::Scale => {}
+        // `HANDLES` offers neither, so neither is drawn and neither can be
+        // grabbed. They stay in the match because the enum is the alignment
+        // tab's too, and that tab has both.
+        AlignmentGizmoHit::Rotate(_) | AlignmentGizmoHit::Scale => {}
     }
 }
 
@@ -146,7 +147,7 @@ pub(super) fn paint(ui: &Ui, state: &AppState, viewport: Rect, camera: Turntable
     let Some(geometry) = geometry(state, viewport, camera) else {
         return;
     };
-    crate::viewport::paint_gizmo_geometry(ui, &geometry, false);
+    crate::viewport::paint_gizmo_geometry(ui, &geometry, HANDLES);
 }
 
 #[cfg(test)]
@@ -169,26 +170,62 @@ mod tests {
         .expect("a gizmo in front of the camera")
     }
 
-    /// The centre answers nothing, so a click there is not a scale.
+    /// This handle moves and does nothing else.
     ///
-    /// Strand joints are spaced by the lengths the solver is handed as rest
-    /// lengths; pulling them apart uniformly is not an edit anybody reached for.
+    /// A strand joint is a point: no orientation to turn about, no spacing to
+    /// stretch. A ring and a centre grip would be two controls that answer
+    /// questions nobody asked, so neither is drawn and neither answers — one
+    /// flag decides both, which is why they cannot disagree.
     #[test]
-    fn the_middle_of_this_handle_is_not_a_scale_grip() {
+    fn this_handle_offers_neither_a_ring_nor_a_scale_grip() {
         let geometry = geometry_at(Vec3::ZERO);
+
         assert!(
             matches!(
-                crate::viewport::gizmo_hit(geometry.scale_handle, &geometry, true),
+                crate::viewport::gizmo_hit(
+                    geometry.scale_handle,
+                    &geometry,
+                    crate::viewport::GizmoHandles::ALL
+                ),
                 Some(AlignmentGizmoHit::Scale)
             ),
-            "the alignment tab still has one",
+            "the alignment tab still has a scale grip",
         );
         assert!(
             !matches!(
-                crate::viewport::gizmo_hit(geometry.scale_handle, &geometry, false),
+                crate::viewport::gizmo_hit(geometry.scale_handle, &geometry, HANDLES),
                 Some(AlignmentGizmoHit::Scale)
             ),
-            "and this one does not",
+            "and this one has no scale grip — the centre is just where the axes meet",
+        );
+
+        // Somewhere on a ring and clear of every axis.
+        let on_a_ring = geometry.rings[0]
+            .iter()
+            .copied()
+            .find(|point| {
+                geometry
+                    .axis_ends
+                    .iter()
+                    .flatten()
+                    .all(|end| point.distance(*end) > 24.0)
+                    && point.distance(geometry.origin) > 24.0
+            })
+            .expect("a ring point away from the axes");
+        assert!(
+            matches!(
+                crate::viewport::gizmo_hit(
+                    on_a_ring,
+                    &geometry,
+                    crate::viewport::GizmoHandles::ALL
+                ),
+                Some(AlignmentGizmoHit::Rotate(_))
+            ),
+            "the alignment tab still turns",
+        );
+        assert!(
+            crate::viewport::gizmo_hit(on_a_ring, &geometry, HANDLES).is_none(),
+            "and this one does not, because it does not draw a ring to turn",
         );
     }
 

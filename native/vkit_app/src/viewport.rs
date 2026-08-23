@@ -220,6 +220,32 @@ enum AlignmentGizmoHit {
     Scale,
 }
 
+/// Which handles a gizmo offers, and therefore which ones it draws.
+///
+/// One flag read by the painter and by the hit test alike, so a handle that is
+/// not drawn cannot be grabbed and a handle that is drawn always can.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct GizmoHandles {
+    rotate: bool,
+    scale: bool,
+}
+
+impl GizmoHandles {
+    /// Move, rotate and scale: what fitting one mesh to another needs.
+    const ALL: Self = Self {
+        rotate: true,
+        scale: true,
+    };
+
+    /// Move only. A strand joint has no orientation to turn and no spacing to
+    /// stretch — the ring and the centre grip would be two controls that do
+    /// nothing anybody asked for.
+    const MOVE_ONLY: Self = Self {
+        rotate: false,
+        scale: false,
+    };
+}
+
 struct AlignmentGizmoGeometry {
     origin: Pos2,
     axis_ends: [Option<Pos2>; 3],
