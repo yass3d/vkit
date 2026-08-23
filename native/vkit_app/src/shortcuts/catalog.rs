@@ -133,10 +133,15 @@ pub enum Shortcut {
     TextureCanvasPan,
     DiagnosticLogCopy,
     LightRotate,
+
+    LayerHide,
+    LayerUnhideAll,
+    LayerIsolate,
+    LayerInvertSelection,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 54] = [
+    pub const ALL: [Self; 58] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -191,6 +196,10 @@ impl Shortcut {
         Self::TextureCanvasPan,
         Self::DiagnosticLogCopy,
         Self::LightRotate,
+        Self::LayerHide,
+        Self::LayerUnhideAll,
+        Self::LayerIsolate,
+        Self::LayerInvertSelection,
     ];
 
     pub const fn slot(self) -> usize {
@@ -260,6 +269,10 @@ impl Shortcut {
             Self::TextureCanvasPan => "texture-canvas-pan",
             Self::DiagnosticLogCopy => "diagnostic-log-copy",
             Self::LightRotate => "light-rotate",
+            Self::LayerHide => "layer-hide",
+            Self::LayerUnhideAll => "layer-unhide-all",
+            Self::LayerIsolate => "layer-isolate",
+            Self::LayerInvertSelection => "layer-invert-selection",
         }
     }
 
@@ -282,6 +295,9 @@ impl Shortcut {
                 Trigger::Mouse(egui::PointerButton::Middle)
             }
             Self::LightRotate => Trigger::Mouse(egui::PointerButton::Secondary),
+            // The pad's own key for "show me this one alone", which is where a
+            // modeller's hand already is when the other hand is on the mouse.
+            Self::LayerIsolate => Trigger::Numpad(NumpadKey::Divide),
             // Blender's pad, which every modelling program copied.
             Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
             Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
@@ -340,6 +356,8 @@ impl Shortcut {
             Self::TabSave => Key::Num5,
             Self::TextureCanvasPan => Key::Space,
             Self::DiagnosticLogCopy => Key::C,
+            Self::LayerHide | Self::LayerUnhideAll => Key::H,
+            Self::LayerInvertSelection => Key::I,
             // The pad keys answer through `trigger`; this arm is unreachable for
             // them and returns a key nothing is bound to rather than panicking.
             Self::ViewReset
@@ -361,7 +379,8 @@ impl Shortcut {
             | Self::TextureInvertHold
             | Self::ListAddToSelectionHold
             | Self::ListSoloHold
-            | Self::LightRotate => Key::Escape,
+            | Self::LightRotate
+            | Self::LayerIsolate => Key::Escape,
         }
     }
 
@@ -426,6 +445,11 @@ impl Shortcut {
             Self::TextureCanvasPan => ShortcutContext::TextureEdit,
 
             Self::DiagnosticLogCopy | Self::LightRotate => ShortcutContext::Global,
+
+            Self::LayerHide
+            | Self::LayerUnhideAll
+            | Self::LayerIsolate
+            | Self::LayerInvertSelection => ShortcutContext::Lists,
         }
     }
 
@@ -501,6 +525,12 @@ impl Shortcut {
             Self::TextureCanvasPan | Self::LightRotate => ModifierPolicy::Ignored,
 
             Self::DiagnosticLogCopy => ModifierPolicy::Exactly(Modifiers::COMMAND),
+
+            // `H` hides, `Alt+H` brings everything back: one letter for one
+            // idea, with the modifier saying which direction.
+            Self::LayerHide | Self::LayerIsolate => ModifierPolicy::Exactly(Modifiers::NONE),
+            Self::LayerUnhideAll => ModifierPolicy::Exactly(Modifiers::ALT),
+            Self::LayerInvertSelection => ModifierPolicy::Exactly(Modifiers::COMMAND),
         }
     }
 

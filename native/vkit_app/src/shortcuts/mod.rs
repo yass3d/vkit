@@ -303,22 +303,97 @@ mod registry_tests {
         }
     }
 
-    /// The number pad answers through the catalog and through nothing else.
+    /// A pad key answers through the catalog, or it is left to egui.
+    ///
+    /// Not every pad key has to be bound — `Num *` and `Num -` are free. What
+    /// must not happen is two shortcuts sharing one, or one being taken away
+    /// from egui with nothing to answer it, which would eat the keystroke of
+    /// somebody typing a number into a field.
     #[test]
-    fn every_pad_key_stands_for_exactly_one_shortcut() {
+    fn no_pad_key_stands_for_more_than_one_shortcut() {
         let keymap = Keymap::default();
+        let mut bound = 0;
         for key in NumpadKey::ALL {
-            let shortcut = keymap.shortcut_for(Trigger::Numpad(key));
-            assert!(
-                shortcut.is_some(),
-                "{key:?} is taken from egui and answers to nothing",
-            );
+            let claimants = Shortcut::ALL
+                .into_iter()
+                .filter(|candidate| keymap.binding(*candidate).trigger == Trigger::Numpad(key))
+                .count();
+            assert!(claimants <= 1, "{claimants} shortcuts answer {key:?}");
             assert_eq!(
-                Shortcut::ALL
-                    .into_iter()
-                    .filter(|candidate| keymap.binding(*candidate).trigger == Trigger::Numpad(key))
-                    .count(),
-                1,
+                claimants == 1,
+                keymap.shortcut_for(Trigger::Numpad(key)).is_some()
+            );
+            bound += claimants;
+        }
+        assert!(
+            bound >= 12,
+            "only {bound} pad keys are bound; the views have gone missing"
+        );
+    }
+
+    /// A binding may demand more than one modifier, and survive being saved.
+    ///
+    /// It could not before. `modifier_name` answered `None` for anything that
+    /// was not exactly one modifier, and `to_stored` DROPPED an entry it could
+    /// not name — so a `Ctrl+Shift+I` a reader had set was gone on the next
+    /// launch with nothing anywhere to say why.
+    #[test]
+    fn a_binding_with_two_modifiers_is_written_down_and_read_back() {
+        let mut keymap = Keymap::default();
+        let combo = Binding {
+            trigger: Trigger::Key(egui::Key::I),
+            modifiers: ModifierPolicy::Exactly(Modifiers::COMMAND | Modifiers::SHIFT),
+        };
+        keymap.rebind(Shortcut::LayerInvertSelection, combo);
+        assert_eq!(combo.label(), "Ctrl+Shift+I");
+
+        let stored = keymap.to_stored();
+        assert!(
+            stored.contains_key(Shortcut::LayerInvertSelection.name()),
+            "the entry was dropped instead of written",
+        );
+        assert_eq!(
+            Keymap::from_stored(&stored).binding(Shortcut::LayerInvertSelection),
+            combo,
+        );
+    }
+
+    /// One order for every spelling, so two equal bindings cannot look unequal.
+    #[test]
+    fn modifiers_are_always_spelled_in_the_same_order() {
+        let one_way = Binding {
+            trigger: Trigger::Key(egui::Key::A),
+            modifiers: ModifierPolicy::Exactly(Modifiers::ALT | Modifiers::SHIFT),
+        };
+        let other_way = Binding {
+            trigger: Trigger::Key(egui::Key::A),
+            modifiers: ModifierPolicy::Exactly(Modifiers::SHIFT | Modifiers::ALT),
+        };
+        assert_eq!(one_way.label(), "Shift+Alt+A");
+        assert_eq!(one_way.label(), other_way.label());
+    }
+
+    /// The four layer keys read as a set, and none collides with anything.
+    #[test]
+    fn the_layer_keys_read_as_one_family() {
+        let keymap = Keymap::default();
+        assert_eq!(keymap.binding(Shortcut::LayerHide).label(), "H");
+        assert_eq!(keymap.binding(Shortcut::LayerUnhideAll).label(), "Alt+H");
+        assert_eq!(
+            keymap.binding(Shortcut::LayerInvertSelection).label(),
+            "Ctrl+I"
+        );
+        assert_eq!(keymap.binding(Shortcut::LayerIsolate).label(), "Num /");
+        for shortcut in [
+            Shortcut::LayerHide,
+            Shortcut::LayerUnhideAll,
+            Shortcut::LayerIsolate,
+            Shortcut::LayerInvertSelection,
+        ] {
+            assert!(
+                keymap
+                    .conflict(shortcut, keymap.binding(shortcut))
+                    .is_none()
             );
         }
     }

@@ -3034,17 +3034,44 @@ fn the_history_strip_counts_hair_steps() {
     );
 }
 
+/// The split toggle sits under the view buttons, in one place, on every tab
+/// that offers it — and is simply absent on the tabs that do not.
 #[test]
-fn the_split_toggle_sits_in_the_same_place_in_every_splitting_stage() {
+fn the_split_toggle_sits_below_the_view_buttons_wherever_it_is_offered() {
     let viewport = test_rect();
+    let slot = crate::viewport_tool_layout::viewport_split_toggle_rect(
+        viewport,
+        super::panels::VIEWPORT_TOOL_PANELS.len(),
+    )
+    .expect("the rail has room for one more slot");
+    let last_panel = crate::viewport_tool_layout::viewport_tool_button_rect(
+        viewport,
+        super::panels::VIEWPORT_TOOL_PANELS.len() - 1,
+    )
+    .expect("the last panel button is on screen");
+    assert!(
+        slot.top() > last_panel.bottom(),
+        "the toggle belongs under the buttons it is grouped with"
+    );
+    assert!(
+        (slot.left() - last_panel.left()).abs() < 0.01,
+        "same column"
+    );
+
     let mut state = AppState::default();
-    let mut slot_for = |tab| {
+    for (tab, offered) in [
+        (crate::state::Tab::Morph, true),
+        (crate::state::Tab::Hair, true),
+        (crate::state::Tab::Alignment, false),
+        (crate::state::Tab::Result, false),
+    ] {
         state.active_tab = tab;
-        detail_hud::detail_split_slot_rect(&state, viewport)
-    };
-    let morph = slot_for(crate::state::Tab::Morph).expect("morph splits");
-    let hair = slot_for(crate::state::Tab::Hair).expect("hair splits");
-    assert_eq!(morph, hair, "the split toggle moved between tabs");
+        assert_eq!(
+            detail_hud::split_toggle_available(&state),
+            offered,
+            "{tab:?} disagrees about whether it can split"
+        );
+    }
 }
 
 #[test]

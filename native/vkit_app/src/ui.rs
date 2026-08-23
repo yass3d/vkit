@@ -646,6 +646,7 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                 }
             }
             handle_top_tab_keys(ui, state);
+            crate::layer_keys::handle_layer_shortcuts(ui, state);
 
             paint_title_brand(ui, brand_rect);
             match update_rect {

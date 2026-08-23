@@ -1158,15 +1158,20 @@ fn captured_binding(ui: &Ui, shortcut: Shortcut) -> Option<Binding> {
         });
     }
     ui.input(|input| {
-        let modifiers = if input.modifiers.command {
-            ModifierPolicy::Exactly(egui::Modifiers::COMMAND)
-        } else if input.modifiers.shift {
-            ModifierPolicy::Exactly(egui::Modifiers::SHIFT)
-        } else if input.modifiers.alt {
-            ModifierPolicy::Exactly(egui::Modifiers::ALT)
-        } else {
-            ModifierPolicy::Exactly(egui::Modifiers::NONE)
-        };
+        // Every modifier that is down, not the first one found. Reading one
+        // meant `Ctrl+Shift+I` was captured as plain `Ctrl+I`, quietly, and the
+        // reader's second modifier went nowhere.
+        let mut held = egui::Modifiers::NONE;
+        if input.modifiers.ctrl || input.modifiers.command {
+            held |= egui::Modifiers::COMMAND;
+        }
+        if input.modifiers.shift {
+            held |= egui::Modifiers::SHIFT;
+        }
+        if input.modifiers.alt {
+            held |= egui::Modifiers::ALT;
+        }
+        let modifiers = ModifierPolicy::Exactly(held);
         let key = input.events.iter().find_map(|event| match event {
             egui::Event::Key {
                 key,
@@ -1413,6 +1418,10 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
         Shortcut::TextureCanvasPan => TextKey::ShortcutTextureCanvasPan,
         Shortcut::DiagnosticLogCopy => TextKey::ShortcutDiagnosticLogCopy,
         Shortcut::LightRotate => TextKey::ShortcutLightRotate,
+        Shortcut::LayerHide => TextKey::ShortcutLayerHide,
+        Shortcut::LayerUnhideAll => TextKey::ShortcutLayerUnhideAll,
+        Shortcut::LayerIsolate => TextKey::ShortcutLayerIsolate,
+        Shortcut::LayerInvertSelection => TextKey::ShortcutLayerInvertSelection,
     }
 }
 

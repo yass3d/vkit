@@ -404,7 +404,11 @@ impl ApplicationHandler<RuntimeEvent> for NativeApplication {
         }
 
         if let WindowEvent::KeyboardInput { event: key, .. } = &event
-            && claims_numpad(key, runtime.context.egui_wants_keyboard_input())
+            && claims_numpad(
+                &runtime.state.keymap,
+                key,
+                runtime.context.egui_wants_keyboard_input(),
+            )
         {
             if let PhysicalKey::Code(code) = key.physical_key
                 && key.state == ElementState::Pressed
@@ -736,9 +740,22 @@ const fn numpad_action(shortcut: Shortcut) -> Option<Action> {
     }
 }
 
-fn claims_numpad(key: &winit::event::KeyEvent, keyboard_captured: bool) -> bool {
-    !keyboard_captured
-        && matches!(key.physical_key, PhysicalKey::Code(code) if numpad_key(code).is_some())
+/// Whether this pad press is taken away from egui.
+///
+/// Only when something answers it. A pad key nobody has bound falls through as
+/// the `Num` key egui folded it into, which is what a reader typing into a
+/// field expects — and it means adding `Num *` to the enum does not silently
+/// swallow the keystroke before anything is bound to it.
+fn claims_numpad(keymap: &Keymap, key: &winit::event::KeyEvent, keyboard_captured: bool) -> bool {
+    if keyboard_captured {
+        return false;
+    }
+    let PhysicalKey::Code(code) = key.physical_key else {
+        return false;
+    };
+    numpad_key(code)
+        .and_then(|pad| keymap.shortcut_for(Trigger::Numpad(pad)))
+        .is_some()
 }
 
 const fn numpad_key(code: KeyCode) -> Option<NumpadKey> {
@@ -754,6 +771,10 @@ const fn numpad_key(code: KeyCode) -> Option<NumpadKey> {
         KeyCode::Numpad8 => Some(NumpadKey::Eight),
         KeyCode::Numpad9 => Some(NumpadKey::Nine),
         KeyCode::NumpadDecimal => Some(NumpadKey::Decimal),
+        KeyCode::NumpadDivide => Some(NumpadKey::Divide),
+        KeyCode::NumpadMultiply => Some(NumpadKey::Multiply),
+        KeyCode::NumpadSubtract => Some(NumpadKey::Subtract),
+        KeyCode::NumpadAdd => Some(NumpadKey::Add),
         _ => None,
     }
 }

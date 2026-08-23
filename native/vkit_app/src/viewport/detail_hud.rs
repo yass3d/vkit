@@ -40,29 +40,17 @@ pub(super) fn detail_hud_right_base(viewport: Rect) -> f32 {
     )
 }
 
-const DETAIL_SPLIT_SLOT_SIZE: f32 = 26.0;
-const DETAIL_SPLIT_SLOT_GAP: f32 = 6.0;
-
-pub(super) fn detail_split_slot_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
-    if !state.is_detail_editing() && !state.is_hair_editing() {
-        return None;
-    }
-    let top = viewport.top() + DETAIL_HEADER_MARGIN;
-    let rect = Rect::from_min_size(
-        pos2(
-            detail_hud_left_base(viewport),
-            top + (DETAIL_HUD_HEIGHT - DETAIL_SPLIT_SLOT_SIZE) * 0.5,
-        ),
-        vec2(DETAIL_SPLIT_SLOT_SIZE, DETAIL_SPLIT_SLOT_SIZE),
-    );
-    viewport.contains_rect(rect).then_some(rect)
+/// Whether splitting the view is on offer at all right now.
+///
+/// The tab decides. A tab that is already showing two panes of its own, or has
+/// nothing to compare, says no and the button is simply absent — better than a
+/// control that is present and does nothing.
+pub(super) fn split_toggle_available(state: &AppState) -> bool {
+    state.is_detail_editing() || state.is_hair_editing()
 }
 
-pub(super) fn detail_hud_row_left(state: &AppState, viewport: Rect) -> f32 {
-    detail_split_slot_rect(state, viewport).map_or_else(
-        || detail_hud_left_base(viewport),
-        |slot| slot.right() + DETAIL_SPLIT_SLOT_GAP,
-    )
+pub(super) fn detail_hud_row_left(_state: &AppState, viewport: Rect) -> f32 {
+    detail_hud_left_base(viewport)
 }
 
 pub(super) fn detail_hud_plan(state: &AppState, viewport: Rect) -> Option<DetailHudPlan> {
@@ -266,11 +254,16 @@ pub fn draw_detail_workspace(ui: &mut Ui, state: &mut AppState, whole: Rect, tit
 pub(super) fn draw_split_view_toggle(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
     use crate::ui_components::Icon;
 
-    let Some(cell) = detail_split_slot_rect(state, viewport) else {
+    if !split_toggle_available(state) {
+        return;
+    }
+    let Some(cell) = crate::viewport_tool_layout::viewport_split_toggle_rect(
+        viewport,
+        super::panels::VIEWPORT_TOOL_PANELS.len(),
+    ) else {
         return;
     };
     let size = cell.width();
-    draw_detail_header_island(ui, cell, "vkit.viewport.detail.split-slot");
     let response = ui
         .interact(
             cell,
@@ -292,17 +285,20 @@ pub(super) fn draw_split_view_toggle(ui: &mut Ui, state: &mut AppState, viewport
             ));
         });
     let on = state.split_model_view;
-    if on || response.hovered() {
-        ui.painter().rect_filled(
-            cell.shrink(2.0),
-            crate::theme::CONTROL_RADIUS,
-            if on {
-                crate::theme::COLOR_PRIMARY
-            } else {
-                crate::theme::COLOR_SURFACE_HOVER
-            },
-        );
-    }
+    let control = crate::theme::ControlState {
+        hovered: response.hovered(),
+        pressed: response.is_pointer_button_down_on(),
+        active: on,
+    };
+    ui.painter().circle_filled(
+        cell.center(),
+        size * 0.5,
+        if on {
+            crate::theme::COLOR_PRIMARY
+        } else {
+            crate::theme::control_fill(crate::theme::COLOR_RAIL_IDLE, control)
+        },
+    );
     let icon = if state.is_texturing() {
         Icon::SplitRows
     } else {

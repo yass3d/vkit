@@ -32,6 +32,7 @@ mod hair_settings;
 mod history;
 mod i18n;
 mod importers;
+mod layer_keys;
 mod lighting;
 mod logo_art;
 mod look_head_filter;

@@ -22,10 +22,14 @@ pub enum NumpadKey {
     Eight,
     Nine,
     Decimal,
+    Divide,
+    Multiply,
+    Subtract,
+    Add,
 }
 
 impl NumpadKey {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 15] = [
         Self::Zero,
         Self::One,
         Self::Two,
@@ -37,6 +41,10 @@ impl NumpadKey {
         Self::Eight,
         Self::Nine,
         Self::Decimal,
+        Self::Divide,
+        Self::Multiply,
+        Self::Subtract,
+        Self::Add,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -52,6 +60,10 @@ impl NumpadKey {
             Self::Eight => "Num 8",
             Self::Nine => "Num 9",
             Self::Decimal => "Num .",
+            Self::Divide => "Num /",
+            Self::Multiply => "Num *",
+            Self::Subtract => "Num -",
+            Self::Add => "Num +",
         }
     }
 
@@ -68,6 +80,10 @@ impl NumpadKey {
             Self::Eight => "numpad8",
             Self::Nine => "numpad9",
             Self::Decimal => "numpaddecimal",
+            Self::Divide => "numpaddivide",
+            Self::Multiply => "numpadmultiply",
+            Self::Subtract => "numpadsubtract",
+            Self::Add => "numpadadd",
         }
     }
 

@@ -81,8 +81,10 @@ impl Keymap {
     pub fn from_stored(stored: &BTreeMap<String, String>) -> Self {
         let mut keymap = Self::default();
         for (name, spelling) in stored {
+            // Split from the RIGHT: the modifier half may now be `ctrl+shift`,
+            // and no trigger name carries a `+` of its own.
             let (Some(shortcut), Some((modifiers, trigger))) =
-                (Shortcut::by_name(name), spelling.split_once('+'))
+                (Shortcut::by_name(name), spelling.rsplit_once('+'))
             else {
                 continue;
             };

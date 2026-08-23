@@ -27,36 +27,90 @@ pub struct Binding {
     pub modifiers: ModifierPolicy,
 }
 
+/// The modifiers a binding can demand, in the order they are always written.
+///
+/// One order, used for the label and for the file alike, so `Ctrl+Shift+I` is
+/// never also spelled `Shift+Ctrl+I` and two bindings that mean the same thing
+/// cannot look different to a reader or to the conflict check.
+struct Held {
+    /// How it is shown to a reader.
+    shown: &'static str,
+    /// How it is written into a keymap file.
+    stored: &'static str,
+    /// Whether it is down.
+    is_held: fn(Modifiers) -> bool,
+}
+
+const HELD: [Held; 3] = [
+    Held {
+        shown: "Ctrl",
+        stored: "ctrl",
+        is_held: |modifiers| modifiers.ctrl || modifiers.command,
+    },
+    Held {
+        shown: "Shift",
+        stored: "shift",
+        is_held: |modifiers| modifiers.shift,
+    },
+    Held {
+        shown: "Alt",
+        stored: "alt",
+        is_held: |modifiers| modifiers.alt,
+    },
+];
+
 impl Binding {
     pub fn label(self) -> String {
-        let prefix = match self.modifiers {
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::COMMAND => "Ctrl+",
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::SHIFT => "Shift+",
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::ALT => "Alt+",
-            ModifierPolicy::Exactly(_) | ModifierPolicy::Ignored => "",
+        let ModifierPolicy::Exactly(modifiers) = self.modifiers else {
+            return self.trigger.label().to_owned();
         };
-        format!("{prefix}{}", self.trigger.label())
+        let mut spelled = String::new();
+        for held in HELD {
+            if (held.is_held)(modifiers) {
+                spelled.push_str(held.shown);
+                spelled.push('+');
+            }
+        }
+        spelled.push_str(self.trigger.label());
+        spelled
     }
 
-    pub(super) fn modifier_name(self) -> Option<&'static str> {
-        match self.modifiers {
-            ModifierPolicy::Ignored => Some("any"),
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::COMMAND => Some("ctrl"),
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::SHIFT => Some("shift"),
-            ModifierPolicy::Exactly(modifiers) if modifiers == Modifiers::ALT => Some("alt"),
-            ModifierPolicy::Exactly(modifiers) if modifiers.is_none() => Some("none"),
-            ModifierPolicy::Exactly(_) => None,
+    /// How the modifiers are written into a keymap file.
+    ///
+    /// Never `None` any more. It used to return `None` for anything that was
+    /// not exactly one modifier, and `to_stored` DROPPED such an entry — so a
+    /// `Ctrl+Shift+I` a reader had set could not be saved, and nothing said so.
+    pub(super) fn modifier_name(self) -> Option<String> {
+        let ModifierPolicy::Exactly(modifiers) = self.modifiers else {
+            return Some("any".to_owned());
+        };
+        let held: Vec<&str> = HELD
+            .into_iter()
+            .filter(|held| (held.is_held)(modifiers))
+            .map(|held| held.stored)
+            .collect();
+        if held.is_empty() {
+            return Some("none".to_owned());
         }
+        Some(held.join("+"))
     }
 
     pub(super) fn modifiers_by_name(name: &str) -> Option<ModifierPolicy> {
-        match name {
-            "any" => Some(ModifierPolicy::Ignored),
-            "ctrl" => Some(ModifierPolicy::Exactly(Modifiers::COMMAND)),
-            "shift" => Some(ModifierPolicy::Exactly(Modifiers::SHIFT)),
-            "alt" => Some(ModifierPolicy::Exactly(Modifiers::ALT)),
-            "none" => Some(ModifierPolicy::Exactly(Modifiers::NONE)),
-            _ => None,
+        if name == "any" {
+            return Some(ModifierPolicy::Ignored);
         }
+        if name == "none" {
+            return Some(ModifierPolicy::Exactly(Modifiers::NONE));
+        }
+        let mut modifiers = Modifiers::NONE;
+        for part in name.split('+') {
+            match part {
+                "ctrl" => modifiers |= Modifiers::COMMAND,
+                "shift" => modifiers |= Modifiers::SHIFT,
+                "alt" => modifiers |= Modifiers::ALT,
+                _ => return None,
+            }
+        }
+        Some(ModifierPolicy::Exactly(modifiers))
     }
 }
