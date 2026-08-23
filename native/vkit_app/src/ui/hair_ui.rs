@@ -713,7 +713,13 @@ fn draw_sidebar_part_row(
     if duplicate.clicked() {
         state.dispatch(Action::DuplicateHairPart(part_id));
     } else if eye.clicked() {
-        state.dispatch(Action::ToggleHairPartVisible(part_id));
+        // Alt on the eye isolates, the way a layer list does; alt again on the
+        // same part brings the rest back.
+        if row_ui.input(|input| input.modifiers.alt) {
+            state.dispatch(Action::SoloHairPart(part_id));
+        } else {
+            state.dispatch(Action::ToggleHairPartVisible(part_id));
+        }
     } else if trash.clicked() {
         state.dispatch(Action::RemoveHairPart(part_id));
     } else if row_response.clicked() && !on_control && !hovered_controls {

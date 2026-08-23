@@ -1280,6 +1280,7 @@ impl AppState {
             Action::ToggleHairPartVisible(id) => {
                 self.hair_project.toggle_part_visible(id);
             }
+            Action::SoloHairPart(id) => self.hair_project.solo_part(id),
             Action::SetHairTool(tool) => self.hair_project.active_tool = tool,
             Action::SelectHairParamGroup(group) => self.hair_param_group = group,
             Action::SetHairBrushStrength(strength) => {

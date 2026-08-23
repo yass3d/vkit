@@ -470,8 +470,16 @@ pub fn paint_brush_cursor(
         painter.circle_filled(cursor.at, radius, color.gamma_multiply(0.12 + 0.58 * fill));
     }
     painter.circle_stroke(cursor.at, radius, Stroke::new(1.5, color));
-    // The centre, so a wide brush still says exactly where it is pointed.
-    painter.circle_filled(cursor.at, BRUSH_CENTRE_RADIUS, color.gamma_multiply(0.9));
+    // The centre, so a wide brush still says exactly where it is pointed. White
+    // with a dark collar rather than the ring's own colour: this dot stands in
+    // for the pointer, and a pointer has to be found against skin, hair and the
+    // background alike, which no single tint manages.
+    painter.circle_filled(
+        cursor.at,
+        BRUSH_CENTRE_RADIUS + 1.0,
+        Color32::from_black_alpha(160),
+    );
+    painter.circle_filled(cursor.at, BRUSH_CENTRE_RADIUS, Color32::WHITE);
 }
 
 /// How big the dot in the middle of a brush ring is.

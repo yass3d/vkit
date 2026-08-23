@@ -46,6 +46,7 @@ pub enum Action {
         additive: bool,
     },
     ToggleHairPartVisible(u64),
+    SoloHairPart(u64),
     SetHairTool(crate::hair_project::HairTool),
     SetHairBrushRadius(f32),
     SetHairBrushStrength(f32),
@@ -455,6 +456,7 @@ impl Action {
             Self::AddHairPart { .. }
                 | Self::RemoveHairPart(_)
                 | Self::ToggleHairPartVisible(_)
+                | Self::SoloHairPart(_)
                 | Self::PlantHairStrands { .. }
                 | Self::UnplantHairStrands { .. }
                 | Self::SetHairPartSegments { .. }
@@ -513,6 +515,7 @@ impl Action {
             | Self::AddHairPart { .. }
             | Self::RemoveHairPart(_)
             | Self::ToggleHairPartVisible(_)
+            | Self::SoloHairPart(_)
             | Self::PlantHairStrands { .. }
             | Self::UnplantHairStrands { .. }
             | Self::SetHairPartSegments { .. }

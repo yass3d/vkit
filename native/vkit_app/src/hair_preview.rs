@@ -27,13 +27,14 @@ const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 /// the authored standoff is added at all.
 const SCALP_SURFACE_OFFSET_CM: f32 = 0.03;
 
-/// The floor `baked` is held to, `moveToSurfaceOffset`.
-const SCALP_MOVE_TO_SURFACE_CM: f32 = 0.03;
-
-/// `additionalThicknessMultiplier`, scaled per vertex by the dot between the
-/// skin's normal and the cap's. A cap lying along the skin takes nearly all of
-/// it.
-const SCALP_ADDITIONAL_THICKNESS_CM: f32 = 0.1;
+// `moveToSurfaceOffset` and `additionalThicknessMultiplier` are in the wrap's
+// formula and are NOT in the total these caps come out with. Ledger 4.8
+// measured every provider through this same code path against the bundle's own
+// neutral base, and the answer was `baked + surfaceOffset` and nothing else:
+// Udane 2.4 mm baked and 2.7 mm total, Leyton 3.1 and 3.4, Soleil and Omri 2.1
+// and 2.4, Krayon 4.1 and 4.4, PantyRegion ~0 and 0.3. A floor under `baked`
+// would have lifted PantyRegion off the skin and it is flush; the thickness
+// term would have added a millimetre to all seven and none of them carries it.
 
 #[derive(Clone, Debug)]
 pub struct HairPreview {
@@ -500,6 +501,7 @@ fn build_scalp_anchors(
 ) -> Result<Vec<ScalpAnchor>, String> {
     let scale = alignment.scale;
     let mut anchors = Vec::with_capacity(scalp.vertices_cm.len());
+    let mut measured: Vec<f32> = Vec::with_capacity(scalp.vertices_cm.len());
     for point in &scalp.vertices_cm {
         let placed = alignment.apply(*point);
         let hit = projector
@@ -513,7 +515,8 @@ fn build_scalp_anchors(
             .triangles
             .get(hit.primitive_id as usize)
             .ok_or("scalp anchor references a triangle outside the template")?;
-        let (baked, dot) = authored_standoff(placed, neutral).unwrap_or((0.0, 1.0));
+        let baked = authored_standoff(placed, neutral).unwrap_or(0.0);
+        measured.push(baked);
         anchors.push(ScalpAnchor {
             triangle,
             barycentric: [
@@ -521,24 +524,37 @@ fn build_scalp_anchors(
                 hit.barycentric[1] as f32,
                 hit.barycentric[2] as f32,
             ],
-            normal_offset: (baked.max(SCALP_MOVE_TO_SURFACE_CM)
-                + SCALP_SURFACE_OFFSET_CM
-                + dot * SCALP_ADDITIONAL_THICKNESS_CM)
-                * scale,
+            normal_offset: (baked + SCALP_SURFACE_OFFSET_CM) * scale,
         });
+    }
+    if !measured.is_empty() {
+        let mut sorted = measured.clone();
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        let at = |fraction: f32| sorted[((sorted.len() - 1) as f32 * fraction) as usize];
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "scalp_standoff",
+            &format!(
+                "n={}; baked p10={:.4} p50={:.4} p90={:.4} max={:.4} cm;                  total p50={:.4} cm; neutral={}",
+                sorted.len(),
+                at(0.10),
+                at(0.50),
+                at(0.90),
+                sorted[sorted.len() - 1],
+                (at(0.50) + SCALP_SURFACE_OFFSET_CM) * scale,
+                neutral.is_some(),
+            ),
+        );
     }
     Ok(anchors)
 }
 
-/// How far this cap vertex stands off the figure it was authored on, and how
-/// squarely it faces it.
+/// How far this cap vertex stands off the figure it was authored on.
 ///
-/// Returns `None` before a figure is loaded, which is the case the constants
-/// alone have to cover.
-fn authored_standoff(
-    placed: Vec3,
-    neutral: Option<(&Mesh, &SurfaceProjector)>,
-) -> Option<(f32, f32)> {
+/// Returns `None` before a figure is loaded, which is the case `surfaceOffset`
+/// alone has to cover.
+fn authored_standoff(placed: Vec3, neutral: Option<(&Mesh, &SurfaceProjector)>) -> Option<f32> {
     let (mesh, projector) = neutral?;
     let hit = projector
         .project([
@@ -554,14 +570,9 @@ fn authored_standoff(
         hit.point[1] as f32,
         hit.point[2] as f32,
     );
-    let offset = placed - surface;
-    // Outside the skin only. A cap vertex that lands inside is held to the
-    // floor, which is what `max(baked, moveToSurfaceOffset)` is for.
-    let baked = offset.dot(normal).max(0.0);
-    let dot = offset
-        .try_normalize()
-        .map_or(1.0, |direction| direction.dot(normal).abs());
-    Some((baked, dot))
+    // Outside the skin only: a cap vertex that lands inside carries no standoff
+    // of its own, which is what PantyRegion measures as.
+    Some((placed - surface).dot(normal).max(0.0))
 }
 
 fn triangle_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
@@ -1035,9 +1046,10 @@ mod scalp_wrap_tests {
         }
     }
 
-    /// The standoff a cap with no authored gap gets: the wrap's own three
-    /// constants, `max(0, 0.03) + 0.03 + 1 x 0.1`.
-    const FLUSH_STANDOFF_CM: f32 = 0.16;
+    /// The standoff a cap authored flush against the skin gets: `surfaceOffset`
+    /// and nothing else. Ledger 4.8 measured PantyRegion, which IS flush, at
+    /// exactly this.
+    const FLUSH_STANDOFF_CM: f32 = SCALP_SURFACE_OFFSET_CM;
 
     fn hug_distances(cap: &HairScalpGeometry, head: &Mesh, neutral: &Mesh) -> Vec<f32> {
         let projector = projector_for_mesh(head).expect("a head projects");
@@ -1126,7 +1138,7 @@ mod scalp_wrap_tests {
 
         for squash in [[1.0_f32, 1.0, 1.0], [1.0, 1.0, 0.72], [1.3, 0.95, 1.05]] {
             let head = ball(10.0, squash, 12);
-            let wanted = 0.5 + SCALP_SURFACE_OFFSET_CM + SCALP_ADDITIONAL_THICKNESS_CM;
+            let wanted = 0.5 + SCALP_SURFACE_OFFSET_CM;
             let worst = hug_distances(&raised, &head, &neutral)
                 .into_iter()
                 .fold(0.0_f32, |held, value| held.max((value - wanted).abs()));
@@ -1168,5 +1180,39 @@ mod scalp_wrap_tests {
             worst > 1.0,
             "the test heads are too alike to show the defect: worst departure {worst}",
         );
+    }
+}
+
+#[cfg(test)]
+mod scalp_standoff_tests {
+    use super::*;
+
+    /// The numbers ledger 4.8 measured through this same code path, against the
+    /// bundle's own neutral base. Every one of them is `baked + surfaceOffset`:
+    /// a floor under `baked` would lift PantyRegion off a skin it is flush
+    /// with, and the thickness term would add a millimetre to all seven.
+    #[test]
+    fn the_total_gap_is_the_authored_standoff_plus_one_constant() {
+        for (provider, baked_mm, total_mm) in [
+            ("UdaneScalp", 2.4_f32, 2.7_f32),
+            ("LeytonScalp", 3.1, 3.4),
+            ("SoleilScalp", 2.1, 2.4),
+            ("OmriScalp", 2.1, 2.4),
+            ("KrayonScalp", 4.1, 4.4),
+            ("VictoriaElitePonytailHairScalp", 1.4, 1.7),
+            ("PantyRegionScalp", 0.0, 0.3),
+        ] {
+            let computed = baked_mm + SCALP_SURFACE_OFFSET_CM * 10.0;
+            assert!(
+                (computed - total_mm).abs() < 0.05,
+                "{provider}: {baked_mm} mm baked comes out {computed} mm, measured {total_mm}",
+            );
+        }
+    }
+
+    /// And the constant is the one the wrap calls `surfaceOffset`, 0.0003 m.
+    #[test]
+    fn the_constant_is_the_wraps_own_surface_offset() {
+        assert!((SCALP_SURFACE_OFFSET_CM - 0.03).abs() < 1.0e-6);
     }
 }

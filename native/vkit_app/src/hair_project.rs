@@ -622,6 +622,26 @@ impl HairProject {
         }
     }
 
+    /// Show this part alone, or — if it is already the only one shown — show
+    /// everything again.
+    ///
+    /// The way a layer list has always done it: alt-click the eye to isolate,
+    /// alt-click again to come back. Reaching for one part among a dozen by
+    /// closing eleven eyes is the thing this replaces.
+    pub fn solo_part(&mut self, id: u64) {
+        if !self.parts.iter().any(|part| part.id == id) {
+            return;
+        }
+        let already_alone = self
+            .parts
+            .iter()
+            .all(|part| part.visible == (part.id == id));
+        for part in &mut self.parts {
+            part.visible = already_alone || part.id == id;
+        }
+        self.touch(id);
+    }
+
     pub fn part(&self, id: u64) -> Option<&HairPart> {
         self.parts.iter().find(|part| part.id == id)
     }
