@@ -1139,7 +1139,24 @@ const fn is_modifier_key(key: egui::Key) -> bool {
     )
 }
 
-fn captured_binding(ui: &Ui) -> Option<Binding> {
+/// What the reader just pressed, read as a binding for `shortcut`.
+///
+/// The shortcut is passed in because the answer depends on what KIND of thing
+/// is being rebound. A held gesture stays a held gesture — offering to put
+/// "smooth while held" on the letter K would produce a stroke with no way to
+/// stop it — so for those, a modifier going down is the whole binding. For
+/// everything else a bare modifier is not a binding at all, it is the reader
+/// still reaching for the key.
+fn captured_binding(ui: &Ui, shortcut: Shortcut) -> Option<Binding> {
+    if matches!(shortcut.default_binding().trigger, Trigger::Held(_)) {
+        return captured_modifier(ui);
+    }
+    if let Some(pad) = crate::shortcuts::take_pad_press(ui) {
+        return Some(Binding {
+            trigger: Trigger::Numpad(pad),
+            modifiers: ModifierPolicy::Exactly(egui::Modifiers::NONE),
+        });
+    }
     ui.input(|input| {
         let modifiers = if input.modifiers.command {
             ModifierPolicy::Exactly(egui::Modifiers::COMMAND)
@@ -1173,6 +1190,19 @@ fn captured_binding(ui: &Ui) -> Option<Binding> {
         .find(|button| input.pointer.button_pressed(*button))
         .map(Trigger::Mouse);
         key.or(mouse).map(|trigger| Binding { trigger, modifiers })
+    })
+}
+
+/// A modifier on its own, for the gestures whose binding is exactly that.
+fn captured_modifier(ui: &Ui) -> Option<Binding> {
+    let held = ui.input(|input| {
+        crate::shortcuts::ModifierKey::ALL
+            .into_iter()
+            .find(|modifier| modifier.held_in(input.modifiers))
+    })?;
+    Some(Binding {
+        trigger: Trigger::Held(held),
+        modifiers: ModifierPolicy::Ignored,
     })
 }
 
@@ -1273,7 +1303,9 @@ fn draw_shortcut_settings(ui: &mut Ui, state: &mut AppState) {
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     if escaped {
         ui.data_mut(|data| data.remove::<Shortcut>(Id::new(CAPTURE_ID)));
-    } else if let (Some(shortcut), Some(binding)) = (armed, captured_binding(ui)) {
+    } else if let (Some(shortcut), Some(binding)) =
+        (armed, armed.and_then(|armed| captured_binding(ui, armed)))
+    {
         ui.data_mut(|data| data.remove::<Shortcut>(Id::new(CAPTURE_ID)));
         if state.keymap.conflict(shortcut, binding).is_none() {
             state.dispatch(Action::RebindShortcut(shortcut, binding));
@@ -1614,5 +1646,76 @@ mod shortcut_group_tests {
                 shortcut.context(),
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+
+    /// A gesture can only be moved onto another modifier.
+    ///
+    /// Putting "smooth while held" on the letter K would start a stroke with no
+    /// way to stop it, because nothing asks whether K is still down.
+    #[test]
+    fn a_held_gesture_captures_a_modifier_and_a_key_shortcut_does_not() {
+        for (shortcut, expects_modifier) in [
+            (Shortcut::SculptSmoothHold, true),
+            (Shortcut::ListSoloHold, true),
+            (Shortcut::HairCutTool, false),
+            (Shortcut::ViewTop, false),
+        ] {
+            assert_eq!(
+                matches!(
+                    shortcut.default_binding().trigger,
+                    crate::shortcuts::Trigger::Held(_)
+                ),
+                expects_modifier,
+                "{shortcut:?}",
+            );
+        }
+
+        let context = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(400.0, 400.0))),
+            modifiers: egui::Modifiers::ALT,
+            ..Default::default()
+        };
+        let _ = context.run_ui(input, |ui| {
+            let held = captured_binding(ui, Shortcut::SculptSmoothHold);
+            assert_eq!(
+                held.map(|binding| binding.trigger),
+                Some(crate::shortcuts::Trigger::Held(
+                    crate::shortcuts::ModifierKey::Alt
+                )),
+            );
+            assert!(
+                captured_binding(ui, Shortcut::HairCutTool).is_none(),
+                "a bare modifier is the reader still reaching for the key",
+            );
+        });
+    }
+
+    /// A pad press reaches the capture field, which egui cannot see by itself.
+    #[test]
+    fn a_pad_press_is_captured_once_and_then_it_is_gone() {
+        let context = egui::Context::default();
+        crate::shortcuts::note_pad_press(&context, crate::shortcuts::NumpadKey::Seven);
+        let input = || egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(400.0, 400.0))),
+            ..Default::default()
+        };
+        let _ = context.run_ui(input(), |ui| {
+            assert_eq!(
+                captured_binding(ui, Shortcut::ViewTop).map(|binding| binding.trigger),
+                Some(crate::shortcuts::Trigger::Numpad(
+                    crate::shortcuts::NumpadKey::Seven
+                )),
+            );
+            assert!(
+                captured_binding(ui, Shortcut::ViewTop).is_none(),
+                "one press must not be captured twice",
+            );
+        });
     }
 }

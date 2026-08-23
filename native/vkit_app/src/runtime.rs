@@ -406,6 +406,13 @@ impl ApplicationHandler<RuntimeEvent> for NativeApplication {
         if let WindowEvent::KeyboardInput { event: key, .. } = &event
             && claims_numpad(key, runtime.context.egui_wants_keyboard_input())
         {
+            if let PhysicalKey::Code(code) = key.physical_key
+                && key.state == ElementState::Pressed
+                && !key.repeat
+                && let Some(pad) = numpad_key(code)
+            {
+                crate::shortcuts::note_pad_press(&runtime.context, pad);
+            }
             if let Some(action) = numpad_shortcut_action(
                 &runtime.state.keymap,
                 key.physical_key,

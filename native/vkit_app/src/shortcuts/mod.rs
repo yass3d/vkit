@@ -18,6 +18,34 @@ use egui::Ui;
 
 const KEYMAP_ID: &str = "vkit.shortcuts.keymap";
 
+const PAD_PRESS_ID: &str = "vkit.shortcuts.pad-press";
+
+/// Tell egui that a pad key went down.
+///
+/// egui never sees one: `egui-winit` folds `Numpad5` into `Num5`, which is why
+/// the pad is read off the physical key in `runtime.rs` instead. The Settings
+/// capture field is inside egui, so without this it could offer no way to put a
+/// view on a different pad key — the binding would be listed and unbindable.
+pub fn note_pad_press(ctx: &egui::Context, key: NumpadKey) {
+    ctx.data_mut(|data| data.insert_temp(egui::Id::new(PAD_PRESS_ID), key));
+}
+
+/// The pad key struck since this was last asked, taken rather than read.
+///
+/// Taken, so one press cannot be captured twice by two frames of the same
+/// dialog.
+#[must_use]
+pub fn take_pad_press(ui: &Ui) -> Option<NumpadKey> {
+    ui.data_mut(|data| {
+        let id = egui::Id::new(PAD_PRESS_ID);
+        let key = data.get_temp::<NumpadKey>(id);
+        if key.is_some() {
+            data.remove::<NumpadKey>(id);
+        }
+        key
+    })
+}
+
 pub fn install(ctx: &egui::Context, keymap: &Keymap) {
     ctx.data_mut(|data| data.insert_temp(egui::Id::new(KEYMAP_ID), keymap.clone()));
 }
