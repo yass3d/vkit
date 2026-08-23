@@ -194,7 +194,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Edita la cabeza G2 tal cual, sin escaneo; luego se puede cargar y ajustar un escaneo",
         ),
-        TextKey::Undo => Some("Deshacer"),
         TextKey::ResetAllPins => Some("Restablecer puntos"),
         TextKey::ResetAll => Some("Restablecer todo"),
         TextKey::MorphSave => Some("Guardar morph"),

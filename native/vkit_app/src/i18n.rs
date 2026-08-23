@@ -296,7 +296,6 @@ text_keys! {
     AddHeadFileActionTooltip,
     ContinueStep,
     ContinueStepTooltip,
-    Undo,
     ResetAllPins,
     ResetAll,
 

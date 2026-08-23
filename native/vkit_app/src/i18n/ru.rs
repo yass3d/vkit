@@ -182,7 +182,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Редактировать голову G2 как есть, без скана; скан можно загрузить и подогнать позже",
         ),
-        TextKey::Undo => Some("Отменить"),
         TextKey::ResetAllPins => Some("Сбросить все точки"),
         TextKey::ResetAll => Some("Сбросить всё"),
         TextKey::MorphSave => Some("Сохранить морф"),

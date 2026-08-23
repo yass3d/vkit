@@ -85,6 +85,14 @@ pub(super) fn nav_buttons(state: &AppState) -> Vec<NavButton> {
             enabled: !busy && has_strands,
             destructive: true,
         });
+    } else if matches!(state.active_tab, Tab::Alignment | Tab::Edit) && state.scan_path.is_some() {
+        buttons.push(NavButton {
+            icon: Icon::Broom,
+            tooltip: TextKey::ResetAllPins,
+            action: Action::ResetPins,
+            enabled: !busy,
+            destructive: true,
+        });
     } else if matches!(state.active_tab, Tab::Texture)
         && let Some(layer) = state.texture_project.selected_layer_id
     {
@@ -245,6 +253,24 @@ mod tests {
             "both resets throw work away and have to look like it"
         );
         assert!(!buttons[0].destructive && !buttons[3].destructive);
+    }
+
+    /// The pin tab's reset is in the bar too, and only once a scan is loaded.
+    ///
+    /// It had an island of its own at the bottom of the two-pane view, with its
+    /// own undo beside it — the same two controls, in a second place, drawn by
+    /// a second function.
+    #[test]
+    fn the_pin_tab_resets_its_pins_from_the_same_bar() {
+        let mut state = AppState::default();
+        state.active_tab = crate::state::Tab::Edit;
+        assert_eq!(nav_buttons(&state).len(), 2, "no scan, nothing to reset");
+
+        state.scan_path = Some(std::path::PathBuf::from("head.obj"));
+        let buttons = nav_buttons(&state);
+        assert_eq!(buttons.len(), 3);
+        assert_eq!(buttons[1].icon, Icon::Broom);
+        assert!(buttons[1].destructive);
     }
 
     /// A tab with nothing to reset still gets the two arrows.

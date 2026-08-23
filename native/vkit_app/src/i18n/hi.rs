@@ -168,7 +168,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "G2 हेड को जैसा है वैसा ही संपादित करें, बिना स्कैन के; स्कैन बाद में भी लोड और फ़िट किया जा सकता है",
         ),
-        TextKey::Undo => Some("पूर्ववत"),
         TextKey::ResetAllPins => Some("सभी पिन रीसेट"),
         TextKey::ResetAll => Some("सब रीसेट करें"),
         TextKey::MorphSave => Some("मॉर्फ सहेजें"),

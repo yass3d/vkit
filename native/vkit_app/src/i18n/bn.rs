@@ -162,7 +162,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => {
             Some("স্ক্যান ছাড়াই G2 হেড যেমন আছে তেমন সম্পাদনা করুন; পরেও স্ক্যান লোড করে ফিট করা যাবে")
         }
-        TextKey::Undo => Some("আনডু"),
         TextKey::ResetAllPins => Some("সব পিন রিসেট"),
         TextKey::ResetAll => Some("সব রিসেট"),
         TextKey::MorphSave => Some("মর্ফ সংরক্ষণ"),

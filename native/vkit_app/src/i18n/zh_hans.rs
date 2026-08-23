@@ -160,7 +160,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => {
             Some("不使用扫描，直接编辑 G2 头部；之后仍可载入扫描并进行拟合")
         }
-        TextKey::Undo => Some("撤销"),
         TextKey::ResetAllPins => Some("重置全部标记点"),
         TextKey::ResetAll => Some("全部重置"),
         TextKey::MorphSave => Some("保存变形"),

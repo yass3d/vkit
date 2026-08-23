@@ -200,7 +200,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Den G2-Kopf ohne Scan so bearbeiten, wie er ist; ein Scan lässt sich später laden und anpassen",
         ),
-        TextKey::Undo => Some("Rückgängig"),
         TextKey::ResetAllPins => Some("Alle Pins zurücksetzen"),
         TextKey::ResetAll => Some("Alles zuruecksetzen"),
         TextKey::MorphSave => Some("Morph speichern"),

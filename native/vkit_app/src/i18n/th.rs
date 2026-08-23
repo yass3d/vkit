@@ -158,7 +158,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => {
             Some("แก้ไขหัว G2 ตามที่เป็นอยู่โดยไม่ใช้สแกน และยังโหลดสแกนมาฟิตภายหลังได้")
         }
-        TextKey::Undo => Some("เลิกทำ"),
         TextKey::ResetAllPins => Some("รีเซ็ตพินทั้งหมด"),
         TextKey::ResetAll => Some("รีเซ็ตทั้งหมด"),
         TextKey::MorphSave => Some("บันทึกมอร์ฟ"),

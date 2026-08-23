@@ -184,7 +184,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ContinueStepTooltip => {
             "Edit the G2 head as it is, with no scan; a scan can still be loaded and fitted later"
         }
-        TextKey::Undo => "Undo",
         TextKey::ResetAllPins => "Reset All Pins",
         TextKey::ResetAll => "Reset all",
         TextKey::MorphSave => "Save morph",

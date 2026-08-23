@@ -170,7 +170,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ContinueStepTooltip => {
             "스캔 없이 G2 헤드를 그대로 편집합니다. 나중에 스캔을 불러와 맞추는 것도 가능합니다"
         }
-        TextKey::Undo => "실행 취소",
         TextKey::ResetAllPins => "전체 핀 초기화",
         TextKey::ResetAll => "전체 초기화",
         TextKey::MorphSave => "모프 저장",

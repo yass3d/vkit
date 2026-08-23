@@ -351,12 +351,7 @@ pub fn draw_edit(ui: &mut Ui, state: &mut AppState, scan_rect: Rect, template_re
         workspace_rect,
         (scan_rect.right() + template_rect.left()) * 0.5,
     );
-    draw_pin_island(
-        ui,
-        state,
-        workspace_rect,
-        (scan_rect.right() + template_rect.left()) * 0.5,
-    );
+    work_nav::draw_work_nav(ui, state, workspace_rect);
     draw_template_install_fade(ui, state, workspace_rect);
 
     ui.painter().line_segment(
@@ -694,9 +689,6 @@ pub fn draw_result_floating_chrome(ui: &mut Ui, state: &mut AppState, rect: Rect
     draw_viewport_help(ui, state, rect, true);
     if state.is_detail_editing() {
         draw_detail_viewport_controls(ui, state, rect);
-    }
-    if state.is_hair_editing() {
-        draw_hair_reset_island(ui, state, rect);
     }
     work_nav::draw_work_nav(ui, state, rect);
     if projection_stencil_mode(state) {

@@ -160,7 +160,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => {
             Some("不使用掃描，直接編輯 G2 頭部；之後仍可載入掃描並進行貼合")
         }
-        TextKey::Undo => Some("復原"),
         TextKey::ResetAllPins => Some("重設所有標記點"),
         TextKey::ResetAll => Some("全部重設"),
         TextKey::MorphSave => Some("儲存變形"),

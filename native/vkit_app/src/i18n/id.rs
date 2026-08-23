@@ -180,7 +180,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Sunting kepala G2 apa adanya, tanpa pindaian; pindaian tetap bisa dimuat dan difit nanti",
         ),
-        TextKey::Undo => Some("Urungkan"),
         TextKey::ResetAllPins => Some("Atur Ulang Semua Pin"),
         TextKey::ResetAll => Some("Atur ulang semua"),
         TextKey::MorphSave => Some("Simpan morph"),

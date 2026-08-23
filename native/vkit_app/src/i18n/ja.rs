@@ -177,7 +177,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "スキャンなしで G2 ヘッドをそのまま編集します。後からスキャンを読み込んで合わせることもできます",
         ),
-        TextKey::Undo => Some("元に戻す"),
         TextKey::ResetAllPins => Some("全ピンをリセット"),
         TextKey::ResetAll => Some("すべて初期化"),
         TextKey::MorphSave => Some("モーフを保存"),

@@ -178,7 +178,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Chỉnh sửa đầu G2 nguyên trạng, không cần bản quét; vẫn có thể nạp và khớp bản quét sau",
         ),
-        TextKey::Undo => Some("Hoàn tác"),
         TextKey::ResetAllPins => Some("Đặt lại mọi ghim"),
         TextKey::ResetAll => Some("Dat lai tat ca"),
         TextKey::MorphSave => Some("Lưu morph"),

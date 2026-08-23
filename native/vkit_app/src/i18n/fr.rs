@@ -190,7 +190,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ContinueStepTooltip => Some(
             "Modifie la tête G2 telle quelle, sans scan ; un scan pourra être chargé et ajusté plus tard",
         ),
-        TextKey::Undo => Some("Annuler"),
         TextKey::ResetAllPins => Some("Réinitialiser les repères"),
         TextKey::ResetAll => Some("Tout reinitialiser"),
         TextKey::MorphSave => Some("Enregistrer le morph"),
