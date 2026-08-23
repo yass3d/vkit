@@ -733,6 +733,7 @@ pub(crate) struct HairPhysicsScene {
     collider_buffer: wgpu::Buffer,
     guide_normal_buffer: wgpu::Buffer,
     render_segment_buffer: wgpu::Buffer,
+    render_run_buffer: wgpu::Buffer,
     render_part_buffer: wgpu::Buffer,
     _strand_buffer: wgpu::Buffer,
     _capsule_buffer: wgpu::Buffer,
@@ -741,6 +742,7 @@ pub(crate) struct HairPhysicsScene {
     phases: Vec<PhaseDispatch>,
     particle_count: u32,
     render_segment_count: u32,
+    render_runs: Vec<GpuDrawRun>,
     render_subdivisions: u32,
 
     settle_gravity: f32,
@@ -815,6 +817,12 @@ impl HairPhysicsScene {
             "vkit.hair-physics.colliders",
             &colliders,
             wgpu::BufferUsages::COPY_DST,
+        );
+        let render_run_buffer = storage_buffer(
+            device,
+            "vkit.hair.render-runs",
+            &nonempty_or_default(data.render_runs.clone()),
+            wgpu::BufferUsages::empty(),
         );
         let render_segment_buffer = storage_buffer(
             device,
@@ -893,6 +901,7 @@ impl HairPhysicsScene {
             collider_buffer,
             guide_normal_buffer,
             render_segment_buffer,
+            render_run_buffer,
             render_part_buffer,
             _strand_buffer: strand_buffer,
             _capsule_buffer: capsule_buffer,
@@ -901,6 +910,7 @@ impl HairPhysicsScene {
             phases,
             particle_count: data.rests.len() as u32,
             render_segment_count: data.render_segments.len() as u32,
+            render_runs: data.render_runs,
             render_subdivisions: data.render_subdivisions,
             settle_gravity: 0.0,
             frame: 0,
@@ -1057,9 +1067,24 @@ impl HairPhysicsScene {
     /// Indices to draw with: six to a quad over
     /// [`crate::hair_renderer::HAIR_QUAD_CORNERS`] corners, two of them repeats
     /// the vertex stage no longer has to run.
+    /// What a single flat draw would have needed — still the size of the shared
+    /// quad index buffer, which has to cover the largest run.
     pub(crate) const fn render_index_count(&self) -> u32 {
         self.render_segment_count
             .saturating_mul(6 * self.render_subdivisions)
+    }
+
+    /// One draw per stride: how many indices it covers, and the instance slot
+    /// that carries its stride and its first segment.
+    pub(crate) fn render_runs(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
+        self.render_runs
+            .iter()
+            .enumerate()
+            .map(|(index, run)| (run.meta[2].saturating_mul(6 * run.meta[0]), index as u32))
+    }
+
+    pub(crate) fn render_run_buffer(&self) -> &wgpu::Buffer {
+        &self.render_run_buffer
     }
 }
 
@@ -1077,6 +1102,7 @@ struct SceneData {
     collider_count: u32,
     guide_data: Vec<GpuGuideData>,
     render_segments: Vec<GpuHairRenderSegment>,
+    render_runs: Vec<GpuDrawRun>,
     render_parts: Vec<GpuHairRenderPart>,
     render_subdivisions: u32,
     max_iterations: u32,
@@ -1249,18 +1275,23 @@ fn build_scene_data(
         });
     }
 
-    let (render_segments, render_subdivisions) =
-        render_segments(preview, &guide_ranges, max_render_segments);
+    let built = render_segments(preview, &guide_ranges, max_render_segments);
+    let render_subdivisions = built.stride;
+    let render_segments = built.segments;
+    let render_runs = built.runs;
     let _ = crate::diagnostics::record(
         crate::diagnostics::Severity::Info,
         "hair",
         "scene_built",
         &format!(
-            "particles={}; segments={}; subdivisions={}; vertices={}",
+            "particles={}; segments={}; stride={}; runs={}; quads={} (flat would be {}, {:.1}x)",
             rests.len(),
             render_segments.len(),
             render_subdivisions,
-            render_segments.len() as u64 * 6 * u64::from(render_subdivisions),
+            render_runs.len(),
+            built.run_quads,
+            built.flat_quads,
+            built.flat_quads as f64 / built.run_quads.max(1) as f64,
         ),
     );
     let (colliders, collider_count) = head_field_for_mesh(mesh);
@@ -1299,6 +1330,7 @@ fn build_scene_data(
         collider_count,
         guide_data,
         render_segments,
+        render_runs,
         render_subdivisions,
         render_parts,
         max_iterations,
@@ -1588,12 +1620,48 @@ fn cling_constraints(
 /// asks for. Handing the draw the whole `curveDensity` instead issues that many
 /// per segment and throws all but `curveDensity / segments` of them away — four
 /// out of every five for a typical style, every frame, in the vertex shader.
+/// One draw: a stride, and the run of segments that want it.
+///
+/// `[stride, first_segment, segment_count, 0]`, laid out for the shader to read
+/// by `instance_index`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub(crate) struct GpuDrawRun {
+    pub meta: [u32; 4],
+}
+
+/// The segments to draw, grouped by how finely each one is subdivided.
+///
+/// It used to be one flat list drawn at the LARGEST subdivision count any
+/// strand asked for, with the vertex stage throwing away every quad past each
+/// strand's own count — four vertices invoked and discarded, per wasted quad.
+/// The count is `ceil(curveDensity / segment_count)`, so it is largest for the
+/// SHORTEST strands, and one short strand made every long one in the preset pay
+/// its stride. Grouping costs a handful of draw calls and wastes nothing.
+struct RenderSegments {
+    segments: Vec<GpuHairRenderSegment>,
+    runs: Vec<GpuDrawRun>,
+
+    /// The largest stride in use, for sizing the shared index buffer.
+    stride: u32,
+
+    /// Quads a single-stride draw would have issued, and quads these runs
+    /// issue. Logged so the saving is a measurement and not a claim.
+    flat_quads: u64,
+    run_quads: u64,
+}
+
 fn render_segments(
     preview: &HairPreview,
     ranges: &[Vec<GuideRange>],
     limit: usize,
-) -> (Vec<GpuHairRenderSegment>, u32) {
-    let mut result = Vec::with_capacity(limit.min(1 << 20));
+) -> RenderSegments {
+    // Bucketed by stride as they are built, so the flatten below is a
+    // concatenation rather than a sort: segment order within a stride is the
+    // order they were authored in.
+    let mut buckets: std::collections::BTreeMap<u32, Vec<GpuHairRenderSegment>> =
+        std::collections::BTreeMap::new();
+    let mut produced = 0_usize;
     let mut subdivisions = 1_u32;
     'parts: for (part_index, part) in preview.parts.iter().enumerate() {
         for strand in part.strands.iter() {
@@ -1630,15 +1698,15 @@ fn render_segments(
                 continue;
             }
             let packed = (part_index as u32) | ((segment_count as u32) << 16);
-            subdivisions = subdivisions.max(segment_subdivisions(
-                part.curve_density,
-                segment_count as u32,
-            ));
+            let mine = segment_subdivisions(part.curve_density, segment_count as u32);
+            subdivisions = subdivisions.max(mine);
+            let bucket = buckets.entry(mine).or_default();
             for segment in 0..segment_count {
-                if result.len() >= limit {
+                if produced >= limit {
                     break 'parts;
                 }
-                result.push(GpuHairRenderSegment {
+                produced += 1;
+                bucket.push(GpuHairRenderSegment {
                     particles: [
                         guide_ranges[0].start + segment as u32,
                         guide_ranges[1].start + segment as u32,
@@ -1656,7 +1724,28 @@ fn render_segments(
             }
         }
     }
-    (result, subdivisions.min(MAX_RENDER_SUBDIVISIONS))
+    let stride = subdivisions.min(MAX_RENDER_SUBDIVISIONS);
+    let mut segments = Vec::with_capacity(produced);
+    let mut runs = Vec::with_capacity(buckets.len());
+    let mut run_quads = 0_u64;
+    for (bucket_stride, bucket) in buckets {
+        if bucket.is_empty() {
+            continue;
+        }
+        let bucket_stride = bucket_stride.clamp(1, MAX_RENDER_SUBDIVISIONS);
+        runs.push(GpuDrawRun {
+            meta: [bucket_stride, segments.len() as u32, bucket.len() as u32, 0],
+        });
+        run_quads += bucket.len() as u64 * u64::from(bucket_stride);
+        segments.extend(bucket);
+    }
+    RenderSegments {
+        flat_quads: segments.len() as u64 * u64::from(stride),
+        run_quads,
+        segments,
+        runs,
+        stride,
+    }
 }
 
 const HEAD_SDF_RESOLUTION: usize = 64;
@@ -2185,6 +2274,73 @@ mod tests {
             })
             .expect("a sphere is a mesh"),
         )
+    }
+
+    /// Every segment lands in a run whose stride is its OWN subdivision count.
+    ///
+    /// The draw used to be one flat range at the largest count any strand asked
+    /// for, and the vertex stage discarded the rest — four vertices invoked per
+    /// wasted quad. `ceil(curveDensity / segment_count)` is largest for the
+    /// SHORTEST strands, so one short strand made every long strand in the
+    /// preset pay its stride. This is the fixture where that hurts: two parts,
+    /// one dense and one sparse.
+    #[test]
+    fn each_segment_is_drawn_at_its_own_subdivision_and_no_finer() {
+        let mut preview = two_strand_preview();
+        // Same guides, different densities: the second wants eight times the
+        // subdivisions of the first over the same segments.
+        preview.parts[0].curve_density = 4;
+        preview.parts[1].curve_density = 64;
+
+        let ranges = guide_ranges(&preview).expect("the fixture has guides");
+        let built = render_segments(&preview, &ranges, usize::MAX);
+
+        assert!(built.runs.len() >= 2, "two densities, two strides");
+
+        // Every run's segments, checked against the count that run promises.
+        let mut covered = 0_usize;
+        for run in &built.runs {
+            let [stride, first, count, _] = run.meta;
+            assert!((1..=MAX_RENDER_SUBDIVISIONS).contains(&stride));
+            for index in 0..count as usize {
+                let segment = built.segments[first as usize + index];
+                let packed = segment.particles[3];
+                let part = &preview.parts[(packed & 0xffff) as usize];
+                let segment_count = (packed >> 16).max(1);
+                assert_eq!(
+                    stride,
+                    segment_subdivisions(part.curve_density, segment_count),
+                    "a segment is in the wrong run",
+                );
+            }
+            covered += count as usize;
+        }
+        assert_eq!(
+            covered,
+            built.segments.len(),
+            "a segment fell out of every run"
+        );
+
+        // The saving, stated as the number it is.
+        assert!(
+            built.run_quads < built.flat_quads,
+            "grouping issued {} quads and the flat draw issued {}",
+            built.run_quads,
+            built.flat_quads,
+        );
+    }
+
+    /// One density everywhere means one run and nothing saved — and nothing
+    /// lost either, which is the case that must not regress.
+    #[test]
+    fn a_preset_of_one_density_is_a_single_run() {
+        let mut preview = two_strand_preview();
+        preview.parts[1].curve_density = preview.parts[0].curve_density;
+        let ranges = guide_ranges(&preview).expect("the fixture has guides");
+        let built = render_segments(&preview, &ranges, usize::MAX);
+
+        assert_eq!(built.runs.len(), 1);
+        assert_eq!(built.run_quads, built.flat_quads);
     }
 
     fn two_strand_preview() -> HairPreview {

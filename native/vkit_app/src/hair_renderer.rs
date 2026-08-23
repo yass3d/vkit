@@ -348,6 +348,13 @@ macro_rules! hair_shader_source {
         };
         @group(0) @binding(4) var<storage, read> guide_data: array<GuideData>;
 
+        /// One entry per draw: `[stride, first_segment, segment_count, 0]`.
+        ///
+        /// Read by `instance_index`, which is the draw's own index — each run
+        /// is issued as instance N of one, so the vertex stage learns which
+        /// stride it is running at without a push constant.
+        @group(0) @binding(5) var<storage, read> runs: array<vec4<u32>>;
+
         struct VertexOutput {
             @builtin(position) clip_position: vec4<f32>,
             @location(0) world_position: vec3<f32>,
@@ -582,11 +589,17 @@ macro_rules! hair_shader_source {
         }
 
         @vertex
-        fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+        fn vs_main(
+            @builtin(vertex_index) vertex_index: u32,
+            @builtin(instance_index) run_index: u32,
+        ) -> VertexOutput {
             var output: VertexOutput;
             let quad_index = vertex_index / 4u;
-            let stride = max_render_subdivisions();
-            let segment = segments[quad_index / stride];
+            // This run's own stride, not the largest any part asked for. Every
+            // quad drawn is a quad wanted: there is nothing left to discard.
+            let run = runs[run_index];
+            let stride = max(run.x, 1u);
+            let segment = segments[run.y + quad_index / stride];
             let sub = quad_index % stride;
             // Four corners to a quad, indexed as 0,1,2, 2,1,3 by the buffer the
             // draw is bound to. Corner 0 is the near side of the segment's
@@ -602,23 +615,10 @@ macro_rules! hair_shader_source {
 
             let local_segment = i32(round(segment.weights.w * f32(segment_count)));
             let roots = vec3<i32>(segment.particles.xyz) - vec3<i32>(local_segment);
-            let subdivisions = clamp(
-                u32(ceil(part.spread_b.w / f32(segment_count))),
-                1u,
-                stride,
-            );
-            if (sub >= subdivisions) {
-                output.clip_position = vec4<f32>(0.0, 0.0, -2.0, 1.0);
-                output.world_position = vec3<f32>(0.0);
-                output.world_tangent = vec3<f32>(0.0, 1.0, 0.0);
-                output.strand_t = 0.0;
-                output.ribbon_side = 0.0;
-                output.part_index = part_index;
-                output.strand_noise = 0.0;
-                output.light_centre = vec3<f32>(0.0);
-                output.radiance = vec3<f32>(0.0);
-                return output;
-            }
+            // The host grouped this segment into a run whose stride IS its
+            // subdivision count, so the discard branch that used to stand here
+            // could never fire. It is gone with the quads it threw away.
+            let subdivisions = stride;
             let f = (f32(sub) + select(0.0, 1.0, use_end)) / f32(subdivisions);
 
             let t = (f32(local_segment) + f) / f32(segment_count);
@@ -1863,6 +1863,7 @@ impl HairRenderResources {
                 render_storage_entry(2, wgpu::ShaderStages::VERTEX),
                 render_storage_entry(3, wgpu::ShaderStages::VERTEX_FRAGMENT),
                 render_storage_entry(4, wgpu::ShaderStages::VERTEX),
+                render_storage_entry(5, wgpu::ShaderStages::VERTEX),
             ],
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -2033,6 +2034,10 @@ impl HairRenderResources {
                     binding: 4,
                     resource: physics.guide_normal_buffer().as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: physics.render_run_buffer().as_entire_binding(),
+                },
             ],
         });
         self.scenes.insert(
@@ -2097,7 +2102,15 @@ impl HairRenderResources {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
         render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        render_pass.draw_indexed(0..scene.physics.render_index_count(), 0, 0..1);
+        // One draw per stride. The index pattern is the same `0,1,2, 2,1,3` per
+        // quad whatever the run, so every draw reads it from the front and the
+        // run's own entry says which segment its first quad belongs to.
+        for (indices, run) in scene.physics.render_runs() {
+            if indices == 0 {
+                continue;
+            }
+            render_pass.draw_indexed(0..indices, 0, run..run + 1);
+        }
     }
 }
 
