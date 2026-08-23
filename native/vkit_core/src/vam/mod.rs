@@ -51,7 +51,8 @@ pub use hair::{
     hair_scalp_material_from_storables, hair_scalp_material_storable, hair_sim_storable,
     load_builtin_hair_scalps, load_hair_part_asset, load_hair_part_geometry, load_hair_part_look,
     load_hair_part_scalp, load_hair_part_settings, load_hair_scalp_textures, parse_hair_scalp_vab,
-    parse_hair_vab, read_hair_storables, scan_hair_presets, scan_hair_presets_with_report,
+    parse_hair_vab, read_hair_storables, rolloff_rigidity, rolloff_rigidity_curve,
+    scan_hair_presets, scan_hair_presets_with_report,
 };
 pub use morph_route::{VaMMorphRoute, VaMMorphRouteError, classify_vam_morph_route};
 pub use var_package::{

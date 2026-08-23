@@ -83,6 +83,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ब्रश जहाँ से गुज़रे वहाँ लटें काटें"),
         TextKey::HairToolPuff => Some("फुलाएँ"),
         TextKey::HairToolPuffHint => Some("ब्रश के नीचे लटें त्वचा से उठाएँ। Alt से बिठाएँ"),
+        TextKey::HairToolRigidity => Some("कठोरता"),
+        TextKey::HairToolRigidityHint => Some(
+            "हर बिंदु को खींची गई मुद्रा में कितनी मजबूती से पकड़ा जाए, यह रंगें। Alt ढीला करता है। हरा पकड़ा हुआ, लाल मुक्त।",
+        ),
         TextKey::HairToolVertex => Some("बिंदु"),
         TextKey::HairToolVertexHint => Some("एक लट के एक जोड़ को पकड़कर हिलाएँ; लंबाई बनी रहती है"),
         TextKey::HairCopySettings => Some("सब कॉपी करें"),

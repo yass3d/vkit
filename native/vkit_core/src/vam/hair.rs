@@ -602,6 +602,41 @@ impl HairPhysicsPatch {
     }
 }
 
+/// What the game would give a point if nothing were painted on it.
+///
+/// `BuildPointJoints`: the scalp anchor is 1.1 so it trips the unconditional
+/// snap, the first hair point takes `rootRigidity` flat, and everything past
+/// that walks a rolloff from `mainRigidity` down to `tipRigidity`. The
+/// off-by-one is the game's — no segment lands exactly on `mainRigidity` — and
+/// it is reproduced rather than tidied, because the corpus was authored against
+/// it.
+///
+/// This is the fallback the painted array replaces, so it is also what an
+/// unpainted point has to be written as once any point in the item is painted:
+/// the file carries one array or none, and a gap in it is a zero.
+#[must_use]
+pub fn rolloff_rigidity(physics: &HairPhysicsSettings, point_index: usize, segments: usize) -> f32 {
+    if point_index == 0 {
+        return 1.0;
+    }
+    if point_index == 1 {
+        return physics.root_rigidity.clamp(0.0, 1.0);
+    }
+    let span = segments.saturating_sub(2).max(1) as f32;
+    let t = (1.0 - (point_index as f32 - 1.0) / span)
+        .max(0.0)
+        .powf(physics.rigidity_rolloff_power.max(0.0));
+    (physics.tip_rigidity + (physics.main_rigidity - physics.tip_rigidity) * t).clamp(0.0, 1.0)
+}
+
+/// The whole rolloff, one value per point.
+#[must_use]
+pub fn rolloff_rigidity_curve(physics: &HairPhysicsSettings, points: usize) -> Vec<f32> {
+    (0..points)
+        .map(|index| rolloff_rigidity(physics, index, points))
+        .collect()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HairPhysicsSettings {
     pub simulation_enabled: bool,

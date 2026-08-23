@@ -91,6 +91,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Обрезает пряди там, где кисть их пересекает"),
         TextKey::HairToolPuff => Some("Объём"),
         TextKey::HairToolPuffHint => Some("Приподнимает пряди под кистью. Alt прижимает их"),
+        TextKey::HairToolRigidity => Some("Жёсткость"),
+        TextKey::HairToolRigidityHint => Some(
+            "Закрашивает, насколько прочно каждая точка держится в нарисованной позе. Alt ослабляет. Зелёный — держится, красный — свободен.",
+        ),
         TextKey::HairToolVertex => Some("Точка"),
         TextKey::HairToolVertexHint => {
             Some("Возьмитесь за один сустав пряди и переместите его; длина сохраняется")

@@ -97,6 +97,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolPuffHint => {
             "Stand the strands under the brush up off the skin. Alt lays them down"
         }
+        TextKey::HairToolRigidity => "Rigidity",
+        TextKey::HairToolRigidityHint => {
+            "Paints how hard each point is held to the pose it was drawn in. Alt loosens. Green is held, red is free."
+        }
         TextKey::HairToolVertex => "Point",
         TextKey::HairToolVertexHint => {
             "Take hold of one joint on a strand and move it; the length is kept"

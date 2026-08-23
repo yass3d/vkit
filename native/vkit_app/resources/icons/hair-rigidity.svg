@@ -1,0 +1,20 @@
+<!-- Vkit original, drawn in the lucide grid: a strand held stiff at the root
+     and loose at the tip, with the brush that decides where the change sits -->
+<svg
+  class="lucide lucide-hair-rigidity"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M4 3v7" />
+  <path d="M4 10c0 5 2 6 2 11" />
+  <path d="M11 3v7" />
+  <path d="M11 10c0 5 4 5 4 11" />
+  <circle cx="17" cy="7" r="3" />
+</svg>

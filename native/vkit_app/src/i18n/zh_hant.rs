@@ -77,6 +77,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("在筆刷劃過的位置剪斷髮絲"),
         TextKey::HairToolPuff => Some("蓬鬆"),
         TextKey::HairToolPuffHint => Some("讓筆刷下的髮絲立起離開皮膚。按 Alt 壓平"),
+        TextKey::HairToolRigidity => Some("剛性"),
+        TextKey::HairToolRigidityHint => {
+            Some("塗抹每個點被固定在繪製姿態上的強度。Alt 放鬆，綠色為固定，紅色為自由。")
+        }
         TextKey::HairToolVertex => Some("控制點"),
         TextKey::HairToolVertexHint => Some("抓住髮絲上的一個關節並移動，長度保持不變"),
         TextKey::HairCopySettings => Some("全部複製"),

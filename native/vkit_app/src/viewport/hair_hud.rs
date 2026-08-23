@@ -2,7 +2,7 @@ use super::*;
 use crate::hair_project::HairTool;
 use crate::ui_components::Icon;
 
-pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 9] = [
+pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 10] = [
     (
         HairTool::Pick,
         Icon::CursorPick,
@@ -56,6 +56,12 @@ pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 9] = [
         Icon::HairPuff,
         TextKey::HairToolPuff,
         TextKey::HairToolPuffHint,
+    ),
+    (
+        HairTool::Rigidity,
+        Icon::HairRigidity,
+        TextKey::HairToolRigidity,
+        TextKey::HairToolRigidityHint,
     ),
 ];
 
@@ -359,6 +365,7 @@ const fn tool_shortcut(tool: HairTool) -> Option<crate::shortcuts::Shortcut> {
         HairTool::Vertex => None,
         HairTool::Puff => Some(Shortcut::HairPuffTool),
         HairTool::Pinch => Some(Shortcut::HairPinchTool),
+        HairTool::Rigidity => None,
     }
 }
 

@@ -91,6 +91,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Memotong helai di tempat kuas melintasinya"),
         TextKey::HairToolPuff => Some("Mengembang"),
         TextKey::HairToolPuffHint => Some("Menegakkan helai di bawah kuas. Alt merebahkannya"),
+        TextKey::HairToolRigidity => Some("Kekakuan"),
+        TextKey::HairToolRigidityHint => Some(
+            "Mewarnai seberapa kuat tiap titik ditahan pada pose gambarnya. Alt melonggarkan. Hijau ditahan, merah bebas.",
+        ),
         TextKey::HairToolVertex => Some("Titik"),
         TextKey::HairToolVertexHint => {
             Some("Pegang satu sendi pada helai dan pindahkan; panjangnya tetap")

@@ -77,6 +77,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ตัดเส้นผมตรงที่ลากหัวแปรงผ่าน"),
         TextKey::HairToolPuff => Some("ทำให้ฟู"),
         TextKey::HairToolPuffHint => Some("ยกเส้นผมใต้หัวแปรงให้ตั้งขึ้น กด Alt เพื่อกดลง"),
+        TextKey::HairToolRigidity => Some("ความแข็ง"),
+        TextKey::HairToolRigidityHint => {
+            Some("ระบายว่าแต่ละจุดถูกยึดกับท่าที่วาดไว้แน่นแค่ไหน Alt เพื่อคลาย เขียวคือยึด แดงคืออิสระ")
+        }
         TextKey::HairToolVertex => Some("จุด"),
         TextKey::HairToolVertexHint => Some("จับข้อต่อหนึ่งจุดบนเส้นผมแล้วย้าย ความยาวคงเดิม"),
         TextKey::HairCopySettings => Some("คัดลอกทั้งหมด"),

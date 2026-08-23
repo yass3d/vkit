@@ -28,6 +28,7 @@ mod hair_portrait;
 mod hair_preview;
 mod hair_project;
 mod hair_renderer;
+mod hair_rigidity;
 mod hair_settings;
 mod history;
 mod i18n;

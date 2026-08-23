@@ -101,6 +101,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("Coupe les meches la ou le pinceau les traverse"),
         TextKey::HairToolPuff => Some("Gonfler"),
         TextKey::HairToolPuffHint => Some("Redresse les meches sous le pinceau. Alt les aplatit"),
+        TextKey::HairToolRigidity => Some("Rigidité"),
+        TextKey::HairToolRigidityHint => Some(
+            "Peint la force avec laquelle chaque point tient la pose dessinée. Alt relâche. Vert tenu, rouge libre.",
+        ),
         TextKey::HairToolVertex => Some("Point"),
         TextKey::HairToolVertexHint => Some(
             "Saisissez une articulation d'une mèche et déplacez-la ; la longueur est conservée",

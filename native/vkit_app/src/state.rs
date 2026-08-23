@@ -1362,6 +1362,10 @@ impl AppState {
                 self.hair_project.begin_stroke();
                 self.set_hair_strand_points(part_id, strands);
             }
+            Action::SetHairRigidity { part_id, strands } => {
+                self.hair_project.begin_stroke();
+                self.set_hair_rigidity(part_id, strands);
+            }
             Action::PaintMorphMask {
                 vertices,
                 target,

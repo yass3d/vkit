@@ -221,6 +221,8 @@ text_keys! {
     HairToolCut,
     HairToolCutHint,
     HairToolPuff,
+    HairToolRigidity,
+    HairToolRigidityHint,
     HairToolPuffHint,
     HairToolVertex,
     HairToolVertexHint,

@@ -98,6 +98,11 @@ pub enum Action {
         part_id: u64,
         strands: Vec<(u32, Vec<[f32; 3]>)>,
     },
+    /// Painted rigidity for some of a part's strands, one value per point.
+    SetHairRigidity {
+        part_id: u64,
+        strands: Vec<(u32, Vec<f32>)>,
+    },
     PaintMorphMask {
         vertices: Vec<(u32, f32)>,
         target: f32,
@@ -488,6 +493,7 @@ impl Action {
                 | Self::SetHairPartSegments { .. }
                 | Self::ScaleHairStrands { .. }
                 | Self::SetHairStrandPoints { .. }
+                | Self::SetHairRigidity { .. }
                 | Self::SetHairParam { .. }
                 | Self::SetHairColorChannel { .. }
                 | Self::ResetHairParams(_)
@@ -556,6 +562,7 @@ impl Action {
             | Self::SetHairPartSegments { .. }
             | Self::ScaleHairStrands { .. }
             | Self::SetHairStrandPoints { .. }
+            | Self::SetHairRigidity { .. }
             | Self::PaintMorphMask { .. }
             | Self::AddAppearanceLayer
             | Self::SelectAppearanceLayer(..)

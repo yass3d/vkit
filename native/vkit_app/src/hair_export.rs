@@ -253,7 +253,7 @@ pub fn authoring_guide_geometry(
         .map(|(&scalp_index, strand)| vkit_core::vam::HairGuide {
             scalp_index,
             points_cm: strand.points_cm.clone(),
-            rigidity: vec![1.0; strand.points_cm.len()],
+            rigidity: strand.rigidity.clone(),
         })
         .collect::<Vec<_>>();
     let guide_triangles = indices
@@ -361,6 +361,29 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
         Vec::new()
     };
 
+    // One array or none. The moment a single point is painted the whole item
+    // has to carry a value for every point, so the unpainted ones are written as
+    // the rolloff the game would have used — which leaves the look unchanged
+    // whether or not the reader turns the toggle on. Nothing painted means no
+    // array at all, and a schema-1.0 file the game reads exactly as before.
+    let rigidities = part
+        .strands
+        .values()
+        .any(crate::hair_project::HairStrand::is_painted)
+        .then(|| {
+            let physics = authoring_physics(part);
+            part.strands
+                .values()
+                .flat_map(|strand| {
+                    let points = strand.points_cm.len();
+                    (0..points).map(move |index| match strand.rigidity.get(index) {
+                        Some(painted) => painted.clamp(0.0, 1.0),
+                        None => vkit_core::vam::rolloff_rigidity(&physics, index, points),
+                    })
+                })
+                .collect()
+        });
+
     Ok(HairVabDoc {
         provider_name: part.provider_name.clone(),
         segments: part.segments,
@@ -368,7 +391,7 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
         scalp_vertex_count: scalp.vertices_cm.len(),
         strands_by_scalp_cm: strands,
         indices,
-        rigidities: None,
+        rigidities,
         style_joints,
     })
 }
@@ -1496,10 +1519,15 @@ mod settings_export_tests {
                 "guide {} was handed points that are not its strand's",
                 guide.scalp_index
             );
-            assert_eq!(
-                guide.rigidity.len(),
-                guide.points_cm.len(),
-                "every point needs its own rigidity"
+            // An unpainted strand carries no rigidity, and the assertion that
+            // used to stand here -- "every point needs its own rigidity" -- was
+            // the defect written down: it was satisfied by a fabricated array of
+            // 1.0, which the game reads as `result = target`, welding every
+            // particle to its rest pose the moment anyone turns the toggle on.
+            assert!(
+                guide.rigidity.is_empty(),
+                "guide {} invented paint nobody applied",
+                guide.scalp_index,
             );
         }
 
@@ -1511,12 +1539,96 @@ mod settings_export_tests {
         }
     }
 
+    /// An item nobody painted must carry no rigidity array at all.
+    ///
+    /// The array is what `usePaintedRigidity` reads, and a solid 1.0 in it
+    /// trips `if (Rigidity >= 1.0) result = target` — every particle welded to
+    /// its rest pose, no gravity, no swing. Writing one "just in case" leaves a
+    /// file that looks right until somebody flips a switch the game has always
+    /// had. Absent, the game falls back to the rolloff and the switch does
+    /// nothing, which is what an unpainted item means.
     #[test]
-    /// The old name here was `the_preview_may_skip_the_joint_graph`, and the
-    /// permission it granted was the defect: a preview with no cross-strand
-    /// joints shows every clumped or woven style coming apart, while the file
-    /// it exports holds together in the game.
-    fn the_preview_runs_the_same_joint_graph_the_export_ships() {
+    fn an_unpainted_item_ships_no_rigidity_array_and_no_way_to_weld_itself() {
+        let (authoring, project, id) = painted_fixture();
+        let part = project.parts.iter().find(|part| part.id == id).unwrap();
+
+        let doc = export_doc(part, &authoring).expect("a doc");
+        assert!(
+            doc.rigidities.is_none(),
+            "an unpainted item wrote an array of {:?}",
+            doc.rigidities.map(|values| values.len()),
+        );
+        let bytes = encode_hair_vab(&doc).expect("bytes");
+        let read = vkit_core::vam::parse_hair_vab(&bytes, "test").expect("read back");
+        assert!(
+            read.guides.iter().all(|guide| guide.rigidity.is_empty()),
+            "the file came back carrying paint nobody applied",
+        );
+    }
+
+    /// Paint one point and the whole item has to carry a value for every point,
+    /// because the file holds one array or none. The ones nobody touched are
+    /// written as the curve the game would have used, so turning the toggle on
+    /// changes only what was actually painted.
+    #[test]
+    fn painting_one_point_writes_the_curve_for_all_the_others() {
+        let (authoring, mut project, id) = painted_fixture();
+        let physics = {
+            let part = project.parts.iter().find(|part| part.id == id).unwrap();
+            authoring_physics(part)
+        };
+
+        let part = project.parts.iter_mut().find(|part| part.id == id).unwrap();
+        let (&first_key, _) = part.strands.iter().next().expect("a strand");
+        let points = part.strands[&first_key].points_cm.len();
+        let mut painted = vkit_core::vam::rolloff_rigidity_curve(&physics, points);
+        painted[2] = 1.0;
+        part.strands.get_mut(&first_key).unwrap().rigidity = painted.clone();
+
+        let part = project.parts.iter().find(|part| part.id == id).unwrap();
+        let doc = export_doc(part, &authoring).expect("a doc");
+        let values = doc.rigidities.clone().expect("an array");
+        let total: usize = part
+            .strands
+            .values()
+            .map(|strand| strand.points_cm.len())
+            .sum();
+        assert_eq!(values.len(), total, "one value per point, no gaps");
+
+        let bytes = encode_hair_vab(&doc).expect("bytes");
+        let read = vkit_core::vam::parse_hair_vab(&bytes, "test").expect("read back");
+        let mut flat: Vec<f32> = Vec::new();
+        for guide in &read.guides {
+            assert_eq!(
+                guide.rigidity.len(),
+                guide.points_cm.len(),
+                "a guide came back short",
+            );
+            flat.extend(guide.rigidity.iter().copied());
+        }
+        assert_eq!(flat.len(), total);
+        assert!(
+            flat.iter().any(|value| (*value - 1.0).abs() < 1.0e-6),
+            "the painted point did not survive the round trip",
+        );
+        // Every strand but the painted one is the curve, exactly.
+        let unpainted: Vec<f32> = vkit_core::vam::rolloff_rigidity_curve(&physics, points);
+        let tail = &flat[points..];
+        for (index, value) in tail.iter().enumerate() {
+            let expected = unpainted[index % points];
+            assert!(
+                (value - expected).abs() < 1.0e-5,
+                "point {index} wrote {value}, the curve says {expected}",
+            );
+        }
+    }
+
+    /// Five strands on a small scalp, ready to be painted on.
+    fn painted_fixture() -> (
+        crate::hair_project::ScalpAuthoring,
+        crate::hair_project::HairProject,
+        u64,
+    ) {
         use crate::hair_project::{HairProject, build_scalp_authoring};
         use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
 
@@ -1543,6 +1655,17 @@ mod settings_export_tests {
         let id = project.add_part("UdaneScalp");
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
         part.plant(&authoring, &[0, 1, 2, 3, 4]);
+        (authoring, project, id)
+    }
+
+    /// The old name here was `the_preview_may_skip_the_joint_graph`, and the
+    /// permission it granted was the defect: a preview with no cross-strand
+    /// joints shows every clumped or woven style coming apart, while the file
+    /// it exports holds together in the game.
+    #[test]
+    fn the_preview_runs_the_same_joint_graph_the_export_ships() {
+        let (authoring, mut project, id) = painted_fixture();
+        let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
         part.style_joints = true;
 
         // The preview asks the part, not the caller. Cross-strand joints are

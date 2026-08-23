@@ -2196,9 +2196,7 @@ fn probe_hair_state() -> AppState {
 }
 
 fn probe_strand_at(state: &mut AppState, part_index: usize, at: [f32; 3]) {
-    let strand = crate::hair_project::HairStrand {
-        points_cm: vec![at, [at[0], at[1] + 2.0, at[2]]],
-    };
+    let strand = crate::hair_project::HairStrand::new(vec![at, [at[0], at[1] + 2.0, at[2]]]);
     let key = state.hair_project.parts[part_index].strands.len() as u32;
     state.hair_project.parts[part_index]
         .strands

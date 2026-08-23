@@ -238,7 +238,7 @@ pub(super) fn handle_hair_interaction(
                 );
             }
         }
-        HairTool::Comb | HairTool::Pinch | HairTool::Puff => {
+        HairTool::Comb | HairTool::Pinch | HairTool::Puff | HairTool::Rigidity => {
             let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
             if pressed && response.hovered() {
                 crate::viewport::claim_stroke_pane(ui, HAIR_COMB_STROKE_ID, pane);
@@ -268,6 +268,17 @@ pub(super) fn handle_hair_interaction(
                         );
                     });
                 }
+            }
+            if tool == HairTool::Rigidity {
+                for part_id in active {
+                    handle_rigidity_brush(ui, state, viewport, camera, part_id, radius_points);
+                }
+                if ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
+                    ui.ctx().request_repaint();
+                } else if ui.input(|input| input.pointer.button_released(PointerButton::Primary)) {
+                    state.dispatch(Action::EndHairStroke);
+                }
+                return;
             }
             let count = active.len();
             for (index, part_id) in active.into_iter().enumerate() {
@@ -486,7 +497,10 @@ fn auto_part_targets(
     tool: HairTool,
 ) -> Vec<u64> {
     let latch_id = Id::new(HAIR_AUTO_PART_LATCH_ID);
-    let stroking = matches!(tool, HairTool::Comb | HairTool::Pinch | HairTool::Puff);
+    let stroking = matches!(
+        tool,
+        HairTool::Comb | HairTool::Pinch | HairTool::Puff | HairTool::Rigidity
+    );
     let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
     if stroking
         && down
@@ -969,6 +983,64 @@ fn relax_towards_rest(points: &mut [[f32; 3]], spacing: &[f32]) {
             }
         }
     }
+}
+
+/// Paint rigidity under the brush.
+///
+/// The same capture the other brushes do — a sphere in world space, a smooth
+/// falloff, the root left alone — writing a strength rather than a position.
+/// `Alt` reverses it, which is the modifier every other hair brush already
+/// uses for the same idea.
+fn handle_rigidity_brush(
+    ui: &Ui,
+    state: &mut AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    part_id: u64,
+    radius_points: f32,
+) {
+    if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
+        return;
+    }
+    let Some(part) = state.hair_project.part(part_id) else {
+        return;
+    };
+    let Some((center, radius, _)) = strand_cloud_hit(ui, viewport, camera, part, radius_points)
+    else {
+        return;
+    };
+    let paint = if crate::shortcuts::Shortcut::HairInvertHold.held(ui) {
+        crate::hair_rigidity::Paint::Lower
+    } else {
+        crate::hair_rigidity::Paint::Raise
+    };
+    let physics = crate::hair_export::authoring_physics(part);
+    let strength = state.hair_brush_strength.clamp(0.05, 1.0);
+    let falloff = |point: &[f32; 3]| -> f32 {
+        let d = [
+            point[0] - center[0],
+            point[1] - center[1],
+            point[2] - center[2],
+        ];
+        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let inside = (1.0 - (distance / radius).min(1.0)).clamp(0.0, 1.0);
+        inside * inside * (3.0 - 2.0 * inside)
+    };
+
+    let strands: Vec<(u32, Vec<f32>)> = part
+        .strands
+        .iter()
+        .filter_map(|(index, strand)| {
+            let weights: Vec<f32> = strand.points_cm.iter().map(falloff).collect();
+            let values = crate::hair_rigidity::paint(&physics, strand, &weights, paint, strength)?;
+            Some((*index, values))
+        })
+        .collect();
+    if strands.is_empty() {
+        return;
+    }
+    state.dispatch(Action::SetHairRigidity { part_id, strands });
+    ui.ctx().request_repaint();
 }
 
 #[expect(

@@ -940,6 +940,51 @@ impl AppState {
         }
     }
 
+    /// Write painted rigidity onto some of a part's strands.
+    ///
+    /// Turns `usePaintedRigidity` on with the first stroke. Without it the
+    /// array is written and then ignored, and the reader watches a brush do
+    /// nothing — which is the sort of thing that gets a tool called broken.
+    pub(super) fn set_hair_rigidity(&mut self, id: u64, strands: Vec<(u32, Vec<f32>)>) {
+        let Some(part) = self
+            .hair_project
+            .parts
+            .iter_mut()
+            .find(|part| part.id == id)
+        else {
+            return;
+        };
+        let mut wrote = false;
+        for (index, values) in strands {
+            let Some(strand) = part.strands.get_mut(&index) else {
+                continue;
+            };
+            if values.len() != strand.points_cm.len() {
+                continue;
+            }
+            strand.rigidity = values;
+            wrote = true;
+        }
+        if !wrote {
+            return;
+        }
+        self.hair_project.touch(id);
+        let painted = crate::hair_settings::HAIR_PARAMS
+            .iter()
+            .find(|param| param.key == "usePaintedRigidity");
+        if let Some(param) = painted
+            && let Some(part) = self
+                .hair_project
+                .parts
+                .iter_mut()
+                .find(|part| part.id == id)
+            && part.settings.get(param) < 0.5
+        {
+            part.settings.set(param, 1.0);
+            self.hair_project.touch(id);
+        }
+    }
+
     pub(super) fn set_hair_part_style_joints(&mut self, id: u64, on: bool) {
         if let Some(part) = self.hair_project.parts.iter_mut().find(|p| p.id == id)
             && part.style_joints != on

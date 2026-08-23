@@ -72,6 +72,7 @@ pub enum Icon {
     Pinch,
     HairLength,
     HairPuff,
+    HairRigidity,
     HairPlant,
     VennThree,
     CrosshairBox,
@@ -344,6 +345,7 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::Pinch => include_str!("../../resources/icons/pinch.svg"),
         Icon::HairLength => include_str!("../../resources/icons/hair-length.svg"),
         Icon::HairPuff => include_str!("../../resources/icons/hair-puff.svg"),
+        Icon::HairRigidity => include_str!("../../resources/icons/hair-rigidity.svg"),
         Icon::ChevronLeft => include_str!("../../resources/icons/chevron-left.svg"),
         Icon::ChevronRight => include_str!("../../resources/icons/chevron-right.svg"),
         Icon::Search => include_str!("../../resources/icons/search.svg"),
@@ -530,6 +532,7 @@ mod tests {
                 Icon::Pinch => {}
                 Icon::HairLength => {}
                 Icon::HairPuff => {}
+                Icon::HairRigidity => {}
                 Icon::ChevronLeft => {}
                 Icon::ChevronRight => {}
                 Icon::Search => {}

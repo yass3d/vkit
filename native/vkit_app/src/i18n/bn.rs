@@ -77,6 +77,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ব্রাশ যেখানে দিয়ে যায় সেখানে চুল কাটে"),
         TextKey::HairToolPuff => Some("ফোলানো"),
         TextKey::HairToolPuffHint => Some("ব্রাশের নিচের চুল ত্বক থেকে দাঁড় করায়। Alt দিয়ে শোয়ায়"),
+        TextKey::HairToolRigidity => Some("দৃঢ়তা"),
+        TextKey::HairToolRigidityHint => Some(
+            "প্রতিটি বিন্দু আঁকা ভঙ্গিতে কতটা শক্ত ধরা থাকবে তা আঁকুন। Alt আলগা করে। সবুজ মানে ধরা, লাল মানে মুক্ত।",
+        ),
         TextKey::HairToolVertex => Some("বিন্দু"),
         TextKey::HairToolVertexHint => Some("একটি গোছার একটি সন্ধি ধরে সরান; দৈর্ঘ্য অক্ষুণ্ণ থাকে"),
         TextKey::HairCopySettings => Some("সব কপি"),

@@ -48,11 +48,63 @@ pub enum HairTool {
 
     /// Take hold of one point joint and move it.
     Vertex,
+
+    /// Paint how hard each point is held to the pose it was authored in.
+    Rigidity,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct HairStrand {
     pub points_cm: Vec<[f32; 3]>,
+    /// Painted rigidity, one value per point, or empty.
+    ///
+    /// Empty is not the same as a solid 1.0. The game reads the array only when
+    /// `usePaintedRigidity` is on, and falls back to the root/main/tip rolloff
+    /// when it is absent — but a 1.0 it *does* read trips
+    /// `if (Rigidity >= 1.0) result = target`, an unconditional snap that welds
+    /// the strand to its rest pose. So an unpainted strand carries nothing, and
+    /// the file it exports to carries no array at all.
+    pub rigidity: Vec<f32>,
+}
+
+impl HairStrand {
+    #[must_use]
+    pub fn new(points_cm: Vec<[f32; 3]>) -> Self {
+        Self {
+            points_cm,
+            rigidity: Vec::new(),
+        }
+    }
+
+    /// Whether anything has been painted onto this strand.
+    #[must_use]
+    pub fn is_painted(&self) -> bool {
+        !self.rigidity.is_empty()
+    }
+
+    /// Keep the painted values lined up with the points after a resample.
+    ///
+    /// Rigidity belongs to a place along the strand, not to an index, so it is
+    /// resampled the same way the points are rather than truncated.
+    pub fn resample_rigidity(&mut self, points: usize) {
+        if self.rigidity.is_empty() || self.rigidity.len() == points || points == 0 {
+            return;
+        }
+        let last = self.rigidity.len() - 1;
+        self.rigidity = (0..points)
+            .map(|index| {
+                let at = if points > 1 {
+                    index as f32 / (points - 1) as f32 * last as f32
+                } else {
+                    0.0
+                };
+                let low = at.floor() as usize;
+                let high = (low + 1).min(last);
+                let blend = at - low as f32;
+                self.rigidity[low] + (self.rigidity[high] - self.rigidity[low]) * blend
+            })
+            .collect();
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -463,7 +515,10 @@ impl HairProject {
                 .iter()
                 .map(|point| [-point[0], point[1], point[2]])
                 .collect();
-            mirrored.entry(paired).or_insert(HairStrand { points_cm });
+            mirrored.entry(paired).or_insert(HairStrand {
+                points_cm,
+                rigidity: strand.rigidity.clone(),
+            });
         }
         part.strands = mirrored;
         self.touch(id);
@@ -671,7 +726,7 @@ impl HairPart {
                     root[2] + normal[2] * reach,
                 ]);
             }
-            self.strands.insert(index, HairStrand { points_cm });
+            self.strands.insert(index, HairStrand::new(points_cm));
             planted += 1;
         }
         planted
@@ -727,6 +782,7 @@ impl HairPart {
                         ]
                     })
                     .collect(),
+                rigidity: strand.rigidity.clone(),
             };
             match claimed.get(&seat) {
                 Some((held, _)) if *held <= reach => lost += 1,
@@ -812,6 +868,7 @@ impl HairPart {
         let segments = self.segments.clamp(2, MAX_HAIR_SEGMENTS);
         for strand in self.strands.values_mut() {
             strand.points_cm = resample_polyline(&strand.points_cm, segments);
+            strand.resample_rigidity(segments);
         }
     }
 }
@@ -1004,7 +1061,15 @@ pub fn hair_part_from_preset(
         } else {
             resample_polyline(&flipped, segments)
         };
-        strands.insert(guide.scalp_index, HairStrand { points_cm });
+        let mut carried = HairStrand::new(points_cm);
+        // The file's painted rigidity, if it has any. Resampled with the points
+        // it belongs to, because both are positions along one strand.
+        if !guide.rigidity.is_empty() {
+            carried.rigidity = guide.rigidity.clone();
+            let points = carried.points_cm.len();
+            carried.resample_rigidity(points);
+        }
+        strands.insert(guide.scalp_index, carried);
     }
     if strands.is_empty() {
         return Err(format!(
@@ -1148,11 +1213,11 @@ mod tests {
         part.segment_length_cm = 1.0;
         part.strands.insert(
             0,
-            HairStrand {
-                points_cm: (0..8)
+            HairStrand::new(
+                (0..8)
                     .map(|i| [0.0, 10.0 + i as f32 * 1.0e-4, 0.0])
                     .collect(),
-            },
+            ),
         );
         let floor = part.minimum_strand_length_cm();
         assert!(floor > 0.1, "the floor is a visible stub: {floor}");

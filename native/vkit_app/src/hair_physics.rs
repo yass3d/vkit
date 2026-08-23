@@ -1455,14 +1455,7 @@ fn resolved_rigidity(
     {
         return painted.clamp(0.0, 1.0);
     }
-    if point_index == 1 {
-        return physics.root_rigidity.clamp(0.0, 1.0);
-    }
-    let span = segments.saturating_sub(2).max(1) as f32;
-    let t = (1.0 - (point_index as f32 - 1.0) / span)
-        .max(0.0)
-        .powf(physics.rigidity_rolloff_power.max(0.0));
-    (physics.tip_rigidity + (physics.main_rigidity - physics.tip_rigidity) * t).clamp(0.0, 1.0)
+    vkit_core::vam::rolloff_rigidity(physics, point_index, segments)
 }
 
 fn collision_radius(physics: &vkit_core::vam::HairPhysicsSettings, point_index: usize) -> f32 {

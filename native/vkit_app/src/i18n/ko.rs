@@ -85,6 +85,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolCutHint => "브러시로 그은 자리에서 머리카락을 끊습니다",
         TextKey::HairToolPuff => "부풀리기",
         TextKey::HairToolPuffHint => "브러시 아래 머리카락을 피부에서 세웁니다. Alt로 눕힙니다",
+        TextKey::HairToolRigidity => "탄성",
+        TextKey::HairToolRigidityHint => {
+            "각 포인트를 저작한 자세로 얼마나 세게 붙들지 칠합니다. Alt로 풀고, 초록이 붙들림, 빨강이 자유입니다."
+        }
         TextKey::HairToolVertex => "포인트",
         TextKey::HairToolVertexHint => "가닥의 마디 하나를 잡아 옮깁니다. 길이는 유지됩니다",
         TextKey::HairCopySettings => "전체 복사",

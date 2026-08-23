@@ -89,6 +89,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolCutHint => Some("ブラシで引いた位置で毛先を切りそろえます"),
         TextKey::HairToolPuff => Some("ふくらませる"),
         TextKey::HairToolPuffHint => Some("ブラシ下の毛を肌から立てます。Altで寝かせます"),
+        TextKey::HairToolRigidity => Some("剛性"),
+        TextKey::HairToolRigidityHint => Some(
+            "各ポイントを描いた姿勢にどれだけ強く留めるかを塗ります。Altで緩め、緑が固定、赤が自由です。",
+        ),
         TextKey::HairToolVertex => Some("ポイント"),
         TextKey::HairToolVertexHint => Some("毛束の関節を1つ掴んで動かします。長さは保たれます"),
         TextKey::HairCopySettings => Some("すべてコピー"),

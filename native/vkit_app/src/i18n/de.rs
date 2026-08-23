@@ -103,6 +103,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPuffHint => {
             Some("Stellt die Straehnen unter dem Pinsel von der Haut ab. Alt legt sie an")
         }
+        TextKey::HairToolRigidity => Some("Steifigkeit"),
+        TextKey::HairToolRigidityHint => Some(
+            "Malt, wie fest jeder Punkt in der gezeichneten Pose gehalten wird. Alt lockert. Grün gehalten, Rot frei.",
+        ),
         TextKey::HairToolVertex => Some("Punkt"),
         TextKey::HairToolVertexHint => {
             Some("Ein Gelenk einer Strähne greifen und bewegen; die Länge bleibt erhalten")

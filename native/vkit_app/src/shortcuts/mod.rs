@@ -512,7 +512,7 @@ mod untokenised_input_tests {
         ),
         (
             "viewport/hair_input.rs",
-            12,
+            15,
             "button state mid-stroke, and the pick fallback that follows the tool",
         ),
         (

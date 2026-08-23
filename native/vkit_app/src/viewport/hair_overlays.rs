@@ -998,6 +998,7 @@ fn draw_hair_streams(
     camera: TurntableCamera,
 ) {
     let tinted = part_tint_active(state);
+    let heatmap = state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity;
     let field = hair_depth_field(ui, state, rect, camera);
     let eye = camera.eye();
     for part_id in state.hair_project.editable_parts() {
@@ -1009,6 +1010,7 @@ fn draw_hair_streams(
         } else {
             crate::theme::COLOR_PRIMARY
         };
+        let physics = crate::hair_export::authoring_physics(part);
         for (strand_id, strand) in &part.strands {
             let mut run: Vec<Pos2> = Vec::new();
             let flush = |run: &mut Vec<Pos2>| {
@@ -1038,10 +1040,22 @@ fn draw_hair_streams(
                             } else {
                                 STREAM_POINT_RADIUS
                             },
-                            if editing {
-                                crate::theme::COLOR_HAIR_POINT_ACTIVE
-                            } else {
-                                crate::theme::COLOR_HAIR_POINT
+                            // While the rigidity brush is out, every joint
+                            // reads as what is painted on it. Painted rigidity
+                            // is invisible otherwise, and a brush whose effect
+                            // you cannot see is one nobody can aim.
+                            match (editing, heatmap) {
+                                (true, _) => crate::theme::COLOR_HAIR_POINT_ACTIVE,
+                                (false, true) => crate::hair_rigidity::ink(
+                                    strand.rigidity.get(index).copied().unwrap_or_else(|| {
+                                        vkit_core::vam::rolloff_rigidity(
+                                            &physics,
+                                            index,
+                                            strand.points_cm.len(),
+                                        )
+                                    }),
+                                ),
+                                (false, false) => crate::theme::COLOR_HAIR_POINT,
                             },
                         );
                     }
