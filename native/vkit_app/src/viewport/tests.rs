@@ -3846,6 +3846,51 @@ fn a_lit_layer_gains_saturation_without_inventing_a_hue_on_plain_hair() {
     );
 }
 
+/// A surface fills the mask, so nothing shows through the middle of it.
+///
+/// The head used to be splatted in one VERTEX at a time. Eleven thousand of
+/// them against a cell every four points means, at any real zoom, more cells
+/// than vertices — and every cell between two vertices stayed at infinity, so a
+/// strand on the far side that landed in one was hidden by nothing. That is
+/// what put hair points on the cheek.
+#[test]
+fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
+    use super::hair_overlays::HairDepthField;
+
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
+
+    // Three corners far enough apart that splatting them would leave the middle
+    // empty, which is exactly the case that leaked.
+    let a = (pos2(40.0, 40.0), 30.0);
+    let b = (pos2(240.0, 60.0), 30.0);
+    let c = (pos2(120.0, 240.0), 30.0);
+
+    let mut splatted = HairDepthField::probe(rect);
+    for corner in [a, b, c] {
+        splatted.probe_mark(corner.0, corner.1);
+    }
+    let middle = pos2(130.0, 110.0);
+    assert!(
+        !splatted.hides(middle, 60.0),
+        "the fixture must reproduce the hole, or this test proves nothing"
+    );
+
+    let mut filled = HairDepthField::probe(rect);
+    filled.probe_fill(a, b, c);
+    assert!(
+        filled.hides(middle, 60.0),
+        "a point thirty centimetres behind the surface must not show through it"
+    );
+    assert!(
+        !filled.hides(middle, 30.0),
+        "and the surface still does not hide itself"
+    );
+    assert!(
+        !filled.hides(pos2(360.0, 40.0), 60.0),
+        "outside the triangle nothing is covered, so nothing is hidden"
+    );
+}
+
 #[test]
 fn one_depth_field_answers_for_the_points_and_the_streams_alike() {
     use super::hair_overlays::HairDepthField;

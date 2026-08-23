@@ -10,6 +10,12 @@ pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 9] = [
         TextKey::HairToolPickHint,
     ),
     (
+        HairTool::Vertex,
+        Icon::HairVertex,
+        TextKey::HairToolVertex,
+        TextKey::HairToolVertexHint,
+    ),
+    (
         HairTool::Plant,
         Icon::HairPlant,
         TextKey::HairToolPlant,
@@ -50,12 +56,6 @@ pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 9] = [
         Icon::HairPuff,
         TextKey::HairToolPuff,
         TextKey::HairToolPuffHint,
-    ),
-    (
-        HairTool::Vertex,
-        Icon::HairVertex,
-        TextKey::HairToolVertex,
-        TextKey::HairToolVertexHint,
     ),
 ];
 

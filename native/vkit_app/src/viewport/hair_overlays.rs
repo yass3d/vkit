@@ -790,6 +790,69 @@ impl HairDepthField {
         }
     }
 
+    /// Fill one projected triangle, so the surface it belongs to has no holes.
+    ///
+    /// The head used to be splatted into this grid one VERTEX at a time. A head
+    /// has about eleven thousand of them and the grid has a cell every four
+    /// points, so at any real zoom there are more cells than vertices and the
+    /// gaps between them stay at infinity — and a point on the far side that
+    /// lands in a gap is not hidden by anything. That is what let the strands
+    /// behind the skull show through the cheek.
+    ///
+    /// Covered cells take the nearest depth across the triangle, interpolated
+    /// at the cell centre, so a surface that slopes away still reads as one
+    /// surface rather than a row of steps.
+    fn fill_triangle(&mut self, a: (Pos2, f32), b: (Pos2, f32), c: (Pos2, f32)) {
+        let area = (b.0.x - a.0.x) * (c.0.y - a.0.y) - (c.0.x - a.0.x) * (b.0.y - a.0.y);
+        if area.abs() < 1.0e-6 {
+            // Edge on. It covers no cell interior, but its outline still hides
+            // what is behind it.
+            self.draw_span(a, b);
+            self.draw_span(b, c);
+            self.draw_span(c, a);
+            return;
+        }
+        let left = a.0.x.min(b.0.x).min(c.0.x).max(self.rect.left());
+        let right = a.0.x.max(b.0.x).max(c.0.x).min(self.rect.right());
+        let top = a.0.y.min(b.0.y).min(c.0.y).max(self.rect.top());
+        let bottom = a.0.y.max(b.0.y).max(c.0.y).min(self.rect.bottom());
+        if left > right || top > bottom {
+            return;
+        }
+        let Some((first_col, first_row)) = self.coords(pos2(left, top)) else {
+            return;
+        };
+        let last_col = self
+            .coords(pos2(right, bottom))
+            .map_or(first_col, |(col, _)| col);
+        let last_row = self
+            .coords(pos2(right, bottom))
+            .map_or(first_row, |(_, row)| row);
+        for row in first_row..=last_row.min(self.rows - 1) {
+            for col in first_col..=last_col.min(self.cols - 1) {
+                let centre = pos2(
+                    self.rect.left() + (col as f32 + 0.5) * DEPTH_FIELD_CELL,
+                    self.rect.top() + (row as f32 + 0.5) * DEPTH_FIELD_CELL,
+                );
+                let w0 = ((b.0.x - centre.x) * (c.0.y - centre.y)
+                    - (c.0.x - centre.x) * (b.0.y - centre.y))
+                    / area;
+                let w1 = ((c.0.x - centre.x) * (a.0.y - centre.y)
+                    - (a.0.x - centre.x) * (c.0.y - centre.y))
+                    / area;
+                let w2 = 1.0 - w0 - w1;
+                if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
+                    continue;
+                }
+                let depth = w0 * a.1 + w1 * b.1 + w2 * c.1;
+                let cell = &mut self.nearest[row * self.cols + col];
+                if depth < *cell {
+                    *cell = depth;
+                }
+            }
+        }
+    }
+
     fn draw_span(&mut self, from: (Pos2, f32), to: (Pos2, f32)) {
         let steps = ((from.0 - to.0).length() / DEPTH_FIELD_CELL)
             .ceil()
@@ -809,6 +872,11 @@ impl HairDepthField {
     #[cfg(test)]
     pub(super) fn probe_mark(&mut self, screen: Pos2, distance: f32) {
         self.mark(screen, distance);
+    }
+
+    #[cfg(test)]
+    pub(super) fn probe_fill(&mut self, a: (Pos2, f32), b: (Pos2, f32), c: (Pos2, f32)) {
+        self.fill_triangle(a, b, c);
     }
 
     #[must_use]
@@ -864,11 +932,27 @@ pub(super) fn hair_depth_field(
 
     let mut field = HairDepthField::new(rect);
     if let Some(head) = head.as_deref() {
-        for vertex in &head.mesh.vertices {
-            let world = glam::Vec3::new(vertex[0] as f32, vertex[1] as f32, vertex[2] as f32);
-            if let Some(projected) = camera.project(world, rect) {
-                field.mark(projected.screen, (world - eye).length());
-            }
+        // The DRAWN skin, the same set the head is painted from, so the mask
+        // agrees with the picture: eyelashes and tear surfaces are not in it and
+        // must not hide anything.
+        let projected: Vec<Option<(Pos2, f32)>> = head
+            .mesh
+            .vertices
+            .iter()
+            .map(|vertex| {
+                let world = glam::Vec3::new(vertex[0] as f32, vertex[1] as f32, vertex[2] as f32);
+                camera
+                    .project(world, rect)
+                    .map(|seen| (seen.screen, (world - eye).length()))
+            })
+            .collect();
+        for triangle in head.render_triangles.iter() {
+            let [Some(a), Some(b), Some(c)] =
+                triangle.map(|index| projected.get(index as usize).copied().flatten())
+            else {
+                continue;
+            };
+            field.fill_triangle(a, b, c);
         }
     }
     if !state.hair_hide_strands {
