@@ -21,7 +21,10 @@ fn columns(state: &AppState) -> usize {
 /// Where the toolbox stands, or `None` when the tab is not sculpting.
 #[must_use]
 pub(super) fn sculpt_toolbox_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
-    if !state.is_detail_editing() || state.hair_thumbnail.is_some() {
+    // `is_sculpting`, NOT `is_detail_editing` — that one is sculpting OR
+    // texturing, so gating on it put this box on the texture tab beside the
+    // texture one, two toolboxes offering two different sets of brushes.
+    if !state.is_sculpting() || state.hair_thumbnail.is_some() {
         return None;
     }
     super::toolbox::toolbox_rect(
@@ -47,7 +50,10 @@ fn default_stack_top(state: &AppState, viewport: Rect) -> f32 {
 /// Where the deform-group island sits by default, under the toolbox.
 #[must_use]
 pub(super) fn group_panel_default_top(state: &AppState, viewport: Rect, height: f32) -> f32 {
-    if !state.is_detail_editing() {
+    // Only stacked under a toolbox that is actually there. On any other tab the
+    // island is centred on its own, as it was before there was one to stack it
+    // under.
+    if !state.is_sculpting() {
         return viewport.center().y - height * 0.5;
     }
     let toolbox = super::toolbox::toolbox_size(SculptBrush::ALL.len(), columns(state)).y;
@@ -114,7 +120,7 @@ mod tests {
         let mut state = AppState::default();
         state.active_tab = crate::state::Tab::Morph;
         state.result_preview_phase = crate::state::ResultPreviewPhase::Sculpt;
-        assert!(state.is_detail_editing(), "the fixture must be sculpting");
+        assert!(state.is_sculpting(), "the fixture must be sculpting");
 
         let toolbox = sculpt_toolbox_rect(&state, viewport()).expect("room for a toolbox");
         let group_height = super::super::detail_hud::detail_group_panel_height(&state);
@@ -145,10 +151,53 @@ mod tests {
     }
 
     /// A tab that is not sculpting has no sculpt toolbox at all.
+    ///
+    /// The texture tab is the one that matters and the one this test used to
+    /// miss: it checked the hair tab, where the answer was right for the wrong
+    /// reason, while `is_detail_editing` was quietly true for texturing and put
+    /// a second toolbox on screen beside the texture one.
     #[test]
     fn no_toolbox_outside_the_sculpt_tab() {
-        let mut state = AppState::default();
-        state.active_tab = crate::state::Tab::Hair;
-        assert!(sculpt_toolbox_rect(&state, viewport()).is_none());
+        for tab in [
+            crate::state::Tab::Texture,
+            crate::state::Tab::Hair,
+            crate::state::Tab::Alignment,
+            crate::state::Tab::Result,
+        ] {
+            let mut state = AppState::default();
+            state.active_tab = tab;
+            assert!(
+                sculpt_toolbox_rect(&state, viewport()).is_none(),
+                "{tab:?} drew the sculpt toolbox"
+            );
+        }
+    }
+
+    /// Exactly one toolbox is on screen at a time.
+    ///
+    /// Three tabs each have one, and each gate is written separately. This is
+    /// the assertion that says they cannot overlap.
+    #[test]
+    fn no_tab_shows_two_toolboxes() {
+        for tab in [
+            crate::state::Tab::Alignment,
+            crate::state::Tab::Edit,
+            crate::state::Tab::Morph,
+            crate::state::Tab::Texture,
+            crate::state::Tab::Hair,
+            crate::state::Tab::Result,
+        ] {
+            let mut state = AppState::default();
+            state.active_tab = tab;
+            let showing = [
+                sculpt_toolbox_rect(&state, viewport()).is_some(),
+                super::super::texture_toolbox::texture_toolbox_rect(&state, viewport()).is_some(),
+                super::super::hair_hud::hair_toolbox_rect(&state, viewport()).is_some(),
+            ]
+            .into_iter()
+            .filter(|shown| *shown)
+            .count();
+            assert!(showing <= 1, "{tab:?} shows {showing} toolboxes");
+        }
     }
 }
