@@ -26,7 +26,7 @@ pub fn tooltip(response: Response, body: &str, shortcut: Option<impl Into<String
     let shortcut: String = shortcut.into();
     response.on_hover_ui(|ui| {
         ui.set_max_width(TOOLTIP_MAX_WIDTH);
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = TOOLTIP_SHORTCUT_GAP;
             ui.label(&body);
             ui.label(
@@ -1365,6 +1365,28 @@ pub fn slider_cell(
     }
 }
 
+/// A row of controls packed against the right edge, exactly `height` tall.
+///
+/// The height is decided BEFORE the layout, and that ordering is the whole
+/// point. `Ui::with_layout` hands the child the parent's entire remaining rect,
+/// and a horizontal layout with a cross-axis `Align::Center` centres its
+/// contents inside that rect — so in a top-down pane the row claims every pixel
+/// down to the bottom of the page and parks the buttons in the middle of it.
+/// Measured: one 18px button in a 600px pane produced a 600px row, which on
+/// screen is a pair of icons stranded in a field of nothing.
+///
+/// Nothing at the call site distinguishes the safe use from the ruinous one —
+/// the expression is identical, and only the parent's height decides. So the
+/// parent's height stops being the deciding factor: it is named here.
+pub fn right_aligned_row<R>(ui: &mut Ui, height: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width().max(0.0), height),
+        egui::Layout::right_to_left(egui::Align::Center),
+        add,
+    )
+    .inner
+}
+
 pub fn icon_button_size(ui: &Ui) -> f32 {
     ui.spacing().interact_size.y.clamp(22.0, 28.0)
 }
@@ -2521,5 +2543,67 @@ mod brush_pointer_tests {
                 "{sweep} sets a strength nothing draws",
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    /// No horizontal layout may be opened on an unbounded parent.
+    ///
+    /// `Ui::with_layout` hands the child the parent's entire remaining rect. A
+    /// horizontal layout centres its contents on the cross axis of that rect,
+    /// so in a top-down pane the row claims every pixel to the bottom of the
+    /// page and parks its contents in the middle. Measured: one 18px button in
+    /// a 600px pane produced a 600px row — three icons stranded in a field of
+    /// nothing at the top of the shortcut list.
+    ///
+    /// The trap is that the safe call and the ruinous one are the same
+    /// expression. Only the parent decides, and the parent is somewhere else.
+    /// So the expression itself is what is forbidden: every horizontal row goes
+    /// through something that settles its height first — `right_aligned_row`,
+    /// `Ui::horizontal`, or `allocate_ui_with_layout`.
+    ///
+    /// `top_down` is not covered: its cross axis is the width, and a pane's
+    /// width is bounded by the pane.
+    const OPENS: &str = ".with_layout(Layout::";
+    const HORIZONTAL: [&str; 2] = ["left_to_right(", "right_to_left("];
+
+    #[test]
+    fn no_horizontal_layout_opens_on_a_parent_of_unknown_height() {
+        let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        let mut scanned = 0usize;
+        let mut pending = vec![source_root.clone()];
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(&directory).expect("read the source tree") {
+                let path = entry.expect("read a source entry").path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|extension| extension != "rs") {
+                    continue;
+                }
+                scanned += 1;
+                let body = std::fs::read_to_string(&path).expect("read a source file");
+                for (index, line) in body.lines().enumerate() {
+                    // Assembled rather than written, so the scan does not read
+                    // its own needles as offences.
+                    if HORIZONTAL
+                        .iter()
+                        .any(|direction| line.contains(&format!("{OPENS}{direction}")))
+                    {
+                        let relative = path.strip_prefix(&source_root).unwrap_or(&path);
+                        offenders.push(format!("{}:{}", relative.display(), index + 1));
+                    }
+                }
+            }
+        }
+        assert!(scanned > 20, "the scan found only {scanned} source files");
+        assert!(
+            offenders.is_empty(),
+            "a horizontal layout on an unbounded parent claims the whole page: {}",
+            offenders.join(", ")
+        );
     }
 }

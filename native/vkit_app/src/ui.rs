@@ -1252,7 +1252,7 @@ fn draw_diagnostic_log_modal(root: &mut Ui, locale: Locale) {
             ui.set_height(height);
             ui.horizontal(|ui| {
                 switch(ui, &mut show_system, text(locale, TextKey::SystemLog));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                crate::ui_components::right_aligned_row(ui, CONTROL_H_DENSE, |ui| {
                     if ui
                         .add(
                             Button::new(text(locale, TextKey::CopyAll))

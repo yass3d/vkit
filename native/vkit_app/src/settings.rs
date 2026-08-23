@@ -158,14 +158,18 @@ fn draw_section_pane(ui: &mut Ui, state: &mut AppState, rect: Rect, section: Set
         .show(&mut pane, |ui| {
             Frame::new()
                 .inner_margin(Margin::symmetric(PANE_SIDE_MARGIN, 0))
-                .show(ui, |ui| match section {
-                    SettingsSection::Graphics => draw_graphics_settings(ui, state),
-                    SettingsSection::Viewport => draw_viewport_settings(ui, state),
-                    SettingsSection::General => draw_general_settings(ui, state),
-                    SettingsSection::Shortcuts => draw_shortcut_settings(ui, state),
-                    SettingsSection::About => draw_about_settings(ui, state),
-                });
+                .show(ui, |ui| draw_section_body(ui, state, section));
         });
+}
+
+fn draw_section_body(ui: &mut Ui, state: &mut AppState, section: SettingsSection) {
+    match section {
+        SettingsSection::Graphics => draw_graphics_settings(ui, state),
+        SettingsSection::Viewport => draw_viewport_settings(ui, state),
+        SettingsSection::General => draw_general_settings(ui, state),
+        SettingsSection::Shortcuts => draw_shortcut_settings(ui, state),
+        SettingsSection::About => draw_about_settings(ui, state),
+    }
 }
 
 fn setting_row<R>(
@@ -931,7 +935,7 @@ fn draw_about_settings(ui: &mut Ui, state: &mut AppState) {
                 about_paragraph(ui, text(locale, TextKey::AboutTagline));
             });
             if !crate::SUPPORT_URL.is_empty() {
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                crate::ui_components::right_aligned_row(ui, SUPPORT_MARK_SLOT, |ui| {
                     if about_mark(
                         ui,
                         "support",
@@ -1200,9 +1204,11 @@ const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 4] = [
 /// They act on the whole keymap rather than on any one binding, so they belong
 /// above the list rather than after the last row of it, where they read as
 /// though they belonged to whatever binding happened to be last.
+/// Import, export and reset, as icons at the top right of the shortcut list.
 fn draw_keymap_actions(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
-    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+    let height = crate::ui_components::icon_button_size(ui);
+    crate::ui_components::right_aligned_row(ui, height, |ui| {
         if crate::ui_components::icon_button(
             ui,
             crate::ui_components::Icon::Folder,
@@ -1346,6 +1352,43 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A section's height must come from its content, never from the pane it
+    /// happens to be drawn in.
+    ///
+    /// A horizontal layout whose cross axis is `Align::Center`, handed an
+    /// unbounded parent, claims the parent's whole height and centres its
+    /// contents inside it. That is how three icons at the top of the shortcut
+    /// list came to sit in the middle of a page-tall blank: measured, one 18px
+    /// button in a 600px pane produced a 600px row.
+    ///
+    /// Nothing at the call site tells the two cases apart — the expression is
+    /// the same, and only the parent's height decides. So the parent's height
+    /// is what this test varies.
+    #[test]
+    fn no_settings_section_is_sized_by_the_pane_it_is_drawn_in() {
+        for section in SettingsSection::ALL {
+            let mut measured = Vec::new();
+            for pane in [360.0_f32, 2400.0] {
+                egui::__run_test_ui(|ui| {
+                    let mut state = AppState::default();
+                    let cell = Rect::from_min_size(ui.cursor().min, vec2(420.0, pane));
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(cell)
+                            .layout(Layout::top_down(Align::Min)),
+                    );
+                    draw_section_body(&mut child, &mut state, section);
+                    measured.push(child.min_rect().height());
+                });
+            }
+            let (small, large) = (measured[0], measured[1]);
+            assert!(
+                (small - large).abs() < 1.0,
+                "{section:?}: {small:.0}px in a 360px pane, {large:.0}px in a 2400px one \n                 — something in it takes its size from the container",
+            );
+        }
+    }
 
     #[test]
     fn every_section_is_named_in_every_language() {
