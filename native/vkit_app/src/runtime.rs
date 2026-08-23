@@ -1972,6 +1972,11 @@ fn preferences_from_state(state: &AppState) -> Preferences {
         tooltips_enabled: state.tooltips_enabled,
         hair_toolbox_columns: state.hair_toolbox_columns,
         hair_toolbox_pos: state.hair_toolbox_pos,
+        sculpt_toolbox_columns: state.sculpt_toolbox_columns,
+        texture_toolbox_columns: state.texture_toolbox_columns,
+        sculpt_toolbox_pos: state.sculpt_toolbox_pos,
+        texture_toolbox_pos: state.texture_toolbox_pos,
+        detail_group_panel_pos: state.detail_group_panel_pos,
         show_one_sided_morphs: state.morph_library.show_one_sided,
 
         last_skin_id: state
@@ -2061,6 +2066,11 @@ fn apply_saved_preferences(state: &mut AppState, saved: &Preferences) {
     state.dispatch(Action::SetShowOneSidedMorphs(saved.show_one_sided_morphs));
     state.hair_toolbox_columns = saved.hair_toolbox_columns.clamp(1, 2);
     state.hair_toolbox_pos = saved.hair_toolbox_pos;
+    state.sculpt_toolbox_columns = saved.sculpt_toolbox_columns.clamp(1, 2);
+    state.texture_toolbox_columns = saved.texture_toolbox_columns.clamp(1, 2);
+    state.sculpt_toolbox_pos = saved.sculpt_toolbox_pos;
+    state.texture_toolbox_pos = saved.texture_toolbox_pos;
+    state.detail_group_panel_pos = saved.detail_group_panel_pos;
     state.morph_name_display = saved.morph_name_display;
     state.keymap = crate::shortcuts::Keymap::from_stored(&saved.shortcuts);
 
@@ -2321,6 +2331,36 @@ mod tests {
             Some(LogicalSize::new(MIN_WIDTH, MIN_HEIGHT).into()),
             "the floor does not move with the desktop; it has to clear every one"
         );
+    }
+
+    /// Every island the reader can drag comes back where they left it.
+    ///
+    /// The hair toolbox was saved and the other three were not, so arranging a
+    /// workspace and reopening the program undid most of it. This walks the
+    /// round trip rather than the field list, so adding a fifth island and
+    /// forgetting to save it fails here.
+    #[test]
+    fn a_dragged_island_comes_back_where_it_was_left() {
+        let mut state = AppState::default();
+        state.hair_toolbox_pos = Some([11.0, 12.0]);
+        state.sculpt_toolbox_pos = Some([21.0, 22.0]);
+        state.texture_toolbox_pos = Some([31.0, 32.0]);
+        state.detail_group_panel_pos = Some([41.0, 42.0]);
+        state.hair_toolbox_columns = 2;
+        state.sculpt_toolbox_columns = 2;
+        state.texture_toolbox_columns = 2;
+
+        let saved = preferences_from_state(&state);
+        let mut reopened = AppState::default();
+        apply_saved_preferences(&mut reopened, &saved);
+
+        assert_eq!(reopened.hair_toolbox_pos, Some([11.0, 12.0]));
+        assert_eq!(reopened.sculpt_toolbox_pos, Some([21.0, 22.0]));
+        assert_eq!(reopened.texture_toolbox_pos, Some([31.0, 32.0]));
+        assert_eq!(reopened.detail_group_panel_pos, Some([41.0, 42.0]));
+        assert_eq!(reopened.hair_toolbox_columns, 2);
+        assert_eq!(reopened.sculpt_toolbox_columns, 2);
+        assert_eq!(reopened.texture_toolbox_columns, 2);
     }
 
     #[test]

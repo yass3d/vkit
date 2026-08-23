@@ -698,6 +698,7 @@ pub fn draw_result_floating_chrome(ui: &mut Ui, state: &mut AppState, rect: Rect
         super::viewport::hair_hud::draw_hair_toolbox(ui, state, rect);
     }
     sculpt_toolbox::draw_sculpt_toolbox(ui, state, rect);
+    texture_toolbox::draw_texture_toolbox(ui, state, rect);
     if state.shows_authored_hair() {
         if state.hair_thumbnail.is_some() {
             draw_thumbnail_frame(ui, state, rect);
@@ -992,6 +993,7 @@ pub(crate) use hair_hud::draw_hair_workspace;
 pub(crate) use hair_input::clear_hair_pointer_state;
 mod sculpt_input;
 mod sculpt_toolbox;
+mod texture_toolbox;
 mod toolbox;
 mod work_nav;
 

@@ -148,10 +148,13 @@ pub(super) fn draw_work_nav(ui: &Ui, state: &mut AppState, viewport: Rect) {
         .fixed_pos(bar.min)
         .show(ui.ctx(), |ui| {
             let (rect, _) = ui.allocate_exact_size(bar.size(), Sense::hover());
+            // The same dark the toolboxes use. It was on the raised panel
+            // surface, which is nearly the viewport's own colour and left the
+            // bar looking like a smudge rather than a control.
             ui.painter().rect_filled(
                 rect,
                 crate::theme::capsule_radius(rect.height()),
-                crate::theme::COLOR_SURFACE_RAISED,
+                crate::theme::COLOR_TOPBAR.gamma_multiply(0.96),
             );
             // Consumed rather than borrowed: `Action` is not `Clone` and
             // should not be — several of them carry a whole layer with them.

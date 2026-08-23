@@ -1089,80 +1089,6 @@ pub(crate) fn draw_paint_header_content(ui: &mut Ui, state: &mut AppState, conte
     );
     row.spacing_mut().item_spacing.x = SPACE_2;
 
-    let tools = state
-        .texture_project
-        .selected_layer()
-        .map_or(TextureSourceMode::default().available_tools(), |layer| {
-            layer.source_mode.available_tools()
-        });
-    let gated = tools
-        .iter()
-        .any(|tool| !state.texture_project.tool_usable(*tool));
-    for tool in tools.iter().copied() {
-        let usable = state.texture_project.tool_usable(tool);
-        let (cell, response) = row.allocate_exact_size(
-            Vec2::splat(CONTROL_H_DENSE),
-            if usable {
-                Sense::click()
-            } else {
-                Sense::hover()
-            },
-        );
-        let response = crate::ui_components::tooltip(
-            response,
-            text(
-                state.locale,
-                if usable {
-                    texture_tool_text_key(tool)
-                } else {
-                    TextKey::TextureToolNeedsPins
-                },
-            ),
-            usable
-                .then(|| texture_tool_shortcut(tool).map(Shortcut::label))
-                .flatten(),
-        );
-        let active = state.texture_project.active_tool == tool;
-        if active || (usable && response.hovered()) {
-            row.painter().rect_filled(
-                cell,
-                CONTROL_RADIUS,
-                if active {
-                    Color32::WHITE
-                } else {
-                    COLOR_SURFACE_RAISED
-                },
-            );
-        }
-        if gated && usable && !active {
-            row.painter().rect_stroke(
-                cell,
-                CONTROL_RADIUS,
-                Stroke::new(1.0, crate::theme::COLOR_EMPHASIS),
-                egui::StrokeKind::Inside,
-            );
-        }
-        paint_icon(
-            row.painter(),
-            cell.shrink(6.0),
-            tool_icon(tool),
-            match (active, usable) {
-                (true, _) => COLOR_BG,
-                (false, true) => COLOR_TEXT,
-                (false, false) => COLOR_MUTED,
-            },
-        );
-        if response.clicked() {
-            state.dispatch(Action::SetTextureTool(tool));
-        }
-    }
-
-    let (sep, _) = row.allocate_exact_size(vec2(SPACE_2 + 1.0, CONTROL_H_DENSE), Sense::hover());
-    row.painter().vline(
-        sep.center().x,
-        egui::Rangef::new(sep.top() + 4.0, sep.bottom() - 4.0),
-        Stroke::new(1.0, COLOR_BORDER),
-    );
     texture_brush_controls(&mut row, state);
 }
 
@@ -2100,7 +2026,7 @@ pub(crate) const fn channel_display(channel: TextureChannel) -> &'static str {
     }
 }
 
-const fn texture_tool_text_key(tool: TextureTool) -> TextKey {
+pub(crate) const fn texture_tool_text_key(tool: TextureTool) -> TextKey {
     match tool {
         TextureTool::PinPair => TextKey::TextureToolPinPair,
         TextureTool::Projection => TextKey::ProjectImage,
@@ -2111,7 +2037,7 @@ const fn texture_tool_text_key(tool: TextureTool) -> TextKey {
     }
 }
 
-const fn texture_tool_shortcut(tool: TextureTool) -> Option<Shortcut> {
+pub(crate) const fn texture_tool_shortcut(tool: TextureTool) -> Option<Shortcut> {
     match tool {
         TextureTool::PinPair => Some(Shortcut::TexturePinBrush),
         TextureTool::CloneStamp => Some(Shortcut::TextureCloneBrush),
@@ -2122,7 +2048,7 @@ const fn texture_tool_shortcut(tool: TextureTool) -> Option<Shortcut> {
     }
 }
 
-const fn tool_icon(tool: TextureTool) -> Icon {
+pub(crate) const fn tool_icon(tool: TextureTool) -> Icon {
     match tool {
         TextureTool::PinPair => Icon::TexturePin,
         TextureTool::Projection => Icon::Projector,

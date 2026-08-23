@@ -374,10 +374,12 @@ pub struct AppState {
     pub detail_group_panel_pos: Option<[f32; 2]>,
     pub hair_toolbox_pos: Option<[f32; 2]>,
     pub sculpt_toolbox_pos: Option<[f32; 2]>,
+    pub texture_toolbox_pos: Option<[f32; 2]>,
     pub hair_panel_page: crate::hair_project::HairPanelPage,
     pub hair_scalp_mesh: String,
     pub hair_toolbox_columns: u8,
     pub sculpt_toolbox_columns: u8,
+    pub texture_toolbox_columns: u8,
 
     pub sculpt_brush: SculptBrush,
 
@@ -674,8 +676,10 @@ impl Default for AppState {
             detail_group_panel_pos: None,
             hair_toolbox_pos: None,
             sculpt_toolbox_pos: None,
+            texture_toolbox_pos: None,
             hair_toolbox_columns: 1,
             sculpt_toolbox_columns: 1,
+            texture_toolbox_columns: 1,
             hair_panel_page: crate::hair_project::HairPanelPage::default(),
             hair_scalp_mesh: String::new(),
             sculpt_brush: SculptBrush::default(),

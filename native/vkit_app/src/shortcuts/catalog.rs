@@ -534,22 +534,16 @@ impl Shortcut {
         }
     }
 
-    /// What this shortcut is bound to out of the box, spelled for a reader.
-    ///
-    /// Derived, never listed. A second table of "G", "A", "[" beside the table
-    /// that produces them drifts the moment one is edited, and this one had a
-    /// test pinning the two to each other, which is a tautology and not a check.
-    ///
-    /// This is the FACTORY binding. Anywhere the reader is being told which key
-    /// to press right now, use `label_now`, which reads the keymap in force.
-    pub fn label(self) -> String {
-        self.default_binding().label()
-    }
-
+    /// The binding in force for this shortcut right now.
     pub fn binding(self, ui: &Ui) -> Binding {
         current(ui).binding(self)
     }
 
+    /// What key to press, spelled for a reader, from the keymap in force.
+    ///
+    /// The only label anything shows. A `label()` that spelled the FACTORY
+    /// binding used to sit beside this one, and it was the wrong answer for
+    /// anybody who had rebound the key.
     pub fn label_now(self, ui: &Ui) -> String {
         self.binding(ui).label()
     }

@@ -65,30 +65,26 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn every_label_names_the_press_it_is_bound_to() {
-        for shortcut in Shortcut::ALL {
-            assert_eq!(
-                shortcut.label(),
-                shortcut.default_binding().label(),
-                "{shortcut:?} advertises a press it does not listen for"
-            );
-        }
-    }
-
+    /// The two written-out hints still name the presses they stand for.
+    ///
+    /// These are the last two labels not read from the keymap: they join three
+    /// presses into one string, which no `label` call can do. So they are held
+    /// to the FACTORY bindings here, and they go stale for a reader who rebinds
+    /// one — which is the reason not to write any more of them.
     #[test]
     fn a_joined_hint_still_names_every_press_it_stands_for() {
+        let factory = |shortcut: Shortcut| shortcut.default_binding().label();
         assert_eq!(
             BRUSH_SIZE_HINT,
             format!(
                 "{} / {} / {}",
-                Shortcut::BrushSizeDown.label(),
-                Shortcut::BrushSizeUp.label(),
-                Shortcut::BrushSizeSweep.label()
+                factory(Shortcut::BrushSizeDown),
+                factory(Shortcut::BrushSizeUp),
+                factory(Shortcut::BrushSizeSweep)
             ),
             "the size hint has drifted from the presses that actually resize the brush"
         );
-        assert_eq!(BRUSH_STRENGTH_HINT, Shortcut::BrushStrengthSweep.label());
+        assert_eq!(BRUSH_STRENGTH_HINT, factory(Shortcut::BrushStrengthSweep));
     }
 
     #[test]
@@ -106,7 +102,7 @@ mod tests {
             (Shortcut::HairPickTool, Key::V, "V"),
         ] {
             assert_eq!(shortcut.trigger(), Trigger::Key(key), "{shortcut:?}");
-            assert_eq!(shortcut.label(), label, "{shortcut:?}");
+            assert_eq!(shortcut.default_binding().label(), label, "{shortcut:?}");
             assert_eq!(
                 shortcut.context(),
                 ShortcutContext::HairEdit,
@@ -419,18 +415,32 @@ mod registry_tests {
         assert!(!ShortcutContext::HairEdit.overlaps(ShortcutContext::DetailEdit));
     }
 
-    /// The factory label is derived from the factory binding, not listed beside
-    /// it. Two tables holding one value is how a rebound key kept showing the
-    /// letter it used to be on.
+    /// A label is read off the binding, and only ever off the binding in force.
+    ///
+    /// There used to be a hardcoded table of "G", "A", "[" beside the table
+    /// that produces them, and a test pinning the two to each other, which is a
+    /// tautology. Then a `label()` that spelled the FACTORY binding, which is
+    /// the wrong thing to show a reader who has rebound the key — every caller
+    /// is on `label_now` and that method is gone.
     #[test]
     fn a_label_is_read_off_the_binding_it_describes() {
-        for shortcut in Shortcut::ALL {
-            assert_eq!(shortcut.label(), shortcut.default_binding().label());
-        }
-        assert_eq!(Shortcut::Undo.label(), "Ctrl+Z");
-        assert_eq!(Shortcut::BrushSizeDown.label(), "[");
-        assert_eq!(Shortcut::ViewFront.label(), "Num 5");
-        assert_eq!(Shortcut::ViewPan.label(), "Shift+Wheel click");
+        assert_eq!(Shortcut::Undo.default_binding().label(), "Ctrl+Z");
+        assert_eq!(Shortcut::BrushSizeDown.default_binding().label(), "[");
+        assert_eq!(Shortcut::ViewFront.default_binding().label(), "Num 5");
+        assert_eq!(
+            Shortcut::ViewPan.default_binding().label(),
+            "Shift+Wheel click"
+        );
+
+        let mut keymap = Keymap::default();
+        keymap.rebind(
+            Shortcut::XSymmetry,
+            Binding {
+                trigger: Trigger::Key(egui::Key::K),
+                modifiers: ModifierPolicy::Exactly(Modifiers::ALT),
+            },
+        );
+        assert_eq!(keymap.binding(Shortcut::XSymmetry).label(), "Alt+K");
     }
 }
 

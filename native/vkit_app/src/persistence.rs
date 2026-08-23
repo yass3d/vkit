@@ -117,6 +117,20 @@ pub struct Preferences {
     pub tooltips_enabled: bool,
     #[serde(default = "default_hair_toolbox_columns")]
     pub hair_toolbox_columns: u8,
+
+    /// Where the reader dragged each floating island, and how wide they made
+    /// it. Kept because a workspace somebody arranged is a workspace they
+    /// arranged: reopening the program should not undo it.
+    #[serde(default = "default_hair_toolbox_columns")]
+    pub sculpt_toolbox_columns: u8,
+    #[serde(default = "default_hair_toolbox_columns")]
+    pub texture_toolbox_columns: u8,
+    #[serde(default)]
+    pub sculpt_toolbox_pos: Option<[f32; 2]>,
+    #[serde(default)]
+    pub texture_toolbox_pos: Option<[f32; 2]>,
+    #[serde(default)]
+    pub detail_group_panel_pos: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hair_toolbox_pos: Option<[f32; 2]>,
     #[serde(default = "default_show_one_sided_morphs")]
@@ -206,6 +220,11 @@ impl Default for Preferences {
         Self {
             locale: None,
             hair_toolbox_columns: default_hair_toolbox_columns(),
+            sculpt_toolbox_columns: default_hair_toolbox_columns(),
+            texture_toolbox_columns: default_hair_toolbox_columns(),
+            sculpt_toolbox_pos: None,
+            texture_toolbox_pos: None,
+            detail_group_panel_pos: None,
             hair_toolbox_pos: None,
             morph_name_display: MorphNameDisplay::default(),
             shortcuts: std::collections::BTreeMap::new(),
@@ -768,6 +787,11 @@ mod tests {
             morph_name_display: MorphNameDisplay::Original,
             hair_toolbox_columns: 2,
             hair_toolbox_pos: Some([120.0, 240.0]),
+            sculpt_toolbox_columns: 2,
+            texture_toolbox_columns: 1,
+            sculpt_toolbox_pos: Some([300.0, 180.0]),
+            texture_toolbox_pos: None,
+            detail_group_panel_pos: Some([640.0, 420.0]),
             inspector_width: Some(512),
             vam_root: Some(PathBuf::from(r"C:\VaM")),
             vam_geometry_base_path: Some(PathBuf::from(r"C:\bases\femalecustom.obj")),
