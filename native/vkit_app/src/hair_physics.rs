@@ -1953,8 +1953,35 @@ fn face_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
     (normal.length_squared() > 1.0e-20).then(|| normal.normalize())
 }
 
+/// The last head measured, kept so the next scene does not measure it again.
+///
+/// Every hair part builds a scene of its own, and every scene wanted this
+/// field: seven parts, seven identical grids, off the same head. Each one is a
+/// BVH over the head's triangles plus 262,144 signed-distance queries against
+/// it, and the seven of them were the 0.77-second stall a preset load put on
+/// the frame that loaded it.
+///
+/// One entry is enough — there is one head. The key is `SurfaceMesh::revision`,
+/// which is a content hash of the vertices and the visible triangles, so a head
+/// that moved gets a new grid and a head that did not gets the old one.
+static HEAD_SDF: std::sync::Mutex<Option<(u64, Arc<HeadSdfGrid>)>> = std::sync::Mutex::new(None);
+
+fn cached_head_sdf(mesh: &SurfaceMesh) -> Option<Arc<HeadSdfGrid>> {
+    if let Ok(held) = HEAD_SDF.lock()
+        && let Some((revision, grid)) = held.as_ref()
+        && *revision == mesh.revision
+    {
+        return Some(Arc::clone(grid));
+    }
+    let grid = Arc::new(head_sdf_for_mesh(mesh)?);
+    if let Ok(mut held) = HEAD_SDF.lock() {
+        *held = Some((mesh.revision, Arc::clone(&grid)));
+    }
+    Some(grid)
+}
+
 fn head_field_for_mesh(mesh: &SurfaceMesh) -> (Vec<GpuHeadFieldElement>, u32) {
-    let Some(grid) = head_sdf_for_mesh(mesh) else {
+    let Some(grid) = cached_head_sdf(mesh) else {
         return (vec![GpuHeadFieldElement { lanes: [0.0; 4] }], 0);
     };
     let mut packed = Vec::with_capacity(2 + grid.distances.len().div_ceil(4));
@@ -2354,6 +2381,33 @@ mod tests {
             })
             .expect("a sphere is a mesh"),
         )
+    }
+
+    /// The same head is measured once, however many hair parts want it.
+    ///
+    /// Seven parts meant seven identical distance fields, each a BVH over the
+    /// head plus 262,144 queries against it. That was the 0.77-second stall on
+    /// the frame a preset loaded.
+    #[test]
+    fn one_head_is_measured_once_however_many_parts_ask() {
+        let mesh = sphere_mesh(Vec3::ZERO, 1.0);
+
+        let first = cached_head_sdf(&mesh).expect("a sphere has a field");
+        let second = cached_head_sdf(&mesh).expect("and the cache still has it");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "the second part measured the head again",
+        );
+
+        // A head that moved is a different head, and gets its own field.
+        let moved = sphere_mesh(Vec3::new(0.0, 3.0, 0.0), 1.0);
+        assert_ne!(moved.revision, mesh.revision, "the fixture must differ");
+        let after = cached_head_sdf(&moved).expect("the moved head has a field");
+        assert!(!Arc::ptr_eq(&first, &after));
+        assert!(
+            (after.origin.y - first.origin.y).abs() > 1.0,
+            "the new field is measured where the head now is",
+        );
     }
 
     /// A preview with nothing to draw refuses BEFORE the expensive half.
