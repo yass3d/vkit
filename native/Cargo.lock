@@ -3212,7 +3212,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vkit-app"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "base64 0.22.1",
  "bytemuck",
@@ -3247,7 +3247,7 @@ dependencies = [
 
 [[package]]
 name = "vkit-core"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "approx",
  "draco-core",
@@ -3268,11 +3268,11 @@ dependencies = [
 
 [[package]]
 name = "vkit-geometry-core"
-version = "0.0.4"
+version = "0.0.5"
 
 [[package]]
 name = "vkit-semantic"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "flate2",
  "sha2",
