@@ -507,7 +507,7 @@ pub(crate) fn authoring_hair_preview(
     let bed = head_bed(ctx, state)?;
     let bed_ms = bed_started.elapsed().as_secs_f64() * 1000.0;
     let geometry_started = std::time::Instant::now();
-    let geometry = crate::hair_export::authoring_guide_geometry(part, scalp, false)?;
+    let geometry = crate::hair_export::preview_guide_geometry(part, scalp)?;
     let geometry_ms = geometry_started.elapsed().as_secs_f64() * 1000.0;
     let mut look = crate::hair_export::authoring_look(part);
     if tinted {

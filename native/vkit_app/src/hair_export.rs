@@ -214,6 +214,24 @@ pub fn sanitize_name(value: &str, fallback: &str) -> String {
     }
 }
 
+/// The geometry the viewport draws and the solver runs on.
+///
+/// Style joints are built here whenever the part asks for them, because the
+/// preview has to be able to answer the question the exported file answers:
+/// does this shape hold once physics touches it? Cross-strand joints are the
+/// only constraint in the solver that holds strands to *each other* — rigidity
+/// pulls each particle back to a head-relative pose, which is a different
+/// thing and cannot stand in for them. Leaving them out of the preview made
+/// every woven or clumped style fall apart on screen and hold in the game.
+///
+/// The toggle is off by default, so a part that does not ask pays nothing.
+pub fn preview_guide_geometry(
+    part: &HairPart,
+    scalp: &ScalpAuthoring,
+) -> Option<vkit_core::vam::HairGuideGeometry> {
+    authoring_guide_geometry(part, scalp, part.style_joints)
+}
+
 pub fn authoring_guide_geometry(
     part: &HairPart,
     scalp: &ScalpAuthoring,
@@ -1494,7 +1512,11 @@ mod settings_export_tests {
     }
 
     #[test]
-    fn the_preview_may_skip_the_joint_graph_but_the_export_never_does() {
+    /// The old name here was `the_preview_may_skip_the_joint_graph`, and the
+    /// permission it granted was the defect: a preview with no cross-strand
+    /// joints shows every clumped or woven style coming apart, while the file
+    /// it exports holds together in the game.
+    fn the_preview_runs_the_same_joint_graph_the_export_ships() {
         use crate::hair_project::{HairProject, build_scalp_authoring};
         use vkit_core::vam::{BuiltinHairScalp, HairScalpGeometry};
 
@@ -1521,6 +1543,25 @@ mod settings_export_tests {
         let id = project.add_part("UdaneScalp");
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
         part.plant(&authoring, &[0, 1, 2, 3, 4]);
+        part.style_joints = true;
+
+        // The preview asks the part, not the caller. Cross-strand joints are
+        // the only thing in the solver that holds strands to each other, so a
+        // preview without them shows every clumped or woven style falling
+        // apart while the exported file holds — the screen would be lying.
+        let previewed = preview_guide_geometry(part, &authoring).expect("geometry");
+        assert!(
+            !previewed.nearby_joints.is_empty(),
+            "the preview has to simulate the joints the file ships",
+        );
+        part.style_joints = false;
+        assert!(
+            preview_guide_geometry(part, &authoring)
+                .expect("geometry")
+                .nearby_joints
+                .is_empty(),
+            "and a part that never asked pays nothing for them",
+        );
         part.style_joints = true;
 
         let with_joints = authoring_guide_geometry(part, &authoring, true).expect("geometry");
