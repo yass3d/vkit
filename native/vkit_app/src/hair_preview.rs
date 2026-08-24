@@ -163,8 +163,11 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             .position(|candidate| candidate.eq_ignore_ascii_case(name))
     };
     let mut capsules = Vec::new();
+    let mut refused: Vec<String> = Vec::new();
     for &(from, to, materials) in SPANS {
+        let span_name = format!("{from}->{to}");
         let (Some(from), Some(to)) = (template.bone(from), template.bone(to)) else {
+            refused.push(format!("{span_name}: no bone"));
             continue;
         };
         let a = glam::Vec3::from_array(from.center_point.map(|v| v as f32));
@@ -172,6 +175,7 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
         let axis = b - a;
         let length_squared = axis.length_squared();
         if length_squared < 1.0e-6 {
+            refused.push(format!("{span_name}: bones coincide"));
             continue;
         }
         let wanted: Vec<usize> = materials
@@ -179,6 +183,7 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             .filter_map(|name| material_id(name))
             .collect();
         if wanted.is_empty() {
+            refused.push(format!("{span_name}: no material of {materials:?}"));
             continue;
         }
 
@@ -207,6 +212,10 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             }
         }
         if radial.len() < 50 {
+            refused.push(format!(
+                "{span_name}: only {} vertices across it",
+                radial.len()
+            ));
             continue;
         }
         radial.sort_by(f32::total_cmp);
@@ -217,7 +226,83 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             radius,
         });
     }
+    let _ = crate::diagnostics::record(
+        crate::diagnostics::Severity::Info,
+        "hair",
+        "capsules",
+        &format!(
+            "built={}; refused={:?}; materials_on_template={:?}",
+            capsules.len(),
+            refused,
+            template.material_groups,
+        ),
+    );
+    // Written down once a bed, because a capsule that swallows the skin is
+    // invisible from the inside: hair authored lying on a shoulder would have
+    // its rest pose *inside* the collider, and then collision pushes it out
+    // while the point joint pulls it back, every step, forever.
+    for (index, capsule) in capsules.iter().enumerate() {
+        let a = glam::Vec3::from_array(capsule.a);
+        let b = glam::Vec3::from_array(capsule.b);
+        let mut worst = String::new();
+        for (other_index, other) in capsules.iter().enumerate() {
+            if other_index == index {
+                continue;
+            }
+            // How far one capsule's axis reaches inside the other's shell at
+            // its nearest approach. Positive means they interpenetrate, and
+            // where they do, resolving them one after another can push a
+            // particle out of each and into the other.
+            let c = glam::Vec3::from_array(other.a);
+            let d = glam::Vec3::from_array(other.b);
+            let gap = segment_gap(a, b, c, d);
+            let overlap = capsule.radius + other.radius - gap;
+            if overlap > 0.0 {
+                worst.push_str(&format!(" [{other_index}:+{:.2}cm]", overlap * 100.0));
+            }
+        }
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "capsule",
+            &format!(
+                "{index}: a=({:.1},{:.1},{:.1}) b=({:.1},{:.1},{:.1}) r={:.2}cm len={:.1}cm overlaps:{}",
+                a.x * 100.0,
+                a.y * 100.0,
+                a.z * 100.0,
+                b.x * 100.0,
+                b.y * 100.0,
+                b.z * 100.0,
+                capsule.radius * 100.0,
+                a.distance(b) * 100.0,
+                if worst.is_empty() {
+                    " none".to_owned()
+                } else {
+                    worst
+                },
+            ),
+        );
+    }
     capsules
+}
+
+/// Closest distance between two line segments.
+fn segment_gap(a: glam::Vec3, b: glam::Vec3, c: glam::Vec3, d: glam::Vec3) -> f32 {
+    let mut best = f32::MAX;
+    // Sampled rather than solved: this runs once a bed, for a diagnostic, and
+    // the exact closest approach of two segments is a page of algebra that
+    // would have to be right to be worth reading.
+    for step in 0..=32 {
+        let t = step as f32 / 32.0;
+        let on_ab = a.lerp(b, t);
+        let on_cd = c.lerp(d, t);
+        for other in 0..=32 {
+            let u = other as f32 / 32.0;
+            best = best.min(on_ab.distance(c.lerp(d, u)));
+            best = best.min(on_cd.distance(a.lerp(b, u)));
+        }
+    }
+    best
 }
 
 /// One guide after its root has been projected onto the head: where it is

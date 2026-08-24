@@ -180,7 +180,20 @@ fn head_distance(position: vec3<f32>) -> f32 {
             }
         }
     }
-    return total;
+    // Outside the box the cell fetch clamps, which repeats the boundary slab
+    // for ever — a head-shaped column extruded down through the shoulders,
+    // which is not a collider anybody built.
+    //
+    // Added, not maxed. The cell fetch has already clamped the sample onto the
+    // box wall, so `total` is the distance from the nearest point on that wall
+    // to the head; how far past the wall we stand adds to it. That keeps the
+    // gradient pointing away from the *head*. A `max` hands back the box's own
+    // gradient instead — a repulsive shell around the grid, which is a second
+    // phantom collider in place of the first. Inside, the term is zero and the
+    // field is untouched, negatives and all.
+    let span = cell * max(f32(resolution) - 1.0, 0.0);
+    let outside = max(header.xyz - position, position - (header.xyz + vec3<f32>(span)));
+    return total + length(max(outside, vec3<f32>(0.0)));
 }
 
 fn head_gradient(position: vec3<f32>) -> vec3<f32> {
@@ -897,8 +910,17 @@ impl HairPhysicsScene {
             "hair",
             "physics_built",
             &format!(
-                "particles={}; iterations={}; dispatches_per_step={}; workgroups_per_step={}",
+                "particles={}; cling_joints={}; cling_groups={}; iterations={}; dispatches_per_step={}; workgroups_per_step={}",
                 data.rests.len(),
+                data.constraint_ranges
+                    .iter()
+                    .filter(|range| range.kind == 2)
+                    .map(|range| range.count as usize)
+                    .sum::<usize>(),
+                data.constraint_ranges
+                    .iter()
+                    .filter(|range| range.kind == 2 && range.count > 0)
+                    .count(),
                 data.max_iterations,
                 phases.len(),
                 phases
@@ -1870,7 +1892,16 @@ impl HeadSdfGrid {
                 }
             }
         }
-        total
+        // The same far field the kernel uses.
+        total + self.escape(point)
+    }
+
+    /// How far a point lies outside the grid's box, or zero inside it.
+    #[cfg(test)]
+    fn escape(&self, point: Vec3) -> f32 {
+        let span = self.cell * (HEAD_SDF_RESOLUTION as f32 - 1.0);
+        let outside = (self.origin - point).max(point - (self.origin + Vec3::splat(span)));
+        outside.max(Vec3::ZERO).length()
     }
 }
 
@@ -2247,6 +2278,37 @@ mod tests {
                 "{declared} differs between Rust and WGSL"
             );
         }
+    }
+
+    /// Below the head there is no collider, and the field has to say so.
+    ///
+    /// The cell fetch clamps at the grid edge, which outside the box repeats
+    /// the boundary slab for ever — the head's lowest cross-section extruded
+    /// straight down through the neck and out into the shoulders. Hair hanging
+    /// there was being held up by a column nobody built, and a joint resting on
+    /// its ridge got pushed out and pulled back every step, for ever.
+    #[test]
+    fn the_head_field_does_not_extrude_a_phantom_column_below_the_head() {
+        let mesh = sphere_mesh(Vec3::new(0.0, 160.0, 0.0), 9.0);
+        let grid = head_sdf_for_mesh(&mesh).expect("a field");
+        let span = grid.cell * (HEAD_SDF_RESOLUTION as f32 - 1.0);
+        let centre = grid.origin + Vec3::splat(span * 0.5);
+
+        // Straight down from the middle of the head, a long way past the box.
+        for drop in [1.5_f32, 3.0, 8.0] {
+            let below = Vec3::new(centre.x, grid.origin.y - span * drop, centre.z);
+            let reach = grid.origin.y - below.y;
+            assert!(
+                grid.sample(below) >= reach - grid.cell,
+                "a point {reach:.1} below the box reads {:.2} away",
+                grid.sample(below),
+            );
+        }
+        // And inside, the field is untouched — the far term is zero there.
+        assert!(
+            grid.sample(centre) < span,
+            "the middle of the head stopped reading as near it",
+        );
     }
 
     #[test]

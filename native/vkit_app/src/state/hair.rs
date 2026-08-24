@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) const HAIR_SIMULATION_SECONDS: f32 = 3.0;
+pub(crate) const HAIR_SIMULATION_SECONDS: f32 = 10.0;
 
 pub const HAIR_SETTLE_GRAVITY: f32 = 1.0;
 
