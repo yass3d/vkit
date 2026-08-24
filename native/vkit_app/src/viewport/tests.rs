@@ -3618,6 +3618,36 @@ fn cutting_shortens_in_proportion_and_keeps_every_point() {
 }
 
 #[test]
+fn the_hair_island_is_wide_enough_for_every_toggle_it_draws() {
+    use crate::viewport::hair_hud::{HAIR_SWITCHES, hair_hud_plan, hair_toggle_lane};
+
+    // The lane is measured from the list that draws it. Counting the icons by
+    // hand in a second place is what cut the right-hand toggles off every time
+    // somebody added one, so the count has exactly one owner and this checks
+    // the island grew with the list rather than against a stale number.
+    let mut state = probe_hair_state();
+    state.active_tab = crate::state::Tab::Hair;
+    let lane = hair_toggle_lane();
+    assert!(
+        lane >= HAIR_SWITCHES.len() as f32 * 24.0,
+        "the lane does not fit its own icons at 24pt each: {lane}",
+    );
+
+    // Wide and narrow, the island still holds the lane and never vanishes.
+    for width in [2400.0_f32, 1600.0, 1200.0, 900.0] {
+        let viewport = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(width, 900.0));
+        let Some(plan) = hair_hud_plan(&state, viewport) else {
+            continue;
+        };
+        assert!(
+            plan.rect.width() >= lane,
+            "at {width} the island came out {} wide, narrower than its {lane} of toggles",
+            plan.rect.width(),
+        );
+    }
+}
+
+#[test]
 fn a_strand_is_drawn_whole_or_not_at_all() {
     use crate::viewport::hair_overlays::strand_is_shown;
 

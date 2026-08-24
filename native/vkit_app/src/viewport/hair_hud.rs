@@ -81,17 +81,28 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
     let right = detail_hud_right_base(viewport);
     let available = (right - left).max(0.0) - DETAIL_HUD_INSET_X * 2.0;
 
-    // What `draw_hair_header` actually puts in the row. Change one, change both:
-    // an island narrower than its contents pushes them off its right edge.
+    // The row holds two numeric controls and then the toggle lane, and the lane
+    // is measured from the list that draws it — counting the icons by hand in
+    // two places is what left the island one toggle short every time somebody
+    // added one, and the icons on the right fell off the edge.
     const NUMERIC_CONTROLS: f32 = 2.0;
-    const SEPARATORS: f32 = 2.0;
-    const TOGGLES: f32 = 7.0;
+    /// A numeric control narrow enough to still read as a slider with a number
+    /// beside it. The island gives the toggles their room first and hands the
+    /// rest to the numerics, down to here.
+    const NUMERIC_FLOOR: f32 = 64.0;
 
-    let numeric_width = detail_hud_flex_numeric_width(available, true).max(96.0);
-    let separators = (SPACE_2 + SPACE_1 + 1.0 + SPACE_1) * SEPARATORS;
-    let toggle_lane = separators + (DETAIL_HUD_TOGGLE_SIZE + SPACE_2) * TOGGLES;
+    let toggle_lane = hair_toggle_lane();
+    let numeric_room = (available - toggle_lane - SPACE_2).max(0.0) / NUMERIC_CONTROLS;
+    let numeric_width = detail_hud_flex_numeric_width(available, true)
+        .max(NUMERIC_FLOOR)
+        .min(numeric_room.max(NUMERIC_FLOOR));
     let content = numeric_width * NUMERIC_CONTROLS + SPACE_2 + toggle_lane;
-    if available < content {
+
+    // A floor, and below it nothing. The island shrinks its numerics to make
+    // room rather than pushing the toggles off its edge, but a pane too narrow
+    // to hold even the floor gets no island at all — a row clipped in half
+    // reads as broken, and there is nowhere for it to go.
+    if available < NUMERIC_FLOOR * NUMERIC_CONTROLS + SPACE_2 + toggle_lane {
         return None;
     }
 
@@ -103,6 +114,107 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
         vec2(width, height),
     );
     Some(HairHudPlan { rect })
+}
+
+/// Which viewport switch a toggle in the island flips.
+///
+/// Named rather than closed over, so the row that draws them and the plan that
+/// measures them can walk the same list. Counting the icons by hand in two
+/// places is what left the island a toggle too narrow every time one was added,
+/// and the icons on the right fell off the edge.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum HairSwitch {
+    MirrorEdit,
+    AutoPart,
+    PartTint,
+    ShowColliders,
+    ShowPoints,
+    ViewportPhysics,
+    ShowStreams,
+    HideStrands,
+}
+
+impl HairSwitch {
+    fn of(self, state: &mut AppState) -> &mut bool {
+        match self {
+            Self::MirrorEdit => &mut state.hair_mirror_edit,
+            Self::AutoPart => &mut state.hair_auto_part,
+            Self::PartTint => &mut state.hair_part_tint,
+            Self::ShowColliders => &mut state.hair_show_colliders,
+            Self::ShowPoints => &mut state.hair_show_points,
+            Self::ViewportPhysics => &mut state.hair_viewport_physics,
+            Self::ShowStreams => &mut state.hair_show_streams,
+            Self::HideStrands => &mut state.hair_hide_strands,
+        }
+    }
+}
+
+/// The toggle lane, in the order it is drawn. `true` opens a separator before
+/// the icon.
+pub(super) const HAIR_SWITCHES: &[(HairSwitch, Icon, TextKey, TextKey, bool)] = &[
+    (
+        HairSwitch::MirrorEdit,
+        Icon::MirrorX,
+        TextKey::HairMirrorEdit,
+        TextKey::HairMirrorEditHint,
+        true,
+    ),
+    (
+        HairSwitch::AutoPart,
+        Icon::ConnectedTopology,
+        TextKey::HairAutoPart,
+        TextKey::HairAutoPartHint,
+        false,
+    ),
+    (
+        HairSwitch::PartTint,
+        Icon::VennThree,
+        TextKey::HairPartTint,
+        TextKey::HairPartTintHint,
+        true,
+    ),
+    (
+        HairSwitch::ShowColliders,
+        Icon::BodyCapsules,
+        TextKey::HairShowColliders,
+        TextKey::HairShowCollidersHint,
+        false,
+    ),
+    (
+        HairSwitch::ShowPoints,
+        Icon::CrosshairBox,
+        TextKey::HairShowPoints,
+        TextKey::HairShowPointsHint,
+        false,
+    ),
+    (
+        HairSwitch::ViewportPhysics,
+        Icon::GlobeGravity,
+        TextKey::HairViewportPhysics,
+        TextKey::HairViewportPhysicsHint,
+        false,
+    ),
+    (
+        HairSwitch::ShowStreams,
+        Icon::HairStream,
+        TextKey::HairShowStreams,
+        TextKey::HairShowStreamsHint,
+        false,
+    ),
+    (
+        HairSwitch::HideStrands,
+        Icon::EyeClosed,
+        TextKey::HairHideStrands,
+        TextKey::HairHideStrandsHint,
+        false,
+    ),
+];
+
+/// How wide the toggle lane needs to be, from the list itself.
+pub(super) fn hair_toggle_lane() -> f32 {
+    let separators = HAIR_SWITCHES.iter().filter(|entry| entry.4).count() as f32;
+    separators * (SPACE_2 + SPACE_1 + 1.0 + SPACE_1)
+        + HAIR_SWITCHES.len() as f32 * (DETAIL_HUD_TOGGLE_SIZE + SPACE_2)
 }
 
 pub(crate) fn draw_hair_workspace(ui: &mut Ui, state: &mut AppState, whole: Rect, title: &str) {
@@ -196,96 +308,22 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
         BrushSlot::Empty => hud.add_space(numeric_width),
     }
 
-    draw_detail_separator(&mut hud);
-    let mirror = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::MirrorX,
-        state.hair_mirror_edit,
-        text(state.locale, TextKey::HairMirrorEdit),
-        text(state.locale, TextKey::HairMirrorEditHint),
-        None,
-    );
-    if mirror.clicked() {
-        state.hair_mirror_edit = !state.hair_mirror_edit;
-    }
-    let auto_part = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::ConnectedTopology,
-        state.hair_auto_part,
-        text(state.locale, TextKey::HairAutoPart),
-        text(state.locale, TextKey::HairAutoPartHint),
-        None,
-    );
-    if auto_part.clicked() {
-        state.hair_auto_part = !state.hair_auto_part;
-    }
-
-    draw_detail_separator(&mut hud);
-    let tint = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::VennThree,
-        state.hair_part_tint,
-        text(state.locale, TextKey::HairPartTint),
-        text(state.locale, TextKey::HairPartTintHint),
-        None,
-    );
-    if tint.clicked() {
-        state.hair_part_tint = !state.hair_part_tint;
-    }
-    let colliders = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::BodyCapsules,
-        state.hair_show_colliders,
-        text(state.locale, TextKey::HairShowColliders),
-        text(state.locale, TextKey::HairShowCollidersHint),
-        None,
-    );
-    if colliders.clicked() {
-        state.hair_show_colliders = !state.hair_show_colliders;
-    }
-    let points = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::CrosshairBox,
-        state.hair_show_points,
-        text(state.locale, TextKey::HairShowPoints),
-        text(state.locale, TextKey::HairShowPointsHint),
-        None,
-    );
-    if points.clicked() {
-        state.hair_show_points = !state.hair_show_points;
-    }
-    let physics = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::GlobeGravity,
-        state.hair_viewport_physics,
-        text(state.locale, TextKey::HairViewportPhysics),
-        text(state.locale, TextKey::HairViewportPhysicsHint),
-        None,
-    );
-    if physics.clicked() {
-        state.hair_viewport_physics = !state.hair_viewport_physics;
-    }
-    let streams = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::HairStream,
-        state.hair_show_streams,
-        text(state.locale, TextKey::HairShowStreams),
-        text(state.locale, TextKey::HairShowStreamsHint),
-        None,
-    );
-    if streams.clicked() {
-        state.hair_show_streams = !state.hair_show_streams;
-    }
-    let strands = detail_hud_toggle_icon(
-        &mut hud,
-        Icon::EyeClosed,
-        state.hair_hide_strands,
-        text(state.locale, TextKey::HairHideStrands),
-        text(state.locale, TextKey::HairHideStrandsHint),
-        None,
-    );
-    if strands.clicked() {
-        state.hair_hide_strands = !state.hair_hide_strands;
+    for &(switch, icon, label, hint, separator) in HAIR_SWITCHES {
+        if separator {
+            draw_detail_separator(&mut hud);
+        }
+        let on = *switch.of(state);
+        let response = detail_hud_toggle_icon(
+            &mut hud,
+            icon,
+            on,
+            text(state.locale, label),
+            text(state.locale, hint),
+            None,
+        );
+        if response.clicked() {
+            *switch.of(state) = !on;
+        }
     }
 }
 
