@@ -988,14 +988,6 @@ pub(super) fn hair_depth_field(
     field
 }
 
-/// How thick the stiffness view draws a strand.
-///
-/// Fat enough that the colour is the thing you read rather than a hairline you
-/// have to hunt for. The game shows painted rigidity the same way — on the
-/// curve, not on the joints — and a brush is aimed at a stretch of hair, not at
-/// a dot.
-const STIFFNESS_STROKE: f32 = 3.5;
-
 /// Paint every strand as its own stiffness, segment by segment.
 ///
 /// Its own overlay rather than a mode of the joint stream, for two reasons: it
@@ -1032,17 +1024,29 @@ fn draw_stiffness_streams(
                         vkit_core::vam::rolloff_rigidity(&physics, index, points)
                     })
                 };
+            let along = |index: usize| index as f32 / (points.saturating_sub(1).max(1)) as f32;
             for index in 1..points {
                 // Skip the anchor leg: the scalp point is the game's own 1.1 and
                 // colouring it would read as a stiffness somebody chose.
                 let (Some(from), Some(to)) = (seen(index - 1), seen(index)) else {
                     continue;
                 };
+                let step = to - from;
+                if step.length_sq() < 1.0e-6 {
+                    continue;
+                }
+                let across = step.rot90() / step.length();
+                // A quad per segment rather than a stroke, so the width can fall
+                // to nothing at the tip. A constant-width line reads as a cable;
+                // hair comes to a point, and so does what is drawn over it.
+                let near = across * crate::hair_rigidity::half_width(along(index - 1));
+                let far = across * crate::hair_rigidity::half_width(along(index));
                 let middle = (stiffness(index - 1) + stiffness(index)) * 0.5;
-                painter.line_segment(
-                    [from, to],
-                    egui::Stroke::new(STIFFNESS_STROKE, crate::hair_rigidity::ink(middle)),
-                );
+                painter.add(egui::Shape::convex_polygon(
+                    vec![from + near, to + far, to - far, from - near],
+                    crate::hair_rigidity::ink(middle),
+                    egui::Stroke::NONE,
+                ));
             }
         }
     }

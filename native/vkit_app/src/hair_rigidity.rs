@@ -100,18 +100,49 @@ pub fn paint(
     moved.then_some(values)
 }
 
-/// Red for loose, green for stiff — the heatmap the game's debug kernel draws.
+/// Red through yellow to green — the ramp everybody already reads.
 ///
-/// Not a decoration: painted rigidity is invisible until something shows it,
-/// and a brush whose effect you cannot see is a brush nobody can aim.
+/// Straight red-to-green passes through a muddy olive at the middle, which is
+/// the value a reader most needs to judge. Bending it through yellow keeps the
+/// midpoint bright and the three stops legible: free, half held, held.
 #[must_use]
 pub fn ink(value: f32) -> egui::Color32 {
+    const LOOSE: [f32; 3] = [228.0, 62.0, 52.0];
+    const HALF: [f32; 3] = [240.0, 196.0, 48.0];
+    const HELD: [f32; 3] = [72.0, 200.0, 96.0];
+
     let value = value.clamp(0.0, 1.0);
-    egui::Color32::from_rgb(
-        (255.0 * (1.0 - value)) as u8,
-        (235.0 * value) as u8 + 20,
-        40,
-    )
+    let (from, to, blend) = if value < 0.5 {
+        (LOOSE, HALF, value * 2.0)
+    } else {
+        (HALF, HELD, (value - 0.5) * 2.0)
+    };
+    let channel = |index: usize| (from[index] + (to[index] - from[index]) * blend) as u8;
+    egui::Color32::from_rgb(channel(0), channel(1), channel(2))
+}
+
+/// Where the taper starts, as a share of the strand.
+///
+/// Flat down to here and then straight to a point, which is the shape the game
+/// draws its own strands with — full width to 90%, then linear. A little
+/// earlier here because these are guide curves at a dozen segments, and a taper
+/// packed into the last tenth of that is one segment doing all of it.
+const TAPER_FROM: f32 = 0.75;
+
+/// How wide the stiffness view draws a strand at its root, in points.
+pub const STROKE: f32 = 4.0;
+
+/// Half the stroke at a point along the strand, `0` at the root and `1` at the
+/// tip.
+#[must_use]
+pub fn half_width(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    let keep = if t <= TAPER_FROM {
+        1.0
+    } else {
+        ((1.0 - t) / (1.0 - TAPER_FROM)).max(0.0)
+    };
+    STROKE * 0.5 * keep
 }
 
 #[cfg(test)]
@@ -225,11 +256,47 @@ mod tests {
         );
     }
 
-    /// Loose reads red and stiff reads green, so a glance says which is which.
+    /// Loose reads red, half reads yellow, stiff reads green. The middle is the
+    /// value a reader most needs to judge, and a straight red-to-green ramp
+    /// hands them a muddy olive there.
     #[test]
-    fn the_heatmap_runs_red_to_green() {
-        let (loose, stiff) = (ink(0.0), ink(1.0));
-        assert!(loose.r() > 200 && loose.g() < 60, "{loose:?} is not red");
-        assert!(stiff.g() > 200 && stiff.r() < 60, "{stiff:?} is not green");
+    fn the_heatmap_runs_red_through_yellow_to_green() {
+        let (loose, half, stiff) = (ink(0.0), ink(0.5), ink(1.0));
+        assert!(loose.r() > 200 && loose.g() < 90, "{loose:?} is not red");
+        assert!(stiff.g() > 180 && stiff.r() < 100, "{stiff:?} is not green");
+        assert!(
+            half.r() > 200 && half.g() > 170 && half.b() < 90,
+            "{half:?} is not yellow",
+        );
+        // And it is brighter at the middle than a direct ramp would be, which
+        // is the whole reason for bending it through yellow.
+        let lit = |ink: egui::Color32| f32::from(ink.r()) + f32::from(ink.g());
+        let direct = (lit(loose) + lit(stiff)) * 0.5;
+        let bent = lit(half);
+        assert!(bent > direct * 1.15, "{bent} against {direct}");
+    }
+
+    /// A strand comes to a point. A constant-width overlay reads as a cable
+    /// laid over the hair rather than as the hair itself.
+    #[test]
+    fn the_stroke_is_full_width_most_of_the_way_and_then_comes_to_a_point() {
+        assert!((half_width(0.0) - STROKE * 0.5).abs() < 1.0e-6);
+        assert!(
+            (half_width(TAPER_FROM) - STROKE * 0.5).abs() < 1.0e-6,
+            "the taper started early",
+        );
+        assert!(half_width(1.0) < 1.0e-6, "the tip is blunt");
+        assert!(
+            half_width(0.5) > half_width(0.9),
+            "the width has to fall, not rise",
+        );
+        // Monotone the whole way, so no stretch of a strand is drawn fatter
+        // than the stretch above it.
+        let mut last = f32::MAX;
+        for step in 0..=100 {
+            let now = half_width(step as f32 / 100.0);
+            assert!(now <= last + 1.0e-6, "the width grew at {step}");
+            last = now;
+        }
     }
 }
