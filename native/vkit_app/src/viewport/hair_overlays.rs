@@ -129,6 +129,9 @@ pub(super) fn add_hair_authoring_overlays(
     let normals = scalp.normals();
     draw_hair_part_previews(ui, rect, state, camera);
 
+    if furniture && state.hair_show_colliders {
+        draw_body_capsules(ui, painter, rect, state, camera);
+    }
     if furniture && state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity {
         draw_stiffness_streams(ui, painter, rect, state, camera);
     } else if furniture && state.hair_show_streams {
@@ -762,7 +765,7 @@ pub(super) struct HairDepthField {
 }
 
 impl HairDepthField {
-    fn new(rect: Rect) -> Self {
+    pub(super) fn new(rect: Rect) -> Self {
         let cols = ((rect.width() / DEPTH_FIELD_CELL).ceil() as usize).max(1);
         let rows = ((rect.height() / DEPTH_FIELD_CELL).ceil() as usize).max(1);
         Self {
@@ -1012,11 +1015,13 @@ fn draw_stiffness_streams(
         };
         let physics = crate::hair_export::authoring_physics(part);
         for strand in part.strands.values() {
+            if !strand_is_shown(strand, &field, rect, camera, eye) {
+                continue;
+            }
             let points = strand.points_cm.len();
             let seen = |index: usize| -> Option<Pos2> {
                 let world = glam::Vec3::from_array(*strand.points_cm.get(index)?);
-                let projected = camera.project(world, rect)?;
-                (!field.hides(projected.screen, (world - eye).length())).then_some(projected.screen)
+                Some(camera.project(world, rect)?.screen)
             };
             let stiffness =
                 |index: usize| -> f32 {
@@ -1052,6 +1057,98 @@ fn draw_stiffness_streams(
     }
 }
 
+/// Outline what the hair actually collides with.
+///
+/// The game does not collide hair against the moving skin — it collides against
+/// a handful of capsules laid along the bones, and so do we: neck, chest,
+/// abdomen, both collars, both shoulders. Drawing the capsules rather than a
+/// translucent body is the honest picture, because the capsules are the thing.
+/// A shoulder that stops a strand a centimetre off the skin is not a bug in the
+/// hair; it is where the collider is, and now that is visible.
+fn draw_body_capsules(
+    ui: &Ui,
+    painter: &egui::Painter,
+    rect: Rect,
+    state: &AppState,
+    camera: TurntableCamera,
+) {
+    let Some(bed) = head_bed(ui.ctx(), state) else {
+        return;
+    };
+    let ink = crate::theme::COLOR_MUTED.gamma_multiply(0.55);
+    let stroke = egui::Stroke::new(1.0, ink);
+    for capsule in &bed.body_capsules {
+        let a = glam::Vec3::from_array(capsule.a);
+        let b = glam::Vec3::from_array(capsule.b);
+        let axis = b - a;
+        let Some(along) = axis.try_normalize() else {
+            continue;
+        };
+        // Two rings and the lines that join them. Enough to read the volume
+        // without drawing a solid that would hide the hair behind it.
+        let seed = if along.dot(glam::Vec3::Y).abs() < 0.9 {
+            glam::Vec3::Y
+        } else {
+            glam::Vec3::X
+        };
+        let across = along.cross(seed).normalize_or(glam::Vec3::X);
+        let through = along.cross(across).normalize_or(glam::Vec3::Z);
+        let ring = |centre: glam::Vec3| -> Vec<Pos2> {
+            (0..=24)
+                .filter_map(|step| {
+                    let angle = std::f32::consts::TAU * step as f32 / 24.0;
+                    let at =
+                        centre + (across * angle.cos() + through * angle.sin()) * capsule.radius;
+                    Some(camera.project(at, rect)?.screen)
+                })
+                .collect()
+        };
+        for centre in [a, b] {
+            let points = ring(centre);
+            if points.len() > 2 {
+                painter.add(egui::Shape::line(points, stroke));
+            }
+        }
+        for turn in 0..4 {
+            let angle = std::f32::consts::TAU * turn as f32 / 4.0;
+            let offset = (across * angle.cos() + through * angle.sin()) * capsule.radius;
+            let (Some(from), Some(to)) = (
+                camera.project(a + offset, rect),
+                camera.project(b + offset, rect),
+            ) else {
+                continue;
+            };
+            painter.line_segment([from.screen, to.screen], stroke);
+        }
+    }
+}
+
+/// Whether a strand is drawn at all, decided once at its root.
+///
+/// The depth field answers "is the head in front of this point", and asking it
+/// per point cuts a strand into pieces wherever it happens to graze the
+/// silhouette — a strand plainly in view loses a middle segment and the
+/// overlay reads as damage rather than as hair. What a reader wants is the
+/// simpler thing: a strand growing from a scalp face they can see is drawn
+/// whole, and one growing from a face they cannot is not drawn.
+///
+/// It is also the cheaper test. One lookup a strand instead of one a joint.
+pub(super) fn strand_is_shown(
+    strand: &crate::hair_project::HairStrand,
+    field: &HairDepthField,
+    rect: Rect,
+    camera: TurntableCamera,
+    eye: glam::Vec3,
+) -> bool {
+    let Some(root) = strand.points_cm.first() else {
+        return false;
+    };
+    let world = glam::Vec3::from_array(*root);
+    camera
+        .project(world, rect)
+        .is_some_and(|projected| !field.hides(projected.screen, (world - eye).length()))
+}
+
 /// How big a strand joint is drawn, and how big the one under the hand is.
 const STREAM_POINT_RADIUS: f32 = 1.6;
 const STREAM_POINT_ACTIVE_RADIUS: f32 = 3.0;
@@ -1076,6 +1173,9 @@ fn draw_hair_streams(
             crate::theme::COLOR_PRIMARY
         };
         for (strand_id, strand) in &part.strands {
+            if !strand_is_shown(strand, &field, rect, camera, eye) {
+                continue;
+            }
             let mut run: Vec<Pos2> = Vec::new();
             let flush = |run: &mut Vec<Pos2>| {
                 if run.len() >= 2 {
@@ -1090,7 +1190,7 @@ fn draw_hair_streams(
             for (index, point) in strand.points_cm.iter().enumerate() {
                 let world = glam::Vec3::from_array(*point);
                 match camera.project(world, rect) {
-                    Some(projected) if !field.hides(projected.screen, (world - eye).length()) => {
+                    Some(projected) => {
                         run.push(projected.screen);
                         // Every point, not only the one being dragged. You
                         // cannot correct a strand you cannot see the joints of.

@@ -24,6 +24,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairShowPointsHint => {
             "Shows the scalp planting points on the cap. Turn it off to look at the hair itself; brushes keep working either way."
         }
+        TextKey::HairShowColliders => "Colliders",
+        TextKey::HairShowCollidersHint => {
+            "Outlines what hair collides with: capsules along the neck, chest, collars and shoulders. The game collides against these, not against the skin, so a strand held off the shoulder is sitting on the capsule."
+        }
         TextKey::HairPartTint => "Tint parts",
         TextKey::HairPartTintHint => {
             "Gives each part a distinct viewport tint so a combined style reads as its parts. Display only -- exports are untouched."

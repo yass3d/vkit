@@ -28,6 +28,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => Some(
             "Mostra os pontos de plantio do couro cabeludo. Desligue para ver so o cabelo; os pinceis continuam funcionando.",
         ),
+        TextKey::HairShowColliders => Some("Colisores"),
+        TextKey::HairShowCollidersHint => Some(
+            "Desenha contra o que o cabelo colide: cápsulas ao longo do pescoço, peito, clavículas e ombros. O jogo colide com estas, não com a pele.",
+        ),
         TextKey::HairPartTint => Some("Tingir partes"),
         TextKey::HairPartTintHint => Some(
             "Dá a cada parte um tom distinto no visor para diferenciá-las. Apenas visual; não afeta a exportação.",

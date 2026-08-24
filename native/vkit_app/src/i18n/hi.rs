@@ -22,6 +22,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => {
             Some("खोपड़ी के रोपण बिंदु दिखाता है। सिर्फ बाल देखने के लिए बंद करें; ब्रश दोनों तरह काम करते हैं।")
         }
+        TextKey::HairShowColliders => Some("कोलाइडर"),
+        TextKey::HairShowCollidersHint => Some(
+            "दिखाता है कि बाल किससे टकराते हैं: गर्दन, छाती, कॉलरबोन और कंधों पर लगे कैप्सूल। खेल भी त्वचा से नहीं, इन्हीं से टकराता है।",
+        ),
         TextKey::HairPartTint => Some("भाग रंग-भेद"),
         TextKey::HairPartTintHint => {
             Some("हर भाग को अलग रंगत देता है ताकि मिले-जुले स्टाइल में भाग पहचाने जा सकें। केवल प्रदर्शन के लिए।")

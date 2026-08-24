@@ -26,6 +26,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => Some(
             "Menampilkan titik tanam di kulit kepala. Matikan untuk melihat rambutnya saja; kuas tetap bekerja.",
         ),
+        TextKey::HairShowColliders => Some("Kolider"),
+        TextKey::HairShowCollidersHint => Some(
+            "Menggambarkan apa yang ditumbuk rambut: kapsul sepanjang leher, dada, tulang selangka, dan bahu. Gim pun bertumbukan dengan ini, bukan kulit.",
+        ),
         TextKey::HairPartTint => Some("Warnai bagian"),
         TextKey::HairPartTintHint => Some(
             "Memberi tiap bagian rona berbeda di viewport agar mudah dibedakan. Hanya tampilan; ekspor tidak berubah.",

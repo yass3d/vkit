@@ -22,6 +22,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairShowPointsHint => {
             "두피의 심기 포인트를 표시합니다. 헤어만 보고 싶으면 끄면 됩니다 — 브러시는 어느 쪽이든 그대로 동작합니다."
         }
+        TextKey::HairShowColliders => "콜라이더",
+        TextKey::HairShowCollidersHint => {
+            "머리카락이 부딪히는 대상을 외곽선으로 보여줍니다 — 목·가슴·쇄골·어깨를 따라 놓인 캡슐입니다. 게임도 스킨이 아니라 이 캡슐에 충돌시키므로, 어깨에서 살짝 뜨는 가닥은 캡슐 위에 얹힌 것입니다."
+        }
         TextKey::HairPartTint => "파트 색상화",
         TextKey::HairPartTintHint => {
             "파트마다 다른 틴트를 입혀 통합 스타일에서 어떤 가닥이 어느 파트인지 보이게 합니다. 표시 전용 — 내보내기에는 영향 없습니다."

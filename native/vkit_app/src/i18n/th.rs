@@ -22,6 +22,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => {
             Some("แสดงจุดปลูกบนหนังศีรษะ ปิดเพื่อดูเฉพาะเส้นผม แปรงยังทำงานตามปกติ")
         }
+        TextKey::HairShowColliders => Some("ตัวชน"),
+        TextKey::HairShowCollidersHint => {
+            Some("วาดสิ่งที่ผมชนเข้า: แคปซูลตามคอ อก ไหปลาร้า และไหล่ เกมก็ชนกับสิ่งเหล่านี้ ไม่ใช่ผิวหนัง")
+        }
         TextKey::HairPartTint => Some("แยกสีชิ้นส่วน"),
         TextKey::HairPartTintHint => {
             Some("ให้แต่ละชิ้นส่วนมีสีต่างกันในวิวพอร์ตเพื่อแยกแยะ ใช้แสดงผลเท่านั้น ไม่กระทบการส่งออก")

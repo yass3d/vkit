@@ -178,6 +178,8 @@ text_keys! {
     HairGameOnly,
     HairPartTint,
     HairShowPoints,
+    HairShowColliders,
+    HairShowCollidersHint,
     HairShowPointsHint,
     HairPartTintHint,
     HairSettingsPanel,

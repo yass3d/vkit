@@ -24,6 +24,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => Some(
             "頭皮の植え込みポイントを表示します。髪だけを見たいときはオフに。ブラシはどちらでも動作します。",
         ),
+        TextKey::HairShowColliders => Some("コライダー"),
+        TextKey::HairShowCollidersHint => Some(
+            "髪が衝突する相手を輪郭で示します。首・胸・鎖骨・肩に沿ったカプセルです。ゲームも肌ではなくこのカプセルに当てるため、肩から浮く毛束はカプセルに乗っています。",
+        ),
         TextKey::HairPartTint => Some("パートの色分け"),
         TextKey::HairPartTintHint => Some(
             "パートごとに異なるティントを付け、統合スタイルでどの毛束がどのパートか見分けられます。表示のみで、書き出しには影響しません。",

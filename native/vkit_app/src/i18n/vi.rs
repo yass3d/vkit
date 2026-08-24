@@ -24,6 +24,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => {
             Some("Hien cac diem trong tren da dau. Tat di de chi xem toc; co ve van hoat dong.")
         }
+        TextKey::HairShowColliders => Some("Vật cản"),
+        TextKey::HairShowCollidersHint => Some(
+            "Vẽ thứ mà tóc va chạm: các nang dọc theo cổ, ngực, xương đòn và vai. Trò chơi cũng va chạm với chúng chứ không phải da.",
+        ),
         TextKey::HairPartTint => Some("Tô màu phân biệt"),
         TextKey::HairPartTintHint => Some(
             "Cho mỗi phần một màu riêng trong khung nhìn để phân biệt. Chỉ hiển thị; không ảnh hưởng xuất.",

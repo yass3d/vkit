@@ -22,6 +22,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => {
             Some("মাথার ত্বকের রোপণ বিন্দু দেখায়। শুধু চুল দেখতে বন্ধ করুন; ব্রাশ দুভাবেই কাজ করে।")
         }
+        TextKey::HairShowColliders => Some("কলাইডার"),
+        TextKey::HairShowCollidersHint => Some(
+            "চুল কীসের সাথে সংঘর্ষ করে তা দেখায়: গলা, বুক, কলারবোন ও কাঁধ বরাবর ক্যাপসুল। গেমও ত্বকে নয়, এগুলোতেই সংঘর্ষ করে।",
+        ),
         TextKey::HairPartTint => Some("অংশ রঙে আলাদা"),
         TextKey::HairPartTintHint => {
             Some("প্রতিটি অংশকে আলাদা রঙ দেয় যাতে মিশ্র স্টাইলে অংশ চেনা যায়। শুধু প্রদর্শনের জন্য।")

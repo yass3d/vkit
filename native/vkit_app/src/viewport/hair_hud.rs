@@ -232,6 +232,17 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
     if tint.clicked() {
         state.hair_part_tint = !state.hair_part_tint;
     }
+    let colliders = detail_hud_toggle_icon(
+        &mut hud,
+        Icon::BodyCapsules,
+        state.hair_show_colliders,
+        text(state.locale, TextKey::HairShowColliders),
+        text(state.locale, TextKey::HairShowCollidersHint),
+        None,
+    );
+    if colliders.clicked() {
+        state.hair_show_colliders = !state.hair_show_colliders;
+    }
     let points = detail_hud_toggle_icon(
         &mut hud,
         Icon::CrosshairBox,

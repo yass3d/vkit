@@ -28,6 +28,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => Some(
             "Показывает точки посадки на коже головы. Выключите, чтобы видеть только волосы; кисти работают в любом случае.",
         ),
+        TextKey::HairShowColliders => Some("Коллайдеры"),
+        TextKey::HairShowCollidersHint => Some(
+            "Показывает, обо что бьются волосы: капсулы вдоль шеи, груди, ключиц и плеч. Игра сталкивает волосы с ними, а не с кожей.",
+        ),
         TextKey::HairPartTint => Some("Подкраска частей"),
         TextKey::HairPartTintHint => Some(
             "Даёт каждой части свой оттенок во вьюпорте, чтобы различать их. Только отображение; экспорт не меняется.",

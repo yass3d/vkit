@@ -22,6 +22,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairShowPointsHint => {
             Some("显示头皮上的种植点位。想只看头发时关掉即可，画笔照常工作。")
         }
+        TextKey::HairShowColliders => Some("碰撞体"),
+        TextKey::HairShowCollidersHint => Some(
+            "勾勒头发的碰撞对象：沿颈部、胸部、锁骨和肩部排布的胶囊体。游戏也是与这些胶囊碰撞而非皮肤，所以浮在肩上的发丝其实压在胶囊上。",
+        ),
         TextKey::HairPartTint => Some("部件着色区分"),
         TextKey::HairPartTintHint => {
             Some("为每个部件加不同的色调,便于在合并造型中区分发束。仅显示用,不影响导出。")

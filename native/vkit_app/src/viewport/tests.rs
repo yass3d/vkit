@@ -3618,6 +3618,38 @@ fn cutting_shortens_in_proportion_and_keeps_every_point() {
 }
 
 #[test]
+fn a_strand_is_drawn_whole_or_not_at_all() {
+    use crate::viewport::hair_overlays::strand_is_shown;
+
+    // The depth field answers "is the head in front of this point". Asking it
+    // per joint cuts a strand into pieces wherever it grazes the silhouette,
+    // and a strand plainly in view loses a middle segment for no reason a
+    // reader can see. The root decides, and the whole strand follows.
+    let field = crate::viewport::hair_overlays::HairDepthField::new(egui::Rect::from_min_size(
+        egui::pos2(0.0, 0.0),
+        egui::vec2(800.0, 600.0),
+    ));
+    let strand =
+        crate::hair_project::HairStrand::new((0..8).map(|i| [0.0, 10.0 + i as f32, 0.0]).collect());
+    let camera = crate::camera::TurntableCamera::default();
+    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+    assert!(
+        strand_is_shown(&strand, &field, rect, camera, camera.eye()),
+        "an empty field hides nothing, so the strand is drawn",
+    );
+    assert!(
+        !strand_is_shown(
+            &crate::hair_project::HairStrand::new(Vec::new()),
+            &field,
+            rect,
+            camera,
+            camera.eye(),
+        ),
+        "a strand with no root has nothing to decide from",
+    );
+}
+
+#[test]
 fn picking_the_stiffness_brush_leaves_the_viewport_toggles_where_they_were() {
     use crate::hair_project::HairTool;
 
