@@ -17,19 +17,22 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SettingsSection {
     #[default]
+    General,
     Graphics,
     Viewport,
-    General,
     Shortcuts,
 
     About,
 }
 
 impl SettingsSection {
+    /// The order the column lists them in, and the order they read in: what the
+    /// application is, then how it looks, then how the viewport behaves, then
+    /// the keys, and last the page nobody opens twice.
     pub const ALL: [Self; 5] = [
+        Self::General,
         Self::Graphics,
         Self::Viewport,
-        Self::General,
         Self::Shortcuts,
         Self::About,
     ];
