@@ -1,48 +1,25 @@
-//! The capsule at the bottom of the viewport: back, reset, forward.
-//!
-//! One bar, one place, every tab that has work to step through. Undo and redo
-//! at the ends where a reader expects them, and whatever this tab can reset in
-//! between. No labels — the icons carry it, and a tooltip says the rest.
-//!
-//! It replaces a single "reset" capsule that sat here and did one thing, and it
-//! takes undo and redo off the side panel: those two were a keyboard shortcut
-//! and a button in a list, and somebody who does not know `Ctrl+Z` could not
-//! find either.
-
 use egui::{Id, Rect, Sense, Ui, pos2, vec2};
 
 use crate::i18n::{TextKey, text};
 use crate::state::{Action, AppState};
 use crate::ui_components::{Icon, paint_icon};
 
-/// How far the bar floats off the bottom edge.
 const BOTTOM_MARGIN: f32 = 44.0;
 
-/// One button's box. Square, so a row of them reads as one control.
 const BUTTON: f32 = 30.0;
 
 const BUTTON_GAP: f32 = crate::theme::SPACE_1;
 
-/// The padding inside the capsule, around the row of buttons.
 const INSET: f32 = 5.0;
 
-/// What one button in the bar does.
 pub(super) struct NavButton {
     pub icon: Icon,
     pub tooltip: TextKey,
     pub action: Action,
-    /// Greyed and unclickable when false — shown, so the row does not reflow
-    /// under the pointer as the work changes.
     pub enabled: bool,
-    /// Painted in the warning colour: this one throws work away.
     pub destructive: bool,
 }
 
-/// The buttons this tab offers, left to right.
-///
-/// Undo first and redo last on every tab that has them, whatever sits between:
-/// the ends are what a reader reaches for without looking, and they must not
-/// move from tab to tab.
 #[must_use]
 pub(super) fn nav_buttons(state: &AppState) -> Vec<NavButton> {
     use crate::state::Tab;
@@ -115,7 +92,6 @@ pub(super) fn nav_buttons(state: &AppState) -> Vec<NavButton> {
     buttons
 }
 
-/// Where the bar sits, or `None` when the viewport is too small for it.
 #[must_use]
 pub(super) fn work_nav_rect(count: usize, viewport: Rect) -> Option<Rect> {
     if count == 0 {
@@ -148,16 +124,11 @@ pub(super) fn draw_work_nav(ui: &Ui, state: &mut AppState, viewport: Rect) {
         .fixed_pos(bar.min)
         .show(ui.ctx(), |ui| {
             let (rect, _) = ui.allocate_exact_size(bar.size(), Sense::hover());
-            // The same dark the toolboxes use. It was on the raised panel
-            // surface, which is nearly the viewport's own colour and left the
-            // bar looking like a smudge rather than a control.
             ui.painter().rect_filled(
                 rect,
                 crate::theme::capsule_radius(rect.height()),
                 crate::theme::COLOR_TOPBAR.gamma_multiply(0.96),
             );
-            // Consumed rather than borrowed: `Action` is not `Clone` and
-            // should not be — several of them carry a whole layer with them.
             for (index, button) in buttons.into_iter().enumerate() {
                 let cell = Rect::from_min_size(
                     pos2(
@@ -222,11 +193,6 @@ mod tests {
         state
     }
 
-    /// The ends never move, whatever a tab puts between them.
-    ///
-    /// A reader reaches for back and forward without looking. If the sculpt tab
-    /// had two resets and the hair tab one, and the count changed where undo
-    /// sat, the muscle memory would be wrong on every second tab.
     #[test]
     fn back_is_always_first_and_forward_always_last() {
         let mut hair = AppState::default();
@@ -242,7 +208,6 @@ mod tests {
         }
     }
 
-    /// The sculpt tab is the one that resets two different things.
     #[test]
     fn the_sculpt_tab_offers_both_resets_between_the_arrows() {
         let buttons = nav_buttons(&sculpting());
@@ -258,11 +223,6 @@ mod tests {
         assert!(!buttons[0].destructive && !buttons[3].destructive);
     }
 
-    /// The pin tab's reset is in the bar too, and only once a scan is loaded.
-    ///
-    /// It had an island of its own at the bottom of the two-pane view, with its
-    /// own undo beside it — the same two controls, in a second place, drawn by
-    /// a second function.
     #[test]
     fn the_pin_tab_resets_its_pins_from_the_same_bar() {
         let mut state = AppState::default();
@@ -276,15 +236,12 @@ mod tests {
         assert!(buttons[1].destructive);
     }
 
-    /// A tab with nothing to reset still gets the two arrows.
     #[test]
     fn a_tab_with_no_reset_still_has_somewhere_to_step_back_to() {
         let buttons = nav_buttons(&AppState::default());
         assert_eq!(buttons.len(), 2);
     }
 
-    /// Disabled, not absent: a row that reflows under the pointer is a row
-    /// where the button you were about to press has moved.
     #[test]
     fn an_unavailable_step_is_greyed_rather_than_removed() {
         let state = AppState::default();
@@ -298,7 +255,6 @@ mod tests {
         assert_eq!(buttons.len(), 2, "still drawn");
     }
 
-    /// It gives up rather than overflow a narrow viewport.
     #[test]
     fn a_narrow_viewport_gets_no_bar() {
         let wide = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
@@ -307,7 +263,6 @@ mod tests {
         assert!(work_nav_rect(4, sliver).is_none());
     }
 
-    /// More buttons make it wider, and it stays centred.
     #[test]
     fn the_bar_grows_around_its_own_centre() {
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));

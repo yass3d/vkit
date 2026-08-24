@@ -190,9 +190,6 @@ macro_rules! scalp_shader_source {
             var coverage = scene.tint.a;
             if (scene.map_flags.y > 0.5) {
                 let sampled = textureSample(alpha_map, map_sampler, input.uv);
-                // Some sheets keep the mask in alpha, some are JPEGs with no
-                // alpha at all and keep it in the ink. Which one was settled
-                // when the sheet was uploaded.
                 let masked = select(
                     map_luminance(sampled.rgb),
                     sampled.a,
@@ -201,9 +198,6 @@ macro_rules! scalp_shader_source {
                 coverage = coverage * masked;
             }
             coverage = clamp(coverage + scene.map_flags_2.y, 0.0, 1.0);
-            // Only what is wholly invisible goes, and only so it does not write
-            // depth over the hair behind it. The rest is blended, which is what
-            // keeps the soft edge of a strand a soft edge.
             if (coverage < scene.flags.x) {
                 discard;
             }
@@ -348,11 +342,6 @@ macro_rules! hair_shader_source {
         };
         @group(0) @binding(4) var<storage, read> guide_data: array<GuideData>;
 
-        /// One entry per draw: `[stride, first_segment, segment_count, 0]`.
-        ///
-        /// Read by `instance_index`, which is the draw's own index — each run
-        /// is issued as instance N of one, so the vertex stage learns which
-        /// stride it is running at without a push constant.
         @group(0) @binding(5) var<storage, read> runs: array<vec4<u32>>;
 
         struct VertexOutput {
@@ -363,7 +352,6 @@ macro_rules! hair_shader_source {
             @location(3) ribbon_side: f32,
             @location(4) @interpolate(flat) part_index: u32,
             @location(5) @interpolate(flat) strand_noise: f32,
-
 
             @location(7) @interpolate(flat) light_centre: vec3<f32>,
 
@@ -400,11 +388,6 @@ macro_rules! hair_shader_source {
             return f32(hash_u32(seed) & 0x00ffffffu) / 16777215.0;
         }
 
-        // `Mathf.Pow(0, 0)` is 1 and `Mathf.Pow(0, p > 0)` is 0. WGSL leaves
-        // `pow(0, p)` indeterminate — it is `exp2(p * log2(0))`, so `0 * -inf`
-        // is a NaN on most drivers — which is why the loaded power used to be
-        // floored at 1e-4 instead. The library ships curvePower 0, and with it
-        // the envelope is a step: root up to the midpoint, tip after it.
         fn envelope_ease(base: f32, power: f32) -> f32 {
             if (base <= 0.0) {
                 return select(0.0, 1.0, power <= 0.0);
@@ -436,8 +419,6 @@ macro_rules! hair_shader_source {
             rand: vec3<f32>,
             phase: f32,
 
-            // The chord at rest. The live spine still gives the rotation axis,
-            // but the turn count is not a physics-dependent quantity.
             rest_chord: f32,
         };
 
@@ -451,14 +432,6 @@ macro_rules! hair_shader_source {
             return curl;
         }
 
-        // The amplitude the game actually draws is not the envelope curve. It
-        // bakes `envelope(j / (particles - 1))` once per physics particle into
-        // RenderParticle.WavinessScale and the kernel lerps between the two
-        // neighbouring particles with the same fraction it uses for the spline,
-        // so the shipped curve is a chord fit over N samples. With curvePower
-        // 14 and a twelve-particle guide the game ramps straight across the
-        // last cell where the curve stays near zero until the final percent —
-        // the curl kicks in somewhere else entirely.
         fn baked_envelope(travel: f32, segment_count: u32, part: RenderPart) -> f32 {
             let cells = f32(segment_count);
             let along = clamp(travel, 0.0, cells);
@@ -518,11 +491,6 @@ macro_rules! hair_shader_source {
                 * (scale * amp_random * baked_envelope(travel, segment_count, part));
         }
 
-        // The spline parameter is `(i / curveDensity) * particles`, so its whole
-        // part is a PARTICLE index and its fraction is the blend past it. The
-        // game clamps the index and leaves the fraction alone, which is how the
-        // last tessellation point reaches 93% of the way into the final cell
-        // instead of stopping at its midpoint.
         fn guide_spline(root: u32, travel: f32, segment_count: u32) -> vec3<f32> {
             let along = max(travel, 0.0);
             let cell = i32(floor(along));
@@ -582,8 +550,6 @@ macro_rules! hair_shader_source {
             return clamp(1.0 - followed, 0.0, 1.0);
         }
 
-        // The spline parameter of tessellation point `corner`, straight off the
-        // kernel: `udiv` by curveDensity then `mul` by the particle count.
         fn tess_travel(corner: f32, segment_count: u32, density: f32) -> f32 {
             return corner * (f32(segment_count) + 1.0) / max(density, 1.0);
         }
@@ -595,15 +561,10 @@ macro_rules! hair_shader_source {
         ) -> VertexOutput {
             var output: VertexOutput;
             let quad_index = vertex_index / 4u;
-            // This run's own stride, not the largest any part asked for. Every
-            // quad drawn is a quad wanted: there is nothing left to discard.
             let run = runs[run_index];
             let stride = max(run.x, 1u);
             let segment = segments[run.y + quad_index / stride];
             let sub = quad_index % stride;
-            // Four corners to a quad, indexed as 0,1,2, 2,1,3 by the buffer the
-            // draw is bound to. Corner 0 is the near side of the segment's
-            // start, 3 the far side of its end.
             let corner = vertex_index % 4u;
             let use_end = corner >= 2u;
             let positive_side = (corner & 1u) == 1u;
@@ -615,9 +576,6 @@ macro_rules! hair_shader_source {
 
             let local_segment = i32(round(segment.weights.w * f32(segment_count)));
             let roots = vec3<i32>(segment.particles.xyz) - vec3<i32>(local_segment);
-            // The host grouped this segment into a run whose stride IS its
-            // subdivision count, so the discard branch that used to stand here
-            // could never fire. It is gone with the quads it threw away.
             let subdivisions = stride;
             let f = (f32(sub) + select(0.0, 1.0, use_end)) / f32(subdivisions);
 
@@ -629,12 +587,6 @@ macro_rules! hair_shader_source {
             let curl_y = guide_curl(uroots.y, segment_count);
             let curl_z = guide_curl(uroots.z, segment_count);
 
-            // The domain shader picks a WHOLE tessellation point for every drawn
-            // vertex — `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)` —
-            // so the drawn polyline IS the tessellated one, corner for corner.
-            // Sampling between corners chorded across every curl peak: over the
-            // 1136 installed sims whose segment count is readable, a fractional
-            // grid lands on the corners in 33 of them.
             let density = max(part.spread_b.w, 2.0);
             let length_factor = clamp(dot(segment.slot.xyz, part.lengths.xyz), 0.0, 1.0);
             let tess_point = min(floor(t * (density - 0.001) * length_factor), density - 1.0);
@@ -645,8 +597,6 @@ macro_rules! hair_shader_source {
             );
             let world = scene.model * vec4<f32>(position, 1.0);
 
-            // The tangent is differenced over one span of that same polyline, so
-            // a corner reads as a corner rather than across a wider chord.
             var neighbour_point = tess_point - 1.0;
             var neighbour_sign = 1.0;
             if (neighbour_point < 0.0) {
@@ -679,18 +629,6 @@ macro_rules! hair_shader_source {
             }
 
             let taper = 1.0 - saturate((t - 0.9) * 10.0);
-            // The game's geometry shader extrudes each segment to `pos +- widthVec`,
-            // so the width it is given is a HALF width and the ribbon comes out
-            // twice as wide. Halving it here drew every strand at half the game's.
-            // `_StandWidth * (1 - saturate((t - 0.9) * 10))`, and nothing else.
-            // The gs extrudes `pos +- widthVec`; the only screen-space quantity
-            // the ds carries is viewDir, and that orients the ribbon rather than
-            // sizing it. A widening term here thickened the silhouette as the
-            // camera pulled back — at full-body framing a default strand
-            // projects to 0.044 half-pixels, so essentially every strand on
-            // screen was drawn eight times too wide — and it fought the taper,
-            // holding the last tenth of every strand at a constant width where
-            // the game draws a point.
             let half_width = part.width.x * taper;
             let signed_width = select(-half_width, half_width, positive_side);
             let ribbon_position = world.xyz + side * signed_width;
@@ -715,12 +653,6 @@ macro_rules! hair_shader_source {
                 )).xyz,
                 vec3<f32>(0.0, 1.0, 0.0),
             );
-            // normalRandomize: the kernel picks ANOTHER strand with this
-            // strand's own seed-5 rand.x, takes that strand's scalp normal, and
-            // lerps toward it — then builds the light centre from the result.
-            // The lerp is deliberately not renormalised: as the two normals
-            // oppose, the centre also draws in toward the root, and that
-            // shortening is part of what the parameter does.
             let lanes = arrayLength(&guide_data);
             let last_lane = f32(max(lanes, 1u) - 1u);
             let pick = u32(clamp(last_lane * curl_x.rand.x, 0.0, last_lane));
@@ -855,10 +787,6 @@ macro_rules! hair_shader_source {
             return (diffuse + specular) * radiance * gate;
         }
 
-        // The game does every bit of this once per tessellated strand point, in
-        // its domain shader, and its pixel shader only writes what it was handed.
-        // Doing it per fragment instead costs a full two-lobe lighting model on
-        // every one of the many overlapping samples hair covers a screen with.
         fn strand_radiance(
             world_position: vec3<f32>,
             world_tangent: vec3<f32>,
@@ -877,11 +805,6 @@ macro_rules! hair_shader_source {
                 cross(tangent, view_direction),
                 vec3<f32>(1.0, 0.0, 0.0),
             );
-            // normalRandomize does not live here. It is a compute-side uniform
-            // on CSTesselateWithNormals and never reaches a shading normal; the
-            // twist that used to stand here, with its magic 0.9, broke the
-            // highlight into per-fibre glitter where the game keeps a coherent
-            // band. It is applied at the light centre instead, in vs_main.
             let normal = safe_normalize(cross(side_axis, tangent), view_direction);
 
             let color_t = pow(
@@ -902,12 +825,6 @@ macro_rules! hair_shader_source {
                 world_position - light_centre,
                 normal,
             );
-            // The game reads the shift from the red of its own colour ramp, not
-            // from anything per strand: no hair item in the library ships a
-            // strand texture, so the ramp is what root and tip colour bake to.
-            // Dark hair therefore shifts by nothing at all and the two lobes sit
-            // symmetrically about the tangent — which is what makes the
-            // highlight a band across the head rather than a glint per fibre.
             let shift = clamp(ramp.r - 0.5, 0.0, 1.0);
             let direct = fibre_lighting(
                 tangent,
@@ -933,25 +850,12 @@ macro_rules! hair_shader_source {
                 part,
             );
 
-            // The game's ambient is two terms, not one: the sky sampled at the
-            // pseudo-normal and scaled by Global Illumination Factor, PLUS a
-            // flat scene ambient that no factor touches. Dropping the second
-            // let the unlit side of the hair fall to black, where the game
-            // keeps a lifted brown. We do not have the game's scene ambient, so
-            // the floor of our own environment stands in for it.
             let ambient = albedo
                 * (environment_radiance(pseudo_normal) * clamp(part.variation.z, 0.0, 1.0)
                     + scene.environment_bottom.rgb);
             return ambient + direct;
         }
 
-        // Doc 15: "The ps is `o0.rgb = ambient + direct, o0.a = 1`." The quad is
-        // opaque edge to edge — there is no coverage term, no feather and no
-        // discard. What used to stand here turned 28% of a thick strand's half
-        // width into a translucent ramp while leaving a thin one nearly binary,
-        // so the two disagreed with each other as well as with the game. Edge
-        // antialiasing is the 4x MSAA the pipeline already runs, which is the
-        // same source the game uses.
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             return vec4<f32>(display_color(input.radiance), 1.0);
@@ -1029,8 +933,6 @@ struct ScalpVertex {
     normal: [f32; 3],
 }
 
-/// Below this a texel is invisible and may as well not write depth. It is not
-/// a cutout threshold: the scalp is alpha blended, the way the game blends it.
 const SCALP_ALPHA_FLOOR: f32 = 1.0 / 255.0;
 
 #[derive(Clone)]
@@ -1051,9 +953,6 @@ pub struct ScalpPaintCallback {
 }
 
 impl ScalpPaintCallback {
-    /// Hand this to egui over the rectangle its own spot names. The spot is the
-    /// only place a rectangle is written, so there is no second copy to keep in
-    /// step with it.
     pub fn paint_callback(self) -> epaint::PaintCallback {
         Callback::new_paint_callback(self.spot.rect, self)
     }
@@ -1099,14 +998,6 @@ impl CallbackTrait for ScalpPaintCallback {
 
 const SCALP_SCENE_CACHE_CAP: usize = 8;
 
-/// Every hair scene owns a whole physics scene — particles, constraints and a
-/// render segment buffer that runs to millions of entries for a dense style.
-/// Without a cap the map keeps one for every key it has ever been handed:
-/// each layer, each pane, each portrait, for the life of the process.
-///
-/// The cap is a floor on what a frame may hold, never a ceiling: a style with
-/// more layers than this, drawn into two panes, needs every one of them at
-/// once, and eviction must not take a scene the frame it is being drawn.
 const HAIR_SCENE_CACHE_CAP: usize = 24;
 
 struct ScalpGpuScene {
@@ -1274,10 +1165,6 @@ impl ScalpRenderResources {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
-                    // A blended surface that writes depth hides whatever is
-                    // drawn after it, and hair is drawn after it. The skull has
-                    // already written depth, so the far side of the cap is still
-                    // rejected without this.
                     depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
@@ -1286,9 +1173,6 @@ impl ScalpRenderResources {
                 multisample: wgpu::MultisampleState {
                     count: sample_count,
                     mask: !0,
-                    // Coverage from alpha gives as many levels of opacity as
-                    // there are samples — four, here — which is what turned a
-                    // fine strand mask into stepped blocks.
                     alpha_to_coverage_enabled: false,
                 },
                 multiview_mask: None,
@@ -1638,19 +1522,11 @@ pub(crate) fn anchored_position(
     surface + normal * anchor.normal_offset
 }
 
-/// Whether a mask sheet keeps its holes in the alpha channel or in the ink.
-///
-/// Both are shipped. The stock provider sheets carry the same picture in every
-/// channel; a creator's is often a JPEG, which has no alpha at all, and a few
-/// keep a near-black ink with the whole mask in alpha. Reading the wrong one
-/// either erases the scalp or leaves it solid, so it is decided per sheet by
-/// looking, once, at whether the alpha channel says anything.
 #[must_use]
 fn mask_lives_in_alpha(image: &crate::skin_preview::SkinImage) -> bool {
     let pixels = image.rgba8.as_ref();
     let mut lowest = 255_u8;
     let mut highest = 0_u8;
-    // A sheet is millions of texels; a stride reads enough to tell flat from not.
     for alpha in pixels.iter().skip(3).step_by(4 * 97) {
         lowest = lowest.min(*alpha);
         highest = highest.max(*alpha);
@@ -1739,16 +1615,10 @@ pub struct HairPaintCallback {
 
     pub viewport_pixels: [f32; 2],
 
-    /// Which frame asked for this. Scenes prepared for the frame being drawn
-    /// must survive it: dropping one loses a whole layer of hair from the
-    /// picture, and its physics state with it.
     pub frame: u64,
 }
 
 impl HairPaintCallback {
-    /// Hand this to egui over the rectangle its own spot names. The spot is the
-    /// only place a rectangle is written, so there is no second copy to keep in
-    /// step with it.
     pub fn paint_callback(self) -> epaint::PaintCallback {
         Callback::new_paint_callback(self.spot.rect, self)
     }
@@ -1806,24 +1676,11 @@ pub(crate) struct HairRenderResources {
     physics_pipelines: HairPhysicsPipelines,
     scenes: BTreeMap<u64, HairGpuScene>,
 
-    /// Keys whose inputs were already found to draw nothing.
-    ///
-    /// A part with no strands fails the scene lookup, rebuilds everything the
-    /// scene needs — rest particles, the constraint graph, a 64-cubed distance
-    /// field against the head — discovers it has no segments, and is thrown
-    /// away. Without this it does that again on the very next frame, forever,
-    /// for as long as the part is on screen.
     empty: BTreeMap<u64, crate::hair_physics::SceneInputs>,
-    /// One `0,1,2, 2,1,3` per quad, shared by every scene and grown to fit the
-    /// largest one drawn. The pattern never varies, so neither does the buffer.
     quad_indices: Option<(wgpu::Buffer, u32)>,
     target_is_srgb: bool,
 }
 
-/// Corners the vertex stage runs per quad. The shader divides `vertex_index`
-/// by this to find its quad and takes the remainder to find its corner, so the
-/// two sides have to agree; `the_shader_reads_the_corners_the_indices_write`
-/// holds them together.
 pub(crate) const HAIR_QUAD_CORNERS: u32 = 4;
 
 fn build_quad_indices(device: &wgpu::Device, quads: u32) -> (wgpu::Buffer, u32) {
@@ -2077,9 +1934,6 @@ impl HairRenderResources {
         self.ensure_quad_indices(device);
     }
 
-    /// Drop the least recently drawn scenes, but never one this frame asked
-    /// for: everything prepared for a frame is painted in that same frame, so
-    /// taking one here means a layer of hair simply is not drawn.
     fn evict_stale_scenes(&mut self, frame: u64) {
         while self.scenes.len() > HAIR_SCENE_CACHE_CAP {
             let stale = self
@@ -2126,9 +1980,6 @@ impl HairRenderResources {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &scene.bind_group, &[]);
         render_pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        // One draw per stride. The index pattern is the same `0,1,2, 2,1,3` per
-        // quad whatever the run, so every draw reads it from the front and the
-        // run's own entry says which segment its first quad belongs to.
         for (indices, run) in scene.physics.render_runs() {
             if indices == 0 {
                 continue;
@@ -2325,8 +2176,6 @@ mod scalp_mask_tests {
 
     #[test]
     fn a_jpeg_mask_is_read_from_its_ink() {
-        // No alpha channel to speak of: a JPEG decodes to alpha 255 throughout,
-        // and the holes are in the ink.
         let mut pixels = Vec::new();
         for step in 0..600_u32 {
             let ink = (step % 256) as u8;
@@ -2370,8 +2219,6 @@ mod scalp_mask_tests {
 
 #[cfg(test)]
 mod scene_cache_tests {
-    /// The rule the eviction has to keep, on its own so it can be exercised
-    /// without a GPU: a scene drawn this frame is never the one thrown away.
     fn evict(scenes: &mut Vec<(u64, u64)>, cap: usize, frame: u64) {
         while scenes.len() > cap {
             let stale = scenes
@@ -2389,8 +2236,6 @@ mod scene_cache_tests {
 
     #[test]
     fn a_frame_that_needs_more_scenes_than_the_cap_keeps_all_of_them() {
-        // Seven layers drawn into two panes is fourteen scenes at once, and
-        // every one of them is painted. Dropping any is a missing layer.
         let mut scenes: Vec<(u64, u64)> = (0..14).map(|key| (key, 9)).collect();
         evict(&mut scenes, 4, 9);
         assert_eq!(
@@ -2416,10 +2261,6 @@ mod scene_cache_tests {
 mod quad_contract_tests {
     use super::*;
 
-    /// The draw binds an index buffer written in Rust and a shader written in
-    /// WGSL, and the two agree only by both using the same number. Changing one
-    /// without the other scrambles which segment each corner belongs to, which
-    /// no test that only runs Rust would ever notice.
     #[test]
     fn the_shader_reads_the_corners_the_indices_write() {
         let divide = format!("let quad_index = vertex_index / {HAIR_QUAD_CORNERS}u;");
@@ -2434,8 +2275,6 @@ mod quad_contract_tests {
         );
     }
 
-    /// Corner 0 is the near side of the start, 3 the far side of the end, and
-    /// the index pattern has to name two triangles that cover the quad once.
     #[test]
     fn the_index_pattern_covers_the_quad_exactly_once() {
         let pattern = [0_u32, 1, 2, 2, 1, 3];
@@ -2465,17 +2304,12 @@ mod quad_contract_tests {
 mod child_length_tests {
     use super::*;
 
-    /// The game's rule, mirrored so the arithmetic can be checked without a GPU:
-    /// `seg = trunc(vDomain.x * (curveDensity - 0.001) * L)`. The result is the
-    /// index of a whole tessellation point, which is what a drawn vertex is.
     fn corner(density: f32, domain: f32, length_factor: f32) -> f32 {
         (domain * (density - 0.001) * length_factor)
             .floor()
             .min(density - 1.0)
     }
 
-    /// The spline parameter of a tessellation point: `(i / curveDensity) * N`,
-    /// with N the particle count, not the cell count.
     fn travel(corner: f32, segment_count: u32, density: f32) -> f32 {
         corner * (segment_count as f32 + 1.0) / density
     }
@@ -2494,22 +2328,15 @@ mod child_length_tests {
 
     #[test]
     fn a_short_child_lands_on_a_density_point_rather_than_between_two() {
-        // Sixteen points, half length: the game stops at point 7, not at 7.5.
         assert_eq!(corner(16.0, 1.0, 0.5), 7.0);
     }
 
     #[test]
     fn neighbouring_tiers_collapse_onto_the_same_point() {
-        // The visible consequence: tiers within one point of each other end in
-        // the same place, which is what makes flyaways read as locks rather
-        // than as a smear.
-        // 0.44 and 0.50 both truncate to point 7 of sixteen; 0.60 reaches 9.
         assert_eq!(corner(16.0, 1.0, 0.44), corner(16.0, 1.0, 0.50));
         assert_ne!(corner(16.0, 1.0, 0.50), corner(16.0, 1.0, 0.60));
     }
 
-    /// The tip reaches into the last cell rather than stopping at its midpoint.
-    /// The kernel's own numbers: twelve particles, density 32, last point 31.
     #[test]
     fn the_last_tessellation_point_sits_where_the_kernel_puts_it() {
         let last = corner(32.0, 1.0, 1.0);
@@ -2522,8 +2349,6 @@ mod child_length_tests {
         );
     }
 
-    /// Every drawn vertex has to be able to be a tessellation point, so the
-    /// vertex grid must be at least as fine as the polyline it draws.
     #[test]
     fn the_vertex_grid_is_never_coarser_than_the_polyline() {
         for density in 2_u32..=64 {
@@ -2540,8 +2365,6 @@ mod child_length_tests {
         }
     }
 
-    /// The shader has to run this same arithmetic; a Rust mirror proves nothing
-    /// on its own.
     #[test]
     fn the_shader_truncates_the_length_the_way_the_game_does() {
         assert!(
@@ -2565,11 +2388,6 @@ mod child_length_tests {
 mod envelope_tests {
     use super::*;
 
-    /// `Mathf.Pow(0, 0)` is 1, and the library really does ship curvePower 0 —
-    /// the envelope is then a step, root before the midpoint and tip after it.
-    /// WGSL leaves `pow(0, 0)` indeterminate, which is why the loaded value used
-    /// to be floored to 1e-4 and one sample per strand came out at the wrong
-    /// amplitude.
     #[test]
     fn the_shader_reproduces_the_pow_the_engine_uses_rather_than_flooring_it() {
         assert!(
@@ -2583,8 +2401,6 @@ mod envelope_tests {
         );
     }
 
-    /// Nothing may floor the loaded power on the way to the GPU either, or the
-    /// shader branch above can never be reached.
     #[test]
     fn the_curve_powers_reach_the_gpu_as_they_were_loaded() {
         let source = include_str!("hair_physics.rs");
@@ -2594,8 +2410,6 @@ mod envelope_tests {
         );
     }
 
-    /// The game bakes the envelope per particle and lerps; the curve itself is
-    /// never sampled at a tessellation point.
     #[test]
     fn the_curl_amplitude_is_a_chord_fit_over_the_particles() {
         assert!(
@@ -2614,10 +2428,6 @@ mod envelope_tests {
 mod curl_frequency_tests {
     use super::*;
 
-    /// The kernel reads GPPointJoint.Point — the rest pose — for the chord it
-    /// multiplies the frequency by, and only the rotation axis comes from the
-    /// live GPParticle positions. Taking both from the live spine makes the
-    /// ringlet count wind and unwind as a lock stretches under gravity.
     #[test]
     fn the_turn_count_is_measured_on_the_rest_chord_not_the_simulated_one() {
         assert!(
@@ -2641,10 +2451,6 @@ mod curl_frequency_tests {
 mod normal_randomize_tests {
     use super::*;
 
-    /// normalRandomize is a uniform on `CSTesselateWithNormals`, not a shading
-    /// term. It picks another strand with this strand's own seed-5 rand.x,
-    /// takes that strand's scalp normal, lerps toward it, and the result is
-    /// used for one thing only: the origin the pseudo-normal is measured from.
     #[test]
     fn normal_randomize_moves_the_light_centre_and_nothing_else() {
         assert!(
@@ -2664,9 +2470,6 @@ mod normal_randomize_tests {
         );
     }
 
-    /// The kernel's `mad` is a raw lerp: as the borrowed normal opposes the
-    /// root's, the centre draws in toward the root. Renormalising would take
-    /// that away.
     #[test]
     fn the_borrowed_normal_is_lerped_rather_than_renormalised() {
         let at = HAIR_SHADER
@@ -2684,9 +2487,6 @@ mod normal_randomize_tests {
 mod strand_width_tests {
     use super::*;
 
-    /// Doc 15: the gs extrudes `pos +- widthVec` and the ps writes
-    /// `o0.a = 1`. There is no view-dependent width term anywhere in the game's
-    /// hair pipeline and no coverage term in its fragment.
     #[test]
     fn the_ribbon_is_the_authored_width_and_the_fragment_is_opaque() {
         assert!(

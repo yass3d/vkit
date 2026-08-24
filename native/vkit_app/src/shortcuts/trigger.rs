@@ -1,14 +1,5 @@
-//! The thing a binding listens for.
-
 use egui::{Key, PointerButton};
 
-/// A key on the number pad, which egui cannot tell from the top row.
-///
-/// `egui-winit` folds `KeyCode::Numpad5` into `Key::Num5`, so by the time a
-/// press reaches egui the two are the same key. They are not the same key to a
-/// reader: the top row picks a tab and the pad picks a view, the way every
-/// modelling program has done it since Blender. So the pad is read one layer
-/// earlier, off the physical key, and named here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NumpadKey {
     Zero,
@@ -94,12 +85,6 @@ impl NumpadKey {
     }
 }
 
-/// A modifier read while something else is already happening.
-///
-/// Held, not struck. `Shift` while a sculpt stroke is in flight means smooth,
-/// and there is no press to catch — the stroke asks, every frame, whether the
-/// key is down. These were read straight off `input.modifiers` in nine files,
-/// so Settings could not name them and nothing checked one against another.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModifierKey {
     Shift,
@@ -132,13 +117,9 @@ impl ModifierKey {
             .find(|candidate| candidate.stored_name() == name)
     }
 
-    /// Whether this modifier is down right now.
     pub const fn held_in(self, modifiers: egui::Modifiers) -> bool {
         match self {
             Self::Shift => modifiers.shift,
-            // Either spelling. `command` is what the backend sets on a Mac, and
-            // `ctrl` is what a hand-built `Modifiers` carries; reading only one
-            // of them makes this answer no on a platform or in a test.
             Self::Ctrl => modifiers.ctrl || modifiers.command,
             Self::Alt => modifiers.alt,
         }

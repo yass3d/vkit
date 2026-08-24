@@ -397,7 +397,6 @@ impl AppState {
             hair.push(crate::hair_renderer::HairPaintCallback {
                 spot: crate::renderer::SceneSpot::default(),
                 scene_key,
-                // A portrait is rendered in one pass of its own.
                 frame: 0,
                 mesh: std::sync::Arc::clone(&head),
                 preview,
@@ -724,12 +723,6 @@ impl AppState {
         {
             part.provider_name = provider_name.to_owned();
             part.settings.wear(provider_name);
-            // The sheet was drawn for the cap being left behind. Every cap lays
-            // its shell down somewhere else on the sheet — Udane's sits at
-            // u 0.009..0.438, Leyton's at 0.008..0.497, Krayon's fills the
-            // frame — so carrying one across a swap paints the new cap with the
-            // old one's islands. Dropping it falls back to the sheets the
-            // chosen cap actually ships with.
             part.scalp_texture = crate::hair_project::HairScalpTexture::default();
             if let (Some(worn), Some(wanted)) = (worn.as_ref(), wanted.as_ref())
                 && !std::sync::Arc::ptr_eq(worn, wanted)
@@ -940,11 +933,6 @@ impl AppState {
         }
     }
 
-    /// Write painted rigidity onto some of a part's strands.
-    ///
-    /// Turns `usePaintedRigidity` on with the first stroke. Without it the
-    /// array is written and then ignored, and the reader watches a brush do
-    /// nothing — which is the sort of thing that gets a tool called broken.
     pub(super) fn set_hair_rigidity(&mut self, id: u64, strands: Vec<(u32, Vec<f32>)>) {
         let Some(part) = self
             .hair_project

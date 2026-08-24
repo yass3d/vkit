@@ -1,14 +1,3 @@
-//! The texture tools, out of the header and into a toolbox.
-//!
-//! Six of them, in a header row that also carries the brush controls for
-//! whichever one is chosen — so picking a tool and adjusting it competed for
-//! the same strip. The sculpt and hair tabs both put their tools in a floating
-//! box; this is the third caller of that same box, and the only thing that
-//! differs is which icons go in it.
-//!
-//! Unlike the other two, the set is not fixed: a layer's source mode decides
-//! which tools it has, so the box grows and shrinks with the selection.
-
 use egui::{Id, Rect, Ui};
 
 use crate::i18n::{TextKey, text};
@@ -19,7 +8,6 @@ fn columns(state: &AppState) -> usize {
     state.texture_toolbox_columns.clamp(1, 2) as usize
 }
 
-/// The tools the selected layer offers, in the order they are drawn.
 #[must_use]
 pub(super) fn tools_for(state: &AppState) -> &'static [TextureTool] {
     state
@@ -30,7 +18,6 @@ pub(super) fn tools_for(state: &AppState) -> &'static [TextureTool] {
         })
 }
 
-/// Where the toolbox stands, or `None` when this tab is not painting.
 #[must_use]
 pub(super) fn texture_toolbox_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
     if !state.is_texturing() || state.hair_thumbnail.is_some() {
@@ -73,9 +60,6 @@ pub(super) fn draw_texture_toolbox(ui: &mut Ui, state: &mut AppState, viewport: 
         let Some(tool) = tools.get(index).copied() else {
             continue;
         };
-        // A tool the layer cannot run yet is shown and refused, not hidden:
-        // hiding it would reflow the box every time the pin count crossed a
-        // threshold, under whatever the reader was about to click.
         let usable = state.texture_project.tool_usable(tool);
         let shortcut = usable
             .then(|| {
@@ -121,7 +105,6 @@ mod tests {
         state
     }
 
-    /// The box exists on the texture tab and nowhere else.
     #[test]
     fn only_the_texture_tab_has_a_texture_toolbox() {
         assert!(texture_toolbox_rect(&texturing(), viewport()).is_some());
@@ -131,7 +114,6 @@ mod tests {
         assert!(texture_toolbox_rect(&elsewhere, viewport()).is_none());
     }
 
-    /// The set is the layer's, not a fixed list.
     #[test]
     fn the_slots_follow_what_the_layer_can_do() {
         let state = texturing();
@@ -143,7 +125,6 @@ mod tests {
         assert!(!tools_for(&state).is_empty());
     }
 
-    /// A shot in progress takes every overlay off the screen, this one too.
     #[test]
     fn a_framed_thumbnail_hides_the_toolbox() {
         let mut state = texturing();

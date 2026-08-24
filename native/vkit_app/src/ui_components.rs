@@ -450,16 +450,6 @@ pub fn brush_cursor(
     Some(BrushCursor { at, fill: None })
 }
 
-/// Draw the brush where it is, and take the arrow away while it is there.
-///
-/// The ring IS the pointer wherever a radius means something, so the system
-/// cursor on top of it is a second pointer saying something else. egui raises
-/// its own cursor again the moment the pointer leaves this widget, so nothing
-/// has to put it back — a side panel or a toolbar gets an arrow by itself.
-///
-/// `fill` is the strength: the circle is anchored where the sweep began and
-/// carries the value as opacity, so the size gesture and the strength gesture
-/// read as the same object rather than two.
 pub fn paint_brush_cursor(
     painter: &egui::Painter,
     cursor: BrushCursor,
@@ -470,10 +460,6 @@ pub fn paint_brush_cursor(
         painter.circle_filled(cursor.at, radius, color.gamma_multiply(0.12 + 0.58 * fill));
     }
     painter.circle_stroke(cursor.at, radius, Stroke::new(1.5, color));
-    // The centre, so a wide brush still says exactly where it is pointed. White
-    // with a dark collar rather than the ring's own colour: this dot stands in
-    // for the pointer, and a pointer has to be found against skin, hair and the
-    // background alike, which no single tint manages.
     painter.circle_filled(
         cursor.at,
         BRUSH_CENTRE_RADIUS + 1.0,
@@ -482,15 +468,8 @@ pub fn paint_brush_cursor(
     painter.circle_filled(cursor.at, BRUSH_CENTRE_RADIUS, Color32::WHITE);
 }
 
-/// How big the dot in the middle of a brush ring is.
 pub const BRUSH_CENTRE_RADIUS: f32 = 2.0;
 
-/// Take the system arrow away for this frame.
-///
-/// Called by whoever painted a brush ring, and by nothing else: the arrow is
-/// the right pointer everywhere a single point is being placed or picked —
-/// alignment pins, texture pin pairs, hair pick and vertex — and everywhere no
-/// tool is active.
 pub fn hide_pointer(ui: &Ui) {
     ui.ctx().set_cursor_icon(egui::CursorIcon::None);
 }
@@ -1365,19 +1344,6 @@ pub fn slider_cell(
     }
 }
 
-/// A row of controls packed against the right edge, exactly `height` tall.
-///
-/// The height is decided BEFORE the layout, and that ordering is the whole
-/// point. `Ui::with_layout` hands the child the parent's entire remaining rect,
-/// and a horizontal layout with a cross-axis `Align::Center` centres its
-/// contents inside that rect — so in a top-down pane the row claims every pixel
-/// down to the bottom of the page and parks the buttons in the middle of it.
-/// Measured: one 18px button in a 600px pane produced a 600px row, which on
-/// screen is a pair of icons stranded in a field of nothing.
-///
-/// Nothing at the call site distinguishes the safe use from the ruinous one —
-/// the expression is identical, and only the parent's height decides. So the
-/// parent's height stops being the deciding factor: it is named here.
 pub fn right_aligned_row<R>(ui: &mut Ui, height: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.allocate_ui_with_layout(
         egui::vec2(ui.available_width().max(0.0), height),
@@ -2488,9 +2454,6 @@ mod tests {
 
 #[cfg(test)]
 mod brush_pointer_tests {
-    /// The ring is the pointer, so the arrow has to go while it is up — and it
-    /// has to come back everywhere a single point is placed or picked. Every
-    /// surface that draws a ring hides it; nothing else does.
     #[test]
     fn every_brush_ring_takes_the_arrow_with_it() {
         for (source, what) in [
@@ -2506,8 +2469,6 @@ mod brush_pointer_tests {
         }
     }
 
-    /// The two hair tools that take hold of one thing keep the arrow, and the
-    /// one that has no radius never reaches the ring painter at all.
     #[test]
     fn the_hair_tools_that_grab_one_thing_keep_the_arrow() {
         let source = include_str!("viewport/hair_input.rs");
@@ -2528,9 +2489,6 @@ mod brush_pointer_tests {
         );
     }
 
-    /// Strength is opacity, and the circle stands still while it is set — the
-    /// hair tab passed no strength at all, so shift+F followed the mouse and
-    /// showed nothing.
     #[test]
     fn every_surface_shows_its_strength_in_the_ring() {
         for (source, sweep) in [
@@ -2548,23 +2506,6 @@ mod brush_pointer_tests {
 
 #[cfg(test)]
 mod layout_tests {
-    /// No horizontal layout may be opened on an unbounded parent.
-    ///
-    /// `Ui::with_layout` hands the child the parent's entire remaining rect. A
-    /// horizontal layout centres its contents on the cross axis of that rect,
-    /// so in a top-down pane the row claims every pixel to the bottom of the
-    /// page and parks its contents in the middle. Measured: one 18px button in
-    /// a 600px pane produced a 600px row — three icons stranded in a field of
-    /// nothing at the top of the shortcut list.
-    ///
-    /// The trap is that the safe call and the ruinous one are the same
-    /// expression. Only the parent decides, and the parent is somewhere else.
-    /// So the expression itself is what is forbidden: every horizontal row goes
-    /// through something that settles its height first — `right_aligned_row`,
-    /// `Ui::horizontal`, or `allocate_ui_with_layout`.
-    ///
-    /// `top_down` is not covered: its cross axis is the width, and a pane's
-    /// width is bounded by the pane.
     const OPENS: &str = ".with_layout(Layout::";
     const HORIZONTAL: [&str; 2] = ["left_to_right(", "right_to_left("];
 
@@ -2587,8 +2528,6 @@ mod layout_tests {
                 scanned += 1;
                 let body = std::fs::read_to_string(&path).expect("read a source file");
                 for (index, line) in body.lines().enumerate() {
-                    // Assembled rather than written, so the scan does not read
-                    // its own needles as offences.
                     if HORIZONTAL
                         .iter()
                         .any(|direction| line.contains(&format!("{OPENS}{direction}")))

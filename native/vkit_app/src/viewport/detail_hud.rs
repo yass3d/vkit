@@ -40,11 +40,6 @@ pub(super) fn detail_hud_right_base(viewport: Rect) -> f32 {
     )
 }
 
-/// Whether splitting the view is on offer at all right now.
-///
-/// The tab decides. A tab that is already showing two panes of its own, or has
-/// nothing to compare, says no and the button is simply absent — better than a
-/// control that is present and does nothing.
 pub(super) fn split_toggle_available(state: &AppState) -> bool {
     state.is_detail_editing() || state.is_hair_editing()
 }
@@ -133,10 +128,6 @@ pub(super) fn anchor_detail_panel_to_right_corner(pos: &mut Option<[f32; 2]>, co
 
 const GROUP_PANEL_SIDE_MARGIN: f32 = 2.0 * crate::viewport_chrome::EDGE_INSET;
 
-/// How tall the deform-group island is right now.
-///
-/// Split out so the toolbox above it can ask, without building a rect whose
-/// position depends on the answer.
 #[must_use]
 pub(super) fn detail_group_panel_height(state: &AppState) -> f32 {
     if state.sculpt_groups_collapsed {
@@ -549,8 +540,6 @@ pub(super) fn detail_hud_row_ui(ui: &mut Ui, salt: Id, row: Rect, gap: f32) -> U
             .max_rect(row)
             .layout(Layout::left_to_right(Align::Center)),
     );
-    // An island handed more than it planned for should run out of room rather
-    // than spill its controls across the viewport.
     hud.shrink_clip_rect(row);
     hud.spacing_mut().item_spacing.x = gap;
     hud

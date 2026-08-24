@@ -37,11 +37,6 @@ pub(super) fn viewport_tool_button_rect(viewport: Rect, index: usize) -> Option<
     .then_some(rect)
 }
 
-/// Where the split-view toggle sits: one slot below the last panel button.
-///
-/// It is a view control and it belongs with the view controls. It used to sit
-/// in the detail header, which put a permanent gap in a row of brush controls
-/// on every tab that could split, whether or not a split made sense there.
 pub(super) fn viewport_split_toggle_rect(viewport: Rect, panels: usize) -> Option<Rect> {
     viewport_tool_button_rect(viewport, panels)
 }

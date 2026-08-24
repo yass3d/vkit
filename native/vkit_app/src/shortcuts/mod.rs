@@ -1,9 +1,3 @@
-//! Shortcuts: the catalog of what a key can do, and the map of what is bound.
-//!
-//! `catalog` names every shortcut and its factory binding, `trigger` and
-//! `binding` say what a binding is made of, and `keymap` holds the ones in
-//! force. Everything else in this program asks through here.
-
 mod binding;
 mod catalog;
 mod keymap;
@@ -20,20 +14,10 @@ const KEYMAP_ID: &str = "vkit.shortcuts.keymap";
 
 const PAD_PRESS_ID: &str = "vkit.shortcuts.pad-press";
 
-/// Tell egui that a pad key went down.
-///
-/// egui never sees one: `egui-winit` folds `Numpad5` into `Num5`, which is why
-/// the pad is read off the physical key in `runtime.rs` instead. The Settings
-/// capture field is inside egui, so without this it could offer no way to put a
-/// view on a different pad key — the binding would be listed and unbindable.
 pub fn note_pad_press(ctx: &egui::Context, key: NumpadKey) {
     ctx.data_mut(|data| data.insert_temp(egui::Id::new(PAD_PRESS_ID), key));
 }
 
-/// The pad key struck since this was last asked, taken rather than read.
-///
-/// Taken, so one press cannot be captured twice by two frames of the same
-/// dialog.
 #[must_use]
 pub fn take_pad_press(ui: &Ui) -> Option<NumpadKey> {
     ui.data_mut(|data| {
@@ -65,12 +49,6 @@ mod tests {
 
     use super::*;
 
-    /// The two written-out hints still name the presses they stand for.
-    ///
-    /// These are the last two labels not read from the keymap: they join three
-    /// presses into one string, which no `label` call can do. So they are held
-    /// to the FACTORY bindings here, and they go stale for a reader who rebinds
-    /// one — which is the reason not to write any more of them.
     #[test]
     fn a_joined_hint_still_names_every_press_it_stands_for() {
         let factory = |shortcut: Shortcut| shortcut.default_binding().label();
@@ -195,11 +173,6 @@ mod registry_tests {
 
     use super::*;
 
-    /// Every shortcut has a slot of its own.
-    ///
-    /// `slot` scans `ALL` for the discriminant and falls back to 0 when it does
-    /// not find one, so a shortcut left out of `ALL` would silently read and
-    /// write `Undo`'s binding. Nothing else would say a word.
     #[test]
     fn every_shortcut_owns_one_slot_and_no_two_share_it() {
         assert_eq!(
@@ -220,10 +193,6 @@ mod registry_tests {
         }
     }
 
-    /// No two shortcuts that can both fire start out on the same binding.
-    ///
-    /// The capture field refuses a collision the reader makes. This says the
-    /// factory keymap does not ship with one already in it.
     #[test]
     fn no_two_reachable_shortcuts_ship_on_the_same_binding() {
         let keymap = Keymap::default();
@@ -238,7 +207,6 @@ mod registry_tests {
         }
     }
 
-    /// A keymap file cannot smuggle a collision past the capture field.
     #[test]
     fn an_imported_keymap_refuses_a_binding_another_shortcut_already_holds() {
         let taken = Keymap::default().binding(Shortcut::HairCutTool);
@@ -256,13 +224,9 @@ mod registry_tests {
         assert_eq!(keymap.binding(Shortcut::HairCutTool), taken);
     }
 
-    /// What a keymap writes, a keymap reads back.
     #[test]
     fn every_kind_of_trigger_survives_the_round_trip() {
         let mut keymap = Keymap::default();
-        // The two pad entries are a SWAP. Each one collides with the other's
-        // factory binding halfway through the read, which is exactly the case
-        // that made checking-as-we-go wrong.
         let cases = [
             (
                 Shortcut::ViewTop,
@@ -299,12 +263,6 @@ mod registry_tests {
         }
     }
 
-    /// A pad key answers through the catalog, or it is left to egui.
-    ///
-    /// Not every pad key has to be bound — `Num *` and `Num -` are free. What
-    /// must not happen is two shortcuts sharing one, or one being taken away
-    /// from egui with nothing to answer it, which would eat the keystroke of
-    /// somebody typing a number into a field.
     #[test]
     fn no_pad_key_stands_for_more_than_one_shortcut() {
         let keymap = Keymap::default();
@@ -327,12 +285,6 @@ mod registry_tests {
         );
     }
 
-    /// A binding may demand more than one modifier, and survive being saved.
-    ///
-    /// It could not before. `modifier_name` answered `None` for anything that
-    /// was not exactly one modifier, and `to_stored` DROPPED an entry it could
-    /// not name — so a `Ctrl+Shift+I` a reader had set was gone on the next
-    /// launch with nothing anywhere to say why.
     #[test]
     fn a_binding_with_two_modifiers_is_written_down_and_read_back() {
         let mut keymap = Keymap::default();
@@ -354,7 +306,6 @@ mod registry_tests {
         );
     }
 
-    /// One order for every spelling, so two equal bindings cannot look unequal.
     #[test]
     fn modifiers_are_always_spelled_in_the_same_order() {
         let one_way = Binding {
@@ -369,7 +320,6 @@ mod registry_tests {
         assert_eq!(one_way.label(), other_way.label());
     }
 
-    /// The four layer keys read as a set, and none collides with anything.
     #[test]
     fn the_layer_keys_read_as_one_family() {
         let keymap = Keymap::default();
@@ -379,8 +329,6 @@ mod registry_tests {
             keymap.binding(Shortcut::LayerInvertSelection).label(),
             "Ctrl+I"
         );
-        // The letter carries the idea and the modifier says which way, exactly
-        // as a modeller already knows it from Blender.
         assert_eq!(keymap.binding(Shortcut::LayerIsolate).label(), "Shift+H");
         assert_eq!(keymap.binding(Shortcut::LayerLocalView).label(), "Num /");
         for shortcut in [
@@ -398,7 +346,6 @@ mod registry_tests {
         }
     }
 
-    /// A view key and a tab key are as reachable as a global one.
     #[test]
     fn a_context_that_fires_anywhere_is_checked_against_everything() {
         for context in [
@@ -419,13 +366,6 @@ mod registry_tests {
         assert!(!ShortcutContext::HairEdit.overlaps(ShortcutContext::DetailEdit));
     }
 
-    /// A label is read off the binding, and only ever off the binding in force.
-    ///
-    /// There used to be a hardcoded table of "G", "A", "[" beside the table
-    /// that produces them, and a test pinning the two to each other, which is a
-    /// tautology. Then a `label()` that spelled the FACTORY binding, which is
-    /// the wrong thing to show a reader who has rebound the key — every caller
-    /// is on `label_now` and that method is gone.
     #[test]
     fn a_label_is_read_off_the_binding_it_describes() {
         assert_eq!(Shortcut::Undo.default_binding().label(), "Ctrl+Z");
@@ -450,25 +390,6 @@ mod registry_tests {
 
 #[cfg(test)]
 mod untokenised_input_tests {
-    /// Every way this program reads a key, a button or a modifier for itself,
-    /// by file, with a count and a reason.
-    ///
-    /// Not a ban — several of these should never be bindings. `settings.rs`
-    /// reads keys in order to BIND them; `ui_components.rs` answers Space and
-    /// Enter on a focused widget, which is how a keyboard reaches a button in
-    /// any program; `runtime.rs` is deciding whether egui wants the keystroke
-    /// before anything else looks at it.
-    ///
-    /// What it stops is the thing that had already happened three times over:
-    /// a file quietly reading an input and meaning something by it, with
-    /// nothing in Settings to say the shortcut exists. The number-pad views,
-    /// the tab keys, space-to-pan, the log's copy key and the light's
-    /// right-drag were all found this way after the first, narrower sweep
-    /// missed them.
-    ///
-    /// Adding a read fails this test. Either name it in the catalog and read it
-    /// through `Shortcut`, or add it here with a line saying why it is not a
-    /// binding.
     const ALLOWED: &[(&str, usize, &str)] = &[
         (
             "runtime.rs",
@@ -547,7 +468,6 @@ mod untokenised_input_tests {
         ),
     ];
 
-    /// The spellings that reach the input queue directly.
     const NEEDLES: &[&str] = &[
         "modifiers.shift",
         "modifiers.alt",
@@ -578,7 +498,6 @@ mod untokenised_input_tests {
             for entry in std::fs::read_dir(&directory).expect("read the source tree") {
                 let path = entry.expect("read a source entry").path();
                 if path.is_dir() {
-                    // The catalog is where reading input is the job.
                     if path.file_name().is_some_and(|name| name == "shortcuts") {
                         continue;
                     }
@@ -644,7 +563,6 @@ mod untokenised_input_tests {
         );
     }
 
-    /// Every reason is written down, and no file is listed twice.
     #[test]
     fn every_allowance_carries_a_reason() {
         let mut seen = std::collections::BTreeSet::new();

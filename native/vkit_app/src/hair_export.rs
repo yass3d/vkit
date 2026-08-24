@@ -6,14 +6,6 @@ use vkit_core::vam::hair_writer::{HairVabDoc, encode_hair_vab};
 use crate::hair_project::{HairPart, ScalpAuthoring};
 use crate::hair_settings::HairSettings;
 
-/// The caps offered when a head of hair is being built.
-///
-/// `PantyRegionScalp` is not among them. It is the body cap: all 66 of its
-/// materials in a 1105-package library sit on pubic hair, its shell lies in a
-/// thin band at v 0.132..0.261 rather than over the skull, and its bundle is
-/// the one that ships no `scalp-sim3` material at all, so it has never had a
-/// sheet to show. It stays in [`SCALP_PROVIDERS`] so an imported body part
-/// still exports the material it came with.
 pub const HEAD_SCALP_PROVIDERS: [&str; 5] = [
     "UdaneScalp",
     "KrayonScalp",
@@ -22,7 +14,6 @@ pub const HEAD_SCALP_PROVIDERS: [&str; 5] = [
     "OmriScalp",
 ];
 
-/// Every cap this program knows how to write a scalp material for.
 pub const SCALP_PROVIDERS: [&str; 6] = [
     "UdaneScalp",
     "KrayonScalp",
@@ -52,13 +43,6 @@ fn transparent_sheet() -> Vec<u8> {
     bytes
 }
 
-/// The keys an exported sim storable carries that no parameter owns.
-///
-/// Everything the parameter table owns is written by `storable_entries()`, so a
-/// row here for one of those keys is a second copy that nothing reads — until
-/// the key leaves the table and a number nobody chose ships. There is one
-/// source for a value, and `the_sim_baseline_holds_only_what_no_parameter_owns`
-/// keeps it that way.
 const SIM_TABLE: [(&str, &str); 12] = [
     ("styleModeAllowControlOtherNodes", "false"),
     ("styleModeShowCurls", "false"),
@@ -152,9 +136,6 @@ fn scalp_material_storable(
                 json!(format!("./{SCALP_TEXTURE_DIR}/{name}")),
             );
         }
-        // Alpha Adjust is all that hides the cap, and at shader quality Low the
-        // shader that owns it is disqualified for a cutout fallback with no such
-        // property. A sheet with nothing in it is clipped by either of them.
         if hides_the_cap {
             map.insert(
                 crate::hair_project::ScalpSlot::Alpha.vam_key().to_owned(),
@@ -214,17 +195,6 @@ pub fn sanitize_name(value: &str, fallback: &str) -> String {
     }
 }
 
-/// The geometry the viewport draws and the solver runs on.
-///
-/// Style joints are built here whenever the part asks for them, because the
-/// preview has to be able to answer the question the exported file answers:
-/// does this shape hold once physics touches it? Cross-strand joints are the
-/// only constraint in the solver that holds strands to *each other* — rigidity
-/// pulls each particle back to a head-relative pose, which is a different
-/// thing and cannot stand in for them. Leaving them out of the preview made
-/// every woven or clumped style fall apart on screen and hold in the game.
-///
-/// The toggle is off by default, so a part that does not ask pays nothing.
 pub fn preview_guide_geometry(
     part: &HairPart,
     scalp: &ScalpAuthoring,
@@ -361,11 +331,6 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
         Vec::new()
     };
 
-    // One array or none. The moment a single point is painted the whole item
-    // has to carry a value for every point, so the unpainted ones are written as
-    // the rolloff the game would have used — which leaves the look unchanged
-    // whether or not the reader turns the toggle on. Nothing painted means no
-    // array at all, and a schema-1.0 file the game reads exactly as before.
     let rigidities = part
         .strands
         .values()
@@ -399,8 +364,6 @@ pub fn export_doc(part: &HairPart, scalp: &ScalpAuthoring) -> Result<HairVabDoc,
 pub struct HairExportOutcome {
     pub preset_path: PathBuf,
 
-    /// Every file this export put on disk, so a package can gather exactly
-    /// what the game would load and nothing else.
     pub files: Vec<PathBuf>,
     pub item_count: usize,
     pub triangle_count: usize,
@@ -484,7 +447,6 @@ fn write_hair_item(
         .map_err(|err| format!("cannot write {}: {err}", vab_path.display()))?;
     files.push(vab_path);
     if scalp_is_hidden(&part.settings) && part.scalp_texture.alpha.is_none() {
-        // The cap the style does not want anyone to see.
         let textures = item_dir.join(SCALP_TEXTURE_DIR);
         std::fs::create_dir_all(&textures)
             .map_err(|err| format!("cannot create {}: {err}", textures.display()))?;
@@ -567,18 +529,6 @@ fn write_json(path: &Path, value: &Value) -> Result<(), String> {
     std::fs::write(path, text).map_err(|err| format!("cannot write {}: {err}", path.display()))
 }
 
-/// The patch list: the scalp mesh's own triangles, minus the incomplete ones.
-///
-/// `ProcessIndices` -> `FixNotCompletedPolygon` is all the game does here, and
-/// it is what VaM's own create mode does. A strand in no complete triangle is
-/// physics only and never drawn — it keeps its slot, its mask bit, its entry in
-/// `hairRootToScalpIndices` and its points; it simply has no patch.
-///
-/// A synthetic triangle used to be invented for those strands out of their two
-/// nearest roots. It is a complete triangle, so VaM drew `hairMultiplier`
-/// children across it — between an orphan and whatever happened to be nearest,
-/// which can be across a parting or over a gap — with `maxSpread` anchored on
-/// the orphan and the envelope gathering toward a centre line nobody drew.
 pub fn render_triangle_indices(
     root_rank: &std::collections::BTreeMap<u32, u32>,
     scalp_triangles: &[[u32; 3]],
@@ -708,12 +658,6 @@ pub fn export_hair_style(
     })
 }
 
-/// Gather an installed style into a `.var` beside the game's other packages.
-///
-/// The files are read back from where the install put them rather than
-/// rebuilt, so the package carries exactly what the game would load — the
-/// custom scalp sheets among them — and picks up the thumbnails once they
-/// have been rendered.
 pub fn package_hair_style(
     vam_root: &Path,
     files: &[PathBuf],
@@ -975,11 +919,6 @@ mod tests {
         }
     }
 
-    /// The body cap is not a head cap. All 66 `PantyRegionScalpMaterial`
-    /// storables in a 1105-package library sit on pubic hair, its UV shell is a
-    /// band at v 0.132..0.261 rather than a skull, and `p_gen_mat` is the one
-    /// scalp bundle shipping no `scalp-sim3` material — so it has never had a
-    /// sheet to show in a head-hair picker.
     #[test]
     fn the_body_cap_is_not_offered_for_a_head_but_still_exports() {
         assert!(!HEAD_SCALP_PROVIDERS.contains(&"PantyRegionScalp"));
@@ -1003,16 +942,6 @@ mod tests {
         );
     }
 
-    /// `SIM_TABLE` is the baseline every exported sim storable starts from, and
-    /// `storable_entries()` then overwrites every key the parameter table owns.
-    /// A row that disagrees with the table is therefore invisible — until a key
-    /// leaves `HAIR_PARAMS`, at which point a number nobody chose ships. Two
-    /// sources for one value is the shape the ledger keeps retiring; this holds
-    /// them equal instead.
-    /// The IBL filter is per mesh, not one number for all of them: across 1125
-    /// shipped scalp materials Udane is 0.5 in 303 of 304, PantyRegion 0.0 in
-    /// 136 of 136, and Krayon, Leyton and Soleil 0.7. The exporter used to
-    /// write a flat 0.7 while the right numbers sat unread in `SCALP_STOCK`.
     #[test]
     fn each_cap_exports_the_ambient_filter_its_own_mesh_ships() {
         for (provider, wanted) in [
@@ -1068,9 +997,6 @@ mod tests {
         assert_eq!(sim["id"], "T:TestSim");
     }
 
-    /// `ProcessIndices` -> `FixNotCompletedPolygon`: a triangle whose three
-    /// corners are not all planted is dropped, and the strands on it are
-    /// physics only. Nothing is invented to keep them drawable.
     #[test]
     fn a_strand_in_no_complete_triangle_keeps_its_slot_and_gets_no_patch() {
         use crate::hair_project::{HairProject, build_scalp_authoring};
@@ -1092,7 +1018,6 @@ mod tests {
         let mut project = HairProject::default();
         let id = project.add_part("UdaneScalp");
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
-        // Every other vertex: no scalp triangle has all three corners planted.
         part.plant(&authoring, &[0, 2, 4]);
 
         let doc = export_doc(part, &authoring).expect("doc");
@@ -1141,7 +1066,6 @@ mod tests {
         corners.sort_unstable();
         assert_eq!(corners, vec![0, 1, 2]);
 
-        // A lone strand has no complete triangle and so has no patch at all.
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
         part.strands.retain(|index, _| *index == 0);
         let doc = export_doc(part, &authoring).expect("doc");
@@ -1519,11 +1443,6 @@ mod settings_export_tests {
                 "guide {} was handed points that are not its strand's",
                 guide.scalp_index
             );
-            // An unpainted strand carries no rigidity, and the assertion that
-            // used to stand here -- "every point needs its own rigidity" -- was
-            // the defect written down: it was satisfied by a fabricated array of
-            // 1.0, which the game reads as `result = target`, welding every
-            // particle to its rest pose the moment anyone turns the toggle on.
             assert!(
                 guide.rigidity.is_empty(),
                 "guide {} invented paint nobody applied",
@@ -1539,14 +1458,6 @@ mod settings_export_tests {
         }
     }
 
-    /// An item nobody painted must carry no rigidity array at all.
-    ///
-    /// The array is what `usePaintedRigidity` reads, and a solid 1.0 in it
-    /// trips `if (Rigidity >= 1.0) result = target` — every particle welded to
-    /// its rest pose, no gravity, no swing. Writing one "just in case" leaves a
-    /// file that looks right until somebody flips a switch the game has always
-    /// had. Absent, the game falls back to the rolloff and the switch does
-    /// nothing, which is what an unpainted item means.
     #[test]
     fn an_unpainted_item_ships_no_rigidity_array_and_no_way_to_weld_itself() {
         let (authoring, project, id) = painted_fixture();
@@ -1566,10 +1477,6 @@ mod settings_export_tests {
         );
     }
 
-    /// Paint one point and the whole item has to carry a value for every point,
-    /// because the file holds one array or none. The ones nobody touched are
-    /// written as the curve the game would have used, so turning the toggle on
-    /// changes only what was actually painted.
     #[test]
     fn painting_one_point_writes_the_curve_for_all_the_others() {
         let (authoring, mut project, id) = painted_fixture();
@@ -1611,7 +1518,6 @@ mod settings_export_tests {
             flat.iter().any(|value| (*value - 1.0).abs() < 1.0e-6),
             "the painted point did not survive the round trip",
         );
-        // Every strand but the painted one is the curve, exactly.
         let unpainted: Vec<f32> = vkit_core::vam::rolloff_rigidity_curve(&physics, points);
         let tail = &flat[points..];
         for (index, value) in tail.iter().enumerate() {
@@ -1623,7 +1529,6 @@ mod settings_export_tests {
         }
     }
 
-    /// Five strands on a small scalp, ready to be painted on.
     fn painted_fixture() -> (
         crate::hair_project::ScalpAuthoring,
         crate::hair_project::HairProject,
@@ -1658,20 +1563,12 @@ mod settings_export_tests {
         (authoring, project, id)
     }
 
-    /// The old name here was `the_preview_may_skip_the_joint_graph`, and the
-    /// permission it granted was the defect: a preview with no cross-strand
-    /// joints shows every clumped or woven style coming apart, while the file
-    /// it exports holds together in the game.
     #[test]
     fn the_preview_runs_the_same_joint_graph_the_export_ships() {
         let (authoring, mut project, id) = painted_fixture();
         let part = project.parts.iter_mut().find(|p| p.id == id).unwrap();
         part.style_joints = true;
 
-        // The preview asks the part, not the caller. Cross-strand joints are
-        // the only thing in the solver that holds strands to each other, so a
-        // preview without them shows every clumped or woven style falling
-        // apart while the exported file holds — the screen would be lying.
         let previewed = preview_guide_geometry(part, &authoring).expect("geometry");
         assert!(
             !previewed.nearby_joints.is_empty(),

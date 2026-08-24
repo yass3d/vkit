@@ -1,9 +1,3 @@
-//! Every shortcut this program has, and what each is bound to out of the box.
-//!
-//! One entry per thing a key can do. Nothing outside this file may read a key
-//! for itself: an input the catalog does not name cannot be shown in Settings,
-//! cannot be rebound, and cannot be checked for a collision with anything else.
-
 use egui::{Key, Modifiers, Ui};
 
 use super::{Binding, ModifierKey, ModifierPolicy, NumpadKey, Trigger, current};
@@ -18,43 +12,18 @@ pub enum ShortcutContext {
 
     HairEdit,
 
-    /// Standing the camera in a named place. Live wherever the pointer is.
     View,
 
-    /// Moving between the top tabs. Live wherever the pointer is.
     Navigation,
 
-    /// The texture canvas and the tools that paint on it.
-    ///
-    /// Its own context because `Alt` reverses the texture tool there and
-    /// reverses the sculpt brush on the model, and the two are never both under
-    /// the pointer.
     TextureEdit,
 
-    /// Editing a strand's own joints.
-    ///
-    /// Its own context because `Alt` reverses the hair BRUSH, and the vertex
-    /// tool is not a brush — it has a selection, and `Alt` there is what takes
-    /// something out of one. The two are never reachable at the same moment:
-    /// the vertex tool is chosen or it is not.
     VertexEdit,
 
-    /// The part, layer and morph lists down the side.
-    ///
-    /// Its own context so that `Shift` can mean "add to the selection" here and
-    /// "smooth" on the surface without the two being called a collision. They
-    /// are never both reachable by one press: the pointer is over a list or it
-    /// is over the model.
     Lists,
 }
 
 impl ShortcutContext {
-    /// Whether a shortcut in this context can fire anywhere.
-    ///
-    /// Separate from how the list is grouped on purpose. A view key and a tab
-    /// key are as reachable as `Global` and must be checked for collisions
-    /// against everything, but a reader looking for "the key that shows the
-    /// left side" wants them under their own heading and not in one wall.
     pub const fn is_everywhere(self) -> bool {
         matches!(self, Self::Global | Self::View | Self::Navigation)
     }
@@ -313,12 +282,7 @@ impl Shortcut {
                 Trigger::Mouse(egui::PointerButton::Middle)
             }
             Self::LightRotate => Trigger::Mouse(egui::PointerButton::Secondary),
-            // The pad's own key for "show me this one alone", which is where a
-            // modeller's hand already is when the other hand is on the mouse.
-            // A toggle, the way local view is a toggle: press it again and
-            // everything comes back.
             Self::LayerLocalView => Trigger::Numpad(NumpadKey::Divide),
-            // Blender's pad, which every modelling program copied.
             Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
             Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
             Self::ViewFront => Trigger::Numpad(NumpadKey::Five),
@@ -380,8 +344,6 @@ impl Shortcut {
             Self::DiagnosticLogCopy => Key::C,
             Self::LayerHide | Self::LayerUnhideAll | Self::LayerIsolate => Key::H,
             Self::LayerInvertSelection => Key::I,
-            // The pad keys answer through `trigger`; this arm is unreachable for
-            // them and returns a key nothing is bound to rather than panicking.
             Self::ViewReset
             | Self::ViewToggleProjection
             | Self::ViewFront
@@ -536,9 +498,6 @@ impl Shortcut {
             | Self::TabHair
             | Self::TabSave => ModifierPolicy::Exactly(Modifiers::NONE),
 
-            // A held modifier IS the binding. Asking which others are down
-            // besides it would make `Shift` stop smoothing the moment the
-            // reader also reached for `Alt`.
             Self::SculptSmoothHold
             | Self::SculptInflateHold
             | Self::SculptAlternateHold
@@ -550,16 +509,10 @@ impl Shortcut {
             | Self::VertexAddToSelectionHold
             | Self::VertexRemoveFromSelectionHold => ModifierPolicy::Ignored,
 
-            // Held while something else is happening: the canvas is already
-            // being dragged, so demanding a bare Space would let a stray Shift
-            // drop the pan mid-stroke.
             Self::TextureCanvasPan | Self::LightRotate => ModifierPolicy::Ignored,
 
             Self::DiagnosticLogCopy => ModifierPolicy::Exactly(Modifiers::COMMAND),
 
-            // One letter for one idea, and the modifier says which way, exactly
-            // as a modeller already knows it: `H` hides what is selected,
-            // `Shift+H` hides everything else, `Alt+H` brings it all back.
             Self::LayerHide | Self::LayerLocalView => ModifierPolicy::Exactly(Modifiers::NONE),
             Self::LayerIsolate => ModifierPolicy::Exactly(Modifiers::SHIFT),
             Self::LayerUnhideAll => ModifierPolicy::Exactly(Modifiers::ALT),
@@ -567,43 +520,24 @@ impl Shortcut {
         }
     }
 
-    /// The binding in force for this shortcut right now.
     pub fn binding(self, ui: &Ui) -> Binding {
         current(ui).binding(self)
     }
 
-    /// What key to press, spelled for a reader, from the keymap in force.
-    ///
-    /// The only label anything shows. A `label()` that spelled the FACTORY
-    /// binding used to sit beside this one, and it was the wrong answer for
-    /// anybody who had rebound the key.
     pub fn label_now(self, ui: &Ui) -> String {
         self.binding(ui).label()
     }
 
-    /// Whether this gesture's modifier is down right now.
-    ///
-    /// Answers `false` for anything not bound to a held modifier, so a reader
-    /// who moves a gesture onto a letter key does not get a stuck stroke.
     #[must_use]
     pub fn held(self, ui: &Ui) -> bool {
         self.held_in(ui, ui.input(|input| input.modifiers))
     }
 
-    /// The same question against modifiers already in hand.
-    ///
-    /// The sculpt and hair strokes read `input.modifiers` once and pass it down
-    /// through several decisions; making each of them re-enter `ui.input`
-    /// would let the answer change halfway through one stroke.
     #[must_use]
     pub fn held_in(self, ui: &Ui, modifiers: egui::Modifiers) -> bool {
         let binding = self.binding(ui);
         match binding.trigger {
             Trigger::Held(modifier) => modifier.held_in(modifiers),
-            // A key or a button can be held too, and three shortcuts are read
-            // that way: space pans the texture canvas, the right button turns
-            // the light. The modifier policy still has to be satisfied, or
-            // Shift+right-drag would rotate the light without the Shift.
             Trigger::Key(key) => {
                 binding.modifiers.admits(modifiers) && ui.input(|input| input.key_down(key))
             }
@@ -635,10 +569,6 @@ impl Shortcut {
                         )
                     }),
                     Trigger::Mouse(button) => input.pointer.button_pressed(button),
-                    // The pad never reaches egui as itself. `runtime.rs` reads
-                    // the physical key and dispatches through the same keymap.
-                    // Neither is a press. The pad is read a layer earlier in
-                    // `runtime.rs`; a held modifier is asked about by `held`.
                     Trigger::Numpad(_) | Trigger::Held(_) => false,
                 }
         })

@@ -34,17 +34,6 @@ pub use self::skin::{SkinPaintCallback, SkinVisibilityGroup, SkinVisibilityGroup
 #[cfg(test)]
 use self::{shaders::*, skin::*};
 
-/// Rebuild the scene's pipelines if the sample count has moved under them.
-///
-/// A `RenderPipeline` carries the sample count it was created with, and a
-/// render pass carries its own; binding one to the other fails validation on
-/// every draw. So the surface changing its textures is only half the job — the
-/// pipelines have to move with it, and this is where they do.
-///
-/// It costs the scene caches, which rebuild on the next frames. The cheaper
-/// thing is to rebuild the pipeline objects alone and keep the caches; that
-/// wants the shader and layout kept on each resource set, which is a change
-/// worth making on its own rather than folded into a bug fix.
 pub(crate) fn sync_scene_samples(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -77,11 +66,6 @@ pub(crate) fn sync_scene_samples(
     ));
 }
 
-/// Open the pass a three-dimensional layer draws in, on the scene's own surface
-/// rather than in egui's render pass.
-///
-/// `None` means there is nothing to draw into and the layer should return: no
-/// surface installed, or a rectangle with no pixels in it.
 pub(crate) fn begin_scene_layer(
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
@@ -99,8 +83,6 @@ pub(crate) fn begin_scene_layer(
     )
 }
 
-/// Put the finished scene back in front of egui, over the rectangle egui has
-/// already scissored this callback to.
 pub(crate) fn blit_scene(
     render_pass: &mut wgpu::RenderPass<'static>,
     resources: &egui_wgpu::CallbackResources,
@@ -110,30 +92,12 @@ pub(crate) fn blit_scene(
     }
 }
 
-/// What egui's own pipelines are built at.
-///
-/// One, and it stays one. egui anti-aliases its shapes in its tessellator
-/// rather than by multisampling, so it gains nothing from a higher count — and
-/// the count it is built with cannot change while the program runs. Keeping it
-/// at one is what lets the scene's count be a setting: the scene has a surface
-/// of its own, and only the blit that carries it back has to agree with egui.
 pub const EGUI_MSAA_SAMPLES: u32 = 1;
 
-/// The sample counts offered, in the order the picker shows them.
-///
-/// One is no multisampling at all. Four is the floor every renderable format is
-/// required to support, and is the default. Two and eight are optional in the
-/// specification, so the list the picker actually offers is filtered by
-/// [`supported_msaa_samples`] against the adapter this machine has.
 pub const MSAA_CHOICES: [u32; 4] = [1, 2, 4, 8];
 
 pub const DEFAULT_MSAA_SAMPLES: u32 = 4;
 
-/// The count this process is running at.
-///
-/// It is chosen once, before the painter exists, because egui bakes the sample
-/// count into its own pipelines at construction and every pipeline here has to
-/// agree with it. Changing the preference therefore takes effect on restart.
 static ACTIVE_MSAA_SAMPLES: std::sync::atomic::AtomicU32 =
     std::sync::atomic::AtomicU32::new(DEFAULT_MSAA_SAMPLES);
 
@@ -144,12 +108,6 @@ pub fn msaa_samples() -> u32 {
     ACTIVE_MSAA_SAMPLES.load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Draw at this many samples from the next frame on.
-///
-/// Refused unless the adapter was probed and answered for it, because the count
-/// becomes a texture the device has to be able to make. The scene's surface
-/// reads this every frame and rebuilds its attachments the frame it moves,
-/// which is the whole of what "no restart" means here.
 pub fn set_msaa_samples(samples: u32) -> u32 {
     let offered = supported_msaa_samples();
     let samples = if offered.contains(&samples) {
@@ -161,10 +119,6 @@ pub fn set_msaa_samples(samples: u32) -> u32 {
     samples
 }
 
-/// What this machine can actually be asked for, cheapest first.
-///
-/// Empty until the adapter has been probed, which happens during startup; a
-/// caller that runs earlier gets the default alone rather than a promise.
 #[must_use]
 pub fn supported_msaa_samples() -> &'static [u32] {
     SUPPORTED_MSAA_SAMPLES
@@ -172,23 +126,11 @@ pub fn supported_msaa_samples() -> &'static [u32] {
         .map_or(&[DEFAULT_MSAA_SAMPLES], Vec::as_slice)
 }
 
-/// Ask the adapter which of [`MSAA_CHOICES`] both the colour target and the
-/// depth buffer can carry, and fix this process's count to the wanted one if it
-/// survives that filter.
-///
-/// Both formats have to agree: a pass whose colour attachment is 8x and whose
-/// depth attachment is not does not validate.
 pub fn resolve_msaa_samples(
     adapter: &wgpu::Adapter,
     target_format: wgpu::TextureFormat,
     wanted: u32,
 ) -> u32 {
-    // `get_texture_format_features` answers for the ADAPTER. A device only
-    // inherits the counts past the guaranteed [1, 4] if it asked for
-    // `TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES` — without it, wgpu rejects a
-    // 2x or 8x texture at creation however loudly the adapter advertised it.
-    // Offering a count the device will refuse is a validation error on every
-    // pass, which is a black window rather than a coarser picture.
     let specific = adapter
         .features()
         .contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES);
@@ -317,9 +259,6 @@ pub fn install(painter: &EguiPainter) -> Result<(), RendererInstallError> {
     let hair_error = pollster::block_on(hair_scope.pop());
 
     let mut renderer = render_state.renderer.write();
-    // The surface every layer draws on, and the blit that puts it back. Its
-    // blit runs inside egui's pass, so its own pipeline is built at EGUI's
-    // sample count; the scene behind it is at ours.
     renderer.callback_resources.insert(SceneSurface::new(
         &render_state.device,
         render_state.target_format,
@@ -1432,8 +1371,6 @@ mod tests {
 mod msaa_tests {
     use super::*;
 
-    /// Four is the only count the specification requires a renderable format to
-    /// carry, so it is the one a fallback may land on.
     #[test]
     fn the_default_is_the_count_every_adapter_must_support() {
         assert_eq!(DEFAULT_MSAA_SAMPLES, 4);
@@ -1450,8 +1387,6 @@ mod msaa_tests {
         }
     }
 
-    /// Before the adapter has been asked, the offer is the default alone — a
-    /// picker that promises 8x on a machine nobody has probed would be a lie.
     #[test]
     fn nothing_is_offered_that_has_not_been_probed() {
         let offered = supported_msaa_samples();
@@ -1464,8 +1399,6 @@ mod msaa_tests {
         }
     }
 
-    /// The count in use is fixed for the life of the process, so whatever a
-    /// preference says, what pipelines are built with has to be a real choice.
     #[test]
     fn the_active_count_is_always_one_of_the_choices() {
         assert!(MSAA_CHOICES.contains(&msaa_samples()));
@@ -1476,10 +1409,6 @@ mod msaa_tests {
 mod scene_surface_contract_tests {
     use super::*;
 
-    /// The blit runs inside egui's pass, so its pipeline is built at egui's
-    /// sample count. If the painter is ever handed the scene's count again, the
-    /// two disagree and every blit fails validation — a viewport that shows
-    /// nothing rather than a coarser one.
     #[test]
     fn egui_is_told_its_own_sample_count_and_not_the_scenes() {
         let source = include_str!("runtime.rs");
@@ -1493,14 +1422,9 @@ mod scene_surface_contract_tests {
         );
     }
 
-    /// And the scene's count is a setting, which means it has to be reachable
-    /// from the action that changes it rather than only from startup.
     #[test]
     fn the_scenes_count_can_be_moved_after_startup() {
         let before = msaa_samples();
-        // Only what was probed is offered, and in a test that is the default
-        // alone — which is enough to prove the setter is honoured and that it
-        // refuses what it was not offered.
         assert_eq!(set_msaa_samples(DEFAULT_MSAA_SAMPLES), DEFAULT_MSAA_SAMPLES);
         assert_eq!(msaa_samples(), DEFAULT_MSAA_SAMPLES);
         assert_eq!(
@@ -1514,11 +1438,6 @@ mod scene_surface_contract_tests {
 
 #[cfg(test)]
 mod sample_count_contract_tests {
-    /// The one this shipped broken. A `RenderPipeline` carries the sample count
-    /// it was created with; a render pass carries its own. Move the surface's
-    /// count without moving the pipelines and every draw fails validation —
-    /// which is not a coarser picture, it is a storm of uncaptured errors and a
-    /// viewport that stops.
     #[test]
     fn every_layer_asks_whether_its_pipelines_still_fit_the_pass() {
         for (source, what) in [
@@ -1541,9 +1460,6 @@ mod sample_count_contract_tests {
         );
     }
 
-    /// And the check has to fire once per change, not once per layer: four
-    /// layers rebuilding the same resources in one frame is four times the cost
-    /// for the same result.
     #[test]
     fn the_rebuild_is_claimed_once_and_not_once_per_layer() {
         let source = include_str!("renderer/scene_surface.rs");

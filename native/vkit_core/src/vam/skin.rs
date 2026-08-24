@@ -623,12 +623,6 @@ impl SkinAuxiliary {
         }
     }
 
-    /// A look that brings its own eye wears it across the whole eye.
-    ///
-    /// Only the sclera's texture may be spread. The white of the eye is the
-    /// region that tells an atlas from a part: a picture that covers it covers
-    /// the rest, while a picture set on the iris alone is an iris on a black
-    /// field, and spreading that paints the white black.
     fn spread_own_eye_atlas(&mut self) {
         let Some(atlas) = self.sclera.diffuse.clone() else {
             return;
@@ -695,13 +689,7 @@ fn discover_default_auxiliary(root: &VaMRoot, builtin: &[SkinPreset]) -> Result<
     })
 }
 
-/// Whether this iris is the figure's own rather than one a look chose.
-///
-/// Only the figure's own may stand in for a colour we could not resolve.
 fn iris_is_the_default_color(diffuse: Option<&AssetLocator>) -> bool {
-    // The figure's own eye comes out of the person bundle. Anything that
-    // arrived as a file was chosen by a look, and a look's choice never stands
-    // in for one we could not resolve.
     matches!(diffuse, Some(AssetLocator::BuiltinTexture(_)))
 }
 
@@ -760,8 +748,6 @@ fn default_auxiliary_from_cache(entries: &[PathBuf], sex: SkinSex) -> SkinAuxili
     let eye = find(SCLERA_LACRIMAL_CACHE_PROFILES);
     auxiliary.sclera.diffuse.clone_from(&eye);
     auxiliary.lacrimal.diffuse.clone_from(&eye);
-    // The figure's own eye or nothing: there is no filename in the texture
-    // cache that can be trusted to be an iris.
     auxiliary.iris.diffuse = eye;
     auxiliary.eyelashes.diffuse = find(EYELASH_CACHE_PROFILES);
     auxiliary.teeth.diffuse = find(TEETH_CACHE_PROFILES);
@@ -1583,17 +1569,6 @@ fn find_selector_cache(
     }
 
     if matches!(region, AuxiliarySelectorRegion::Iris) {
-        // A built-in iris selector names an entry in a list VaM builds from the
-        // person bundle. There is no way to reach that list from the texture
-        // cache, whose file names carry a stem and nothing that says what the
-        // texture IS — so an unresolved iris selector stays unresolved, and the
-        // iris falls back to the figure's own eye, which is what the sclera has
-        // always done with its own unavailable selectors.
-        //
-        // What used to stand here read `Preset_DualColor<NN>` out of the cache
-        // and called NN an iris colour. `p_eye_mat` holds no texture by that
-        // name — the mapping was invented — and in a real install those files
-        // are a HAIR colour series, so the eye wore somebody's hair.
         return None;
     }
 
@@ -2611,11 +2586,6 @@ mod tests {
 
     #[test]
     fn built_in_auxiliary_selectors_choose_matching_cache_assets_and_figure_lashes() {
-        // The iris is the exception here, and it is the point of the test. The
-        // lashes and the sclera name their own cache entries and resolve; the
-        // iris names a colour in a list VaM builds from the person bundle, which
-        // the cache cannot be read to find. It is reported unavailable rather
-        // than matched to whatever file happens to be named like it.
         let temporary =
             std::env::temp_dir().join(format!("vkit-vam-aux-selectors-{}", std::process::id()));
         let _ = fs::remove_dir_all(&temporary);
@@ -2988,9 +2958,6 @@ mod tests {
 
     #[test]
     fn an_iris_a_look_brought_stays_in_the_iris() {
-        // vamhappy's H019 sets one custom picture on the irises and nothing on
-        // the sclera. That picture is an iris on black, so wearing it across
-        // the whole eye turned the white of the eye black.
         let iris = AssetLocator::File(PathBuf::from("this-looks-own-iris.png"));
         let mut stand_in = SkinAuxiliary::default();
         stand_in.sclera.diffuse = Some(bundle_texture("base-eye"));
@@ -3037,9 +3004,6 @@ mod tests {
 
     #[test]
     fn only_the_figures_own_iris_may_stand_in_for_a_missing_color() {
-        // The figure's own arrives out of the person bundle. Everything else was
-        // chosen by a look for its own reasons, whatever its file is called —
-        // the names below are a hair colour series in a real install.
         assert!(iris_is_the_default_color(Some(&bundle_texture("iris"))));
         for chosen in [
             "Preset_DualColor01_jpg_38947_132878108620000000_512_512_C.vamcachemeta",
@@ -3203,9 +3167,6 @@ mod tests {
             None
         );
 
-        // The iris has no cache path at all now, so an exact name buys it
-        // nothing either. The suffix rule this test exists for is still checked
-        // above, through the sclera and the lashes, which do resolve by name.
         let exact = [color_10, color_1];
         assert_eq!(
             find_selector_cache(
@@ -3237,18 +3198,11 @@ mod tests {
         parsed.sclera_selector = Some("Sclera 2".to_owned());
 
         let auxiliary = parsed.finish(SkinSex::Unknown, &entries);
-        // This used to say the named colour must win over the atlas, and the
-        // only thing it could find to win with was a file whose name looked
-        // right. An eye wearing the figure's own atlas is wrong by one colour;
-        // an eye wearing a hair texture is wrong by everything.
         assert_eq!(
             auxiliary.iris.diffuse,
             Some(AssetLocator::File(atlas.clone())),
             "a colour we cannot resolve leaves the eye the figure shipped with",
         );
-        // The figure's own atlas is already there, so the source stays what it
-        // was; `BuiltInSelectorUnavailable` is recorded only when the material
-        // would otherwise have nothing at all.
         assert_eq!(
             auxiliary.iris.diffuse_source,
             SkinDiffuseSource::FigureDefault
@@ -3288,20 +3242,6 @@ mod tests {
         );
     }
 
-    /// The defect that kept coming back, and the reason it kept coming back.
-    ///
-    /// A built-in iris selector names an entry in a list VaM builds from the
-    /// person bundle. Nothing in the texture cache can be read to find it: a
-    /// cache file name carries a stem, an extension, the source's size and
-    /// mtime, and a resolution — nothing that says what the texture IS. The
-    /// code read `Preset_DualColor<NN>` out of it and called NN an iris colour.
-    ///
-    /// `p_eye_mat` holds no texture by that name; the mapping was invented. And
-    /// in a real install those files are a HAIR colour series, thirty-two of
-    /// them, so the eye wore somebody's hair. The earlier repair required the
-    /// name to be UNIQUE among the cache entries, which caught the case where a
-    /// collision was visible and passed every case where it was not — a lone
-    /// entry named `Preset_DualColor11` is unique and is still hair.
     #[test]
     fn no_cache_file_name_may_be_read_as_an_iris() {
         for name in [
@@ -3326,9 +3266,6 @@ mod tests {
         }
     }
 
-    /// With no eye atlas in the cache the iris carries nothing, and its own
-    /// default colour shows. That is the honest answer, and it is the one the
-    /// sclera has always given for a selector it could not resolve.
     #[test]
     fn an_unresolvable_iris_carries_nothing_rather_than_a_guess() {
         let entries = [PathBuf::from(
@@ -3339,8 +3276,6 @@ mod tests {
         assert_eq!(auxiliary.iris.diffuse_source, SkinDiffuseSource::None);
     }
 
-    /// A look that DOES bring an eye atlas still wears it on the iris — that
-    /// path was never in question and must not be lost with the guess.
     #[test]
     fn a_look_that_brings_an_eye_atlas_still_wears_it() {
         let atlas = PathBuf::from("Female_V5BreeEyes8M_jpg.vamcachemeta");
@@ -3373,10 +3308,6 @@ mod tests {
         );
     }
 
-    /// A selector we could not resolve still falls back to the FIGURE'S own
-    /// eye, which arrives as a bundle texture. It never falls back to a file,
-    /// because a file in the cache was chosen by some look for some other
-    /// purpose.
     #[test]
     fn an_unavailable_selector_falls_back_to_the_figures_own_eye() {
         let mut outer = SkinAuxiliary::default();
@@ -3398,8 +3329,6 @@ mod tests {
         );
     }
 
-    /// And a look whose own iris texture is missing does not get one invented
-    /// for it from a selector name.
     #[test]
     fn a_missing_custom_iris_does_not_gain_one_from_a_selector() {
         let hair =
@@ -4120,9 +4049,6 @@ mod full_body_texture_tests {
     }
 }
 
-/// A way back to how a real preset resolves, without a screenshot.
-///
-/// `VKIT_VAM_ROOT=... VKIT_PROBE=H019 cargo test -p vkit-core h019_probe -- --ignored --nocapture`
 #[cfg(test)]
 mod h019_probe {
     use super::*;

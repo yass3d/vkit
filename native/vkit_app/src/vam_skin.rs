@@ -1337,9 +1337,6 @@ mod limbs_evidence {}
 mod eye_probe {
     use super::*;
 
-    /// What each eye slot resolves to, and what that picture actually looks like.
-    ///
-    /// `VKIT_VAM_ROOT=... VKIT_PROBE="H019 b" cargo test -p vkit-app eye_probe -- --ignored --nocapture`
     #[test]
     #[ignore = "reads the reader's own VaM installation"]
     fn what_the_eye_slots_carry() {

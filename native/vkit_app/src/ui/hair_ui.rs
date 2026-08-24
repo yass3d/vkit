@@ -713,8 +713,6 @@ fn draw_sidebar_part_row(
     if duplicate.clicked() {
         state.dispatch(Action::DuplicateHairPart(part_id));
     } else if eye.clicked() {
-        // Alt on the eye isolates, the way a layer list does; alt again on the
-        // same part brings the rest back.
         if crate::shortcuts::Shortcut::ListSoloHold.held(&row_ui) {
             state.dispatch(Action::SoloHairPart(part_id));
         } else {

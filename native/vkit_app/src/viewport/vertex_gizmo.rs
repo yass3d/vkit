@@ -1,15 +1,3 @@
-//! A move-and-rotate handle at the middle of the selected strand joints.
-//!
-//! The same handle the alignment tab uses, standing somewhere else. Dragging a
-//! joint directly is fine for one; past that a reader wants an axis to push
-//! along and a ring to turn about, and wants the two separated so a nudge does
-//! not also twist.
-//!
-//! No scale. A strand's joints are spaced by the lengths the solver is handed
-//! as rest lengths, and pulling them apart uniformly is not an edit anybody
-//! reached for — the alignment tab scales because it is fitting one mesh to
-//! another, which this is not.
-
 use egui::{Rect, Response, Ui};
 use glam::Vec3;
 
@@ -17,31 +5,18 @@ use crate::camera::TurntableCamera;
 use crate::state::AppState;
 use crate::viewport::{AlignmentGizmoGeometry, AlignmentGizmoHit, GizmoHandles};
 
-/// What the reader took hold of, held between frames.
 const DRAG_ID: &str = "vkit.viewport.hair.vertex-gizmo";
 
-/// How far the handle reaches, as a share of the camera's framing radius.
-///
-/// A share and not a length: a selection of two joints a centimetre apart still
-/// needs a handle big enough to grab, and one across the whole head must not
-/// grow one that fills the screen.
 const SIZE_SHARE: f32 = 0.10;
 
-/// Move, and nothing else.
-///
-/// A strand joint is a point. It has no orientation to turn about and no
-/// spacing to stretch, so a ring and a centre grip would be two controls that
-/// answer questions nobody asked.
 const HANDLES: GizmoHandles = GizmoHandles::MOVE_ONLY;
 
 #[derive(Clone, Copy, Debug)]
 struct Grab {
     hit: AlignmentGizmoHit,
-    /// Where the pointer was last frame, in screen points.
     previous: egui::Pos2,
 }
 
-/// Where the handle stands, or `None` when nothing is selected.
 #[must_use]
 pub(super) fn geometry(
     state: &AppState,
@@ -56,10 +31,6 @@ fn held(ui: &Ui) -> Option<Grab> {
     ui.data(|data| data.get_temp::<Grab>(egui::Id::new(DRAG_ID)))
 }
 
-/// Take the handle, move what it holds, and let go.
-///
-/// Returns `true` while the handle has the pointer, so the caller leaves the
-/// joints and the camera alone for the rest of the frame.
 pub(super) fn handle(
     ui: &Ui,
     state: &mut AppState,
@@ -128,17 +99,11 @@ fn apply(state: &mut AppState, geometry: &AlignmentGizmoGeometry, grab: Grab, po
             let Some(units) = geometry.axis_world_units_per_point[axis] else {
                 return;
             };
-            // The pointer's travel along the axis as it appears on screen, in
-            // the world units that axis is drawn at. Anything across the axis
-            // is the reader's hand wobbling and is not a move.
             let along = (end - geometry.origin).normalized();
             let travel = (pointer - grab.previous).dot(along) * units as f32;
             let direction = [Vec3::X, Vec3::Y, Vec3::Z][axis];
             super::hair_vertex::move_selection(state, &joints, direction * travel);
         }
-        // `HANDLES` offers neither, so neither is drawn and neither can be
-        // grabbed. They stay in the match because the enum is the alignment
-        // tab's too, and that tab has both.
         AlignmentGizmoHit::Rotate(_) | AlignmentGizmoHit::Scale => {}
     }
 }
@@ -170,12 +135,6 @@ mod tests {
         .expect("a gizmo in front of the camera")
     }
 
-    /// This handle moves and does nothing else.
-    ///
-    /// A strand joint is a point: no orientation to turn about, no spacing to
-    /// stretch. A ring and a centre grip would be two controls that answer
-    /// questions nobody asked, so neither is drawn and neither answers — one
-    /// flag decides both, which is why they cannot disagree.
     #[test]
     fn this_handle_offers_neither_a_ring_nor_a_scale_grip() {
         let geometry = geometry_at(Vec3::ZERO);
@@ -199,7 +158,6 @@ mod tests {
             "and this one has no scale grip — the centre is just where the axes meet",
         );
 
-        // Somewhere on a ring and clear of every axis.
         let on_a_ring = geometry.rings[0]
             .iter()
             .copied()
@@ -229,8 +187,6 @@ mod tests {
         );
     }
 
-    /// It stands where the selection is, and it is the same size wherever that
-    /// is — the reach is a share of the framing, not of what is selected.
     #[test]
     fn the_handle_follows_the_selection_without_changing_size() {
         let here = geometry_at(Vec3::ZERO);

@@ -220,10 +220,6 @@ enum AlignmentGizmoHit {
     Scale,
 }
 
-/// Which handles a gizmo offers, and therefore which ones it draws.
-///
-/// One flag read by the painter and by the hit test alike, so a handle that is
-/// not drawn cannot be grabbed and a handle that is drawn always can.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct GizmoHandles {
     rotate: bool,
@@ -231,15 +227,11 @@ struct GizmoHandles {
 }
 
 impl GizmoHandles {
-    /// Move, rotate and scale: what fitting one mesh to another needs.
     const ALL: Self = Self {
         rotate: true,
         scale: true,
     };
 
-    /// Move only. A strand joint has no orientation to turn and no spacing to
-    /// stretch — the ring and the centre grip would be two controls that do
-    /// nothing anybody asked for.
     const MOVE_ONLY: Self = Self {
         rotate: false,
         scale: false,
@@ -501,9 +493,6 @@ fn draw_result_in(
         || viewport_tools_pointer_blocked(ui, state, chrome.unwrap_or(rect));
     crate::sweep_gesture::settle_press(ui);
 
-    // Asked before the camera and the brushes, and answered only for a press
-    // that missed the model: a reference is behind the head, so it takes a
-    // click nothing in front of it wanted, and nothing else.
     let pointer_position = ui.input(|input| input.pointer.interact_pos());
     let model_under_pointer = {
         let camera = state.workspace.result_camera;

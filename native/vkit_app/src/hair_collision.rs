@@ -27,16 +27,6 @@ impl std::fmt::Debug for HeadCollider {
 }
 
 impl HeadCollider {
-    /// Collide against the skin, and only the skin.
-    ///
-    /// A head's triangle list carries more than its skin: eyelashes, the tear
-    /// film and the lacrimals are all in there, and all three stand in front of
-    /// the eye. Colliding against them puts a shelf across the face at the
-    /// depth of the lashes — the invisible wall a fringe stops at, worst on a
-    /// shallow face where the lashes stand proudest relative to the brow.
-    /// `render_triangles` is the set the head is drawn from, which is the skin
-    /// with those three groups already taken out, and it is what the GPU field
-    /// collides against too.
     #[must_use]
     pub fn for_surface(surface: &crate::scene::SurfaceMesh, revision: u64) -> Option<Self> {
         Self::new(
@@ -87,13 +77,6 @@ impl HeadCollider {
         if outside && distance >= clearance {
             return point;
         }
-        // Out is the way to the nearest point, not the face normal of whichever
-        // triangle owns it. Around a ridge — the nose, the brow, a lip — the
-        // nearest feature is an edge, and the two faces that share it point off
-        // at an angle to where the strand actually stands. Pushing along one of
-        // them shoves the strand sideways along the face and keeps shoving it,
-        // once per pass, which reads as a wall standing off the skin rather
-        // than as skin. The normal is still what decides which side we are on.
         let out = if distance > 1.0e-5 {
             let direction = offset / distance;
             if outside { direction } else { normal }
@@ -362,9 +345,6 @@ mod tests {
 mod face_wall_tests {
     use super::*;
 
-    /// A ridge: two quads meeting at a crease along y, like the bridge of a
-    /// nose. The crease runs up the middle and the faces fall away to either
-    /// side, so a point out to the side has an EDGE as its nearest feature.
     fn ridge() -> Mesh {
         let mut vertices: Vec<[f64; 3]> = Vec::new();
         let mut triangles: Vec<[u32; 3]> = Vec::new();
@@ -377,7 +357,6 @@ mod face_wall_tests {
         for step in 0..8u32 {
             let a = step * 3;
             let b = (step + 1) * 3;
-            // Wound so the normals face +z, out of the ridge.
             triangles.push([a, a + 1, b]);
             triangles.push([a + 1, b + 1, b]);
             triangles.push([a + 1, a + 2, b + 1]);
@@ -389,18 +368,11 @@ mod face_wall_tests {
         }
     }
 
-    /// The push has to be along the way out, not along the face normal of
-    /// whichever triangle owns the nearest point. Beside a ridge the nearest
-    /// feature is the crease, and its faces point off at an angle to where the
-    /// strand stands — pushing along one of them slides the strand along the
-    /// face instead of off it, once per pass, which is what a wall standing off
-    /// the skin is made of.
     #[test]
     fn a_strand_beside_a_ridge_is_not_shoved_along_the_face() {
         let collider = HeadCollider::new(ridge(), 1).expect("collider");
         let clearance = 0.35_f32;
 
-        // Well clear of the crease, out to the side and above the slope.
         let start = [1.5_f32, 0.0, 2.4];
         let mut at = start;
         for pass in 0..64 {
@@ -418,8 +390,6 @@ mod face_wall_tests {
         );
     }
 
-    /// And a point that IS too close comes out to exactly the clearance,
-    /// measured as a distance rather than as a projection onto a normal.
     #[test]
     fn a_strand_too_close_to_a_ridge_ends_up_a_clearance_away() {
         let collider = HeadCollider::new(ridge(), 1).expect("collider");
@@ -442,9 +412,6 @@ mod face_wall_tests {
         }
     }
 
-    /// A fin standing in front of a wall, the shape an eyelash makes over a
-    /// cheek. Collide against the wall alone and the gap in front of it is open;
-    /// include the fin and everything within a clearance of it is shut out.
     fn wall_and_fin() -> (Mesh, Mesh) {
         let mut vertices: Vec<[f64; 3]> = Vec::new();
         let mut wall: Vec<[u32; 3]> = Vec::new();
@@ -459,9 +426,6 @@ mod face_wall_tests {
             wall.push([a, a + 1, b]);
             wall.push([a + 1, b + 1, b]);
         }
-        // The fin: a small quad standing off the wall over the middle, the way
-        // a lash stands off a cheek — near enough that a strand cleared of the
-        // skin is still within a clearance of the lash.
         let fin_base = vertices.len() as u32;
         vertices.push([-1.0, -1.0, 0.8]);
         vertices.push([1.0, -1.0, 0.8]);
@@ -489,7 +453,6 @@ mod face_wall_tests {
         let skin = HeadCollider::new(skin_only, 1).expect("collider");
         let lashes = HeadCollider::new(with_lashes, 1).expect("collider");
 
-        // A strand sitting close to the skin, right behind where the fin stands.
         let at = [0.0_f32, 0.0, 0.6];
         let on_skin = skin.clear(at, clearance);
         assert!(
@@ -504,9 +467,6 @@ mod face_wall_tests {
         );
     }
 
-    /// The wiring, held where it can be checked without a head: the collider is
-    /// built from the triangles the head is DRAWN from, which is the skin with
-    /// the lashes, tear film and lacrimals already taken out.
     #[test]
     fn the_collider_is_built_from_the_drawn_skin() {
         let source = include_str!("state/hair.rs");

@@ -1037,8 +1037,6 @@ impl AppState {
         })
     }
 
-    /// Take a preset the catalogue never saw — a loose file, a folder outside
-    /// the scan — and treat it as though it had.
     pub(super) fn open_head_preset_file(&mut self, path: &std::path::Path) {
         let source = crate::vam_edit_sources::source_from_path(
             path,

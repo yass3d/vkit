@@ -1,5 +1,3 @@
-//! What a shortcut is bound to: a trigger plus the modifiers it demands.
-
 use egui::Modifiers;
 
 use super::Trigger;
@@ -27,17 +25,9 @@ pub struct Binding {
     pub modifiers: ModifierPolicy,
 }
 
-/// The modifiers a binding can demand, in the order they are always written.
-///
-/// One order, used for the label and for the file alike, so `Ctrl+Shift+I` is
-/// never also spelled `Shift+Ctrl+I` and two bindings that mean the same thing
-/// cannot look different to a reader or to the conflict check.
 struct Held {
-    /// How it is shown to a reader.
     shown: &'static str,
-    /// How it is written into a keymap file.
     stored: &'static str,
-    /// Whether it is down.
     is_held: fn(Modifiers) -> bool,
 }
 
@@ -75,11 +65,6 @@ impl Binding {
         spelled
     }
 
-    /// How the modifiers are written into a keymap file.
-    ///
-    /// Never `None` any more. It used to return `None` for anything that was
-    /// not exactly one modifier, and `to_stored` DROPPED such an entry — so a
-    /// `Ctrl+Shift+I` a reader had set could not be saved, and nothing said so.
     pub(super) fn modifier_name(self) -> Option<String> {
         let ModifierPolicy::Exactly(modifiers) = self.modifiers else {
             return Some("any".to_owned());

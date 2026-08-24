@@ -1,29 +1,17 @@
-//! The sculpt brushes, as a toolbox rather than a dropdown.
-//!
-//! Four brushes behind a popup that had to be opened to see which one was
-//! chosen, in a header row already carrying six other controls. The hair tab
-//! solved the same problem with a floating toolbox, and this is that toolbox —
-//! the chrome is shared, and only the four icons are ours.
-
 use egui::{Id, Rect, Ui};
 
 use crate::i18n::text;
 use crate::sculpt::SculptBrush;
 use crate::state::{Action, AppState};
 
-/// The gap between this box and the deform-group island under it.
 const STACK_GAP: f32 = crate::theme::SPACE_2;
 
 fn columns(state: &AppState) -> usize {
     state.sculpt_toolbox_columns.clamp(1, 2) as usize
 }
 
-/// Where the toolbox stands, or `None` when the tab is not sculpting.
 #[must_use]
 pub(super) fn sculpt_toolbox_rect(state: &AppState, viewport: Rect) -> Option<Rect> {
-    // `is_sculpting`, NOT `is_detail_editing` — that one is sculpting OR
-    // texturing, so gating on it put this box on the texture tab beside the
-    // texture one, two toolboxes offering two different sets of brushes.
     if !state.is_sculpting() || state.hair_thumbnail.is_some() {
         return None;
     }
@@ -36,23 +24,14 @@ pub(super) fn sculpt_toolbox_rect(state: &AppState, viewport: Rect) -> Option<Re
     )
 }
 
-/// The top of the pair, so the toolbox and the group island stack together.
-///
-/// Centred as a PAIR rather than each on its own: two islands each centred on
-/// the same edge land on top of each other, and the reader has to drag one off
-/// the other before they can use either.
 fn default_stack_top(state: &AppState, viewport: Rect) -> f32 {
     let toolbox = super::toolbox::toolbox_size(SculptBrush::ALL.len(), columns(state)).y;
     let group = super::detail_hud::detail_group_panel_height(state);
     viewport.center().y - (toolbox + STACK_GAP + group) * 0.5
 }
 
-/// Where the deform-group island sits by default, under the toolbox.
 #[must_use]
 pub(super) fn group_panel_default_top(state: &AppState, viewport: Rect, height: f32) -> f32 {
-    // Only stacked under a toolbox that is actually there. On any other tab the
-    // island is centred on its own, as it was before there was one to stack it
-    // under.
     if !state.is_sculpting() {
         return viewport.center().y - height * 0.5;
     }
@@ -77,9 +56,6 @@ pub(super) fn draw_sculpt_toolbox(ui: &mut Ui, state: &mut AppState, viewport: R
     state.sculpt_toolbox_pos = position;
     state.sculpt_toolbox_columns = across;
 
-    // What a stroke would ACTUALLY do, not what is selected: holding Shift
-    // smooths whatever brush is chosen, and the box has to say so or it
-    // disagrees with the cursor.
     let shown = super::displayed_sculpt_brush(ui, state);
     let mut chosen = None;
     for (index, mut cell_ui) in cells.into_iter().enumerate() {
@@ -114,7 +90,6 @@ mod tests {
         Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0))
     }
 
-    /// The two islands stack instead of landing on each other.
     #[test]
     fn the_toolbox_sits_above_the_group_island_and_they_do_not_overlap() {
         let mut state = AppState::default();
@@ -132,7 +107,6 @@ mod tests {
         );
     }
 
-    /// The pair is centred, so neither one crowds an edge.
     #[test]
     fn the_pair_is_centred_on_the_viewport() {
         let mut state = AppState::default();
@@ -150,12 +124,6 @@ mod tests {
         );
     }
 
-    /// A tab that is not sculpting has no sculpt toolbox at all.
-    ///
-    /// The texture tab is the one that matters and the one this test used to
-    /// miss: it checked the hair tab, where the answer was right for the wrong
-    /// reason, while `is_detail_editing` was quietly true for texturing and put
-    /// a second toolbox on screen beside the texture one.
     #[test]
     fn no_toolbox_outside_the_sculpt_tab() {
         for tab in [
@@ -173,10 +141,6 @@ mod tests {
         }
     }
 
-    /// Exactly one toolbox is on screen at a time.
-    ///
-    /// Three tabs each have one, and each gate is written separately. This is
-    /// the assertion that says they cannot overlap.
     #[test]
     fn no_tab_shows_two_toolboxes() {
         for tab in [

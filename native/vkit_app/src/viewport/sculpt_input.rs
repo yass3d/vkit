@@ -298,12 +298,6 @@ pub(super) fn handle_sculpt_brush_hotkeys(ui: &Ui, state: &mut AppState) {
     }
 }
 
-/// Which stroke a held modifier turns this brush into.
-///
-/// The three modifiers are bindings like any other — `Shortcut::SculptSmoothHold`
-/// and friends — so this asks the keymap rather than reading `.shift` off the
-/// input. They were read raw here and in eight other files, which is why
-/// Settings had nothing to say about the most-used gesture in the program.
 pub(super) fn sculpt_input_mode(
     ui: &Ui,
     modifiers: egui::Modifiers,

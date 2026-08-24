@@ -44,8 +44,6 @@ pub(super) fn draw_hair_part_previews(
     if state.hair_hide_strands && state.is_hair_editing() && state.hair_thumbnail.is_none() {
         return;
     }
-    // Before the per-part loop: every part that is about to ask for a scalp
-    // sheet gets one read at the same time as the others.
     warm_builtin_scalp_images(ui, state);
     let head = state.workspace.result.clone();
     let view = ResultRenderView {
@@ -99,7 +97,6 @@ pub(super) fn add_hair_authoring_overlays(
     camera: TurntableCamera,
     furniture: bool,
 ) {
-    // The dots mark sockets on the head, so they are read from the wrapped cap.
     let selected = state.hair_project.selected_part().and_then(|part| {
         posed_scalp(ui.ctx(), state, &part.provider_name).map(|scalp| (part, scalp))
     });
@@ -265,7 +262,6 @@ pub(super) fn builtin_scalp_images(
     images
 }
 
-/// The pair a provider's cache entry holds: its diffuse sheet and its alpha.
 type ScalpSheets = (
     Option<Arc<crate::skin_preview::SkinImage>>,
     Option<Arc<crate::skin_preview::SkinImage>>,
@@ -286,18 +282,11 @@ fn decode_builtin_scalp_images(state: &AppState, provider_name: &str) -> ScalpSh
     decode_scalp_sheets(provider_name, set.diffuse.as_ref(), set.alpha.as_ref())
 }
 
-/// Turn one provider's two references into two images.
-///
-/// Takes the references rather than the state: `AppState` is not `Sync`, and
-/// this is the half that runs on a worker.
 fn decode_scalp_sheets(
     provider_name: &str,
     diffuse: Option<&vkit_core::vam::BuiltinTextureRef>,
     alpha: Option<&vkit_core::vam::BuiltinTextureRef>,
 ) -> ScalpSheets {
-    // The two sheets are independent, so a lone provider still has something to
-    // overlap: 2048x2048 each, 15 to 60 ms each, and neither is needed to read
-    // the other.
     let decode = |reference: Option<&vkit_core::vam::BuiltinTextureRef>, slot: u64| {
         let reference = reference?;
         let decoded =
@@ -312,17 +301,6 @@ fn decode_scalp_sheets(
     rayon::join(|| decode(diffuse, 1), || decode(alpha, 2))
 }
 
-/// Read every scalp sheet this frame is going to need, at the same time.
-///
-/// Each one is 2048x2048 — 16 MB of RGBA — and each takes 15 to 60 ms to
-/// produce even when the on-disk cache hits, because a hit still means reading
-/// a compressed blob, hashing it and inflating it. A preset with three scalp
-/// providers wants six of them, and they were read one after another inside a
-/// single `run_ui`: measured, 298 ms of a 558 ms stall on the frame a preset
-/// loaded.
-///
-/// They do not depend on each other. Reading them together costs the slowest
-/// one instead of the sum, and nothing about the images changes.
 pub(super) fn warm_builtin_scalp_images(ctx: &egui::Context, state: &AppState) {
     use rayon::prelude::*;
 
@@ -339,16 +317,9 @@ pub(super) fn warm_builtin_scalp_images(ctx: &egui::Context, state: &AppState) {
                 .is_none()
         })
         .collect();
-    // Warmed even for a single provider. The first frame of a load draws one
-    // part before the rest are ready, and a `< 2` guard here sent exactly that
-    // frame down the serial path — 218 ms of the load, while the six sheets the
-    // NEXT frame wanted came back in three.
     if wanted.is_empty() {
         return;
     }
-    // The references are lifted off the state here, on this thread, because
-    // `AppState` is not `Sync`. What crosses to the workers is a path, a node
-    // name and an id — everything the read needs and nothing else.
     let work: Vec<(String, Option<_>, Option<_>)> = wanted
         .into_iter()
         .filter_map(|provider| {
@@ -418,19 +389,12 @@ pub(super) fn fxhash(text: &str) -> u64 {
 
 type CachedPreview = (u64, bool, bool, f64, Arc<crate::hair_preview::HairPreview>);
 
-/// The cap where it actually stands, for anything the pointer touches.
-///
-/// The stock cap is the provider's shape. Everything the person sees is that
-/// shape wrapped onto the head, so picking, brushing and the guide dots have to
-/// read the wrapped one or the click lands where the head used to be.
 pub(crate) fn posed_scalp(
     ctx: &egui::Context,
     state: &AppState,
     provider: &str,
 ) -> Option<Arc<crate::hair_project::ScalpAuthoring>> {
     let stock = state.hair_scalps.get(provider).map(Arc::clone)?;
-    // Before a head is loaded there is nothing to wrap to, and the tab still
-    // has to draw and still has to be clickable. The stock cap stands in.
     let Some(head) = state.workspace.result.as_ref().map(Arc::clone) else {
         return Some(stock);
     };
@@ -460,10 +424,6 @@ pub(crate) fn posed_scalp(
 
 fn head_bed(ctx: &egui::Context, state: &AppState) -> Option<Arc<crate::hair_preview::HeadBed>> {
     let template = state.workspace.template_geometry.as_ref().map(Arc::clone)?;
-    // Hair is planted on the head the person is looking at, not on the one the
-    // figure shipped with. A morph moves the scalp, so the bed is rebuilt with
-    // it; without this the guides bind to an unmorphed head and are then
-    // pushed about by a collider built from the morphed one.
     let head = state.workspace.result.as_ref().map(Arc::clone)?;
     let revision = head.revision;
     let cache_id = Id::new("vkit.hair.head-bed");
@@ -625,15 +585,6 @@ pub(super) fn part_tint_color(part_id: u64) -> [f32; 3] {
     [r * 0.7 + 0.3, g * 0.7 + 0.3, b * 0.7 + 0.3]
 }
 
-/// How many strands one layer's preview may draw.
-///
-/// The game draws `hairMultiplier` children on every guide triangle and does
-/// not budget at all: one layer of `AKKEVE hair051` alone asks for some
-/// twenty-three thousand. At six thousand the preview drew about a quarter of
-/// the hair the game does, which is most of why it looked so sparse beside it.
-/// The children are enumerated once per rebuild and live in a GPU buffer, so
-/// the cost is memory rather than frame time; the cap is here for the styles
-/// that would ask for hundreds of thousands.
 pub(super) const HAIR_PREVIEW_CHILD_BUDGET: usize = 32_000;
 pub(super) const HAIR_STROKE_REBUILD_SECONDS: f64 = 0.045;
 
@@ -795,23 +746,9 @@ impl HairDepthField {
         }
     }
 
-    /// Fill one projected triangle, so the surface it belongs to has no holes.
-    ///
-    /// The head used to be splatted into this grid one VERTEX at a time. A head
-    /// has about eleven thousand of them and the grid has a cell every four
-    /// points, so at any real zoom there are more cells than vertices and the
-    /// gaps between them stay at infinity — and a point on the far side that
-    /// lands in a gap is not hidden by anything. That is what let the strands
-    /// behind the skull show through the cheek.
-    ///
-    /// Covered cells take the nearest depth across the triangle, interpolated
-    /// at the cell centre, so a surface that slopes away still reads as one
-    /// surface rather than a row of steps.
     fn fill_triangle(&mut self, a: (Pos2, f32), b: (Pos2, f32), c: (Pos2, f32)) {
         let area = (b.0.x - a.0.x) * (c.0.y - a.0.y) - (c.0.x - a.0.x) * (b.0.y - a.0.y);
         if area.abs() < 1.0e-6 {
-            // Edge on. It covers no cell interior, but its outline still hides
-            // what is behind it.
             self.draw_span(a, b);
             self.draw_span(b, c);
             self.draw_span(c, a);
@@ -937,9 +874,6 @@ pub(super) fn hair_depth_field(
 
     let mut field = HairDepthField::new(rect);
     if let Some(head) = head.as_deref() {
-        // The DRAWN skin, the same set the head is painted from, so the mask
-        // agrees with the picture: eyelashes and tear surfaces are not in it and
-        // must not hide anything.
         let projected: Vec<Option<(Pos2, f32)>> = head
             .mesh
             .vertices
@@ -991,15 +925,6 @@ pub(super) fn hair_depth_field(
     field
 }
 
-/// Paint every strand as its own stiffness, segment by segment.
-///
-/// Its own overlay rather than a mode of the joint stream, for two reasons: it
-/// must not depend on a toggle the reader set for a different purpose, and it
-/// must not turn that toggle on behind their back. Picking the brush shows the
-/// colours; putting it down puts the viewport back exactly as it was.
-///
-/// Unpainted stretches are drawn as the rolloff the game would use, so the
-/// picture is what the hair *is*, not only what somebody has touched.
 fn draw_stiffness_streams(
     ui: &Ui,
     painter: &egui::Painter,
@@ -1031,8 +956,6 @@ fn draw_stiffness_streams(
                 };
             let along = |index: usize| index as f32 / (points.saturating_sub(1).max(1)) as f32;
             for index in 1..points {
-                // Skip the anchor leg: the scalp point is the game's own 1.1 and
-                // colouring it would read as a stiffness somebody chose.
                 let (Some(from), Some(to)) = (seen(index - 1), seen(index)) else {
                     continue;
                 };
@@ -1041,9 +964,6 @@ fn draw_stiffness_streams(
                     continue;
                 }
                 let across = step.rot90() / step.length();
-                // A quad per segment rather than a stroke, so the width can fall
-                // to nothing at the tip. A constant-width line reads as a cable;
-                // hair comes to a point, and so does what is drawn over it.
                 let near = across * crate::hair_rigidity::half_width(along(index - 1));
                 let far = across * crate::hair_rigidity::half_width(along(index));
                 let middle = (stiffness(index - 1) + stiffness(index)) * 0.5;
@@ -1057,14 +977,6 @@ fn draw_stiffness_streams(
     }
 }
 
-/// Outline what the hair actually collides with.
-///
-/// The game does not collide hair against the moving skin — it collides against
-/// a handful of capsules laid along the bones, and so do we: neck, chest,
-/// abdomen, both collars, both shoulders. Drawing the capsules rather than a
-/// translucent body is the honest picture, because the capsules are the thing.
-/// A shoulder that stops a strand a centimetre off the skin is not a bug in the
-/// hair; it is where the collider is, and now that is visible.
 fn draw_body_capsules(
     ui: &Ui,
     painter: &egui::Painter,
@@ -1084,8 +996,6 @@ fn draw_body_capsules(
         let Some(along) = axis.try_normalize() else {
             continue;
         };
-        // Two rings and the lines that join them. Enough to read the volume
-        // without drawing a solid that would hide the hair behind it.
         let seed = if along.dot(glam::Vec3::Y).abs() < 0.9 {
             glam::Vec3::Y
         } else {
@@ -1123,16 +1033,6 @@ fn draw_body_capsules(
     }
 }
 
-/// Whether a strand is drawn at all, decided once at its root.
-///
-/// The depth field answers "is the head in front of this point", and asking it
-/// per point cuts a strand into pieces wherever it happens to graze the
-/// silhouette — a strand plainly in view loses a middle segment and the
-/// overlay reads as damage rather than as hair. What a reader wants is the
-/// simpler thing: a strand growing from a scalp face they can see is drawn
-/// whole, and one growing from a face they cannot is not drawn.
-///
-/// It is also the cheaper test. One lookup a strand instead of one a joint.
 pub(super) fn strand_is_shown(
     strand: &crate::hair_project::HairStrand,
     field: &HairDepthField,
@@ -1149,7 +1049,6 @@ pub(super) fn strand_is_shown(
         .is_some_and(|projected| !field.hides(projected.screen, (world - eye).length()))
 }
 
-/// How big a strand joint is drawn, and how big the one under the hand is.
 const STREAM_POINT_RADIUS: f32 = 1.6;
 const STREAM_POINT_ACTIVE_RADIUS: f32 = 3.0;
 
@@ -1192,8 +1091,6 @@ fn draw_hair_streams(
                 match camera.project(world, rect) {
                     Some(projected) => {
                         run.push(projected.screen);
-                        // Every point, not only the one being dragged. You
-                        // cannot correct a strand you cannot see the joints of.
                         let editing = state
                             .hair_vertex_selection
                             .contains(&(part_id, *strand_id, index));

@@ -1060,8 +1060,6 @@ fn release_size_morph_regions_and_sticky_actions_are_disjoint() {
 
     assert_eq!(regions.body.bottom(), regions.footer.top());
     assert_eq!(regions.body.x_range(), regions.footer.x_range());
-    // One button now. Undo and "reset morphs" moved to the work nav at the
-    // bottom of the viewport, where they are the same two controls on every tab.
     assert!(buttons.apply.top() >= regions.footer.top());
     assert!(buttons.apply.bottom() <= regions.footer.bottom());
     assert_eq!(buttons.apply.x_range(), regions.footer.x_range());

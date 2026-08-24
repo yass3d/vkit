@@ -146,12 +146,6 @@ fn top_tab_target(state: &AppState, tab: Tab) -> Tab {
     }
 }
 
-/// The key that stands for each top tab, in the order the tabs are drawn.
-///
-/// Same order as `TOP_TABS`, and a test holds them to the same length. These
-/// used to be a private `Num1..Num5` array read here and nowhere else, so
-/// Settings could not show them and nothing checked them against the rest of
-/// the keymap.
 const TOP_TAB_SHORTCUTS: [crate::shortcuts::Shortcut; TOP_TABS.len()] = [
     crate::shortcuts::Shortcut::TabFaceMatch,
     crate::shortcuts::Shortcut::TabDetail,
@@ -322,12 +316,6 @@ fn inspector_list_budget(ui: &Ui, cursor_top: f32, footer: f32) -> Option<f32> {
     Some((limit - cursor_top - footer).max(0.0))
 }
 
-/// The footer under the morph list: one button, and it is the one that
-/// carries the reader forward.
-///
-/// Undo and "reset morphs" used to sit here as a pair. They are in the work
-/// nav at the bottom of the viewport now, where they are the same two controls
-/// on every tab and where somebody who has never met `Ctrl+Z` can find them.
 fn morph_footer_buttons(footer: Rect) -> MorphFooterButtons {
     let footer = footer.shrink2(vec2(0.0, 8.0));
     let apply_height = MORPH_APPLY_HEIGHT.min(footer.height().max(0.0));
@@ -1234,9 +1222,6 @@ fn draw_diagnostic_log_modal(root: &mut Ui, locale: Locale) {
                 .stick_to_bottom(true)
                 .max_height(log_height)
                 .show(ui, |ui| {
-                    // Read before the input is borrowed: `consume_key` takes
-                    // the key out of the queue, and it has to be told which key
-                    // the reader bound rather than a literal Ctrl+C.
                     let copy = crate::shortcuts::Shortcut::DiagnosticLogCopy.binding(ui);
                     let copy_requested = ui.input_mut(|input| {
                         let shortcut = match (copy.trigger, copy.modifiers) {
@@ -1734,7 +1719,6 @@ fn draw_vam_edit_source_picker(
         state.dispatch(Action::SelectVaMEditSource(id));
     }
 
-    // A preset the scan never reached is still a preset.
     if capsule_action(
         ui,
         ui.available_width().max(0.0),

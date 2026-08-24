@@ -714,10 +714,6 @@ fn bind_windows_window_icons(window: &Window) -> Result<(), String> {
     Ok(())
 }
 
-/// What a shortcut fired from the number pad does.
-///
-/// The catalog says which key; this says what happens. Keeping the two apart is
-/// what lets Settings rebind a view key without this file knowing.
 const fn numpad_action(shortcut: Shortcut) -> Option<Action> {
     use crate::camera::StandardView;
     match shortcut {
@@ -740,12 +736,6 @@ const fn numpad_action(shortcut: Shortcut) -> Option<Action> {
     }
 }
 
-/// Whether this pad press is taken away from egui.
-///
-/// Only when something answers it. A pad key nobody has bound falls through as
-/// the `Num` key egui folded it into, which is what a reader typing into a
-/// field expects — and it means adding `Num *` to the enum does not silently
-/// swallow the keystroke before anything is bound to it.
 fn claims_numpad(keymap: &Keymap, key: &winit::event::KeyEvent, keyboard_captured: bool) -> bool {
     if keyboard_captured {
         return false;
@@ -779,11 +769,6 @@ const fn numpad_key(code: KeyCode) -> Option<NumpadKey> {
     }
 }
 
-/// The action a number-pad press stands for under the keymap in force.
-///
-/// `Home` used to be a second, silent way to reset the camera. It is not one
-/// any more: one shortcut carries one binding, which is what lets Settings show
-/// it and what stops two things claiming one key. `Home` is free to bind.
 fn numpad_shortcut_action(
     keymap: &Keymap,
     physical_key: PhysicalKey,
@@ -1042,10 +1027,6 @@ impl Runtime {
                 .max(limits.max_sampled_textures_per_shader_stage);
             wgpu::DeviceDescriptor {
                 label: Some("vkit"),
-                // Without this a device is guaranteed only 1x and 4x whatever the
-                // adapter advertises, and asking for 2x or 8x is a texture it
-                // refuses to create. Asked for only where it is offered, so an
-                // adapter without it still starts.
                 required_features: adapter
                     .features()
                     .intersection(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
@@ -1056,12 +1037,6 @@ impl Runtime {
             }
         });
 
-        // The sample count has to be settled before the painter is built: egui
-        // bakes it into its own pipelines at construction and every pipeline in
-        // this program has to agree with it. That is why the preference takes
-        // effect on restart, and why it is probed against the adapter first —
-        // a count the adapter cannot carry would fail validation on every pass
-        // rather than degrade.
         let wanted_samples = saved.msaa_samples;
         let active_samples = probe_msaa_samples(wanted_samples);
         if active_samples != wanted_samples {
@@ -1089,9 +1064,6 @@ impl Runtime {
             ..Default::default()
         };
         let renderer_options = RendererOptions {
-            // egui's own pipelines, not the scene's. The scene draws on a
-            // surface of its own at `active_samples`, which is why this can be
-            // one and why the setting can change without a restart.
             msaa_samples: renderer::EGUI_MSAA_SAMPLES,
             depth_stencil_format: Some(renderer::DEPTH_FORMAT),
             ..Default::default()
@@ -1413,8 +1385,6 @@ impl Runtime {
             self.state.export_hair_style();
             return;
         };
-        // Kept between runs, and rebuilt only when the shape or the sample
-        // count moves — the same reuse the viewport will want.
         let canvas = match self.portrait_canvas.take() {
             Some(canvas) => canvas.reshaped(
                 &render_state.device,
@@ -2012,12 +1982,6 @@ fn preferences_from_state(state: &AppState) -> Preferences {
     }
 }
 
-/// Settle the sample count against the hardware before the painter exists.
-///
-/// A throwaway adapter on the same backend the painter will pick, asked one
-/// question and dropped. It costs a few milliseconds once, and it is the only
-/// place the answer can be had in time: after `Painter::new` the count is
-/// already inside egui's pipelines.
 fn probe_msaa_samples(wanted: u32) -> u32 {
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
     descriptor.backends = wgpu::Backends::DX12;
@@ -2333,12 +2297,6 @@ mod tests {
         );
     }
 
-    /// Every island the reader can drag comes back where they left it.
-    ///
-    /// The hair toolbox was saved and the other three were not, so arranging a
-    /// workspace and reopening the program undid most of it. This walks the
-    /// round trip rather than the field list, so adding a fifth island and
-    /// forgetting to save it fails here.
     #[test]
     fn a_dragged_island_comes_back_where_it_was_left() {
         let mut state = AppState::default();
@@ -2381,9 +2339,6 @@ mod tests {
             press(KeyCode::NumpadDecimal),
             Some(Action::ToggleProjection)
         ));
-        // `Home` was a second, silent binding for the reset. One shortcut now
-        // carries one binding, which is what lets Settings show it, so `Home`
-        // does nothing until somebody binds it.
         assert!(press(KeyCode::Home).is_none());
 
         for (code, view) in [
@@ -2448,11 +2403,6 @@ mod tests {
         }
     }
 
-    /// The pad reads the keymap, so rebinding a view key moves the view.
-    ///
-    /// This is the whole reason the second registry was retired: it kept its
-    /// own table of physical keys, so nothing the reader did in Settings could
-    /// reach it, and Settings could not even list what it held.
     #[test]
     fn a_rebound_pad_key_moves_the_view_with_it() {
         let mut keymap = Keymap::default();

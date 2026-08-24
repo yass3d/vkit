@@ -1,18 +1,9 @@
-//! One joint of one strand, taken hold of and moved.
-//!
-//! The brushes shape a crowd of strands at once, which is the wrong instrument
-//! for a wave: a wave is a small number of deliberate bends. This picks a
-//! single point joint, marks it, and lets it be dragged in the plane facing the
-//! camera. The strand's segment lengths are kept, so a drag bends the hair
-//! rather than stretching it.
-
 use egui::{Pos2, Rect, Response, Ui};
 use glam::Vec3;
 
 use crate::camera::TurntableCamera;
 use crate::state::{Action, AppState};
 
-/// How near the pointer has to be, in points, to take hold of a joint.
 const GRAB_POINTS: f32 = 14.0;
 
 const MARKER_POINTS: f32 = 3.0;
@@ -27,27 +18,7 @@ pub(super) struct Joint {
     at: Vec3,
 }
 
-/// Move one joint and carry the rest of the strand with it, keeping every
-/// segment the length it already was.
-///
-/// The joint is first pulled back onto the sphere its parent segment allows, so
-/// the segment entering the joint cannot stretch; then everything beyond the
-/// joint moves by whatever the joint actually moved.
 #[must_use]
-/// Put one joint where the reader dragged it, and leave the rest alone.
-///
-/// It used to carry every joint below it by the same shift, holding the whole
-/// tail rigid and keeping each segment the length it was. That is a pose tool,
-/// not a vertex tool: taking hold of a joint halfway down a strand swung the
-/// entire end of it, and there was no way to move one joint by itself. Every
-/// other editor in the world moves the vertex you grabbed.
-///
-/// The segments either side stretch to reach, which is fine and is why the
-/// length constraint went with the tail drag: the authored positions ARE the
-/// rest lengths the solver is given, so a segment set longer stays longer
-/// rather than being pulled back.
-///
-/// The root stays out of it — it is bound to the scalp.
 pub fn move_strand_point(points: &[[f32; 3]], point: usize, wanted: Vec3) -> Option<Vec<[f32; 3]>> {
     if point == 0 || point >= points.len() {
         return None;
@@ -57,12 +28,6 @@ pub fn move_strand_point(points: &[[f32; 3]], point: usize, wanted: Vec3) -> Opt
     Some(moved)
 }
 
-/// The joint nearest the pointer that the reader can actually see.
-///
-/// `field` is the same far-side mask every hair overlay asks. Without it a
-/// click in empty space could land on a joint behind the skull that happened to
-/// project under the cursor — invisible, and then dragged. What is hidden is
-/// not pickable, which is the only rule that matches what is on screen.
 fn joints_near(
     state: &AppState,
     viewport: Rect,
@@ -78,7 +43,6 @@ fn joints_near(
             continue;
         };
         for (strand_index, strand) in &part.strands {
-            // The root is bound to the scalp and is not ours to move.
             for (point, position) in strand.points_cm.iter().enumerate().skip(1) {
                 let at = Vec3::from_array(*position);
                 let Some(seen) = camera.project(at, viewport) else {
@@ -106,7 +70,6 @@ fn joints_near(
     best.map(|(_, joint)| joint)
 }
 
-/// Where every selected joint is right now.
 pub(super) fn selected_joints(state: &AppState) -> Vec<Joint> {
     state
         .hair_vertex_selection
@@ -129,7 +92,6 @@ pub(super) fn selected_joints(state: &AppState) -> Vec<Joint> {
         .collect()
 }
 
-/// The middle of the selection, which is where the gizmo stands.
 pub(super) fn selection_centre(state: &AppState) -> Option<Vec3> {
     let joints = selected_joints(state);
     if joints.is_empty() {
@@ -139,29 +101,19 @@ pub(super) fn selection_centre(state: &AppState) -> Option<Vec3> {
     Some(sum / joints.len() as f32)
 }
 
-/// What a click does to the selection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PickIntent {
-    /// Plain click: this joint and nothing else.
     Replace,
-    /// Shift: add it, or take it back out if it was already in.
     Toggle,
-    /// Alt: take it out and leave the rest.
     Remove,
 }
 
-/// Fold one pick into a selection.
-///
-/// Split out from the input so it can be checked without a pointer: the rules
-/// are small and they are the part a reader notices when they are wrong.
 fn apply_pick(
     selection: &mut std::collections::BTreeSet<(u64, u32, usize)>,
     picked: Option<(u64, u32, usize)>,
     intent: PickIntent,
 ) {
     match (picked, intent) {
-        // Clicking nothing clears, the way it does everywhere. Holding a
-        // modifier means "adjust what I have", so an empty click keeps it.
         (None, PickIntent::Replace) => selection.clear(),
         (None, _) => {}
         (Some(joint), PickIntent::Replace) => {
@@ -189,11 +141,6 @@ pub(super) fn handle(
     let Some(pointer) = ui.input(|input| input.pointer.interact_pos()) else {
         return;
     };
-    // The LEFT button, and only it. `dragged` is true for any button the sense
-    // admits, so a `Shift`-wheel pan — which is the camera's own binding — was
-    // read here as a joint drag: the selection moved by the pointer delta while
-    // the camera moved under it, and the joint left for somewhere absurd. The
-    // wheel belongs to the camera and the left button belongs to the tool.
     let editing = response.dragged_by(egui::PointerButton::Primary);
     let field = super::hair_overlays::hair_depth_field(ui, state, viewport, camera);
     if (response.drag_started() && editing) || (response.clicked() && !response.dragged()) {
@@ -206,8 +153,6 @@ pub(super) fn handle(
         };
         let picked = joints_near(state, viewport, camera, pointer, GRAB_POINTS, &field)
             .map(|joint| (joint.part, joint.strand, joint.point));
-        // A modifier click that lands on nothing must not start a drag either,
-        // or the reader would haul the whole selection about by empty space.
         let dragging_from_a_joint = picked.is_some();
         apply_pick(&mut state.hair_vertex_selection, picked, intent);
         if !dragging_from_a_joint {
@@ -228,8 +173,6 @@ pub(super) fn handle(
     if delta == egui::Vec2::ZERO {
         return;
     }
-    // One screen delta, turned into world at the middle of the selection, so
-    // every joint travels together rather than each by its own depth.
     let Some(centre) = selection_centre(state) else {
         return;
     };
@@ -238,7 +181,6 @@ pub(super) fn handle(
     ui.ctx().request_repaint();
 }
 
-/// Move every selected joint by one world shift, mirrors included.
 pub(super) fn move_selection(state: &mut AppState, joints: &[Joint], shift: Vec3) {
     let placed: Vec<(Joint, Vec3)> = joints
         .iter()
@@ -247,10 +189,6 @@ pub(super) fn move_selection(state: &mut AppState, joints: &[Joint], shift: Vec3
     move_placed(state, &placed);
 }
 
-/// Put each named joint at the place given for it, mirrors included.
-///
-/// One writer for every way the joints move — a drag, an axis, a ring — so the
-/// mirroring and the root rule are decided once rather than three times.
 fn move_placed(state: &mut AppState, placed: &[(Joint, Vec3)]) {
     use std::collections::BTreeMap;
 
@@ -277,9 +215,6 @@ fn move_placed(state: &mut AppState, placed: &[(Joint, Vec3)]) {
             let Some(strand) = part.strands.get(&strand_id) else {
                 continue;
             };
-            // Through `move_strand_point` rather than writing the slot here:
-            // that is where "one joint, and never the root" is decided, and it
-            // should be decided once.
             let mut moved = strand.points_cm.clone();
             for (point, to) in &points {
                 if let Some(next) = move_strand_point(&moved, *point, *to) {
@@ -309,7 +244,6 @@ fn move_placed(state: &mut AppState, placed: &[(Joint, Vec3)]) {
     }
 }
 
-/// Mark what can be taken hold of, and what already is.
 pub(super) fn paint(
     ui: &Ui,
     state: &AppState,
@@ -345,7 +279,6 @@ pub(super) fn paint(
         let marker =
             Rect::from_center_size(seen.screen, egui::Vec2::splat(SELECTED_MARKER_POINTS * 2.0));
         painter.rect_filled(marker, 1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE);
-        // A short cross so the anchor reads as a handle rather than a dot.
         for (from, to) in [
             (marker.left_center(), marker.right_center()),
             (marker.center_top(), marker.center_bottom()),
@@ -376,7 +309,6 @@ mod tests {
             .collect()
     }
 
-    /// Plain click replaces, Shift adds and takes back, Alt only removes.
     #[test]
     fn the_three_ways_a_click_changes_a_selection() {
         use std::collections::BTreeSet;
@@ -409,10 +341,6 @@ mod tests {
         assert_eq!(selection, BTreeSet::from([two]), "a plain click replaces");
     }
 
-    /// Clicking empty space clears — but only when no modifier is down.
-    ///
-    /// A reader holding shift is saying "adjust what I have"; losing the lot
-    /// because they missed a joint by two pixels is the opposite of that.
     #[test]
     fn an_empty_click_clears_only_when_it_is_a_plain_one() {
         use std::collections::BTreeSet;
@@ -430,7 +358,6 @@ mod tests {
         }
     }
 
-    /// Only the joint under the hand moves.
     #[test]
     fn a_drag_moves_the_joint_it_took_hold_of_and_nothing_else() {
         let points = straight(6);
@@ -447,9 +374,6 @@ mod tests {
         }
     }
 
-    /// The tail used to travel with the joint, which is a pose tool and not a
-    /// vertex tool. Taking hold of a joint halfway down swung the whole end of
-    /// the strand and there was no way to move one joint by itself.
     #[test]
     fn the_tail_stays_where_it_was() {
         let points = straight(6);
@@ -459,9 +383,6 @@ mod tests {
         }
     }
 
-    /// Segments stretch to reach, and that is deliberate: the authored
-    /// positions are the rest lengths the solver is handed, so a segment set
-    /// longer stays longer instead of being pulled back.
     #[test]
     fn the_segments_either_side_stretch_to_reach() {
         let points = straight(6);

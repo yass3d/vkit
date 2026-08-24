@@ -2,25 +2,16 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Raise this whenever a shape written under the cache root changes.
-///
-/// It is not the application version. Everything under the cache root is
-/// derived — rebuildable from the VaM installation and this program — so a
-/// mismatch is always safe to resolve by deleting the lot, and a match is
-/// always safe to keep however many releases have passed.
 pub const CACHE_GENERATION: u32 = 1;
 
 const STAMP_FILE: &str = "cache.json";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CacheOutcome {
-    /// There was no cache to begin with.
     Fresh,
 
-    /// The cache was written by this generation and is kept.
     Kept,
 
-    /// The cache came from another generation and was emptied.
     Reset,
 }
 
@@ -60,9 +51,6 @@ fn empty_the_cache(root: &Path) -> io::Result<()> {
         } else {
             fs::remove_file(&path)
         };
-        // A file another process is holding is not worth refusing to start
-        // over: the generation stamp is rewritten either way, and whatever
-        // survives is overwritten by its own writer on next use.
         if let Err(error) = removed
             && error.kind() != io::ErrorKind::NotFound
         {
@@ -72,13 +60,6 @@ fn empty_the_cache(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Bring the cache root into line with this build before anything reads it.
-///
-/// A cache left by a different generation is emptied rather than migrated.
-/// Nothing under the root is authored by the person using the program —
-/// preferences, shortcuts and sessions live beside it, not in it — so there is
-/// nothing to migrate and the only cost of starting over is the time to decode
-/// again.
 pub fn ensure_cache_generation(root: &Path, app_version: &str) -> io::Result<CacheOutcome> {
     if !root.exists() {
         fs::create_dir_all(root)?;

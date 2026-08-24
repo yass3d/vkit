@@ -89,7 +89,6 @@ fn main() {
     }
 }
 
-/// A cache written by another build is emptied before anything reads it.
 fn settle_cache_generation() {
     let Some(root) = vkit_core::cache_root() else {
         return;

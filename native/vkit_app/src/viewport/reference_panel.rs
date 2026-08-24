@@ -1,10 +1,3 @@
-//! The reference list, under the background panel.
-//!
-//! A row per picture, front of the stack at the top — the order every layer
-//! list uses, and the reverse of the order they are painted in. The add button
-//! lives inside the list rather than beside it, so an empty list still says
-//! what it is for.
-
 use egui::{Align, Align2, FontId, Layout, Rect, Response, Sense, Ui, pos2, vec2};
 
 use crate::i18n::{TextKey, text};
@@ -15,10 +8,6 @@ use crate::ui_components::{FilledNumericSlider, Icon, icon_button, paint_list_ro
 
 const ROW_HEIGHT: f32 = 26.0;
 
-/// How many rows the list shows before it scrolls.
-///
-/// The panel it sits in is a floating island, not a page. Past this it would
-/// grow taller than the viewport it is anchored to.
 const VISIBLE_ROWS: usize = 6;
 
 pub(super) fn draw_reference_section(ui: &mut Ui, state: &mut AppState) {
@@ -31,8 +20,6 @@ pub(super) fn draw_reference_section(ui: &mut Ui, state: &mut AppState) {
         .max_height(ROW_HEIGHT * rows as f32)
         .auto_shrink([false, true])
         .show(ui, |ui| {
-            // Front of the stack first. `images()` is back to front, which is
-            // painting order and the opposite of reading order.
             let ordered: Vec<u64> = state
                 .reference_board
                 .images()
@@ -203,7 +190,6 @@ fn draw_row(ui: &mut Ui, state: &mut AppState, id: u64) {
     }
 }
 
-/// Size and opacity, for the picture the reader last touched.
 fn draw_selected_controls(ui: &mut Ui, state: &mut AppState, id: u64) {
     let Some(image) = state.reference_board.get(id) else {
         return;
@@ -241,7 +227,6 @@ mod tests {
     use super::*;
     use crate::i18n::Locale;
 
-    /// The list reads front-first while the board paints back-first.
     #[test]
     fn the_list_shows_the_front_picture_at_the_top() {
         let mut state = AppState::default();
@@ -264,7 +249,6 @@ mod tests {
         assert_eq!(listed, vec![front, back], "listed front to back");
     }
 
-    /// Every locale draws the section without panicking or overflowing.
     #[test]
     fn the_section_fits_the_panel_in_every_language() {
         for locale in Locale::ALL {
@@ -287,7 +271,6 @@ mod tests {
         }
     }
 
-    /// An empty list still says what it is for.
     #[test]
     fn an_empty_list_draws_a_row_saying_so() {
         egui::__run_test_ui(|ui| {

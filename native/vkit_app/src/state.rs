@@ -273,18 +273,10 @@ pub struct AppState {
 
     pub brush_sweep_commit: crate::sweep_gesture::SweepCommit,
 
-    /// What the last install put on disk, so it can be gathered into a package.
     pub hair_export_files: Vec<std::path::PathBuf>,
 
-    /// The point joint the vertex tool has hold of: part, strand, point.
-    /// The strand joints being edited: part, strand, point index.
-    ///
-    /// A set rather than one, because moving two joints at once is the first
-    /// thing a hand reaches for once it can move one.
     pub hair_vertex_selection: std::collections::BTreeSet<(u64, u32, usize)>,
 
-    /// The cap wrapped onto the head as it is now, refreshed by the viewport.
-    /// Planting reads it so a root lands where the socket was clicked.
     pub posed_hair_scalps:
         std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
 
@@ -322,13 +314,6 @@ pub struct AppState {
 
     pub tone_mapping: ToneMapping,
 
-    /// The multisample count being drawn at.
-    ///
-    /// A mirror of `renderer::msaa_samples()`, which is the one that decides:
-    /// it is what the adapter was asked about and what the pipelines and the
-    /// scene surface are built at. This copy exists so the panel and the
-    /// preference file can read it without reaching into the renderer, and it
-    /// is only ever written with what the renderer answered.
     pub msaa_samples: u32,
 
     pub camera_control: crate::camera_control::ControlMode,
@@ -492,9 +477,6 @@ pub struct AppState {
     pub texture_project: TextureProject,
     pub hair_project: crate::hair_project::HairProject,
 
-    /// Photographs pinned behind the viewport. Never saved, never exported,
-    /// never photographed: a reference is scaffolding for the person building,
-    /// and it belongs to the session they are building in.
     pub reference_board: crate::reference_board::ReferenceBoard,
     pub hair_scalps:
         std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
@@ -1603,8 +1585,6 @@ impl AppState {
             }
             Action::SetToneMapping(value) => self.tone_mapping = value,
             Action::SetMsaaSamples(value) => {
-                // The renderer has the last word: it is the one that knows what
-                // the adapter answered for, and it is what draws.
                 self.msaa_samples = crate::renderer::set_msaa_samples(value);
             }
             Action::SetCameraControl(mode) => self.camera_control = mode,

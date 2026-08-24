@@ -15,27 +15,7 @@ use rayon::prelude::*;
 
 const MAX_CHILDREN_PER_GUIDE_TRIANGLE: usize = 64;
 
-/// `DAZSkinWrap` puts every wrapped vertex at
-///
-/// ```text
-/// skin + n · ( max(baked, moveToSurfaceOffset) + surfaceOffset
-///              + surfaceNormalWrapNormalDot · additionalThicknessMultiplier )
-/// ```
-///
-/// `baked` is the standoff the cap was authored with, measured against the
-/// figure it was authored on. The other three are constants, and they are the
-/// reason a cap does not lie flat on the skin: together they are 1.3 mm before
-/// the authored standoff is added at all.
 const SCALP_SURFACE_OFFSET_CM: f32 = 0.03;
-
-// `moveToSurfaceOffset` and `additionalThicknessMultiplier` are in the wrap's
-// formula and are NOT in the total these caps come out with. Ledger 4.8
-// measured every provider through this same code path against the bundle's own
-// neutral base, and the answer was `baked + surfaceOffset` and nothing else:
-// Udane 2.4 mm baked and 2.7 mm total, Leyton 3.1 and 3.4, Soleil and Omri 2.1
-// and 2.4, Krayon 4.1 and 4.4, PantyRegion ~0 and 0.3. A floor under `baked`
-// would have lifted PantyRegion off the skin and it is flush; the thickness
-// term would have added a millimetre to all seven and none of them carries it.
 
 #[derive(Clone, Debug)]
 pub struct HairPreview {
@@ -237,10 +217,6 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             template.material_groups,
         ),
     );
-    // Written down once a bed, because a capsule that swallows the skin is
-    // invisible from the inside: hair authored lying on a shoulder would have
-    // its rest pose *inside* the collider, and then collision pushes it out
-    // while the point joint pulls it back, every step, forever.
     for (index, capsule) in capsules.iter().enumerate() {
         let a = glam::Vec3::from_array(capsule.a);
         let b = glam::Vec3::from_array(capsule.b);
@@ -249,10 +225,6 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
             if other_index == index {
                 continue;
             }
-            // How far one capsule's axis reaches inside the other's shell at
-            // its nearest approach. Positive means they interpenetrate, and
-            // where they do, resolving them one after another can push a
-            // particle out of each and into the other.
             let c = glam::Vec3::from_array(other.a);
             let d = glam::Vec3::from_array(other.b);
             let gap = segment_gap(a, b, c, d);
@@ -286,12 +258,8 @@ fn body_capsules_from_template(template: &DazGeometry) -> Vec<HairBodyCapsule> {
     capsules
 }
 
-/// Closest distance between two line segments.
 fn segment_gap(a: glam::Vec3, b: glam::Vec3, c: glam::Vec3, d: glam::Vec3) -> f32 {
     let mut best = f32::MAX;
-    // Sampled rather than solved: this runs once a bed, for a diagnostic, and
-    // the exact closest approach of two segments is a page of algebra that
-    // would have to be right to be worth reading.
     for step in 0..=32 {
         let t = step as f32 / 32.0;
         let on_ab = a.lerp(b, t);
@@ -305,9 +273,6 @@ fn segment_gap(a: glam::Vec3, b: glam::Vec3, c: glam::Vec3, d: glam::Vec3) -> f3
     best
 }
 
-/// One guide after its root has been projected onto the head: where it is
-/// bound, where its points sit in the bed's space, and what rigidity was
-/// painted on it.
 type BoundGuide = (HairRootBinding, Vec<[f32; 3]>, Vec<f32>);
 
 fn build_preview_part(
@@ -335,17 +300,6 @@ fn build_preview_part(
     let strand_randoms = crate::unity_random::strand_randoms(geometry.guides.len());
     let mut guides = Vec::with_capacity(geometry.guides.len());
     let mut guide_map = vec![None; geometry.guides.len()];
-    // Binding a guide projects its root onto the head, and every guide's
-    // projection is independent of every other's. They were done one at a time,
-    // and a stroke rebuilds the whole part each time the throttle lets one
-    // through, so this loop ran hundreds of projections in the middle of a
-    // frame that was already drawing.
-    //
-    // Two passes rather than one: the map runs in parallel, and the fold that
-    // follows is sequential so `guides` and `guide_map` come out in exactly the
-    // order the single loop produced. The indices are the wire format between
-    // guides, triangles and the barycentric table — reordering them silently
-    // repaints the whole part.
     let bound: Vec<Option<BoundGuide>> = geometry
         .guides
         .par_iter()
@@ -361,8 +315,6 @@ fn build_preview_part(
             if local_points.len() < 2 {
                 return None;
             }
-            // Empty means the file painted none, which is not the same as
-            // painting every point solid.
             let painted_rigidity: Vec<f32> = if guide.rigidity.is_empty() {
                 Vec::new()
             } else {
@@ -415,8 +367,6 @@ fn build_preview_part(
     let guide_demand = if draw_guides { drawable.len() } else { 0 };
     let demand = guide_demand + valid_triangles.len() * children;
     if demand > limit {
-        // A style thinned to fit is a style the person is not seeing. Say so
-        // rather than let the preview quietly disagree with the game.
         let _ = crate::diagnostics::record(
             crate::diagnostics::Severity::Info,
             "hair",
@@ -554,14 +504,6 @@ fn render_children(look: &HairLookPatch) -> usize {
         .min(MAX_CHILDREN_PER_GUIDE_TRIANGLE as u32) as usize
 }
 
-/// `_StandWidth = width x WorldScale`. There is no floor of any kind in the
-/// game, and the range is the one HairSimControl registers.
-///
-/// The floor that used to stand here was in world space, applied before any
-/// projection, so no zoom could undo it: 205 of the 1140 installed sims author
-/// a width under it and were drawn coarser than the game draws them, the
-/// thinnest by a factor of nearly ten. The legibility of a sub-pixel strand is
-/// the rasterizer's business, not the authored width's.
 fn preview_strand_width(authored_width_m: f32, alignment: HairAlignment) -> f32 {
     authored_width_m.clamp(0.0, 0.001) * 100.0 * alignment.scale
 }
@@ -590,17 +532,6 @@ impl HairAlignment {
     }
 }
 
-/// Bind a cap to a head the way `DAZSkinWrap` does.
-///
-/// The standoff has two halves and they answer different questions. `baked` is
-/// how far the cap was authored to stand off the figure it was authored on —
-/// a property of the CAP, the same whatever look is loaded — and it is measured
-/// against `neutral`. The rest are the wrap's own constants. What must never
-/// enter it is the distance from the cap to the head currently loaded: that is
-/// the departure between two shapes, and baking it made the wrapped cap
-/// reproduce the authored skull instead of the one under it, standing off the
-/// skin at the forehead and the back of the head by exactly how far the look
-/// had moved.
 fn build_scalp_anchors(
     scalp: &HairScalpGeometry,
     alignment: HairAlignment,
@@ -659,10 +590,6 @@ fn build_scalp_anchors(
     Ok(anchors)
 }
 
-/// How far this cap vertex stands off the figure it was authored on.
-///
-/// Returns `None` before a figure is loaded, which is the case `surfaceOffset`
-/// alone has to cover.
 fn authored_standoff(placed: Vec3, neutral: Option<(&Mesh, &SurfaceProjector)>) -> Option<f32> {
     let (mesh, projector) = neutral?;
     let hit = projector
@@ -679,8 +606,6 @@ fn authored_standoff(placed: Vec3, neutral: Option<(&Mesh, &SurfaceProjector)>) 
         hit.point[1] as f32,
         hit.point[2] as f32,
     );
-    // Outside the skin only: a cap vertex that lands inside carries no standoff
-    // of its own, which is what PantyRegion measures as.
     Some((placed - surface).dot(normal).max(0.0))
 }
 
@@ -853,8 +778,6 @@ mod tests {
             scale: 0.01,
             mirror_x: false,
         };
-        // A width from the thin end of the library, well under the floor that
-        // used to rewrite it.
         let width_m = 4.95768e-5;
         let centimetre_width = preview_strand_width(width_m, centimetre_template);
         let metre_width = preview_strand_width(width_m, metre_template);
@@ -870,8 +793,6 @@ mod tests {
             (library_median - 0.01).abs() < 1.0e-6,
             "0.0001 m is 0.01 cm and nothing more: {library_median}",
         );
-        // The thinnest hair in the library, drawn nearly ten times too wide by
-        // the floor this test used to pin.
         let thinnest = preview_strand_width(8.19e-6, centimetre_template);
         assert!(
             (thinnest - 8.19e-4).abs() < 1.0e-9,
@@ -916,8 +837,6 @@ pub struct AuthoringScalp {
     pub textures: HairScalpTextures,
 }
 
-/// The figure as it was before a look, as something a cap can be measured
-/// against.
 fn neutral_surface(template: &DazGeometry) -> Option<(Mesh, SurfaceProjector)> {
     let vertices: Vec<[f64; 3]> = template.vertices.clone();
     let mut triangles: Vec<[u32; 3]> = Vec::new();
@@ -957,9 +876,6 @@ pub struct HeadBed {
     pub projector: SurfaceProjector,
     pub body_capsules: Vec<HairBodyCapsule>,
 
-    /// The figure before any look was applied, which is what the scalp caps
-    /// were authored against. Only the standoff is read from it; where a cap
-    /// vertex BINDS is decided entirely by `mesh`.
     pub neutral: Option<(Mesh, SurfaceProjector)>,
 
     pub generation: u64,
@@ -968,12 +884,6 @@ pub struct HeadBed {
 static HEAD_BED_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl HeadBed {
-    /// Lay the bed on the head as it is now.
-    ///
-    /// The template is still what the body capsules are read from — they are a
-    /// figure's proportions, not a face's — but everything hair is planted on,
-    /// wrapped to and bound against comes from the mesh handed in, so a morph
-    /// moves the scalp with it.
     pub fn build_on(template: &DazGeometry, mesh: Mesh) -> Result<Self, String> {
         let projector = projector_for_mesh(&mesh).map_err(|error| format!("{error:?}"))?;
         let neutral = neutral_surface(template);
@@ -1012,14 +922,6 @@ pub fn authoring_hair_preview(
         scale: 1.0,
         mirror_x: false,
     };
-    // The game never draws a guide: every strand on screen is one of the
-    // `hairMultiplier` tessellation children of a complete triangle, and a
-    // strand belonging to no complete triangle is physics only (ledger 1).
-    // Drawing them put the longest, least gathered strands in the scene on top
-    // of the rest — a guide takes length1 whole and sits on guide 0, so it gets
-    // no spread toward the triangle centre. Those were the wiry flyaways.
-    // `build_preview_part` still falls back to guides when a part has no
-    // complete triangle at all, so a part being planted is not invisible.
     let part = build_preview_part(&asset, limit, alignment, mesh, projector, false);
     let scalps = match scalp {
         Some(AuthoringScalp {
@@ -1054,14 +956,6 @@ pub fn authoring_hair_preview(
 
 #[cfg(test)]
 mod guide_visibility_tests {
-    /// Ledger 1, the first absolute law: the game draws no guides. Every strand
-    /// on screen is a tessellation child of a complete triangle, and a strand
-    /// in no complete triangle is physics only.
-    ///
-    /// A drawn guide is the worst offender it could be: `render_segments` gives
-    /// it a length barycentric of `[1, 0, 0]`, so it takes `length1` whole while
-    /// its neighbours take their tier, and it sits exactly on guide 0, so the
-    /// spread never gathers it toward the triangle centre.
     #[test]
     fn the_authoring_preview_asks_for_children_only() {
         let source = include_str!("hair_preview.rs");
@@ -1077,8 +971,6 @@ mod guide_visibility_tests {
 
     #[test]
     fn a_part_with_no_complete_triangle_still_draws_something() {
-        // The one case where guides may stand in: nothing else exists to draw,
-        // and a part being planted must not be invisible.
         let show_guides = false;
         let no_triangles: Vec<u32> = Vec::new();
         let draw_guides = show_guides || no_triangles.is_empty();
@@ -1097,8 +989,6 @@ mod guide_visibility_tests {
 mod scalp_wrap_tests {
     use super::*;
 
-    /// A ball of triangles, optionally squashed along one axis, standing in for
-    /// a head whose look has been changed under a cap authored on another one.
     fn ball(radius: f32, squash: [f32; 3], rings: usize) -> Mesh {
         let mut vertices: Vec<[f64; 3]> = Vec::new();
         let mut triangles: Vec<[u32; 3]> = Vec::new();
@@ -1136,7 +1026,6 @@ mod scalp_wrap_tests {
         }
     }
 
-    /// The cap the bundle authored: a patch of the neutral ball's own surface.
     fn cap_on(mesh: &Mesh, take: usize) -> HairScalpGeometry {
         let vertices_cm: Vec<[f32; 3]> = mesh
             .vertices
@@ -1155,9 +1044,6 @@ mod scalp_wrap_tests {
         }
     }
 
-    /// The standoff a cap authored flush against the skin gets: `surfaceOffset`
-    /// and nothing else. Ledger 4.8 measured PantyRegion, which IS flush, at
-    /// exactly this.
     const FLUSH_STANDOFF_CM: f32 = SCALP_SURFACE_OFFSET_CM;
 
     fn hug_distances(cap: &HairScalpGeometry, head: &Mesh, neutral: &Mesh) -> Vec<f32> {
@@ -1196,10 +1082,6 @@ mod scalp_wrap_tests {
             + normal * anchor.normal_offset
     }
 
-    /// The invariant: a wrapped cap stands the SAME distance off every head it
-    /// is wrapped to. The distance is the cap's own authored standoff plus the
-    /// wrap's constants; the shape of the head decides where it binds and
-    /// nothing else.
     #[test]
     fn a_cap_stands_the_same_distance_off_every_head() {
         let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
@@ -1225,14 +1107,10 @@ mod scalp_wrap_tests {
         }
     }
 
-    /// And a cap that WAS authored to stand off keeps that standoff, on every
-    /// head. Dropping it is what put the cap inside the skin.
     #[test]
     fn a_cap_authored_clear_of_the_skin_keeps_its_own_gap() {
         let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
         let flush = cap_on(&neutral, 60);
-        // The same cap, half a centimetre further out along its own normals —
-        // which for a ball is straight out from the centre.
         let raised = HairScalpGeometry {
             vertices_cm: flush
                 .vertices_cm
@@ -1258,9 +1136,6 @@ mod scalp_wrap_tests {
         }
     }
 
-    /// And the failure it replaces, stated so nobody restores it: the distance
-    /// between the authored cap and the loaded head is exactly the departure
-    /// between the two shapes, which is what used to be baked in.
     #[test]
     fn the_departure_that_used_to_be_baked_is_real_and_large() {
         let neutral = ball(10.0, [1.0, 1.0, 1.0], 12);
@@ -1296,10 +1171,6 @@ mod scalp_wrap_tests {
 mod scalp_standoff_tests {
     use super::*;
 
-    /// The numbers ledger 4.8 measured through this same code path, against the
-    /// bundle's own neutral base. Every one of them is `baked + surfaceOffset`:
-    /// a floor under `baked` would lift PantyRegion off a skin it is flush
-    /// with, and the thickness term would add a millimetre to all seven.
     #[test]
     fn the_total_gap_is_the_authored_standoff_plus_one_constant() {
         for (provider, baked_mm, total_mm) in [
@@ -1319,7 +1190,6 @@ mod scalp_standoff_tests {
         }
     }
 
-    /// And the constant is the one the wrap calls `surfaceOffset`, 0.0003 m.
     #[test]
     fn the_constant_is_the_wraps_own_surface_offset() {
         assert!((SCALP_SURFACE_OFFSET_CM - 0.03).abs() < 1.0e-6);

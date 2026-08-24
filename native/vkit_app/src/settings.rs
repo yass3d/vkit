@@ -26,9 +26,6 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
-    /// The order the column lists them in, and the order they read in: what the
-    /// application is, then how it looks, then how the viewport behaves, then
-    /// the keys, and last the page nobody opens twice.
     pub const ALL: [Self; 5] = [
         Self::General,
         Self::Graphics,
@@ -137,18 +134,9 @@ fn draw_section_column(ui: &mut Ui, locale: Locale, rect: Rect, section: &mut Se
     }
 }
 
-/// How much room the settings content keeps down each side.
-///
-/// Wider than the vertical margin on purpose: a row is a label on the left and
-/// a control on the right, and with the pane's own edge close to both of them
-/// the row reads as though it is falling off.
 const PANE_SIDE_MARGIN: i8 = 24;
 
 fn draw_section_pane(ui: &mut Ui, state: &mut AppState, rect: Rect, section: SettingsSection) {
-    // The scroll area takes the whole pane so its bar rides at the pane's own
-    // right edge, where a bar belongs; the margin lives inside it, on the
-    // content. Insetting the scroll area instead dragged the bar inward with
-    // the text, and what a reader wants room around is the content.
     let mut pane = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(vec2(0.0, SPACE_4)))
@@ -251,12 +239,6 @@ fn effect_switch(
     )
 }
 
-/// A section label with a hairline running off the end of it.
-///
-/// One shape for every section in the page, including the shortcut list and the
-/// about pane — the about pane drew a full-width rule *above* its headings,
-/// which reads as the end of what came before rather than the start of what
-/// follows.
 fn group_heading(ui: &mut Ui, locale: Locale, key: TextKey) {
     ui.add_space(SPACE_3);
     let label = egui::RichText::new(text(locale, key))
@@ -291,12 +273,6 @@ fn group_heading(ui: &mut Ui, locale: Locale, key: TextKey) {
     ui.add_space(SPACE_2);
 }
 
-/// Quality, then effects, then lighting, down one page.
-///
-/// They were three segments of a picker, which asked the reader to remember
-/// which of three places a setting was in before they could look for it. There
-/// are eleven controls between them; a picker is for pages that do not fit
-/// beside each other, and these do.
 fn draw_graphics_settings(ui: &mut Ui, state: &mut AppState) {
     draw_quality_settings(ui, state);
     ui.add_space(SPACE_4);
@@ -316,9 +292,6 @@ fn msaa_label(samples: u32) -> String {
 fn draw_quality_settings(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
 
-    // Smoothing passes decide how the surface is shaded, which is the same
-    // question antialiasing asks about its edges. It sat under the viewport,
-    // beside the background colour.
     group_heading(ui, locale, TextKey::SettingsGraphicsQuality);
     let mut passes = f32::from(state.surface_smooth_passes);
     let changed = setting_row(
@@ -1142,14 +1115,6 @@ const fn is_modifier_key(key: egui::Key) -> bool {
     )
 }
 
-/// What the reader just pressed, read as a binding for `shortcut`.
-///
-/// The shortcut is passed in because the answer depends on what KIND of thing
-/// is being rebound. A held gesture stays a held gesture — offering to put
-/// "smooth while held" on the letter K would produce a stroke with no way to
-/// stop it — so for those, a modifier going down is the whole binding. For
-/// everything else a bare modifier is not a binding at all, it is the reader
-/// still reaching for the key.
 fn captured_binding(ui: &Ui, shortcut: Shortcut) -> Option<Binding> {
     if matches!(shortcut.default_binding().trigger, Trigger::Held(_)) {
         return captured_modifier(ui);
@@ -1161,9 +1126,6 @@ fn captured_binding(ui: &Ui, shortcut: Shortcut) -> Option<Binding> {
         });
     }
     ui.input(|input| {
-        // Every modifier that is down, not the first one found. Reading one
-        // meant `Ctrl+Shift+I` was captured as plain `Ctrl+I`, quietly, and the
-        // reader's second modifier went nowhere.
         let mut held = egui::Modifiers::NONE;
         if input.modifiers.ctrl || input.modifiers.command {
             held |= egui::Modifiers::COMMAND;
@@ -1201,7 +1163,6 @@ fn captured_binding(ui: &Ui, shortcut: Shortcut) -> Option<Binding> {
     })
 }
 
-/// A modifier on its own, for the gestures whose binding is exactly that.
 fn captured_modifier(ui: &Ui) -> Option<Binding> {
     let held = ui.input(|input| {
         crate::shortcuts::ModifierKey::ALL
@@ -1214,11 +1175,6 @@ fn captured_modifier(ui: &Ui) -> Option<Binding> {
     })
 }
 
-/// Which group of the shortcut list a binding belongs to.
-///
-/// The contexts already exist — the keymap uses them to decide which bindings
-/// can share a key — so the list is grouped by the same answer rather than by a
-/// second opinion about where a shortcut belongs.
 const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey {
     match context {
         crate::shortcuts::ShortcutContext::Global => TextKey::ShortcutGroupSystem,
@@ -1233,8 +1189,6 @@ const fn context_heading(context: crate::shortcuts::ShortcutContext) -> TextKey 
     }
 }
 
-/// System first because it is true everywhere, then the three places a binding
-/// only means something in.
 const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 9] = [
     crate::shortcuts::ShortcutContext::Global,
     crate::shortcuts::ShortcutContext::Navigation,
@@ -1247,12 +1201,6 @@ const SHORTCUT_GROUPS: [crate::shortcuts::ShortcutContext; 9] = [
     crate::shortcuts::ShortcutContext::VertexEdit,
 ];
 
-/// Reset, save and load, as icons at the top right.
-///
-/// They act on the whole keymap rather than on any one binding, so they belong
-/// above the list rather than after the last row of it, where they read as
-/// though they belonged to whatever binding happened to be last.
-/// Import, export and reset, as icons at the top right of the shortcut list.
 fn draw_keymap_actions(ui: &mut Ui, state: &mut AppState) {
     let locale = state.locale;
     let height = crate::ui_components::icon_button_size(ui);
@@ -1437,18 +1385,6 @@ const fn shortcut_label(shortcut: Shortcut) -> TextKey {
 mod tests {
     use super::*;
 
-    /// A section's height must come from its content, never from the pane it
-    /// happens to be drawn in.
-    ///
-    /// A horizontal layout whose cross axis is `Align::Center`, handed an
-    /// unbounded parent, claims the parent's whole height and centres its
-    /// contents inside it. That is how three icons at the top of the shortcut
-    /// list came to sit in the middle of a page-tall blank: measured, one 18px
-    /// button in a 600px pane produced a 600px row.
-    ///
-    /// Nothing at the call site tells the two cases apart — the expression is
-    /// the same, and only the parent's height decides. So the parent's height
-    /// is what this test varies.
     #[test]
     fn no_settings_section_is_sized_by_the_pane_it_is_drawn_in() {
         for section in SettingsSection::ALL {
@@ -1486,8 +1422,6 @@ mod tests {
         }
     }
 
-    /// The graphics page is three sections down one page, in the order they are
-    /// reached for. Each is a heading, and a heading with no name is a gap.
     #[test]
     fn every_graphics_section_is_named_in_every_language() {
         for key in [
@@ -1627,8 +1561,6 @@ mod tests {
 mod shortcut_group_tests {
     use super::*;
 
-    /// Every binding lands in exactly one group, and every group is named.
-    /// A shortcut whose context has no heading would simply not be listed.
     #[test]
     fn every_shortcut_falls_into_a_named_group() {
         for shortcut in Shortcut::ALL {
@@ -1646,8 +1578,6 @@ mod shortcut_group_tests {
         }
     }
 
-    /// The groups are the keymap's own contexts, so a binding cannot be filed
-    /// in one place and share a key according to another.
     #[test]
     fn the_groups_are_the_contexts_the_keymap_already_uses() {
         let mut seen = Vec::new();
@@ -1655,9 +1585,6 @@ mod shortcut_group_tests {
             assert!(!seen.contains(&context), "{context:?} is listed twice");
             seen.push(context);
         }
-        // Counted off the catalog, not written down. A literal here would have
-        // to be edited by whoever adds a context, and the failure if they forget
-        // is that a whole group of bindings is silently absent from the page.
         for shortcut in Shortcut::ALL {
             assert!(
                 seen.contains(&shortcut.context()),
@@ -1673,10 +1600,6 @@ mod shortcut_group_tests {
 mod capture_tests {
     use super::*;
 
-    /// A gesture can only be moved onto another modifier.
-    ///
-    /// Putting "smooth while held" on the letter K would start a stroke with no
-    /// way to stop it, because nothing asks whether K is still down.
     #[test]
     fn a_held_gesture_captures_a_modifier_and_a_key_shortcut_does_not() {
         for (shortcut, expects_modifier) in [
@@ -1716,7 +1639,6 @@ mod capture_tests {
         });
     }
 
-    /// A pad press reaches the capture field, which egui cannot see by itself.
     #[test]
     fn a_pad_press_is_captured_once_and_then_it_is_gone() {
         let context = egui::Context::default();

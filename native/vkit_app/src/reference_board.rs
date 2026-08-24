@@ -1,24 +1,9 @@
-//! Reference pictures pinned to the viewport, behind everything in it.
-//!
-//! A modeller works from a photograph. The photograph does not belong to the
-//! scene — it does not orbit, it does not scale with a dolly, and it must never
-//! reach a thumbnail — so it is not in the scene. It is painted by egui, into
-//! the viewport rectangle, between the backdrop and the 3D layers, and the head
-//! covers it for free because the scene surface clears to transparent and
-//! blends over what egui already drew.
-//!
-//! Positions are stored as a share of the viewport, never in points. A window
-//! resize then leaves a picture where the reader put it instead of sliding it
-//! toward a corner.
-
 use std::path::PathBuf;
 
 use egui::{Rect, Vec2, pos2, vec2};
 
-/// The tallest a picture may stand, as a share of the viewport height.
 pub const MAX_HEIGHT_SHARE: f32 = 4.0;
 
-/// The shortest. Below this a picture is a speck nobody can grab back.
 pub const MIN_HEIGHT_SHARE: f32 = 0.05;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,13 +12,10 @@ pub struct ReferenceImage {
     pub path: PathBuf,
     pub name: String,
 
-    /// Centre, as a share of the viewport. `(0.5, 0.5)` is the middle.
     pub center: Vec2,
 
-    /// Height, as a share of the viewport height. Width follows `aspect`.
     pub height_share: f32,
 
-    /// Width over height, from the file. `1.0` until the picture is decoded.
     pub aspect: f32,
 
     pub opacity: f32,
@@ -41,7 +23,6 @@ pub struct ReferenceImage {
 }
 
 impl ReferenceImage {
-    /// Where this picture sits in a viewport of this size.
     #[must_use]
     pub fn rect_in(&self, viewport: Rect) -> Rect {
         let height = viewport.height() * self.height_share;
@@ -56,11 +37,6 @@ impl ReferenceImage {
     }
 }
 
-/// The pictures, back to front.
-///
-/// Index 0 is furthest back. The last entry is nearest the reader and is the
-/// first asked whether a click belongs to it, which is the order every layer
-/// list in every program uses and the opposite of the order they are painted.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ReferenceBoard {
     images: Vec<ReferenceImage>,
@@ -88,10 +64,6 @@ impl ReferenceBoard {
         self.selected = id.filter(|id| self.images.iter().any(|image| image.id == *id));
     }
 
-    /// Add a picture, centred, at half the viewport's height.
-    ///
-    /// The same file may be added twice on purpose: two copies of one photo at
-    /// two sizes is a normal way to work.
     pub fn add(&mut self, path: PathBuf) -> u64 {
         let name = path
             .file_stem()
@@ -135,10 +107,6 @@ impl ReferenceBoard {
         }
     }
 
-    /// Move a picture one place toward the reader, or one place away.
-    ///
-    /// Nothing happens at either end rather than wrapping around: a list that
-    /// wraps sends the front picture to the back on a click nobody meant.
     pub fn reorder(&mut self, id: u64, toward_front: bool) {
         let Some(index) = self.images.iter().position(|image| image.id == id) else {
             return;
@@ -152,11 +120,6 @@ impl ReferenceBoard {
         }
     }
 
-    /// Record what the file turned out to be shaped like.
-    ///
-    /// Held here rather than re-read from the decoded texture every frame, and
-    /// applied without moving the picture: the centre is the centre whatever
-    /// the aspect turns out to be.
     pub fn note_aspect(&mut self, id: u64, aspect: f32) {
         if let Some(image) = self.get_mut(id)
             && aspect.is_finite()
@@ -166,10 +129,6 @@ impl ReferenceBoard {
         }
     }
 
-    /// Which picture a click at this point lands on, nearest the reader first.
-    ///
-    /// Hidden pictures are not hit. They are still in the list, so the reader
-    /// can bring one back, but a click goes through them.
     #[must_use]
     pub fn hit(&self, viewport: Rect, point: egui::Pos2) -> Option<u64> {
         self.images
@@ -179,7 +138,6 @@ impl ReferenceBoard {
             .map(|image| image.id)
     }
 
-    /// Drag a picture by a pointer delta measured in points.
     pub fn drag(&mut self, id: u64, viewport: Rect, delta: Vec2) {
         if viewport.width() <= 0.0 || viewport.height() <= 0.0 {
             return;
@@ -192,7 +150,6 @@ impl ReferenceBoard {
         clamp_into_view(image);
     }
 
-    /// Set a picture's height, keeping it reachable.
     pub fn resize(&mut self, id: u64, height_share: f32) {
         if let Some(image) = self.get_mut(id) {
             image.height_share = height_share.clamp(MIN_HEIGHT_SHARE, MAX_HEIGHT_SHARE);
@@ -207,13 +164,6 @@ impl ReferenceBoard {
     }
 }
 
-/// The centre stays inside the viewport, and that is the whole rule.
-///
-/// Keeping a share of the PICTURE on screen instead would have to convert a
-/// height share into a width share, which needs the viewport's aspect, which
-/// the panel that resizes a picture does not have. Holding the centre needs
-/// nothing: wherever it is, half the picture is on that side of it, so there is
-/// always something to grab — at any size, at any aspect, in any window.
 fn clamp_into_view(image: &mut ReferenceImage) {
     image.center.x = image.center.x.clamp(0.0, 1.0);
     image.center.y = image.center.y.clamp(0.0, 1.0);
@@ -238,7 +188,6 @@ mod tests {
         assert!((rect.height() - 200.0).abs() < 0.01, "half the viewport");
     }
 
-    /// A share, not a size. This is the whole reason the centre is not points.
     #[test]
     fn a_resized_window_leaves_a_picture_where_it_was_put() {
         let mut board = ReferenceBoard::default();
@@ -253,7 +202,6 @@ mod tests {
         assert!((share_before - share_after).abs() < 1.0e-5);
     }
 
-    /// The one nearest the reader answers first, and a hidden one never does.
     #[test]
     fn a_click_lands_on_the_front_picture_and_passes_through_a_hidden_one() {
         let mut board = ReferenceBoard::default();
@@ -277,7 +225,6 @@ mod tests {
         assert_eq!(board.hit(viewport(), pos2(105.0, 55.0)), None);
     }
 
-    /// Order is back to front, and neither end wraps.
     #[test]
     fn reordering_stops_at_the_ends_instead_of_wrapping() {
         let mut board = ReferenceBoard::default();
@@ -295,7 +242,6 @@ mod tests {
         assert_eq!(board.images()[1].id, first, "already at the front");
     }
 
-    /// A picture cannot be dragged off the edge and lost — at any size.
     #[test]
     fn a_picture_keeps_a_corner_on_screen_however_far_it_is_dragged() {
         for (height_share, aspect) in [(0.5, 1.0), (MAX_HEIGHT_SHARE, 3.0), (MIN_HEIGHT_SHARE, 0.2)]
@@ -320,7 +266,6 @@ mod tests {
         }
     }
 
-    /// Removing the selected picture selects the one in front of it, not none.
     #[test]
     fn removing_the_selected_picture_falls_back_to_another() {
         let mut board = ReferenceBoard::default();
@@ -347,7 +292,6 @@ mod tests {
         assert!((board.get(id).unwrap().height_share - MIN_HEIGHT_SHARE).abs() < 1.0e-6);
     }
 
-    /// The same photograph twice, at two sizes, is a normal way to work.
     #[test]
     fn one_file_may_be_added_more_than_once() {
         let mut board = ReferenceBoard::default();
@@ -357,7 +301,6 @@ mod tests {
         assert_eq!(board.images().len(), 2);
     }
 
-    /// A shape learned after the fact does not move the picture.
     #[test]
     fn noting_the_aspect_widens_a_picture_without_moving_its_centre() {
         let mut board = ReferenceBoard::default();

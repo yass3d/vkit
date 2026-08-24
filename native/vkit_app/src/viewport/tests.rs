@@ -1662,9 +1662,6 @@ fn the_texture_brush_ring_tracks_the_camera_because_its_dab_is_measured_in_uv() 
         "there is nothing to measure off the head; that is what the remembered span is for"
     );
 
-    // The span is read where the camera looks, not where the pointer is: the
-    // brush paints in texture space, so a ring that changes size as the pointer
-    // crosses the face is reporting the local triangle rather than the brush.
     let source = include_str!("detail_panels.rs");
     assert!(
         source.contains(
@@ -3032,8 +3029,6 @@ fn the_history_strip_counts_hair_steps() {
     );
 }
 
-/// The split toggle sits under the view buttons, in one place, on every tab
-/// that offers it — and is simply absent on the tabs that do not.
 #[test]
 fn the_split_toggle_sits_below_the_view_buttons_wherever_it_is_offered() {
     let viewport = test_rect();
@@ -3621,10 +3616,6 @@ fn cutting_shortens_in_proportion_and_keeps_every_point() {
 fn the_hair_island_is_wide_enough_for_every_toggle_it_draws() {
     use crate::viewport::hair_hud::{HAIR_SWITCHES, hair_hud_plan, hair_toggle_lane};
 
-    // The lane is measured from the list that draws it. Counting the icons by
-    // hand in a second place is what cut the right-hand toggles off every time
-    // somebody added one, so the count has exactly one owner and this checks
-    // the island grew with the list rather than against a stale number.
     let mut state = probe_hair_state();
     state.active_tab = crate::state::Tab::Hair;
     let lane = hair_toggle_lane();
@@ -3633,7 +3624,6 @@ fn the_hair_island_is_wide_enough_for_every_toggle_it_draws() {
         "the lane does not fit its own icons at 24pt each: {lane}",
     );
 
-    // Wide and narrow, the island still holds the lane and never vanishes.
     for width in [2400.0_f32, 1600.0, 1200.0, 900.0] {
         let viewport = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(width, 900.0));
         let Some(plan) = hair_hud_plan(&state, viewport) else {
@@ -3651,10 +3641,6 @@ fn the_hair_island_is_wide_enough_for_every_toggle_it_draws() {
 fn a_strand_is_drawn_whole_or_not_at_all() {
     use crate::viewport::hair_overlays::strand_is_shown;
 
-    // The depth field answers "is the head in front of this point". Asking it
-    // per joint cuts a strand into pieces wherever it grazes the silhouette,
-    // and a strand plainly in view loses a middle segment for no reason a
-    // reader can see. The root decides, and the whole strand follows.
     let field = crate::viewport::hair_overlays::HairDepthField::new(egui::Rect::from_min_size(
         egui::pos2(0.0, 0.0),
         egui::vec2(800.0, 600.0),
@@ -3683,10 +3669,6 @@ fn a_strand_is_drawn_whole_or_not_at_all() {
 fn picking_the_stiffness_brush_leaves_the_viewport_toggles_where_they_were() {
     use crate::hair_project::HairTool;
 
-    // The stiffness view draws its own thick coloured curve, so it needs no
-    // help from the joint stream. A tool that switched a toggle on to show
-    // itself would leave the reader hunting for what changed after they put it
-    // down — and the toggle is theirs, not the tool's.
     let mut state = probe_hair_state();
     for streams in [false, true] {
         state.hair_show_streams = streams;
@@ -3724,10 +3706,6 @@ fn the_hair_strength_slot_follows_the_tool() {
             "{tool:?} presses on hair, so it wants a strength",
         );
     }
-    // Segment count decides how many joints a *new* strand is born with, and
-    // setting it on a grown part resamples every strand. Only the tool that
-    // makes strands gets to touch it — under the slider or under `Shift`-drag,
-    // which is the same number either way.
     assert_eq!(brush_slot(HairTool::Plant), BrushSlot::Segments);
     for tool in [HairTool::Erase, HairTool::Pick, HairTool::Vertex] {
         assert_eq!(
@@ -3941,21 +3919,12 @@ fn a_lit_layer_gains_saturation_without_inventing_a_hue_on_plain_hair() {
     );
 }
 
-/// A surface fills the mask, so nothing shows through the middle of it.
-///
-/// The head used to be splatted in one VERTEX at a time. Eleven thousand of
-/// them against a cell every four points means, at any real zoom, more cells
-/// than vertices — and every cell between two vertices stayed at infinity, so a
-/// strand on the far side that landed in one was hidden by nothing. That is
-/// what put hair points on the cheek.
 #[test]
 fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
     use super::hair_overlays::HairDepthField;
 
     let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
 
-    // Three corners far enough apart that splatting them would leave the middle
-    // empty, which is exactly the case that leaked.
     let a = (pos2(40.0, 40.0), 30.0);
     let b = (pos2(240.0, 60.0), 30.0);
     let c = (pos2(120.0, 240.0), 30.0);

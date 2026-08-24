@@ -81,14 +81,7 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
     let right = detail_hud_right_base(viewport);
     let available = (right - left).max(0.0) - DETAIL_HUD_INSET_X * 2.0;
 
-    // The row holds two numeric controls and then the toggle lane, and the lane
-    // is measured from the list that draws it — counting the icons by hand in
-    // two places is what left the island one toggle short every time somebody
-    // added one, and the icons on the right fell off the edge.
     const NUMERIC_CONTROLS: f32 = 2.0;
-    /// A numeric control narrow enough to still read as a slider with a number
-    /// beside it. The island gives the toggles their room first and hands the
-    /// rest to the numerics, down to here.
     const NUMERIC_FLOOR: f32 = 64.0;
 
     let toggle_lane = hair_toggle_lane();
@@ -98,10 +91,6 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
         .min(numeric_room.max(NUMERIC_FLOOR));
     let content = numeric_width * NUMERIC_CONTROLS + SPACE_2 + toggle_lane;
 
-    // A floor, and below it nothing. The island shrinks its numerics to make
-    // room rather than pushing the toggles off its edge, but a pane too narrow
-    // to hold even the floor gets no island at all — a row clipped in half
-    // reads as broken, and there is nowhere for it to go.
     if available < NUMERIC_FLOOR * NUMERIC_CONTROLS + SPACE_2 + toggle_lane {
         return None;
     }
@@ -116,12 +105,6 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
     Some(HairHudPlan { rect })
 }
 
-/// Which viewport switch a toggle in the island flips.
-///
-/// Named rather than closed over, so the row that draws them and the plan that
-/// measures them can walk the same list. Counting the icons by hand in two
-/// places is what left the island a toggle too narrow every time one was added,
-/// and the icons on the right fell off the edge.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HairSwitch {
     MirrorEdit,
@@ -149,8 +132,6 @@ impl HairSwitch {
     }
 }
 
-/// The toggle lane, in the order it is drawn. `true` opens a separator before
-/// the icon.
 pub(super) const HAIR_SWITCHES: &[(HairSwitch, Icon, TextKey, TextKey, bool)] = &[
     (
         HairSwitch::MirrorEdit,
@@ -210,7 +191,6 @@ pub(super) const HAIR_SWITCHES: &[(HairSwitch, Icon, TextKey, TextKey, bool)] = 
     ),
 ];
 
-/// How wide the toggle lane needs to be, from the list itself.
 pub(super) fn hair_toggle_lane() -> f32 {
     let separators = HAIR_SWITCHES.iter().filter(|entry| entry.4).count() as f32;
     separators * (SPACE_2 + SPACE_1 + 1.0 + SPACE_1)
@@ -302,9 +282,6 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
                 });
             }
         }
-        // Hold the space open. The toggles to the right of it are the same
-        // controls whichever tool is out, and having them jump left when one
-        // has no second number reads as the island losing them.
         BrushSlot::Empty => hud.add_space(numeric_width),
     }
 
@@ -331,7 +308,6 @@ fn toolbox_columns(state: &AppState) -> usize {
     state.hair_toolbox_columns.clamp(1, 2) as usize
 }
 
-/// One slot per tool, plus one for mirroring the selected part.
 fn toolbox_slots() -> usize {
     HAIR_TOOLS.len() + 1
 }
@@ -425,21 +401,10 @@ const fn tool_shortcut(tool: HairTool) -> Option<crate::shortcuts::Shortcut> {
     }
 }
 
-/// What the second slot in the brush island holds, for a given tool.
-///
-/// Segment count is the *plant* tool's number and nobody else's: it decides how
-/// many joints a new strand is born with, and changing it on a part that is
-/// already grown resamples every strand in it. A comb or an eraser having that
-/// under the same slider — and under the same `Shift`-drag — means a gesture
-/// meant to adjust a brush quietly rebuilds the hair instead.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum BrushSlot {
-    /// How many joints a planted strand gets.
     Segments,
-    /// How hard the brush presses.
     Strength,
-    /// Nothing. The slot is still reserved, so the toggles beside it do not
-    /// slide left when the tool changes.
     Empty,
 }
 
@@ -454,8 +419,6 @@ pub(crate) const fn brush_slot(tool: crate::hair_project::HairTool) -> BrushSlot
         | HairTool::Grow
         | HairTool::Puff
         | HairTool::Rigidity => BrushSlot::Strength,
-        // An eraser has no strength — a strand is planted or it is not — and
-        // Pick and Vertex are not brushes at all.
         HairTool::Erase | HairTool::Pick | HairTool::Vertex => BrushSlot::Empty,
     }
 }

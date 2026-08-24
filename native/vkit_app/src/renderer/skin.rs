@@ -147,9 +147,6 @@ pub struct SkinPaintCallback {
 }
 
 impl SkinPaintCallback {
-    /// Hand this to egui over the rectangle its own spot names. The spot is the
-    /// only place a rectangle is written, so there is no second copy to keep in
-    /// step with it.
     pub fn paint_callback(self) -> epaint::PaintCallback {
         Callback::new_paint_callback(self.spot.rect, self)
     }

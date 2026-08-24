@@ -45,9 +45,6 @@ pub(super) fn handle_hair_interaction(
         return;
     }
 
-    // The `Shift` drag adjusts whatever the island's second slot holds, and
-    // nothing when it holds nothing — a gesture that resampled every strand
-    // because the eraser was out is not an adjustment.
     let slot = crate::viewport::hair_hud::brush_slot(state.hair_project.active_tool);
     let shaping = slot == crate::viewport::hair_hud::BrushSlot::Strength;
     let strength_sweep = crate::ui_components::handle_brush_strength_gesture(
@@ -134,8 +131,6 @@ pub(super) fn handle_hair_interaction(
     } else {
         state.hair_project.editable_parts()
     };
-    // The wrapped cap, not the stock one: the pointer has to meet the head the
-    // person is looking at, and so must the root a plant leaves behind.
     let mut providers: Vec<String> = active
         .iter()
         .chain(state.hair_project.selected_part_id.iter())
@@ -170,8 +165,6 @@ pub(super) fn handle_hair_interaction(
     match tool {
         HairTool::Pick => {}
         HairTool::Vertex => {
-            // The handle is asked first: grabbing an axis must not also pick
-            // whatever joint happens to sit behind it.
             if !crate::viewport::vertex_gizmo::handle(ui, state, viewport, response, camera) {
                 crate::viewport::hair_vertex::handle(ui, state, viewport, response, camera);
             }
@@ -314,9 +307,6 @@ pub(super) fn handle_hair_interaction(
 }
 
 pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Response) {
-    // Pick takes hold of one part and Vertex of one joint; neither has a radius,
-    // so both keep the arrow. Vertex never reaches here — it paints its own
-    // handles — and Pick is turned away at this line.
     if state.hair_project.active_tool == crate::hair_project::HairTool::Pick {
         return;
     }
@@ -994,12 +984,6 @@ fn relax_towards_rest(points: &mut [[f32; 3]], spacing: &[f32]) {
     }
 }
 
-/// Paint rigidity under the brush.
-///
-/// The same capture the other brushes do — a sphere in world space, a smooth
-/// falloff, the root left alone — writing a strength rather than a position.
-/// `Alt` reverses it, which is the modifier every other hair brush already
-/// uses for the same idea.
 fn handle_rigidity_brush(
     ui: &Ui,
     state: &mut AppState,

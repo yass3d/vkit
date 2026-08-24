@@ -9,11 +9,6 @@ pub(crate) const PORTRAIT_CLOSENESS: f32 = 0.72;
 
 pub(crate) const PORTRAIT_SIDE: u32 = crate::thumbnail::THUMBNAIL_SIDE;
 
-/// A square of [`OffscreenTarget`], which is what the viewport draws on too.
-///
-/// The thumbnail path has always rendered this way — its own multisampled
-/// buffer, its own depth, resolved once — and that is exactly the shape the
-/// viewport needs to stop borrowing egui's sample count.
 pub(crate) struct PortraitTarget {
     target: OffscreenTarget,
     side: u32,
@@ -27,8 +22,6 @@ impl PortraitTarget {
         }
     }
 
-    /// Reuse the canvas when it still has the shape wanted, which is every run
-    /// but the first and the one after the sample count moves.
     pub(crate) fn reshaped(
         self,
         device: &wgpu::Device,

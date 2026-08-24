@@ -98,7 +98,6 @@ pub enum Action {
         part_id: u64,
         strands: Vec<(u32, Vec<[f32; 3]>)>,
     },
-    /// Painted rigidity for some of a part's strands, one value per point.
     SetHairRigidity {
         part_id: u64,
         strands: Vec<(u32, Vec<f32>)>,

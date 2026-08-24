@@ -118,9 +118,6 @@ pub struct Preferences {
     #[serde(default = "default_hair_toolbox_columns")]
     pub hair_toolbox_columns: u8,
 
-    /// Where the reader dragged each floating island, and how wide they made
-    /// it. Kept because a workspace somebody arranged is a workspace they
-    /// arranged: reopening the program should not undo it.
     #[serde(default = "default_hair_toolbox_columns")]
     pub sculpt_toolbox_columns: u8,
     #[serde(default = "default_hair_toolbox_columns")]
@@ -194,7 +191,6 @@ pub struct Preferences {
     #[serde(default = "default_vignette_roundness")]
     pub vignette_roundness: f32,
 
-    /// Multisample count. Read once at startup, before the painter exists.
     #[serde(default = "default_msaa_samples")]
     pub msaa_samples: u32,
 }

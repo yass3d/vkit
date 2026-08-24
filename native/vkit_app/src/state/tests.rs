@@ -5592,7 +5592,6 @@ fn swapping_the_scalp_mesh_reseats_the_strands_and_drops_the_old_cap_s_sheet() {
         .find(|part| part.id == id)
         .expect("the part");
     part.plant(&worn, &[2]);
-    // What an imported style carries: a sheet drawn for the cap it shipped on.
     part.scalp_texture = crate::hair_project::HairScalpTexture {
         diffuse: Some(std::path::PathBuf::from("udane diffuse.png")),
         alpha: Some(std::path::PathBuf::from("udane alpha.png")),
@@ -5623,11 +5622,6 @@ fn a_sample_count_the_renderer_does_not_offer_never_reaches_the_preference() {
     let mut state = AppState::default();
     assert_eq!(state.msaa_samples, crate::renderer::DEFAULT_MSAA_SAMPLES);
 
-    // Only what the adapter answered for is offered, and in a test nothing has
-    // been probed, so that is the default alone. Whatever the list holds, a
-    // count inside it is kept and a count outside it lands on the default —
-    // the value goes to disk and comes back at the next start, where it becomes
-    // a texture the device has to be able to make.
     for offered in crate::renderer::supported_msaa_samples() {
         state.dispatch(Action::SetMsaaSamples(*offered));
         assert_eq!(state.msaa_samples, *offered, "{offered}x is offered");

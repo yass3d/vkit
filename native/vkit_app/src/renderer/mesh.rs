@@ -74,8 +74,6 @@ pub(super) fn mesh_color_is_translucent(color: [f32; 4]) -> bool {
 
 #[derive(Clone)]
 pub struct MeshPaintCallback {
-    /// Filled in by `paint_callback`, which is the one place that knows the
-    /// rectangle. Nothing that builds a callback has to carry it.
     pub spot: crate::renderer::SceneSpot,
     pub scene_key: u64,
     pub mesh: Arc<SurfaceMesh>,
@@ -98,9 +96,6 @@ pub struct MeshPaintCallback {
 }
 
 impl MeshPaintCallback {
-    /// Hand this to egui over the rectangle its own spot names. The spot is the
-    /// only place a rectangle is written, so there is no second copy to keep in
-    /// step with it.
     pub fn paint_callback(self) -> epaint::PaintCallback {
         Callback::new_paint_callback(self.spot.rect, self)
     }
@@ -121,9 +116,6 @@ impl CallbackTrait for MeshPaintCallback {
         };
         resources.prepare_scene(device, queue, self);
 
-        // The drawing happens here rather than in `paint`, because here is
-        // where the scene's own surface can be opened. `paint` puts the
-        // finished surface back in front of egui.
         let Some(mut pass) = crate::renderer::begin_scene_layer(
             device,
             egui_encoder,

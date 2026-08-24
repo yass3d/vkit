@@ -1,29 +1,12 @@
-//! Painting and dragging the reference pictures.
-//!
-//! Painted straight after the backdrop and before any 3D layer, which is what
-//! puts them behind the head without a line of renderer code: the scene surface
-//! clears to transparent and blends over whatever egui already drew, so the
-//! head simply covers them.
-//!
-//! A thumbnail must never have one in it, and being an egui shape is NOT
-//! enough to guarantee that. `render_portrait` draws the scene into a target of
-//! its own and could not pick one up — but the hair thumbnail is a `BitBlt` of
-//! the window, which photographs whatever is on screen, references included.
-//! So they hide themselves while a shot is framed, the same way every other
-//! overlay in the viewport does, on the same `state.hair_thumbnail` flag.
-
 use egui::{Color32, CornerRadius, Rect, Stroke, Ui, pos2};
 
 use crate::state::{Action, AppState};
 use crate::theme::{COLOR_PRIMARY, CONTROL_RADIUS};
 
-/// A picture the reader is dragging, held between frames.
 const DRAG_ID: &str = "vkit.reference.dragging";
 
-/// How thick the selected picture's edge is drawn.
 const SELECTED_EDGE: f32 = 1.5;
 
-/// Paint every visible picture, furthest back first.
 pub(super) fn paint_reference_images(ui: &Ui, state: &AppState, viewport: Rect) {
     if state.reference_board.is_empty() || shot_is_framed(state) {
         return;
@@ -37,9 +20,6 @@ pub(super) fn paint_reference_images(ui: &Ui, state: &AppState, viewport: Rect) 
         let Some(texture) = texture_for(ui, image) else {
             continue;
         };
-        // Painted as a shape rather than added as a widget: an `Image` widget
-        // would allocate space in whatever layout happens to be open, and this
-        // has a rectangle of its own that no layout decides.
         let tint = Color32::WHITE.gamma_multiply(image.opacity);
         painter.image(
             texture.id(),
@@ -58,14 +38,6 @@ pub(super) fn paint_reference_images(ui: &Ui, state: &AppState, viewport: Rect) 
     }
 }
 
-/// Let the reader pick a picture up and move it.
-///
-/// Returns `true` when a picture has the pointer, so the viewport leaves the
-/// camera and the brushes alone for the rest of the frame.
-///
-/// Asked LAST, after the head and the hair have had their turn. A reference is
-/// behind everything, and a click that reaches it is a click nothing else
-/// wanted — which is exactly how it behaves on screen.
 pub(super) fn handle_reference_drag(
     ui: &Ui,
     state: &mut AppState,
@@ -110,15 +82,9 @@ pub(super) fn handle_reference_drag(
         return false;
     };
 
-    // Hovering one is not taking the pointer: the camera and the brushes still
-    // work over a reference, because a reference is behind them.
     if !ui.input(|input| input.pointer.primary_pressed()) {
         return false;
     }
-    // And neither is a press that landed on the model. A reference is BEHIND
-    // the head and the hair, so it only gets a click nothing in front of it
-    // wanted — asked here rather than assumed, because "behind" is the whole
-    // description of how this thing behaves.
     if model_is_under_pointer() {
         return false;
     }
@@ -128,17 +94,10 @@ pub(super) fn handle_reference_drag(
     true
 }
 
-/// Whether a thumbnail is being framed right now.
-///
-/// The hair thumbnail is taken by copying the window off the screen, so
-/// anything drawn is in the picture. Every other overlay in the viewport hides
-/// itself on this same flag; a reference has more reason to than most, being
-/// somebody's photograph.
 fn shot_is_framed(state: &AppState) -> bool {
     state.hair_thumbnail.is_some()
 }
 
-/// The decoded picture, cached against its own path.
 fn texture_for(
     ui: &Ui,
     image: &crate::reference_board::ReferenceImage,
@@ -162,11 +121,6 @@ fn decode(path: &std::path::Path) -> Option<egui::ColorImage> {
     ))
 }
 
-/// Tell the board what shape each picture turned out to be.
-///
-/// Read once per picture, from the texture that is already decoded, and only
-/// when it disagrees with what the board holds — a dispatch every frame would
-/// mark the session dirty forever.
 pub(super) fn note_reference_aspects(ui: &Ui, state: &mut AppState) {
     let mut corrections = Vec::new();
     for image in state.reference_board.images() {
@@ -191,11 +145,6 @@ pub(super) fn note_reference_aspects(ui: &Ui, state: &mut AppState) {
 mod tests {
     use super::*;
 
-    /// The pointer is only taken on a press, never on a hover.
-    ///
-    /// A reference sits behind the model. If hovering one took the pointer, the
-    /// camera would stop orbiting wherever a photograph happened to be, which
-    /// is most of the screen.
     #[test]
     fn hovering_a_reference_does_not_take_the_pointer() {
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
@@ -211,10 +160,6 @@ mod tests {
         });
     }
 
-    /// A photograph must not end up in somebody's preset thumbnail.
-    ///
-    /// Not a matter of being an egui shape: the hair thumbnail is a copy of the
-    /// window off the screen, so it photographs anything that is drawn.
     #[test]
     fn a_framed_shot_hides_every_reference_and_refuses_the_pointer() {
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(800.0, 600.0));

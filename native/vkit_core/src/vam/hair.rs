@@ -308,10 +308,6 @@ impl HairLookPatch {
                 .normal_randomize
                 .unwrap_or(defaults.normal_randomize)
                 .clamp(0.0, 1.0),
-            // length1/2/3 are registered 0-1, and zero is a value creators
-            // ship: with L = 0 the game's trunc puts every domain point on
-            // tessellation point 0, so that tier collapses and draws nothing.
-            // A floor of 0.05 turned it into a visible stub instead.
             child_lengths: std::array::from_fn(|index| {
                 self.length[index]
                     .unwrap_or(defaults.child_lengths[index])
@@ -602,18 +598,6 @@ impl HairPhysicsPatch {
     }
 }
 
-/// What the game would give a point if nothing were painted on it.
-///
-/// `BuildPointJoints`: the scalp anchor is 1.1 so it trips the unconditional
-/// snap, the first hair point takes `rootRigidity` flat, and everything past
-/// that walks a rolloff from `mainRigidity` down to `tipRigidity`. The
-/// off-by-one is the game's — no segment lands exactly on `mainRigidity` — and
-/// it is reproduced rather than tidied, because the corpus was authored against
-/// it.
-///
-/// This is the fallback the painted array replaces, so it is also what an
-/// unpainted point has to be written as once any point in the item is painted:
-/// the file carries one array or none, and a gap in it is a zero.
 #[must_use]
 pub fn rolloff_rigidity(physics: &HairPhysicsSettings, point_index: usize, segments: usize) -> f32 {
     if point_index == 0 {
@@ -629,7 +613,6 @@ pub fn rolloff_rigidity(physics: &HairPhysicsSettings, point_index: usize, segme
     (physics.tip_rigidity + (physics.main_rigidity - physics.tip_rigidity) * t).clamp(0.0, 1.0)
 }
 
-/// The whole rolloff, one value per point.
 #[must_use]
 pub fn rolloff_rigidity_curve(physics: &HairPhysicsSettings, points: usize) -> Vec<f32> {
     (0..points)
@@ -2091,13 +2074,6 @@ pub fn parse_hair_vab(bytes: &[u8], locator: &str) -> Result<HairGuideGeometry> 
             rigidity_values.push(reader.read_f32("rigidity")?);
         }
     }
-    // No painted rigidity is a state, not a value. RuntimeHairGeometryCreator
-    // sets `rigidities = null` for a version-1.0 file and for a 1.1 file that
-    // stores a count of zero, and BuildPointJoints then falls through to the
-    // root/main/tip ramp. Substituting 1.0 instead pinned every particle to its
-    // rest pose — the solver's own `Rigidity >= 1` snap — so thirteen shipped
-    // items rendered with no physics at all: no gravity, no swing, no collision
-    // response, and nothing to say why.
     if !rigidity_values.is_empty() {
         for (guide, retained) in guides.iter_mut().zip(retained_rigidity_indices) {
             guide.rigidity = retained
@@ -2614,10 +2590,6 @@ mod tests {
             assert_eq!(geometry.segment_length_cm, 1.0);
             assert_eq!(geometry.guides.len(), 2);
             assert_eq!(geometry.guides[0].points_cm[0], [10.0, 100.0, 200.0]);
-            // A 1.0 file paints no rigidity at all, and the absence has to
-            // survive as an absence: RuntimeHairGeometryCreator nulls the
-            // array and BuildPointJoints falls through to the root/main/tip
-            // ramp. Filling it with 1.0 instead welds every particle to rest.
             assert_eq!(
                 geometry.guides[0].rigidity,
                 if schema == "1.1" {
@@ -2905,8 +2877,6 @@ mod tests {
         assert_eq!(optics.child_lengths[0], 1.0);
         assert_eq!(optics.child_lengths[1], 0.4710246);
 
-        // A zeroed tier reaches the shader as zero and draws nothing, which
-        // is what the game does with it.
         assert_eq!(optics.child_lengths[2], 0.0);
     }
 

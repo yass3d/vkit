@@ -27,15 +27,8 @@ pub const COLOR_WARNING_ACTIVE_BG: Color32 = Color32::from_rgb(0x8a, 0x72, 0x2a)
 
 pub const COLOR_EMPHASIS: Color32 = Color32::from_rgb(0xf5, 0xb3, 0x0a);
 
-/// The hair point being edited.
-///
-/// Green rather than the amber `COLOR_EMPHASIS`, and bright enough to carry
-/// over blonde hair: the point under the hand has to be findable against the
-/// strand it sits on, and amber on gold is not.
 pub const COLOR_HAIR_POINT_ACTIVE: Color32 = Color32::from_rgb(0x7c, 0xff, 0x3d);
 
-/// Every other hair point. Plain white, so the green one is the only colour
-/// in the field and the eye goes straight to it.
 pub const COLOR_HAIR_POINT: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
 
 pub const COLOR_TEXTURE_PIN: Color32 = Color32::from_rgb(42, 60, 78);

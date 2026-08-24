@@ -46,24 +46,14 @@ pub enum HairTool {
 
     Puff,
 
-    /// Take hold of one point joint and move it.
     Vertex,
 
-    /// Paint how hard each point is held to the pose it was authored in.
     Rigidity,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct HairStrand {
     pub points_cm: Vec<[f32; 3]>,
-    /// Painted rigidity, one value per point, or empty.
-    ///
-    /// Empty is not the same as a solid 1.0. The game reads the array only when
-    /// `usePaintedRigidity` is on, and falls back to the root/main/tip rolloff
-    /// when it is absent — but a 1.0 it *does* read trips
-    /// `if (Rigidity >= 1.0) result = target`, an unconditional snap that welds
-    /// the strand to its rest pose. So an unpainted strand carries nothing, and
-    /// the file it exports to carries no array at all.
     pub rigidity: Vec<f32>,
 }
 
@@ -76,16 +66,11 @@ impl HairStrand {
         }
     }
 
-    /// Whether anything has been painted onto this strand.
     #[must_use]
     pub fn is_painted(&self) -> bool {
         !self.rigidity.is_empty()
     }
 
-    /// Keep the painted values lined up with the points after a resample.
-    ///
-    /// Rigidity belongs to a place along the strand, not to an index, so it is
-    /// resampled the same way the points are rather than truncated.
     pub fn resample_rigidity(&mut self, points: usize) {
         if self.rigidity.is_empty() || self.rigidity.len() == points || points == 0 {
             return;
@@ -209,10 +194,6 @@ impl ScalpAuthoring {
         &self.normals
     }
 
-    /// The same cap, standing on the head it is wrapped to.
-    ///
-    /// The stock cap is the shape the provider ships. What the person sees is
-    /// that shape pulled onto the head, so what they click has to be too.
     #[must_use]
     pub fn posed(&self, vertices_cm: Vec<[f32; 3]>) -> Option<Self> {
         if vertices_cm.len() != self.vertices_cm.len() {
@@ -677,12 +658,6 @@ impl HairProject {
         }
     }
 
-    /// Show this part alone, or — if it is already the only one shown — show
-    /// everything again.
-    ///
-    /// The way a layer list has always done it: alt-click the eye to isolate,
-    /// alt-click again to come back. Reaching for one part among a dozen by
-    /// closing eleven eyes is the thing this replaces.
     pub fn solo_part(&mut self, id: u64) {
         if !self.parts.iter().any(|part| part.id == id) {
             return;
@@ -740,18 +715,6 @@ impl HairPart {
         self.plant(scalp, &planted)
     }
 
-    /// Carry every strand from the cap it was planted on over to another one.
-    ///
-    /// A strand is keyed by the scalp vertex it grows from, and no two caps
-    /// share a vertex ordering — Udane has 868 of them, Leyton and Soleil 922,
-    /// Krayon 1948 — so a key kept across a swap names a different place on the
-    /// head. Each root is re-seated on the vertex of the new cap nearest where
-    /// it stood and the whole strand travels with it, so a style keeps its
-    /// shape and stays where it was drawn.
-    ///
-    /// Two roots can land on one vertex when the new cap is the coarser of the
-    /// two; the nearer one keeps the seat. Returns how many strands were lost
-    /// that way, which is what the caller has to be honest about.
     pub fn reseat_onto(&mut self, from: &ScalpAuthoring, to: &ScalpAuthoring) -> usize {
         let mut claimed: BTreeMap<u32, (f32, HairStrand)> = BTreeMap::new();
         let mut lost = 0;
@@ -922,7 +885,6 @@ pub fn resample_polyline(points: &[[f32; 3]], segments: usize) -> Vec<[f32; 3]> 
     output
 }
 
-/// The vertex of a cap nearest a point, with the distance it stands away.
 fn nearest_scalp_vertex(vertices_cm: &[[f32; 3]], point: [f32; 3]) -> Option<(u32, f32)> {
     let mut best: Option<(u32, f32)> = None;
     for (index, vertex) in vertices_cm.iter().enumerate() {
@@ -1062,8 +1024,6 @@ pub fn hair_part_from_preset(
             resample_polyline(&flipped, segments)
         };
         let mut carried = HairStrand::new(points_cm);
-        // The file's painted rigidity, if it has any. Resampled with the points
-        // it belongs to, because both are positions along one strand.
         if !guide.rigidity.is_empty() {
             carried.rigidity = guide.rigidity.clone();
             let points = carried.points_cm.len();
@@ -1714,12 +1674,8 @@ mod reseat_tests {
         .expect("a cap")
     }
 
-    /// The caps do not share a vertex ordering, so a strand that keeps its key
-    /// across a swap grows from somewhere else entirely.
     #[test]
     fn a_strand_lands_on_the_vertex_nearest_where_it_stood() {
-        // Vertex 2 of the worn cap stands at x = 4. On the wanted cap the
-        // nearest vertex to that is index 1, not index 2.
         let worn = cap(
             "UdaneScalp",
             vec![[0.0, 10.0, 0.0], [2.0, 10.0, 0.0], [4.0, 10.0, 0.0]],
@@ -1747,8 +1703,6 @@ mod reseat_tests {
             "the root belongs on the nearest vertex of the cap it moved to",
         );
         let root = part.strands[&1].points_cm[0];
-        // `build_scalp_authoring` negates x, so the caps read back mirrored;
-        // what matters is that the root sits exactly on its new seat.
         assert!(
             (root[0] - wanted.vertices_cm[1][0]).abs() < 1.0e-4,
             "root landed at {root:?}, seat is {:?}",

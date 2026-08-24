@@ -1,34 +1,16 @@
-//! The floating icon toolbox, once, for every tab that wants one.
-//!
-//! Chrome and nothing else: the island, the grab pill that moves it, the corner
-//! that switches it between one column and two, and the grid the caller fills.
-//! Which icons go in it is the caller's business and is the only part that
-//! differs between the hair tab and the sculpt tab.
-//!
-//! It was written for the hair tab and lived there. Copying it to a second tab
-//! would have been the second implementation of a thing already implemented,
-//! and the two would have drifted the first time either was touched.
-
 use egui::{Id, Rect, Sense, Ui, Vec2, pos2, vec2};
 
 use super::DETAIL_HUD_TOGGLE_SIZE;
 use crate::theme::{COLOR_TOPBAR, SPACE_2};
 
-/// The strip along the top that the box is dragged by.
 const GRAB_HEIGHT: f32 = 14.0;
 
-/// The margin between the island's edge and the icons inside it.
 const INSET: f32 = 6.0;
 
-/// The square at the bottom-right that switches the column count.
 const CORNER: f32 = 12.0;
 
 const MARGIN: f32 = crate::viewport_chrome::EDGE_INSET;
 
-/// Where a toolbox of this many slots would stand.
-///
-/// `None` when it would not fit the viewport, which is how a small window ends
-/// up with no toolbox rather than one hanging off the bottom.
 #[must_use]
 pub(super) fn toolbox_rect(
     viewport: Rect,
@@ -54,7 +36,6 @@ pub(super) fn toolbox_rect(
     ))
 }
 
-/// How big a toolbox of this shape is, before it is placed.
 #[must_use]
 pub(super) fn toolbox_size(slots: usize, columns: usize) -> Vec2 {
     let columns = columns.max(1);
@@ -66,10 +47,6 @@ pub(super) fn toolbox_size(slots: usize, columns: usize) -> Vec2 {
     )
 }
 
-/// Paint the island and its handles, and hand back a `Ui` per slot.
-///
-/// `columns` is read and written: dragging the corner changes it, and the
-/// caller owns where that number lives so each toolbox remembers its own.
 pub(super) fn draw_toolbox(
     ui: &mut Ui,
     id: Id,
@@ -78,8 +55,6 @@ pub(super) fn draw_toolbox(
     position: &mut Option<[f32; 2]>,
     columns: &mut u8,
 ) -> Vec<Ui> {
-    // Nothing under a toolbox is reachable through it: the island is opaque,
-    // and a click that lands on it must not also orbit the camera behind it.
     let _blocker = ui.interact(rect, id.with("blocker"), Sense::click_and_drag());
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(
@@ -168,7 +143,6 @@ pub(super) fn draw_toolbox(
 mod tests {
     use super::*;
 
-    /// A second column halves the rows and roughly doubles the width.
     #[test]
     fn two_columns_are_wider_and_shorter_than_one() {
         let one = toolbox_size(6, 1);
@@ -177,7 +151,6 @@ mod tests {
         assert!(two.y < one.y);
     }
 
-    /// An odd slot count still gets a row for the leftover.
     #[test]
     fn an_odd_slot_count_keeps_a_row_for_the_last_one() {
         let five = toolbox_size(5, 2);
@@ -187,7 +160,6 @@ mod tests {
         assert!(four.y < five.y, "four fit in two rows and five do not");
     }
 
-    /// It refuses to exist rather than hang off the edge of a short viewport.
     #[test]
     fn a_short_viewport_gets_no_toolbox_at_all() {
         let tall = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));
@@ -196,7 +168,6 @@ mod tests {
         assert!(toolbox_rect(squashed, 6, 1, None, None).is_none());
     }
 
-    /// Two toolboxes on one edge stack rather than sit on top of each other.
     #[test]
     fn a_given_top_places_the_box_where_it_is_asked_to_go() {
         let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 700.0));

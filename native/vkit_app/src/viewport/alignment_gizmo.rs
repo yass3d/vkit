@@ -385,11 +385,6 @@ pub(super) fn alignment_gizmo_hit(
     gizmo_hit(pointer, geometry, GizmoHandles::ALL)
 }
 
-/// What the pointer is on, with or without the scale handle in the middle.
-///
-/// Strand joints are spaced by the lengths the solver is handed as rest
-/// lengths; pulling them apart uniformly is not an edit anybody reached for, so
-/// that tool asks with `false` and the centre answers nothing.
 pub(super) fn gizmo_hit(
     pointer: Pos2,
     geometry: &AlignmentGizmoGeometry,
@@ -527,7 +522,6 @@ pub(super) fn paint_alignment_gizmo(
     paint_gizmo_geometry(ui, &geometry, GizmoHandles::ALL);
 }
 
-/// Draw a handle that has already been placed.
 pub(super) fn paint_gizmo_geometry(
     ui: &Ui,
     geometry: &AlignmentGizmoGeometry,
@@ -594,12 +588,6 @@ pub(super) fn alignment_gizmo_geometry(
     gizmo_geometry_at(world_bounds.center(), world_size, viewport, camera)
 }
 
-/// The handle itself: three axes and three rings about a point.
-///
-/// Where it stands and how big it is are the caller's business — the alignment
-/// tab takes both from the scan's bounds, and the strand-joint tool takes them
-/// from the middle of what is selected. Everything below that is the same
-/// handle and is written once.
 pub(super) fn gizmo_geometry_at(
     world_center: glam::Vec3,
     world_size: f32,

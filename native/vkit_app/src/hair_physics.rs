@@ -25,25 +25,8 @@ const LIGHT_CENTRE_DEPTH_M: f32 = 0.1;
 
 const WORKGROUP_SIZE: u32 = 64;
 const FIXED_STEP_SECONDS: f32 = 1.0 / 60.0;
-/// How many fixed steps one rendered frame may consume.
-///
-/// The sim lives in `FixedUpdate`, which Unity runs as many times per frame as
-/// the accumulated time needs; the game defines no per-frame cap at all. A cap
-/// of one, paired with an accumulator clamped back to a single step, threw away
-/// real time every frame: at 30 fps the hair integrated thirty steps a second
-/// instead of sixty and fell at half speed, so every physics slider read weaker
-/// in the viewport than it would behave in VaM — and that mis-tune shipped.
-/// Six is the elapsed clamp divided by the step, so it can never bind.
 const MAX_FRAME_STEPS: usize = 6;
 
-/// The most quads a single guide segment can be asked to carry.
-///
-/// The game has no per-segment ceiling: the hull shader sets
-/// `detail = curveDensity`, whose own clamp is 64, and a strand with one
-/// segment must still be drawn at every one of those points. Anything
-/// lower drops whole corners of the polyline rather than merely rounding
-/// them — at the worst shipped ratio a curl collapsed to a near straight
-/// line.
 pub(crate) const MAX_RENDER_SUBDIVISIONS: u32 = 64;
 
 const MAX_VAM_ITERATIONS: u32 = 5;
@@ -180,17 +163,6 @@ fn head_distance(position: vec3<f32>) -> f32 {
             }
         }
     }
-    // Outside the box the cell fetch clamps, which repeats the boundary slab
-    // for ever — a head-shaped column extruded down through the shoulders,
-    // which is not a collider anybody built.
-    //
-    // Added, not maxed. The cell fetch has already clamped the sample onto the
-    // box wall, so `total` is the distance from the nearest point on that wall
-    // to the head; how far past the wall we stand adds to it. That keeps the
-    // gradient pointing away from the *head*. A `max` hands back the box's own
-    // gradient instead — a repulsive shell around the grid, which is a second
-    // phantom collider in place of the first. Inside, the term is zero and the
-    // field is untouched, negatives and all.
     let span = cell * max(f32(resolution) - 1.0, 0.0);
     let outside = max(header.xyz - position, position - (header.xyz + vec3<f32>(span)));
     return total + length(max(outside, vec3<f32>(0.0)));
@@ -1024,18 +996,8 @@ impl HairPhysicsScene {
             self.last_time_seconds = Some(time_seconds);
             return;
         }
-        // A morphing head is not a reset. `PartialReset(10)` fires on a
-        // WorldScale change and on nothing else; a morph moves
-        // `transforms[MatrixId]` and the strands follow through their point
-        // joints without the solver being told anything. Resetting on a quiet
-        // period after a sculpt edit dropped all inertia and froze the hair for
-        // ten frames, so the settling the author was judging was not the
-        // settling the game produces.
         let effective_gravity = settle_gravity;
         if (self.settle_gravity - effective_gravity).abs() > f32::EPSILON {
-            // Physics off to on is the one case that really does reset: VaM
-            // runs the whole reset kernel and snaps every particle to rest, so
-            // the warmup starts from the beginning rather than ten frames in.
             if self.settle_gravity <= 0.0 && effective_gravity > 0.0 {
                 self.frame = 0;
             }
@@ -1112,18 +1074,11 @@ impl HairPhysicsScene {
         self.render_subdivisions
     }
 
-    /// Indices to draw with: six to a quad over
-    /// [`crate::hair_renderer::HAIR_QUAD_CORNERS`] corners, two of them repeats
-    /// the vertex stage no longer has to run.
-    /// What a single flat draw would have needed — still the size of the shared
-    /// quad index buffer, which has to cover the largest run.
     pub(crate) const fn render_index_count(&self) -> u32 {
         self.render_segment_count
             .saturating_mul(6 * self.render_subdivisions)
     }
 
-    /// One draw per stride: how many indices it covers, and the instance slot
-    /// that carries its stride and its first segment.
     pub(crate) fn render_runs(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
         self.render_runs
             .iter()
@@ -1136,13 +1091,6 @@ impl HairPhysicsScene {
     }
 }
 
-/// What a hair scene is built from.
-///
-/// Kept so a build that produced NOTHING can be remembered as well as one that
-/// produced something. A part with no strands used to fail the scene lookup
-/// every frame, rebuild everything — the rest particles, the constraint graph,
-/// and a 64-cubed distance field against the head — and be thrown away again,
-/// for as long as it was on screen.
 #[derive(Clone)]
 pub(crate) struct SceneInputs {
     preview: Arc<HairPreview>,
@@ -1178,8 +1126,6 @@ impl SceneInputs {
     }
 }
 
-/// The one rule for "these are the same inputs", used by the live scene and by
-/// the record of an empty one alike.
 fn same_inputs(
     held: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
     asked: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
@@ -1399,12 +1345,6 @@ fn build_scene_data(
             built.flat_quads as f64 / built.run_quads.max(1) as f64,
         ),
     );
-    // Nothing to draw, so nothing to collide with. `head_field_for_mesh`
-    // measures a 64-cubed grid against the head — 262,144 point-to-mesh
-    // distances — and the caller was about to throw the result away.
-    // Nothing to draw, so nothing to collide with. `head_field_for_mesh`
-    // measures a 64-cubed grid against the head — 262,144 point-to-mesh
-    // distances — and the caller was about to throw the result away.
     if rests.is_empty() || render_segments.is_empty() {
         return None;
     }
@@ -1488,15 +1428,6 @@ fn collision_radius(physics: &vkit_core::vam::HairPhysicsSettings, point_index: 
     }
 }
 
-/// How many quads one segment of a strand is drawn with.
-///
-/// This has to agree exactly with the shader, which reads the density from
-/// `spread_b.w` — clamped to 2..=64, NOT to the subdivision ceiling — and
-/// divides it by the strand's segment count. Clamping first and dividing after
-/// gives a smaller answer, and the shader then draws half the samples it wanted:
-/// each quad spans an arc it was never meant to, and a curl comes out as flat
-/// black shards.
-/// The subdivision count, reachable from the renderer's contract test.
 #[cfg(test)]
 pub(crate) fn segment_subdivisions_for_test(curve_density: u32, segment_count: u32) -> u32 {
     segment_subdivisions(curve_density, segment_count)
@@ -1514,7 +1445,6 @@ fn segment_subdivisions(curve_density: u32, segment_count: u32) -> u32 {
 pub(crate) struct GpuGuideData {
     pub normal_phase: [f32; 4],
 
-    /// The three curl randoms, and in `w` the chord of the guide **at rest**.
     pub rand: [f32; 4],
 }
 
@@ -1523,11 +1453,6 @@ fn build_guide_data(preview: &HairPreview, mesh: &SurfaceMesh) -> Option<Vec<Gpu
     for part in preview.parts.iter() {
         for guide in part.guides.iter() {
             let frame = binding_frame(&guide.binding, mesh)?;
-            // How many turns a strand carries is measured on the rest chord —
-            // the kernel reads GPPointJoint.Point for the first and last
-            // particle, a different buffer from the live positions it takes the
-            // rotation axis from. Reading the live chord instead makes the
-            // ringlet count breathe as the lock stretches and compresses.
             let rest = deformed_guide_points(guide, mesh)?;
             let rest_chord = match (rest.first(), rest.last()) {
                 (Some(first), Some(last)) => (*last - *first).length(),
@@ -1721,39 +1646,18 @@ fn cling_constraints(
     result
 }
 
-/// The quads to draw, and how many of them each segment is worth.
-///
-/// The stride has to be the largest number of quads any one segment actually
-/// asks for. Handing the draw the whole `curveDensity` instead issues that many
-/// per segment and throws all but `curveDensity / segments` of them away — four
-/// out of every five for a typical style, every frame, in the vertex shader.
-/// One draw: a stride, and the run of segments that want it.
-///
-/// `[stride, first_segment, segment_count, 0]`, laid out for the shader to read
-/// by `instance_index`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(crate) struct GpuDrawRun {
     pub meta: [u32; 4],
 }
 
-/// The segments to draw, grouped by how finely each one is subdivided.
-///
-/// It used to be one flat list drawn at the LARGEST subdivision count any
-/// strand asked for, with the vertex stage throwing away every quad past each
-/// strand's own count — four vertices invoked and discarded, per wasted quad.
-/// The count is `ceil(curveDensity / segment_count)`, so it is largest for the
-/// SHORTEST strands, and one short strand made every long one in the preset pay
-/// its stride. Grouping costs a handful of draw calls and wastes nothing.
 struct RenderSegments {
     segments: Vec<GpuHairRenderSegment>,
     runs: Vec<GpuDrawRun>,
 
-    /// The largest stride in use, for sizing the shared index buffer.
     stride: u32,
 
-    /// Quads a single-stride draw would have issued, and quads these runs
-    /// issue. Logged so the saving is a measurement and not a claim.
     flat_quads: u64,
     run_quads: u64,
 }
@@ -1763,9 +1667,6 @@ fn render_segments(
     ranges: &[Vec<GuideRange>],
     limit: usize,
 ) -> RenderSegments {
-    // Bucketed by stride as they are built, so the flatten below is a
-    // concatenation rather than a sort: segment order within a stride is the
-    // order they were authored in.
     let mut buckets: std::collections::BTreeMap<u32, Vec<GpuHairRenderSegment>> =
         std::collections::BTreeMap::new();
     let mut produced = 0_usize;
@@ -1892,11 +1793,9 @@ impl HeadSdfGrid {
                 }
             }
         }
-        // The same far field the kernel uses.
         total + self.escape(point)
     }
 
-    /// How far a point lies outside the grid's box, or zero inside it.
     #[cfg(test)]
     fn escape(&self, point: Vec3) -> f32 {
         let span = self.cell * (HEAD_SDF_RESOLUTION as f32 - 1.0);
@@ -1955,17 +1854,6 @@ fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
     })
 }
 
-/// Which triangles sit on an open edge of the mesh.
-///
-/// The head is cut off at the neck, so it is not a closed surface, and the
-/// inside/outside test below — the sign of `offset · normal` against the
-/// nearest face — is only meaningful where the surface actually closes. At the
-/// rim of the opening the nearest triangle's normal points sideways while the
-/// offset points down past it, so the dot product sits near zero and its sign
-/// flips with whichever rim triangle happens to be closest. Neighbouring cells
-/// come out `+d` and `-d`, and the field grows a ridged phantom surface in the
-/// band below the neck — right under the trapezius, which is where hair was
-/// being shoved back and forth and never settling.
 fn open_rim_triangles(mesh: &Mesh) -> Vec<bool> {
     use std::collections::HashMap;
 
@@ -2017,9 +1905,6 @@ fn signed_distance_to(
         .and_then(|triangle| face_normal(mesh, *triangle))?;
     let offset = point - surface;
     let distance = offset.length();
-    // No sign where the surface does not close. Unsigned reads as "outside",
-    // which is the honest answer below the neck: there is nothing there to be
-    // inside of, and what does live there is the body's own colliders.
     if open_rim
         .get(hit.primitive_id as usize)
         .copied()
@@ -2047,17 +1932,6 @@ fn face_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
     (normal.length_squared() > 1.0e-20).then(|| normal.normalize())
 }
 
-/// The last head measured, kept so the next scene does not measure it again.
-///
-/// Every hair part builds a scene of its own, and every scene wanted this
-/// field: seven parts, seven identical grids, off the same head. Each one is a
-/// BVH over the head's triangles plus 262,144 signed-distance queries against
-/// it, and the seven of them were the 0.77-second stall a preset load put on
-/// the frame that loaded it.
-///
-/// One entry is enough — there is one head. The key is `SurfaceMesh::revision`,
-/// which is a content hash of the vertices and the visible triangles, so a head
-/// that moved gets a new grid and a head that did not gets the old one.
 static HEAD_SDF: std::sync::Mutex<Option<(u64, Arc<HeadSdfGrid>)>> = std::sync::Mutex::new(None);
 
 fn cached_head_sdf(mesh: &SurfaceMesh) -> Option<Arc<HeadSdfGrid>> {
@@ -2338,18 +2212,8 @@ mod tests {
         }
     }
 
-    /// An open mesh has no inside near its opening, and the field must not
-    /// claim one.
-    ///
-    /// The sign comes from the nearest face's normal, which only means anything
-    /// where the surface closes. At the rim of the neck the normal points
-    /// sideways while the offset points down past it, so the dot product sits
-    /// near zero and flips with whichever rim triangle wins — neighbouring
-    /// cells read `+d` and `-d`, and the band below the neck grows a ridged
-    /// phantom surface for hair to be shoved back and forth across.
     #[test]
     fn a_surface_that_does_not_close_gets_no_inside() {
-        // A single triangle: every edge is open, so nothing may read negative.
         let mesh = Mesh {
             vertices: vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 0.0, 10.0]],
             triangles: vec![[0, 1, 2]],
@@ -2368,13 +2232,6 @@ mod tests {
         }
     }
 
-    /// Below the head there is no collider, and the field has to say so.
-    ///
-    /// The cell fetch clamps at the grid edge, which outside the box repeats
-    /// the boundary slab for ever — the head's lowest cross-section extruded
-    /// straight down through the neck and out into the shoulders. Hair hanging
-    /// there was being held up by a column nobody built, and a joint resting on
-    /// its ridge got pushed out and pulled back every step, for ever.
     #[test]
     fn the_head_field_does_not_extrude_a_phantom_column_below_the_head() {
         let mesh = sphere_mesh(Vec3::new(0.0, 160.0, 0.0), 9.0);
@@ -2382,7 +2239,6 @@ mod tests {
         let span = grid.cell * (HEAD_SDF_RESOLUTION as f32 - 1.0);
         let centre = grid.origin + Vec3::splat(span * 0.5);
 
-        // Straight down from the middle of the head, a long way past the box.
         for drop in [1.5_f32, 3.0, 8.0] {
             let below = Vec3::new(centre.x, grid.origin.y - span * drop, centre.z);
             let reach = grid.origin.y - below.y;
@@ -2392,7 +2248,6 @@ mod tests {
                 grid.sample(below),
             );
         }
-        // And inside, the field is untouched — the far term is zero there.
         assert!(
             grid.sample(centre) < span,
             "the middle of the head stopped reading as near it",
@@ -2538,11 +2393,6 @@ mod tests {
         )
     }
 
-    /// The same head is measured once, however many hair parts want it.
-    ///
-    /// Seven parts meant seven identical distance fields, each a BVH over the
-    /// head plus 262,144 queries against it. That was the 0.77-second stall on
-    /// the frame a preset loaded.
     #[test]
     fn one_head_is_measured_once_however_many_parts_ask() {
         let mesh = sphere_mesh(Vec3::ZERO, 1.0);
@@ -2554,7 +2404,6 @@ mod tests {
             "the second part measured the head again",
         );
 
-        // A head that moved is a different head, and gets its own field.
         let moved = sphere_mesh(Vec3::new(0.0, 3.0, 0.0), 1.0);
         assert_ne!(moved.revision, mesh.revision, "the fixture must differ");
         let after = cached_head_sdf(&moved).expect("the moved head has a field");
@@ -2565,14 +2414,6 @@ mod tests {
         );
     }
 
-    /// A preview with nothing to draw refuses BEFORE the expensive half.
-    ///
-    /// This is what the log caught: eighty-seven consecutive frames of
-    /// `particles=0; segments=0`. A part with no strands failed the scene
-    /// lookup, rebuilt everything a scene needs, found it had no segments, and
-    /// was discarded — then did it again next frame. The costly part is
-    /// `head_field_for_mesh`, a 64-cubed grid of point-to-mesh distances, and
-    /// it ran every one of those times for a result nobody kept.
     #[test]
     fn a_preview_with_no_strands_stops_before_the_distance_field() {
         use crate::hair_preview::HairPreviewStrand;
@@ -2583,10 +2424,6 @@ mod tests {
         }
         let mesh = sphere_mesh(Vec3::ZERO, 1.0);
 
-        // `build_scene_data` itself refuses. The check used to live one level
-        // up, in `HairPhysicsScene::new`, which meant the field had already
-        // been built by the time anybody noticed there was nothing to draw —
-        // so moving it back there fails here, which is the ordering this pins.
         assert!(
             build_scene_data(&preview, &mesh, usize::MAX, usize::MAX, HairSimulation::Off)
                 .is_none(),
@@ -2594,7 +2431,6 @@ mod tests {
         );
     }
 
-    /// The two records of "what this was built from" answer alike.
     #[test]
     fn an_empty_record_and_a_live_scene_agree_on_what_changed() {
         let preview = Arc::new(two_strand_preview());
@@ -2614,19 +2450,9 @@ mod tests {
         );
     }
 
-    /// Every segment lands in a run whose stride is its OWN subdivision count.
-    ///
-    /// The draw used to be one flat range at the largest count any strand asked
-    /// for, and the vertex stage discarded the rest — four vertices invoked per
-    /// wasted quad. `ceil(curveDensity / segment_count)` is largest for the
-    /// SHORTEST strands, so one short strand made every long strand in the
-    /// preset pay its stride. This is the fixture where that hurts: two parts,
-    /// one dense and one sparse.
     #[test]
     fn each_segment_is_drawn_at_its_own_subdivision_and_no_finer() {
         let mut preview = two_strand_preview();
-        // Same guides, different densities: the second wants eight times the
-        // subdivisions of the first over the same segments.
         preview.parts[0].curve_density = 4;
         preview.parts[1].curve_density = 64;
 
@@ -2635,7 +2461,6 @@ mod tests {
 
         assert!(built.runs.len() >= 2, "two densities, two strides");
 
-        // Every run's segments, checked against the count that run promises.
         let mut covered = 0_usize;
         for run in &built.runs {
             let [stride, first, count, _] = run.meta;
@@ -2659,7 +2484,6 @@ mod tests {
             "a segment fell out of every run"
         );
 
-        // The saving, stated as the number it is.
         assert!(
             built.run_quads < built.flat_quads,
             "grouping issued {} quads and the flat draw issued {}",
@@ -2668,8 +2492,6 @@ mod tests {
         );
     }
 
-    /// One density everywhere means one run and nothing saved — and nothing
-    /// lost either, which is the case that must not regress.
     #[test]
     fn a_preset_of_one_density_is_a_single_run() {
         let mut preview = two_strand_preview();
@@ -2846,8 +2668,6 @@ mod tests {
                 );
             }
 
-            // Past the margin the read clamps to it, and the margin is positive:
-            // far from the head is never a collision, whichever way you left.
             let far = centre + direction * (radius * 4.0);
             assert!(
                 grid.sample(far) > 0.0,
@@ -2879,8 +2699,6 @@ mod tests {
         let grid = head_sdf_for_mesh(&mesh).expect("two spheres have a field");
         let tolerance = grid.cell * 1.5;
 
-        // The seam sits between the two spheres, outside both, and a star field
-        // built from the pair's centre reports it buried under the far surfaces.
         for height in [5.5_f32, 6.5, 7.5] {
             let seam = Vec3::new(0.0, height, 0.0);
             let truth = (seam - left).length().min((seam - right).length()) - radius;
@@ -2904,8 +2722,6 @@ mod tests {
 
     #[test]
     fn a_part_is_tessellated_as_finely_as_the_shader_will_ask_for() {
-        // The shader's own arithmetic, which this has to agree with exactly:
-        // it reads the density clamped to 2..=64 and divides by the segments.
         let shader_wants = |density: u32, segments: u32| {
             let density = density.clamp(2, 64) as f32;
             (density / segments as f32).ceil() as u32
@@ -2920,7 +2736,6 @@ mod tests {
                 );
             }
         }
-        // The whole point of computing it per segment rather than per part.
         assert!(
             segment_subdivisions(16, 4) < 16,
             "sixteen points spread over four segments is four apiece, not sixteen",
@@ -3065,26 +2880,18 @@ mod tests {
 mod face_field_probe {
     use super::*;
 
-    /// A closed box whose +z face is a shallow dish with a small bump in it —
-    /// the two things a face has that a sphere does not: a concavity a hair can
-    /// sit inside, and a protrusion beside it.
-    ///
-    /// `dish` is how deep the concavity goes (into the box), `bump` how far the
-    /// nose stands out.
     fn face_box(dish: f32, bump: f32, steps: usize) -> Mesh {
         let half = 10.0_f32;
         let depth = 10.0_f32;
         let mut vertices: Vec<[f64; 3]> = Vec::new();
         let mut triangles: Vec<[u32; 3]> = Vec::new();
 
-        // Front surface: a grid over x,y with z modulated.
         let at = |i: usize, j: usize| -> u32 { (j * (steps + 1) + i) as u32 };
         for j in 0..=steps {
             for i in 0..=steps {
                 let u = i as f32 / steps as f32 * 2.0 - 1.0;
                 let v = j as f32 / steps as f32 * 2.0 - 1.0;
                 let radial = (u * u + v * v).sqrt().min(1.0);
-                // A dish across the whole face, plus a narrow bump at the centre.
                 let sink = -dish * (1.0 - radial * radial);
                 let nose = bump * (-(radial * 6.0) * (radial * 6.0)).exp();
                 vertices.push([
@@ -3100,7 +2907,6 @@ mod face_field_probe {
                 triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
             }
         }
-        // Back plate and a skirt, so the mesh is closed and the sign is defined.
         let back_base = vertices.len() as u32;
         for j in 0..=steps {
             for i in 0..=steps {
@@ -3142,7 +2948,6 @@ mod face_field_probe {
             let mesh = SurfaceMesh::new(face_box(dish, bump, 40)).expect("a face is a mesh");
             let grid = head_sdf_for_mesh(&mesh).expect("a face has a field");
             let mut worst: Option<(Vec3, f32)> = None;
-            // Sweep the air in front of the whole face.
             for gy in -9..=9 {
                 for gx in -9..=9 {
                     for gz in 1..=40 {

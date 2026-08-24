@@ -1,27 +1,5 @@
-//! The surface every three-dimensional layer draws on, and the blit that puts
-//! it back in front of egui.
-//!
-//! One target for the whole frame, not one per pane. Each layer sets a viewport
-//! and a scissor to its own rectangle inside it — which is exactly what egui
-//! does for a paint callback today — so panes keep their own corner of one
-//! colour buffer and one depth buffer. That shared depth buffer is the reason
-//! the layers can depth-test against each other, and the reason this cannot be
-//! done a layer at a time: skin, scalp and hair are one scene.
-//!
-//! The first layer of a frame clears; the rest load. Then each layer's `paint`
-//! blits the finished surface over its own rectangle. Every layer blitting is a
-//! few extra full-rectangle draws of an opaque texture per frame, which is
-//! nothing beside the hair, and it buys a rule with no state in it: whichever
-//! layer is painting, what it puts on screen is the whole scene, because egui
-//! runs every `prepare` before it runs any `paint`.
-
 use crate::renderer::{DEPTH_FORMAT, OffscreenTarget, msaa_samples};
 
-/// A layer's place in the frame: which rectangle, and which frame.
-///
-/// Carried on the callback so `prepare` knows it. Only `paint_callback` has the
-/// rectangle, and it takes the callback by value, so filling this in there costs
-/// the places that build callbacks nothing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SceneSpot {
     pub rect: egui::Rect,
@@ -29,9 +7,6 @@ pub struct SceneSpot {
 }
 
 impl Default for SceneSpot {
-    /// A spot with no pixels: what a callback carries until `paint_callback`
-    /// fills it in, and what the thumbnail path leaves it as because it never
-    /// goes through egui at all.
     fn default() -> Self {
         Self {
             rect: egui::Rect::NOTHING,
@@ -41,9 +16,6 @@ impl Default for SceneSpot {
 }
 
 impl SceneSpot {
-    /// Where and when a layer draws. The one place a rectangle enters the
-    /// scene: `paint_callback` takes this and hands egui the rectangle out of
-    /// it, so there is never a second copy to keep in step.
     #[must_use]
     pub fn of(ui: &egui::Ui, rect: egui::Rect) -> Self {
         Self {
@@ -53,7 +25,6 @@ impl SceneSpot {
     }
 }
 
-/// Where a layer draws inside the frame's surface, in physical pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScenePlacement {
     pub x: u32,
@@ -74,8 +45,6 @@ impl ScenePlacement {
         }
     }
 
-    /// Trimmed to what the surface actually has, so a pane hanging off the edge
-    /// of a shrinking window cannot ask for pixels that are not there.
     #[must_use]
     fn clipped(self, width: u32, height: u32) -> Option<Self> {
         if self.x >= width || self.y >= height {
@@ -96,8 +65,6 @@ const BLIT_SHADER: &str = r#"
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
-    // One triangle covering the clip volume. The scissor egui has already set
-    // for this callback is what trims it to the layer's rectangle.
     let x = f32((vertex_index << 1u) & 2u) * 2.0 - 1.0;
     let y = f32(vertex_index & 2u) * 2.0 - 1.0;
     return vec4<f32>(x, -y, 0.0, 1.0);
@@ -105,8 +72,6 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<
 
 @fragment
 fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    // The surface is the size of the frame, so the fragment's own pixel is the
-    // texel: no sampler, no filtering, no half-pixel to get wrong.
     return textureLoad(scene, vec2<i32>(position.xy), 0);
 }
 "#;
@@ -119,10 +84,6 @@ pub struct SceneSurface {
     format: wgpu::TextureFormat,
     cleared_for: Option<u64>,
 
-    /// What the scene's own pipelines were built at, which is not the same
-    /// question as what this surface's textures were built at. A pipeline
-    /// carries its sample count from creation and a pass carries its own; bind
-    /// one to the other and every draw fails validation.
     pipeline_samples: u32,
 }
 
@@ -175,20 +136,12 @@ impl SceneSurface {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format,
-                    // The scene is composited over the panel egui has already
-                    // painted, exactly as it was when it drew into egui's own
-                    // pass. Premultiplied because that is what the layers leave:
-                    // each blends over a transparent surface, so what comes out
-                    // of the resolve already has its alpha folded in.
                     blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState::default(),
-            // egui's pass carries a depth attachment, so the blit has to declare
-            // one. It neither reads nor writes it: the scene it is carrying has
-            // already resolved its own depth.
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(false),
@@ -219,10 +172,6 @@ impl SceneSurface {
         self.format
     }
 
-    /// Take the count the scene's pipelines need rebuilding for, if any.
-    ///
-    /// Returns `Some` exactly once per change, so the caller rebuilds and the
-    /// layers after it in the same frame do not.
     pub fn pipelines_out_of_date(&mut self) -> Option<u32> {
         let samples = msaa_samples();
         (samples != self.pipeline_samples).then(|| {
@@ -231,12 +180,6 @@ impl SceneSurface {
         })
     }
 
-    /// Open the pass a layer draws in, with the viewport and scissor set to its
-    /// rectangle.
-    ///
-    /// The first call of a frame clears the surface; the rest load what is
-    /// already there. `None` means there is nothing to draw into — a pane with
-    /// no pixels, or a rectangle entirely off the surface.
     pub fn begin(
         &mut self,
         device: &wgpu::Device,
@@ -262,7 +205,6 @@ impl SceneSurface {
                 }],
             }));
             self.target = Some(target);
-            // A surface that was just made holds nothing, whatever frame it is.
             self.cleared_for = None;
         }
         let placement = placement.clipped(width, height)?;
@@ -270,8 +212,6 @@ impl SceneSurface {
         let first_of_the_frame = self.cleared_for != Some(frame);
         self.cleared_for = Some(frame);
 
-        // Empty, not a colour: what the layers do not cover has to stay the
-        // panel egui painted underneath.
         let mut pass = target.begin_layer(
             encoder,
             first_of_the_frame.then_some(wgpu::Color::TRANSPARENT),
@@ -288,8 +228,6 @@ impl SceneSurface {
         Some(pass)
     }
 
-    /// Put the finished surface back in front of egui, over whatever rectangle
-    /// egui has scissored this callback to.
     pub fn blit(&self, pass: &mut wgpu::RenderPass<'static>) {
         let Some(bind_group) = self.bind_group.as_ref() else {
             return;

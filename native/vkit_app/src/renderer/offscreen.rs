@@ -1,28 +1,5 @@
-//! A surface of our own to draw the scene on.
-//!
-//! Everything three-dimensional here has, until now, drawn straight into
-//! egui's render pass. That works, and it costs one thing: the sample count is
-//! egui's. It is fixed when the `Painter` is built, it is baked into egui's own
-//! pipelines, and there is no way to change it while the program runs — so
-//! asking for 8x meant asking for a restart.
-//!
-//! A target of our own moves that decision to us. The scene is drawn into a
-//! multisampled colour buffer with its own depth attachment, resolved once, and
-//! the resolved texture is what egui is handed. egui's own sample count then
-//! stops mattering — its shapes are anti-aliased by its tessellator, not by
-//! multisampling — and ours becomes a number that can change between frames.
-//!
-//! [`crate::hair_portrait`] already worked this way for thumbnails. This is the
-//! same machinery, sized to a rectangle rather than a square, and asked for a
-//! sample count rather than reading the process-wide one.
-
 use crate::renderer::DEPTH_FORMAT;
 
-/// The colour, depth and resolve attachments the scene is drawn through.
-///
-/// Rebuilt when the size or the sample count changes, and not otherwise: the
-/// textures are the expensive part and a viewport that is not being resized
-/// keeps the same ones frame after frame.
 pub struct OffscreenTarget {
     multisampled: Option<wgpu::TextureView>,
     resolved: wgpu::Texture,
@@ -46,11 +23,6 @@ impl std::fmt::Debug for OffscreenTarget {
 }
 
 impl OffscreenTarget {
-    /// At one sample there is no multisampled buffer at all: the scene is drawn
-    /// straight into the resolve texture. A single-sample colour attachment
-    /// with a resolve target of its own is not a pass wgpu will accept, and
-    /// allocating a 1x "multisampled" buffer to copy out of would be a second
-    /// full-size texture for nothing.
     #[must_use]
     pub fn new(
         device: &wgpu::Device,
@@ -118,12 +90,6 @@ impl OffscreenTarget {
         }
     }
 
-    /// Give back a target of this shape, reusing the textures when the shape
-    /// has not moved.
-    ///
-    /// This is where a changed sample count takes effect: the caller passes the
-    /// count it wants every frame, and the frame it differs is the frame the
-    /// attachments are rebuilt at it.
     #[must_use]
     pub fn reshaped(
         self,
@@ -153,7 +119,6 @@ impl OffscreenTarget {
             && self.samples == samples.max(1)
     }
 
-    /// The single-sample texture the scene ends up in, for whoever draws it.
     #[must_use]
     pub const fn resolved(&self) -> &wgpu::Texture {
         &self.resolved
@@ -164,8 +129,6 @@ impl OffscreenTarget {
         &self.resolved_view
     }
 
-    /// Open the pass the whole scene is drawn in — one pass, one depth buffer,
-    /// so the layers depth-test against each other the way they do today.
     pub fn begin(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -174,12 +137,6 @@ impl OffscreenTarget {
         self.begin_layer(encoder, Some(clear))
     }
 
-    /// One layer's pass. `None` loads what the layers before it left; `Some`
-    /// clears, which is what the first layer of a frame does.
-    ///
-    /// A multisampled pass resolves on every `end`, so a surface drawn in four
-    /// passes resolves four times. Each resolve carries everything drawn so
-    /// far, which is why the layer that paints last shows the whole scene.
     pub fn begin_layer(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -249,11 +206,6 @@ mod tests {
         Some((device, queue, adapter))
     }
 
-    /// Draw nothing but the clear, read the pixels back, and check the whole
-    /// rectangle carries the colour that was asked for. It is the smallest
-    /// thing that proves the attachments are wired: a resolve target that is
-    /// not written, or a multisampled buffer that is not resolved, comes back
-    /// black rather than green.
     fn clear_and_read(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -338,10 +290,6 @@ mod tests {
         }
     }
 
-    /// One sample has no multisampled buffer to resolve out of — the scene goes
-    /// straight into the resolve texture — and more than one does. Both have to
-    /// come back as a picture, which is what the test above checks; this pins
-    /// the arrangement so the reason stays visible.
     #[test]
     fn a_single_sample_target_allocates_no_second_buffer() {
         let Some((device, _queue, _adapter)) = device() else {
@@ -356,10 +304,6 @@ mod tests {
         assert!(many.matches(FORMAT, 8, 8, 4));
     }
 
-    /// The sample count changes between frames, so the target has to notice.
-    /// Reusing the textures when nothing moved is the whole reason `reshaped`
-    /// exists; rebuilding them when the count moves is the reason the setting
-    /// can take effect without a restart.
     #[test]
     fn a_target_is_kept_when_its_shape_holds_and_rebuilt_when_it_does_not() {
         let Some((device, _queue, _adapter)) = device() else {
@@ -388,8 +332,6 @@ mod tests {
         let Some((device, _queue, _adapter)) = device() else {
             return;
         };
-        // A pane collapsed to nothing must not ask wgpu for a zero-extent
-        // texture, which is a validation error rather than an empty picture.
         let target = OffscreenTarget::new(&device, FORMAT, 0, 0, 4);
         assert!(target.matches(FORMAT, 1, 1, 4));
     }
