@@ -1323,15 +1323,7 @@ impl AppState {
             Action::NoteReferenceImageAspect { id, aspect } => {
                 self.reference_board.note_aspect(id, aspect);
             }
-            Action::SetHairTool(tool) => {
-                self.hair_project.active_tool = tool;
-                // The stiffness brush paints onto the joints, and the joints are
-                // what the stream draws. With the stream off there is nothing on
-                // screen carrying the heatmap, so the brush would be aimed blind.
-                if tool == crate::hair_project::HairTool::Rigidity {
-                    self.hair_show_streams = true;
-                }
-            }
+            Action::SetHairTool(tool) => self.hair_project.active_tool = tool,
             Action::SelectHairParamGroup(group) => self.hair_param_group = group,
             Action::SetHairBrushStrength(strength) => {
                 self.hair_brush_strength = strength.clamp(0.05, 1.0);

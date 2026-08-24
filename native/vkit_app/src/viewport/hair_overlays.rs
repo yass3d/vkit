@@ -129,7 +129,9 @@ pub(super) fn add_hair_authoring_overlays(
     let normals = scalp.normals();
     draw_hair_part_previews(ui, rect, state, camera);
 
-    if furniture && state.hair_show_streams {
+    if furniture && state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity {
+        draw_stiffness_streams(ui, painter, rect, state, camera);
+    } else if furniture && state.hair_show_streams {
         draw_hair_streams(ui, painter, rect, state, camera);
     }
 
@@ -986,6 +988,66 @@ pub(super) fn hair_depth_field(
     field
 }
 
+/// How thick the stiffness view draws a strand.
+///
+/// Fat enough that the colour is the thing you read rather than a hairline you
+/// have to hunt for. The game shows painted rigidity the same way — on the
+/// curve, not on the joints — and a brush is aimed at a stretch of hair, not at
+/// a dot.
+const STIFFNESS_STROKE: f32 = 3.5;
+
+/// Paint every strand as its own stiffness, segment by segment.
+///
+/// Its own overlay rather than a mode of the joint stream, for two reasons: it
+/// must not depend on a toggle the reader set for a different purpose, and it
+/// must not turn that toggle on behind their back. Picking the brush shows the
+/// colours; putting it down puts the viewport back exactly as it was.
+///
+/// Unpainted stretches are drawn as the rolloff the game would use, so the
+/// picture is what the hair *is*, not only what somebody has touched.
+fn draw_stiffness_streams(
+    ui: &Ui,
+    painter: &egui::Painter,
+    rect: Rect,
+    state: &AppState,
+    camera: TurntableCamera,
+) {
+    let field = hair_depth_field(ui, state, rect, camera);
+    let eye = camera.eye();
+    for part_id in state.hair_project.editable_parts() {
+        let Some(part) = state.hair_project.part(part_id) else {
+            continue;
+        };
+        let physics = crate::hair_export::authoring_physics(part);
+        for strand in part.strands.values() {
+            let points = strand.points_cm.len();
+            let seen = |index: usize| -> Option<Pos2> {
+                let world = glam::Vec3::from_array(*strand.points_cm.get(index)?);
+                let projected = camera.project(world, rect)?;
+                (!field.hides(projected.screen, (world - eye).length())).then_some(projected.screen)
+            };
+            let stiffness =
+                |index: usize| -> f32 {
+                    strand.rigidity.get(index).copied().unwrap_or_else(|| {
+                        vkit_core::vam::rolloff_rigidity(&physics, index, points)
+                    })
+                };
+            for index in 1..points {
+                // Skip the anchor leg: the scalp point is the game's own 1.1 and
+                // colouring it would read as a stiffness somebody chose.
+                let (Some(from), Some(to)) = (seen(index - 1), seen(index)) else {
+                    continue;
+                };
+                let middle = (stiffness(index - 1) + stiffness(index)) * 0.5;
+                painter.line_segment(
+                    [from, to],
+                    egui::Stroke::new(STIFFNESS_STROKE, crate::hair_rigidity::ink(middle)),
+                );
+            }
+        }
+    }
+}
+
 /// How big a strand joint is drawn, and how big the one under the hand is.
 const STREAM_POINT_RADIUS: f32 = 1.6;
 const STREAM_POINT_ACTIVE_RADIUS: f32 = 3.0;
@@ -998,7 +1060,6 @@ fn draw_hair_streams(
     camera: TurntableCamera,
 ) {
     let tinted = part_tint_active(state);
-    let heatmap = state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity;
     let field = hair_depth_field(ui, state, rect, camera);
     let eye = camera.eye();
     for part_id in state.hair_project.editable_parts() {
@@ -1010,7 +1071,6 @@ fn draw_hair_streams(
         } else {
             crate::theme::COLOR_PRIMARY
         };
-        let physics = crate::hair_export::authoring_physics(part);
         for (strand_id, strand) in &part.strands {
             let mut run: Vec<Pos2> = Vec::new();
             let flush = |run: &mut Vec<Pos2>| {
@@ -1040,22 +1100,10 @@ fn draw_hair_streams(
                             } else {
                                 STREAM_POINT_RADIUS
                             },
-                            // While the rigidity brush is out, every joint
-                            // reads as what is painted on it. Painted rigidity
-                            // is invisible otherwise, and a brush whose effect
-                            // you cannot see is one nobody can aim.
-                            match (editing, heatmap) {
-                                (true, _) => crate::theme::COLOR_HAIR_POINT_ACTIVE,
-                                (false, true) => crate::hair_rigidity::ink(
-                                    strand.rigidity.get(index).copied().unwrap_or_else(|| {
-                                        vkit_core::vam::rolloff_rigidity(
-                                            &physics,
-                                            index,
-                                            strand.points_cm.len(),
-                                        )
-                                    }),
-                                ),
-                                (false, false) => crate::theme::COLOR_HAIR_POINT,
+                            if editing {
+                                crate::theme::COLOR_HAIR_POINT_ACTIVE
+                            } else {
+                                crate::theme::COLOR_HAIR_POINT
                             },
                         );
                     }

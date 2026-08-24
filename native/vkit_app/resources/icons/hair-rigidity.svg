@@ -1,5 +1,6 @@
-<!-- Vkit original, drawn in the lucide grid: a strand held stiff at the root
-     and loose at the tip, with the brush that decides where the change sits -->
+<!-- Vkit original, drawn in the lucide grid: a dumbbell laid on the diagonal.
+     One closed outline, so it keeps its shape at toolbox size where an inner
+     stroke would fill in. -->
 <svg
   class="lucide lucide-hair-rigidity"
   xmlns="http://www.w3.org/2000/svg"
@@ -12,9 +13,8 @@
   stroke-linecap="round"
   stroke-linejoin="round"
 >
-  <path d="M4 3v7" />
-  <path d="M4 10c0 5 2 6 2 11" />
-  <path d="M11 3v7" />
-  <path d="M11 10c0 5 4 5 4 11" />
-  <circle cx="17" cy="7" r="3" />
+  <path
+    transform="rotate(-45 12 12)"
+    d="M5 8h4v2.5h6V8h4v8h-4v-2.5H9V16H5z"
+  />
 </svg>

@@ -3618,6 +3618,32 @@ fn cutting_shortens_in_proportion_and_keeps_every_point() {
 }
 
 #[test]
+fn picking_the_stiffness_brush_leaves_the_viewport_toggles_where_they_were() {
+    use crate::hair_project::HairTool;
+
+    // The stiffness view draws its own thick coloured curve, so it needs no
+    // help from the joint stream. A tool that switched a toggle on to show
+    // itself would leave the reader hunting for what changed after they put it
+    // down — and the toggle is theirs, not the tool's.
+    let mut state = probe_hair_state();
+    for streams in [false, true] {
+        state.hair_show_streams = streams;
+        state.hair_show_points = streams;
+        for tool in [HairTool::Rigidity, HairTool::Comb, HairTool::Plant] {
+            state.dispatch(crate::state::Action::SetHairTool(tool));
+            assert_eq!(
+                state.hair_show_streams, streams,
+                "{tool:?} moved the stream toggle",
+            );
+            assert_eq!(
+                state.hair_show_points, streams,
+                "{tool:?} moved the point toggle",
+            );
+        }
+    }
+}
+
+#[test]
 fn the_hair_strength_slot_follows_the_tool() {
     use crate::hair_project::HairTool;
     use crate::viewport::hair_hud::{BrushSlot, brush_slot};
