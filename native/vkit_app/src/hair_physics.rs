@@ -1936,6 +1936,7 @@ fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
     let centre = (minimum + maximum) * 0.5;
     let origin = centre - Vec3::splat(cell * (HEAD_SDF_RESOLUTION as f32 - 1.0) * 0.5);
 
+    let open_rim = open_rim_triangles(&visible);
     let distances = (0..HEAD_SDF_RESOLUTION.pow(3))
         .into_par_iter()
         .map(|index| {
@@ -1943,7 +1944,7 @@ fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
             let y = (index / HEAD_SDF_RESOLUTION) % HEAD_SDF_RESOLUTION;
             let z = index / (HEAD_SDF_RESOLUTION * HEAD_SDF_RESOLUTION);
             let point = origin + Vec3::new(x as f32, y as f32, z as f32) * cell;
-            signed_distance_to(&visible, &projector, point).unwrap_or(span)
+            signed_distance_to(&visible, &open_rim, &projector, point).unwrap_or(span)
         })
         .collect();
 
@@ -1954,7 +1955,54 @@ fn head_sdf_for_mesh(mesh: &SurfaceMesh) -> Option<HeadSdfGrid> {
     })
 }
 
-fn signed_distance_to(mesh: &Mesh, projector: &SurfaceProjector, point: Vec3) -> Option<f32> {
+/// Which triangles sit on an open edge of the mesh.
+///
+/// The head is cut off at the neck, so it is not a closed surface, and the
+/// inside/outside test below — the sign of `offset · normal` against the
+/// nearest face — is only meaningful where the surface actually closes. At the
+/// rim of the opening the nearest triangle's normal points sideways while the
+/// offset points down past it, so the dot product sits near zero and its sign
+/// flips with whichever rim triangle happens to be closest. Neighbouring cells
+/// come out `+d` and `-d`, and the field grows a ridged phantom surface in the
+/// band below the neck — right under the trapezius, which is where hair was
+/// being shoved back and forth and never settling.
+fn open_rim_triangles(mesh: &Mesh) -> Vec<bool> {
+    use std::collections::HashMap;
+
+    let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
+    for triangle in &mesh.triangles {
+        for pair in [
+            (triangle[0], triangle[1]),
+            (triangle[1], triangle[2]),
+            (triangle[2], triangle[0]),
+        ] {
+            let edge = (pair.0.min(pair.1), pair.0.max(pair.1));
+            *uses.entry(edge).or_default() += 1;
+        }
+    }
+    mesh.triangles
+        .iter()
+        .map(|triangle| {
+            [
+                (triangle[0], triangle[1]),
+                (triangle[1], triangle[2]),
+                (triangle[2], triangle[0]),
+            ]
+            .into_iter()
+            .any(|pair| {
+                let edge = (pair.0.min(pair.1), pair.0.max(pair.1));
+                uses.get(&edge).copied().unwrap_or(0) < 2
+            })
+        })
+        .collect()
+}
+
+fn signed_distance_to(
+    mesh: &Mesh,
+    open_rim: &[bool],
+    projector: &SurfaceProjector,
+    point: Vec3,
+) -> Option<f32> {
     let hit = projector
         .project([f64::from(point.x), f64::from(point.y), f64::from(point.z)])
         .ok()?;
@@ -1969,6 +2017,16 @@ fn signed_distance_to(mesh: &Mesh, projector: &SurfaceProjector, point: Vec3) ->
         .and_then(|triangle| face_normal(mesh, *triangle))?;
     let offset = point - surface;
     let distance = offset.length();
+    // No sign where the surface does not close. Unsigned reads as "outside",
+    // which is the honest answer below the neck: there is nothing there to be
+    // inside of, and what does live there is the body's own colliders.
+    if open_rim
+        .get(hit.primitive_id as usize)
+        .copied()
+        .unwrap_or(false)
+    {
+        return Some(distance);
+    }
     Some(if offset.dot(normal) < 0.0 {
         -distance
     } else {
@@ -2276,6 +2334,36 @@ mod tests {
                 wgsl_struct_size("hair-physics", HAIR_PHYSICS_SHADER, declared),
                 expected,
                 "{declared} differs between Rust and WGSL"
+            );
+        }
+    }
+
+    /// An open mesh has no inside near its opening, and the field must not
+    /// claim one.
+    ///
+    /// The sign comes from the nearest face's normal, which only means anything
+    /// where the surface closes. At the rim of the neck the normal points
+    /// sideways while the offset points down past it, so the dot product sits
+    /// near zero and flips with whichever rim triangle wins — neighbouring
+    /// cells read `+d` and `-d`, and the band below the neck grows a ridged
+    /// phantom surface for hair to be shoved back and forth across.
+    #[test]
+    fn a_surface_that_does_not_close_gets_no_inside() {
+        // A single triangle: every edge is open, so nothing may read negative.
+        let mesh = Mesh {
+            vertices: vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 0.0, 10.0]],
+            triangles: vec![[0, 1, 2]],
+        };
+        let open = open_rim_triangles(&mesh);
+        assert_eq!(open, vec![true], "a lone triangle is all rim");
+
+        let projector = projector_for_mesh(&mesh).expect("a projector");
+        for below in [-0.5_f32, -2.0, -8.0] {
+            let point = Vec3::new(3.0, below, 3.0);
+            let reading = signed_distance_to(&mesh, &open, &projector, point).expect("a reading");
+            assert!(
+                reading > 0.0,
+                "at {below} under an open sheet the field claimed an inside: {reading}",
             );
         }
     }
