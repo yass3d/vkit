@@ -14,14 +14,14 @@ pub enum ControlMode {
     #[default]
     Orbit,
 
-    Trackball,
+    VertexRotate,
 }
 
 impl ControlMode {
     pub const fn needs_an_exit(self) -> bool {
         match self {
             Self::Orbit => false,
-            Self::Trackball => true,
+            Self::VertexRotate => true,
         }
     }
 }
@@ -135,6 +135,6 @@ mod tests {
     #[test]
     fn only_a_mode_that_has_to_be_left_announces_itself() {
         assert!(!ControlMode::default().needs_an_exit());
-        assert!(ControlMode::Trackball.needs_an_exit());
+        assert!(ControlMode::VertexRotate.needs_an_exit());
     }
 }

@@ -20,6 +20,9 @@ pub(super) fn add_mesh_callback(
         color,
         style,
         depth_scope,
+        bed_markers,
+        markers,
+        lines,
     } = draw;
     let callback = MeshPaintCallback {
         spot: crate::renderer::SceneSpot::of(ui, rect),
@@ -37,6 +40,13 @@ pub(super) fn add_mesh_callback(
         color,
         style,
         depth_scope,
+        bed_markers,
+        markers,
+        lines,
+        viewport_pixels: {
+            let scale = ui.ctx().pixels_per_point();
+            [rect.width() * scale, rect.height() * scale]
+        },
     };
     ui.painter().add(callback.paint_callback());
 }
@@ -78,7 +88,7 @@ pub(super) fn add_skin_callback(
         skin_visibility,
         show_tear_lacrimals,
         show_eyelashes,
-        smooth_passes: state.surface_smooth_passes,
+        smooth_passes: state.drawn_smooth_passes(),
     };
     ui.painter().add(callback.paint_callback());
 }
@@ -96,6 +106,7 @@ pub(super) fn add_hair_callback(
     scene_key: u64,
     view: ResultRenderView,
     simulate: HairSimulation,
+    capture: Option<crate::hair_settle::Capture>,
 ) {
     for (index, scalp) in preview.scalps.iter().enumerate() {
         let callback = ScalpPaintCallback {
@@ -147,6 +158,7 @@ pub(super) fn add_hair_callback(
             let scale = ui.ctx().pixels_per_point();
             [rect.width() * scale, rect.height() * scale]
         },
+        capture,
         frame: ui.ctx().cumulative_pass_nr(),
     };
     ui.painter().add(callback.paint_callback());
@@ -281,6 +293,9 @@ pub(super) fn add_sculpt_result_callbacks(
                             color: color_array(g2_solid_color(state), 1.0),
                             style: RenderStyle::Solid,
                             depth_scope: RenderDepthScope::Shared,
+                            bed_markers: None,
+                            markers: None,
+                            lines: None,
                         },
                     );
                     continue;
@@ -380,6 +395,9 @@ pub(super) fn add_sculpt_result_callbacks(
                     color: color_array(g2_solid_color(state), 1.0),
                     style: RenderStyle::Solid,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -400,6 +418,9 @@ pub(super) fn add_sculpt_result_callbacks(
                     color: color_array(g2_solid_color(state), 1.0),
                     style: RenderStyle::Solid,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -433,14 +454,22 @@ pub(super) fn add_sculpt_result_callbacks(
                         color: color_array(g2_solid_color(state), 1.0),
                         style: RenderStyle::Solid,
                         depth_scope: RenderDepthScope::Shared,
+                        bed_markers: None,
+                        markers: None,
+                        lines: None,
                     },
                 );
             }
         }
     }
 
-    let wire_alpha = overlay_alpha(state.wireframe_opacity);
-    if state.wireframe_visible && wire_alpha > 0.0 {
+    let wire_alpha = if state.editing_the_cage() {
+        overlay_alpha(state.wireframe_opacity).max(CAGE_WIRE_ALPHA)
+    } else {
+        overlay_alpha(state.wireframe_opacity)
+    };
+    let markers = super::sculpt_vertex::markers(ui, state, rect, view.camera);
+    if state.wireframe_shown() && wire_alpha > 0.0 {
         if !has_grouped_surfaces {
             if !visible.contains(SculptTarget::HeadSkin) {
                 return;
@@ -457,8 +486,8 @@ pub(super) fn add_sculpt_result_callbacks(
                 RESULT_SCENE_KEY,
                 Arc::clone(&result_mesh),
                 view,
-                color,
-                alpha,
+                (color, alpha),
+                (None, None),
             );
         } else {
             for surface in &surfaces {
@@ -474,8 +503,8 @@ pub(super) fn add_sculpt_result_callbacks(
                     sculpt_group_scene_key(surface.group),
                     Arc::clone(&surface.mesh),
                     view,
-                    color,
-                    alpha,
+                    (color, alpha),
+                    (None, None),
                 );
             }
         }
@@ -491,7 +520,7 @@ pub(super) fn add_sculpt_result_callbacks(
                 ui,
                 rect,
                 RESULT_SCENE_KEY,
-                result_mesh,
+                Arc::clone(&result_mesh),
                 view,
                 XrayDraw {
                     color: g2_solid_color(state),
@@ -519,6 +548,20 @@ pub(super) fn add_sculpt_result_callbacks(
                 );
             }
         }
+    }
+
+    if let Some(markers) = markers {
+        add_overlay_callback(
+            ui,
+            rect,
+            SCULPT_OVERLAY_SCENE_KEY,
+            Arc::clone(&result_mesh),
+            view,
+            OverlayGeometry {
+                markers: Some(markers),
+                ..OverlayGeometry::default()
+            },
+        );
     }
 }
 
@@ -669,7 +712,7 @@ pub(super) fn add_result_composed_callbacks(
         state.base_view_mode,
         true,
         skin.is_some(),
-        state.wireframe_visible,
+        state.wireframe_shown(),
         state.wireframe_opacity,
         state.xray_visible,
         state.xray_opacity,
@@ -710,6 +753,9 @@ pub(super) fn add_result_composed_callbacks(
                     color: color_array(g2_solid_color(state), 1.0),
                     style: RenderStyle::Solid,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -723,8 +769,8 @@ pub(super) fn add_result_composed_callbacks(
                 *scene_key,
                 Arc::clone(mesh),
                 view,
-                wireframe_color(state),
-                alpha,
+                (wireframe_color(state), alpha),
+                (None, None),
             );
         }
     }
@@ -751,15 +797,68 @@ pub(super) fn add_result_composed_callbacks(
     }
 }
 
+const SCULPT_OVERLAY_SCENE_KEY: u64 = 0x5c19_0000_0000_0000;
+
+const CAGE_WIRE_ALPHA: f32 = 0.35;
+
+pub(super) type Overlay = (
+    Option<Arc<Vec<crate::renderer::LineInstance>>>,
+    Option<Arc<Vec<crate::renderer::MarkerInstance>>>,
+);
+
+#[derive(Default)]
+pub(super) struct OverlayGeometry {
+    pub bed: Option<Arc<Vec<crate::renderer::MarkerInstance>>>,
+    pub lines: Option<Arc<Vec<crate::renderer::LineInstance>>>,
+    pub markers: Option<Arc<Vec<crate::renderer::MarkerInstance>>>,
+}
+
+pub(super) fn add_overlay_callback(
+    ui: &Ui,
+    rect: Rect,
+    scene_key: u64,
+    mesh: Arc<SurfaceMesh>,
+    view: ResultRenderView,
+    geometry: OverlayGeometry,
+) {
+    let OverlayGeometry {
+        bed: bed_markers,
+        lines,
+        markers,
+    } = geometry;
+    add_mesh_callback(
+        ui,
+        SceneView {
+            rect,
+            camera: view.camera,
+            transform: ModelTransform::default(),
+        },
+        scene_key,
+        mesh,
+        view.grading,
+        view.smooth_passes,
+        MeshDraw {
+            color: [0.0; 4],
+            style: RenderStyle::Overlay,
+            depth_scope: RenderDepthScope::ResetBeforeDraw,
+            bed_markers,
+            markers,
+            lines,
+        },
+    );
+}
+
 pub(super) fn add_colored_result_wire_callback(
     ui: &Ui,
     rect: Rect,
     scene_key: u64,
     mesh: Arc<SurfaceMesh>,
     view: ResultRenderView,
-    color: Color32,
-    alpha: f32,
+    ink: (Color32, f32),
+    overlay: Overlay,
 ) {
+    let (color, alpha) = ink;
+    let (lines, markers) = overlay;
     add_mesh_callback(
         ui,
         SceneView {
@@ -775,6 +874,9 @@ pub(super) fn add_colored_result_wire_callback(
             color: color_array(color, alpha),
             style: RenderStyle::Wire,
             depth_scope: RenderDepthScope::Shared,
+            bed_markers: None,
+            markers,
+            lines,
         },
     );
 }
@@ -814,6 +916,9 @@ pub(super) fn add_result_xray_callback(
             color: color_array(color, alpha),
             style: RenderStyle::Xray,
             depth_scope,
+            bed_markers: None,
+            markers: None,
+            lines: None,
         },
     );
 }

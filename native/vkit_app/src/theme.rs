@@ -29,6 +29,8 @@ pub const COLOR_EMPHASIS: Color32 = Color32::from_rgb(0xf5, 0xb3, 0x0a);
 
 pub const COLOR_HAIR_POINT_ACTIVE: Color32 = Color32::from_rgb(0x7c, 0xff, 0x3d);
 
+pub const COLOR_HAIR_POINT_SELECTED: Color32 = Color32::from_rgb(0x3f, 0xb0, 0x14);
+
 pub const COLOR_HAIR_POINT: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
 
 pub const COLOR_TEXTURE_PIN: Color32 = Color32::from_rgb(42, 60, 78);

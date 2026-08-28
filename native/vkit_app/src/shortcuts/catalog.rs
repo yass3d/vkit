@@ -53,7 +53,7 @@ pub enum Shortcut {
     BrushSizeSweep,
     BrushStrengthSweep,
 
-    ViewTrackball,
+    VertexRotate,
 
     ViewLevelRoll,
 
@@ -116,13 +116,18 @@ pub enum Shortcut {
     LayerIsolate,
     LayerLocalView,
     LayerInvertSelection,
+    LayerSelectAll,
+    LayerRemove,
 
     VertexAddToSelectionHold,
     VertexRemoveFromSelectionHold,
+    VertexSelectConnected,
+    VertexGrowSelection,
+    VertexShrinkSelection,
 }
 
 impl Shortcut {
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 66] = [
         Self::SculptGrabBrush,
         Self::SculptRestoreBrush,
         Self::HairCombBrush,
@@ -142,7 +147,7 @@ impl Shortcut {
         Self::Redo,
         Self::BrushSizeSweep,
         Self::BrushStrengthSweep,
-        Self::ViewTrackball,
+        Self::VertexRotate,
         Self::ViewLevelRoll,
         Self::CancelStencil,
         Self::FrameSelected,
@@ -182,8 +187,13 @@ impl Shortcut {
         Self::LayerIsolate,
         Self::LayerLocalView,
         Self::LayerInvertSelection,
+        Self::LayerSelectAll,
+        Self::LayerRemove,
         Self::VertexAddToSelectionHold,
         Self::VertexRemoveFromSelectionHold,
+        Self::VertexSelectConnected,
+        Self::VertexGrowSelection,
+        Self::VertexShrinkSelection,
     ];
 
     pub const fn slot(self) -> usize {
@@ -218,7 +228,7 @@ impl Shortcut {
             Self::Redo => "redo",
             Self::BrushSizeSweep => "brush-size-sweep",
             Self::BrushStrengthSweep => "brush-strength-sweep",
-            Self::ViewTrackball => "view-trackball",
+            Self::VertexRotate => "vertex-rotate",
             Self::ViewLevelRoll => "view-level-roll",
             Self::CancelStencil => "cancel-stencil",
             Self::FrameSelected => "frame-selected",
@@ -258,8 +268,13 @@ impl Shortcut {
             Self::LayerIsolate => "layer-isolate",
             Self::LayerLocalView => "layer-local-view",
             Self::LayerInvertSelection => "layer-invert-selection",
+            Self::LayerSelectAll => "layer-select-all",
+            Self::LayerRemove => "layer-remove",
             Self::VertexAddToSelectionHold => "vertex-add-to-selection-hold",
             Self::VertexRemoveFromSelectionHold => "vertex-remove-from-selection-hold",
+            Self::VertexSelectConnected => "vertex-select-connected",
+            Self::VertexGrowSelection => "vertex-grow-selection",
+            Self::VertexShrinkSelection => "vertex-shrink-selection",
         }
     }
 
@@ -283,6 +298,8 @@ impl Shortcut {
             }
             Self::LightRotate => Trigger::Mouse(egui::PointerButton::Secondary),
             Self::LayerLocalView => Trigger::Numpad(NumpadKey::Divide),
+            Self::VertexGrowSelection => Trigger::Numpad(NumpadKey::Add),
+            Self::VertexShrinkSelection => Trigger::Numpad(NumpadKey::Subtract),
             Self::ViewReset => Trigger::Numpad(NumpadKey::Zero),
             Self::ViewToggleProjection => Trigger::Numpad(NumpadKey::Decimal),
             Self::ViewFront => Trigger::Numpad(NumpadKey::Five),
@@ -330,7 +347,7 @@ impl Shortcut {
             Self::Undo => Key::Z,
             Self::Redo => Key::Y,
             Self::BrushSizeSweep | Self::BrushStrengthSweep => Key::F,
-            Self::ViewTrackball | Self::ViewLevelRoll => Key::R,
+            Self::VertexRotate | Self::ViewLevelRoll => Key::R,
             Self::CancelStencil => Key::Escape,
             Self::FrameSelected => Key::F,
             Self::XSymmetry => Key::X,
@@ -344,6 +361,11 @@ impl Shortcut {
             Self::DiagnosticLogCopy => Key::C,
             Self::LayerHide | Self::LayerUnhideAll | Self::LayerIsolate => Key::H,
             Self::LayerInvertSelection => Key::I,
+            Self::LayerSelectAll => Key::A,
+            Self::LayerRemove => Key::Delete,
+            Self::VertexSelectConnected => Key::L,
+            Self::VertexGrowSelection => Key::Plus,
+            Self::VertexShrinkSelection => Key::Minus,
             Self::ViewReset
             | Self::ViewToggleProjection
             | Self::ViewFront
@@ -374,7 +396,7 @@ impl Shortcut {
         match self {
             Self::Undo | Self::Redo => ShortcutContext::Global,
 
-            Self::ViewTrackball | Self::ViewLevelRoll => ShortcutContext::Global,
+            Self::ViewLevelRoll => ShortcutContext::Global,
 
             Self::ViewOrbit | Self::ViewPan | Self::ViewDolly => ShortcutContext::Global,
 
@@ -428,9 +450,12 @@ impl Shortcut {
 
             Self::ListAddToSelectionHold | Self::ListSoloHold => ShortcutContext::Lists,
 
-            Self::VertexAddToSelectionHold | Self::VertexRemoveFromSelectionHold => {
-                ShortcutContext::VertexEdit
-            }
+            Self::VertexAddToSelectionHold
+            | Self::VertexRemoveFromSelectionHold
+            | Self::VertexSelectConnected
+            | Self::VertexGrowSelection
+            | Self::VertexRotate
+            | Self::VertexShrinkSelection => ShortcutContext::VertexEdit,
 
             Self::TextureCanvasPan => ShortcutContext::TextureEdit,
 
@@ -440,7 +465,9 @@ impl Shortcut {
             | Self::LayerUnhideAll
             | Self::LayerIsolate
             | Self::LayerLocalView
-            | Self::LayerInvertSelection => ShortcutContext::Lists,
+            | Self::LayerInvertSelection
+            | Self::LayerSelectAll
+            | Self::LayerRemove => ShortcutContext::Lists,
         }
     }
 
@@ -475,7 +502,6 @@ impl Shortcut {
             Self::ViewDolly => ModifierPolicy::Exactly(Modifiers::COMMAND),
 
             Self::BrushSizeSweep
-            | Self::ViewTrackball
             | Self::CancelStencil
             | Self::FrameSelected
             | Self::XSymmetry
@@ -516,7 +542,14 @@ impl Shortcut {
             Self::LayerHide | Self::LayerLocalView => ModifierPolicy::Exactly(Modifiers::NONE),
             Self::LayerIsolate => ModifierPolicy::Exactly(Modifiers::SHIFT),
             Self::LayerUnhideAll => ModifierPolicy::Exactly(Modifiers::ALT),
-            Self::LayerInvertSelection => ModifierPolicy::Exactly(Modifiers::COMMAND),
+            Self::LayerInvertSelection | Self::LayerSelectAll => {
+                ModifierPolicy::Exactly(Modifiers::COMMAND)
+            }
+            Self::LayerRemove
+            | Self::VertexSelectConnected
+            | Self::VertexGrowSelection
+            | Self::VertexRotate
+            | Self::VertexShrinkSelection => ModifierPolicy::Exactly(Modifiers::NONE),
         }
     }
 

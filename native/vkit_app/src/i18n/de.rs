@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "VaM-kompatible Render-Glättung. 0 ist das bearbeitbare Basismesh, 3 der VaM-Standard, 4 das Maximum. Morphs, UVs, Sculpting und Textur-Baking behalten die Basistopologie",
         ),
+        TextKey::ShowWornHair => Some("Getragenes Haar zeigen"),
+        TextKey::ShowWornHairHint => Some("Auf allen Tabs; verformt nichts"),
         TextKey::FaceMatch => Some("Erstellen"),
         TextKey::ResultPreview => Some("Speichern"),
         TextKey::Save => Some("Speichern"),
@@ -50,9 +52,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("Zeigt die Physik auf dem Bildschirm. Hat nichts mit dem Export zu tun.")
         }
+        TextKey::HairKeepSettledShape => Some("Anwenden"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("Rechnet die Physik für alle Teile und übernimmt, wo die Strähnen gelandet sind.")
+        }
         TextKey::HairMirrorEdit => Some("Spiegel-Bearbeitung"),
         TextKey::HairMirrorEditHint => {
             Some("Pinsel bearbeiten beide Seiten zugleich, links-rechts symmetrisch.")
+        }
+        TextKey::HairSingleStrand => Some("Eine Strähne"),
+        TextKey::HairSingleStrandHint => {
+            Some("Ein Strich bearbeitet nur die Strähne, auf der er begann.")
         }
         TextKey::HairAutoPart => Some("Auto-Part"),
         TextKey::HairAutoPartHint => Some(
@@ -92,6 +102,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::HairToolGrowHint => {
             Some("Straehnen unter dem Pinsel verlaengern; Alt haelt sie kuerzer")
+        }
+        TextKey::HairToolSettle => Some("Fallen lassen"),
+        TextKey::HairToolSettleHint => {
+            Some("Lässt die Strähnen unter dem Pinsel fallen und behält, wo sie landen.")
         }
         TextKey::HairToolEraseHint => Some("Straehnen unter dem Pinsel entfernen"),
         TextKey::HairToolCombHint => {
@@ -305,6 +319,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("VaM-Katalog wird indiziert"),
         TextKey::VaMFailed => Some("VaM-Katalog fehlgeschlagen"),
         TextKey::RefreshSkins => Some("Hautbibliothek aktualisieren"),
+        TextKey::RescanVaMFolder => Some("VaM-Ordner neu einlesen"),
         TextKey::MorphLoading => Some("Morph wird geladen"),
         TextKey::MorphLoadFailed => Some("Morph konnte nicht geladen werden"),
         TextKey::DefaultSkinMissing => Some("Diese Haut wurde nicht gefunden. VaM-Ordner prüfen"),
@@ -360,10 +375,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("Textur-Leinwand"),
         TextKey::ReferenceImages => Some("Referenz"),
         TextKey::ReferenceImagesEmpty => Some("Keine Referenzbilder"),
+        TextKey::ReferenceImageUnreadable => Some(
+            "Dieses Bild konnte nicht gelesen werden und ist daher in der Liste, aber nicht auf dem Bildschirm",
+        ),
         TextKey::ReferenceImageAdd => Some("Bild hinzufügen"),
         TextKey::ReferenceImageRemove => Some("Entfernen"),
+        TextKey::ReferenceImageLock => Some("Sperren"),
+        TextKey::ReferenceImageUnlock => Some("Entsperren"),
         TextKey::ReferenceImageRaise => Some("Nach vorn"),
         TextKey::ReferenceImageLower => Some("Nach hinten"),
+        TextKey::ReferenceHeadRow => Some("Kopf"),
+        TextKey::ReferenceHeadRowHint => Some("Bilder über dieser Zeile liegen über dem Kopf"),
         TextKey::ShortcutTextureCanvasPan => Some("Leinwand schieben (halten)"),
         TextKey::ShortcutDiagnosticLogCopy => Some("Protokoll kopieren"),
         TextKey::ShortcutLightRotate => Some("Licht drehen (halten)"),
@@ -372,6 +394,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("Die anderen Ebenen ausblenden"),
         TextKey::ShortcutLayerLocalView => Some("Nur diese zeigen (umschalten)"),
         TextKey::ShortcutLayerInvertSelection => Some("Auswahl umkehren"),
+        TextKey::ShortcutLayerSelectAll => Some("Alle Ebenen wählen"),
+        TextKey::ShortcutLayerRemove => Some("Gewählte Ebenen löschen"),
+        TextKey::ShortcutVertexSelectConnected => Some("Ganze Strähne wählen"),
+        TextKey::ShortcutVertexGrowSelection => Some("Auswahl erweitern"),
+        TextKey::ShortcutVertexShrinkSelection => Some("Auswahl verkleinern"),
         TextKey::ShortcutSculptSmoothHold => Some("Halten zum Glätten"),
         TextKey::ShortcutSculptInflateHold => Some("Halten zum Aufblähen"),
         TextKey::ShortcutSculptAlternateHold => Some("Halten für die Gegenrichtung"),
@@ -427,17 +454,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterShow => Some("Morphs zeigen, die nur eine Seite bewegen"),
         TextKey::MorphOneSidedFilterHide => Some("Morphs ausblenden, die nur eine Seite bewegen"),
         TextKey::AppearanceSearch => Some("Looks suchen"),
+        TextKey::SourceFilterAll => Some("Alle"),
+        TextKey::SourceFilterLooks => Some("Looks"),
+        TextKey::SourceFilterMorphs => Some("Morphs"),
         TextKey::AppearanceLayers => Some("Aussehens-Ebenen"),
         TextKey::AddAppearanceLayer => Some("Gewaehltes Aussehen hinzufuegen"),
         TextKey::AppearanceLayersEmpty => Some("Noch keine Ebenen"),
         TextKey::AppearanceLayerRaise => Some("Nach oben"),
         TextKey::AppearanceLayerLower => Some("Nach unten"),
         TextKey::LookFind => Some("Look laden"),
-        TextKey::CameraTrackballArmed => {
-            Some("Trackball · zum freien Drehen ziehen · Klick oder R zum Verlassen")
-        }
-        TextKey::HelpTrackball => Some("Trackball-Drehung"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("Drehen · ziehen · Klick oder R zum Beenden"),
+        TextKey::HelpVertexRotate => Some("Auswahl drehen"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("Aus zwei Winkeln sehen — Ansicht teilen"),
         TextKey::SplitModelViewName => Some("Geteilte Ansicht"),
         TextKey::HelpLevelRoll => Some("Horizont waagerecht stellen"),
@@ -608,6 +636,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("Die Integration des nativen Fitting-Kerns läuft"),
         TextKey::MorphPreviewUpdated => Some("Morphvorschau aktualisiert"),
+        TextKey::MorphResolving => Some("Morphs werden geladen"),
         TextKey::MorphsReset => Some("Morphs zurückgesetzt"),
         TextKey::MorphsResetUndone => Some("Morph-Zurücksetzen rückgängig gemacht"),
         TextKey::MorphEditUndone => Some("Morph-Anpassung rückgängig gemacht"),
@@ -646,10 +675,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("Haar-Voreinstellungen"),
         TextKey::HairPresetLoad => Some("Laden"),
-        TextKey::HairToolPick => Some("Ebene waehlen"),
-        TextKey::HairToolPickHint => Some(
-            "Auf eine Straehne im Viewport klicken, um ihre Ebene zu aktivieren. Der Pinsel wartet auf den naechsten Klick.",
-        ),
         TextKey::HelpHairPick => Some("Ebene unter dem Zeiger waehlen"),
         TextKey::ShortcutHairPick => Some("V, oder Strg + Klick mit jedem Pinsel"),
         TextKey::HelpHairSmooth => Some("Glaetten statt kaemmen"),
@@ -685,6 +710,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("Perspektivisch"),
         TextKey::Orthographic => Some("Orthografisch"),
         TextKey::Fov => Some("FOV"),
+        TextKey::CameraRoll => Some("Rollwinkel"),
         TextKey::ResetCamera => Some("Kamera zurücksetzen"),
         TextKey::WindowMinimize => Some("Minimieren"),
         TextKey::WindowMaximize => Some("Maximieren"),
@@ -710,6 +736,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Glättet Oberflächendetails"),
         TextKey::SculptBrushRestoreTooltip => Some("Stellt die Basisform schrittweise wieder her"),
+        TextKey::SculptBrushVertex => Some("Punkte"),
+        TextKey::SculptBrushVertexTooltip => Some(
+            "Verschiebt die Punkte des Netzes selbst. Klicken zum Greifen, ziehen zum Bewegen, Gizmo für eine feste Achse.",
+        ),
         TextKey::SculptBrushMask => Some("Maske"),
         TextKey::SculptBrushMaskTooltip => Some(
             "Traegt die gewaehlte Aussehens-Ebene ab, sodass die darunter erscheint. Alt malt zurueck",

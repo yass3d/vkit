@@ -119,6 +119,9 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                     ),
                     style: RenderStyle::Solid,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -142,12 +145,15 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                 ),
                 style: RenderStyle::Solid,
                 depth_scope: RenderDepthScope::ResetBeforeDraw,
+                bed_markers: None,
+                markers: None,
+                lines: None,
             },
         );
     }
 
     let wire_alpha = overlay_alpha(state.wireframe_opacity);
-    if state.wireframe_visible && wire_alpha > 0.0 {
+    if state.wireframe_shown() && wire_alpha > 0.0 {
         if let Some(template) = template.as_ref() {
             add_mesh_callback(
                 ui,
@@ -164,6 +170,9 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                     color: color_array(wireframe_color(state), wire_alpha),
                     style: RenderStyle::Wire,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -183,6 +192,9 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                     color: color_array(wireframe_color(state), wire_alpha),
                     style: RenderStyle::Wire,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -226,6 +238,9 @@ pub fn draw_alignment(ui: &mut Ui, state: &mut AppState, rect: Rect) {
                         } else {
                             RenderDepthScope::Shared
                         },
+                        bed_markers: None,
+                        markers: None,
+                        lines: None,
                     },
                 );
             }
@@ -375,6 +390,7 @@ pub(super) fn begin_alignment_gizmo_drag(
             start_pointer: pointer,
             start_scale_xyz: state.transform.scale_xyz,
         }),
+        AlignmentGizmoHit::Plane(_) => None,
     }
 }
 
@@ -425,7 +441,24 @@ pub(super) fn gizmo_hit(
         }
         (Some((_, axis)), _) => Some(AlignmentGizmoHit::Move(axis)),
         (None, Some((_, axis))) => Some(AlignmentGizmoHit::Rotate(axis)),
-        (None, None) => None,
+        (None, None) => handles
+            .plane
+            .then(|| {
+                geometry
+                    .plane_quads
+                    .iter()
+                    .position(|quad| point_in_quad(pointer, quad))
+            })
+            .flatten()
+            .map(AlignmentGizmoHit::Plane),
+    }
+}
+
+pub(super) const fn plane_axes(normal: usize) -> (usize, usize) {
+    match normal {
+        0 => (1, 2),
+        1 => (2, 0),
+        _ => (0, 1),
     }
 }
 
@@ -527,6 +560,19 @@ pub(super) fn paint_gizmo_geometry(
     geometry: &AlignmentGizmoGeometry,
     handles: GizmoHandles,
 ) {
+    if handles.plane {
+        for (normal, quad) in geometry.plane_quads.iter().enumerate() {
+            if quad.len() < 4 {
+                continue;
+            }
+            let colour = gizmo_axis_color(normal);
+            ui.painter().add(egui::Shape::convex_polygon(
+                quad.clone(),
+                colour.gamma_multiply(0.20),
+                Stroke::new(1.0, colour.gamma_multiply(0.75)),
+            ));
+        }
+    }
     for (axis, ring) in geometry.rings.iter().enumerate() {
         if handles.rotate && ring.len() >= 2 {
             ui.painter().add(egui::Shape::line(
@@ -623,14 +669,68 @@ pub(super) fn gizmo_geometry_at(
             })
             .collect()
     });
+    let plane_quads = ring_bases.map(|(first, second)| {
+        let corners = [
+            (PLANE_NEAR, PLANE_NEAR),
+            (PLANE_FAR, PLANE_NEAR),
+            (PLANE_FAR, PLANE_FAR),
+            (PLANE_NEAR, PLANE_FAR),
+        ];
+        let projected = corners
+            .iter()
+            .filter_map(|(along_first, along_second)| {
+                let world =
+                    world_center + (first * *along_first + second * *along_second) * world_size;
+                camera.project(world, viewport).map(|point| point.screen)
+            })
+            .collect::<Vec<_>>();
+        if projected.len() < 4 || quad_screen_area(&projected) < PLANE_MINIMUM_AREA {
+            Vec::new()
+        } else {
+            projected
+        }
+    });
     Some(AlignmentGizmoGeometry {
         origin,
         axis_ends,
         axis_world_units_per_point,
         rings,
+        plane_quads,
         scale_handle: origin,
         world_center,
     })
+}
+
+const PLANE_NEAR: f32 = 0.34;
+const PLANE_FAR: f32 = 0.72;
+
+const PLANE_MINIMUM_AREA: f32 = 64.0;
+
+fn quad_screen_area(corners: &[Pos2]) -> f32 {
+    let mut twice = 0.0;
+    for index in 0..corners.len() {
+        let current = corners[index];
+        let next = corners[(index + 1) % corners.len()];
+        twice += current.x * next.y - next.x * current.y;
+    }
+    (twice * 0.5).abs()
+}
+
+fn point_in_quad(point: Pos2, corners: &[Pos2]) -> bool {
+    if corners.len() < 3 {
+        return false;
+    }
+    let mut positive = false;
+    let mut negative = false;
+    for index in 0..corners.len() {
+        let current = corners[index];
+        let next = corners[(index + 1) % corners.len()];
+        let cross = (next.x - current.x) * (point.y - current.y)
+            - (next.y - current.y) * (point.x - current.x);
+        positive |= cross > 0.0;
+        negative |= cross < 0.0;
+    }
+    !(positive && negative)
 }
 
 pub(super) fn gizmo_axis_color(axis: usize) -> Color32 {

@@ -23,7 +23,7 @@ fbxcel = { version = "0.9.0", features = ["tree"] }
 fbxscii = "=0.1.1"
 glam.workspace = true
 gltf = { version = "1.4.1", default-features = false, features = ["names", "utils", "KHR_texture_transform", "allow_empty_texture"] }
-image = { version = "0.25.9", default-features = false, features = ["jpeg", "png", "webp"] }
+image = { version = "0.25.9", default-features = false, features = ["bmp", "jpeg", "png", "tiff", "webp"] }
 lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode", "std"] }
 pollster.workspace = true
 rfd = { version = "0.15.4", default-features = false }

@@ -1,8 +1,56 @@
 use super::*;
 
+pub(super) struct ExportParts<'a, Scalp> {
+    pub carried: Vec<(&'a crate::hair_project::HairPart, Scalp)>,
+
+    pub blank: Vec<String>,
+
+    pub orphaned: Vec<String>,
+}
+
+pub(super) fn sort_parts_for_export<'a, Scalp>(
+    parts: &'a [crate::hair_project::HairPart],
+    scalp_for: impl Fn(&str) -> Option<Scalp>,
+) -> ExportParts<'a, Scalp> {
+    let mut sorted = ExportParts {
+        carried: Vec::new(),
+        blank: Vec::new(),
+        orphaned: Vec::new(),
+    };
+    for part in parts {
+        match scalp_for(&part.provider_name) {
+            Some(scalp) if !part.strands.is_empty() || part.kind.is_scalp() => {
+                sorted.carried.push((part, scalp));
+            }
+            Some(_) => sorted.blank.push(part.name.clone()),
+            None if part.strands.is_empty() => sorted.blank.push(part.name.clone()),
+            None => sorted.orphaned.push(part.name.clone()),
+        }
+    }
+    sorted
+}
+
 pub(crate) const HAIR_SIMULATION_SECONDS: f32 = 10.0;
 
 pub const HAIR_SETTLE_GRAVITY: f32 = 1.0;
+
+const SETTLE_TRAVEL_LIMIT: f32 = 1.5;
+
+fn strand_length(points: &[[f32; 3]]) -> f32 {
+    points
+        .windows(2)
+        .map(|pair| {
+            let span = [
+                pair[1][0] - pair[0][0],
+                pair[1][1] - pair[0][1],
+                pair[1][2] - pair[0][2],
+            ];
+            (span[0] * span[0] + span[1] * span[1] + span[2] * span[2]).sqrt()
+        })
+        .sum()
+}
+
+pub const HAIR_SETTLE_SECONDS: f32 = 1.2;
 
 #[derive(Clone, Debug)]
 pub struct HairThumbnailJob {
@@ -38,7 +86,10 @@ pub struct HairShotFlash {
 
 impl AppState {
     pub const fn shows_authored_hair(&self) -> bool {
-        matches!(self.active_tab, Tab::Hair | Tab::Result)
+        matches!(
+            self.active_tab,
+            Tab::Hair | Tab::Result | Tab::Morph | Tab::Texture
+        )
     }
 
     pub fn hair_export_would_overwrite(&self) -> Option<std::path::PathBuf> {
@@ -171,29 +222,36 @@ impl AppState {
             return;
         };
         let overwrote = self.remove_existing_hair_installs();
-        let scalps: Vec<_> = self
-            .hair_project
-            .parts
-            .iter()
-            .map(|part| self.hair_scalps.get(&part.provider_name).cloned())
-            .collect();
-        if scalps.iter().any(Option::is_none) {
-            self.status = StatusMessage::new(TextKey::HairScalpMissing, StatusTone::Warning);
+
+        let sorted = sort_parts_for_export(&self.hair_project.parts, |provider| {
+            self.hair_scalps.get(provider).cloned()
+        });
+        let ExportParts {
+            carried,
+            blank,
+            orphaned,
+        } = sorted;
+        if !orphaned.is_empty() {
+            self.status = StatusMessage::with_detail(
+                TextKey::HairScalpMissing,
+                StatusTone::Warning,
+                orphaned.join(", "),
+            );
             return;
         }
-        let scalps: Vec<_> = scalps.into_iter().flatten().collect();
-        let parts: Vec<_> = self
-            .hair_project
-            .parts
+        let parts: Vec<_> = carried
             .iter()
-            .zip(&scalps)
-            .filter(|(part, _)| !part.strands.is_empty() || part.kind.is_scalp())
-            .map(|(part, scalp)| (part, scalp.as_ref()))
+            .map(|(part, scalp)| (*part, scalp.as_ref()))
             .collect();
         if parts.is_empty() {
-            self.status = StatusMessage::new(TextKey::HairExportNeedsPart, StatusTone::Warning);
+            self.status = StatusMessage::with_detail(
+                TextKey::HairExportNeedsPart,
+                StatusTone::Warning,
+                blank.join(", "),
+            );
             return;
         }
+        let skipped = blank.join(", ");
         let creator = self.hair_project.export_creator.clone();
         let style = if self.hair_project.export_name.trim().is_empty() {
             self.hair_project
@@ -207,16 +265,20 @@ impl AppState {
         let sexes = self.hair_project.export_sexes;
         match crate::hair_export::export_hair_style(&vam_root, &parts, &creator, &style, sexes) {
             Ok(outcome) => {
+                let mut detail = format!(
+                    "{} item(s), {} strands, {} triangles -> {}",
+                    outcome.item_count,
+                    outcome.strand_count,
+                    outcome.triangle_count,
+                    outcome.preset_path.display(),
+                );
+                if !skipped.is_empty() {
+                    detail.push_str(&format!("; empty, left out: {skipped}"));
+                }
                 self.status = StatusMessage::with_detail(
                     TextKey::HairExportDone,
                     StatusTone::Success,
-                    format!(
-                        "{} item(s), {} strands, {} triangles -> {}",
-                        outcome.item_count,
-                        outcome.strand_count,
-                        outcome.triangle_count,
-                        outcome.preset_path.display(),
-                    ),
+                    detail,
                 );
                 self.write_export_thumbnails(&outcome);
                 self.hair_export_files.clone_from(&outcome.files);
@@ -395,6 +457,7 @@ impl AppState {
                 });
             }
             hair.push(crate::hair_renderer::HairPaintCallback {
+                capture: None,
                 spot: crate::renderer::SceneSpot::default(),
                 scene_key,
                 frame: 0,
@@ -801,6 +864,107 @@ impl AppState {
         }
     }
 
+    pub(super) fn adopt_settled_hair(&mut self, part_id: u64, shifts: &[Vec<[f32; 3]>]) {
+        let Some(part) = self
+            .hair_project
+            .parts
+            .iter_mut()
+            .find(|part| part.id == part_id)
+        else {
+            return;
+        };
+        if part.strands.len() != shifts.len() {
+            return;
+        }
+        let mut moved = 0_usize;
+        for ((_root, strand), shift) in part.strands.iter_mut().zip(shifts) {
+            if strand.points_cm.len() != shift.len() {
+                continue;
+            }
+            let reach = strand_length(&strand.points_cm) * SETTLE_TRAVEL_LIMIT;
+            if shift.iter().any(|delta| {
+                delta[0].abs() > reach || delta[1].abs() > reach || delta[2].abs() > reach
+            }) {
+                continue;
+            }
+            for (point, delta) in strand
+                .points_cm
+                .iter_mut()
+                .skip(1)
+                .zip(shift.iter().skip(1))
+            {
+                point[0] += delta[0];
+                point[1] += delta[1];
+                point[2] += delta[2];
+            }
+            moved += 1;
+        }
+        if moved == 0 {
+            return;
+        }
+        self.hair_project.touch(part_id);
+    }
+
+    pub(super) fn grow_hair_vertex_selection(&mut self, by: i32) {
+        if by == 0 || self.hair_vertex_selection.is_empty() {
+            return;
+        }
+        let mut grown = std::collections::BTreeSet::new();
+        for (part_id, strand_id, point) in &self.hair_vertex_selection {
+            let Some(points) = self
+                .hair_project
+                .part(*part_id)
+                .and_then(|part| part.strands.get(strand_id))
+                .map(|strand| strand.points_cm.len())
+            else {
+                continue;
+            };
+            if by > 0 {
+                grown.insert((*part_id, *strand_id, *point));
+                for step in 1..=(by as usize) {
+                    if *point > step {
+                        grown.insert((*part_id, *strand_id, point - step));
+                    }
+                    if point + step < points {
+                        grown.insert((*part_id, *strand_id, point + step));
+                    }
+                }
+            }
+        }
+        if by > 0 {
+            self.hair_vertex_selection = grown;
+            return;
+        }
+        let held = self.hair_vertex_selection.clone();
+        let inner: std::collections::BTreeSet<_> = held
+            .iter()
+            .filter(|(part, strand, point)| {
+                let inward = *point <= 1 || held.contains(&(*part, *strand, point - 1));
+                let outward = held.contains(&(*part, *strand, point + 1));
+                inward && outward
+            })
+            .copied()
+            .collect();
+        if !inner.is_empty() {
+            self.hair_vertex_selection = inner;
+        }
+    }
+
+    pub(super) fn select_all_hair_strands(&mut self) {
+        let mut taken = std::collections::BTreeSet::new();
+        for part_id in self.hair_project.editable_parts() {
+            let Some(part) = self.hair_project.part(part_id) else {
+                continue;
+            };
+            for (strand_id, strand) in &part.strands {
+                for point in 1..strand.points_cm.len() {
+                    taken.insert((part_id, *strand_id, point));
+                }
+            }
+        }
+        self.hair_vertex_selection = taken;
+    }
+
     pub(super) fn set_hair_part_segments(&mut self, id: u64, segments: usize) {
         let clamped = segments.clamp(2, crate::hair_project::MAX_HAIR_SEGMENTS);
         if self
@@ -850,8 +1014,19 @@ impl AppState {
             && part.set_strand_points(strands) > 0
         {
             self.hair_project.touch(part_id);
+            self.hair_strands_awaiting_clearance
+                .entry(part_id)
+                .or_default()
+                .extend(touched.iter().copied());
         }
-        self.clear_hair_of_the_head(part_id, &touched);
+    }
+
+    pub(super) fn settle_hair_against_the_head(&mut self) {
+        let owed = std::mem::take(&mut self.hair_strands_awaiting_clearance);
+        for (part_id, strands) in owed {
+            let strands: Vec<u32> = strands.into_iter().collect();
+            self.clear_hair_of_the_head(part_id, &strands);
+        }
     }
 
     pub(super) fn request_hair_export(&mut self) {
@@ -1084,5 +1259,288 @@ mod preset_names {
             "Ren",
             "stripping a name down to nothing leaves the layer unnamed, so it stays",
         );
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use crate::hair_project::HairStrand;
+    use crate::state::{Action, AppState};
+
+    fn planted(state: &mut AppState, strands: &[u32], points: usize) -> u64 {
+        let id = state.hair_project.add_part("Cap");
+        if let Some(part) = state.hair_project.parts.iter_mut().find(|p| p.id == id) {
+            for root in strands {
+                part.strands.insert(
+                    *root,
+                    HairStrand::new((0..points).map(|s| [0.0, s as f32, 0.0]).collect()),
+                );
+            }
+        }
+        id
+    }
+
+    #[test]
+    fn select_all_takes_the_strands_of_active_parts_and_no_others() {
+        let mut state = AppState::default();
+        let taken = planted(&mut state, &[1, 2], 4);
+        let left_out = planted(&mut state, &[5], 4);
+        state.hair_project.activate_part(taken, false);
+
+        state.dispatch(Action::SelectAllHairStrands);
+
+        assert_eq!(
+            state.hair_vertex_selection.len(),
+            2 * 3,
+            "two strands of three movable points each",
+        );
+        assert!(
+            !state
+                .hair_vertex_selection
+                .iter()
+                .any(|(part, _, _)| *part == left_out),
+            "a part nobody activated was taken",
+        );
+        assert!(
+            !state
+                .hair_vertex_selection
+                .iter()
+                .any(|(_, _, point)| *point == 0),
+            "the root is planted and cannot move, so it must not be held",
+        );
+    }
+
+    #[test]
+    fn growing_reaches_one_segment_each_way_and_stops_at_the_ends() {
+        let mut state = AppState::default();
+        let part = planted(&mut state, &[1], 5);
+        state.hair_vertex_selection.insert((part, 1, 2));
+
+        state.dispatch(Action::GrowHairVertexSelection(1));
+        let held: Vec<usize> = state
+            .hair_vertex_selection
+            .iter()
+            .map(|(_, _, point)| *point)
+            .collect();
+        assert_eq!(held, vec![1, 2, 3], "one each way");
+
+        state.dispatch(Action::GrowHairVertexSelection(1));
+        let held: Vec<usize> = state
+            .hair_vertex_selection
+            .iter()
+            .map(|(_, _, point)| *point)
+            .collect();
+        assert_eq!(held, vec![1, 2, 3, 4], "the root and the tip are the ends");
+    }
+
+    #[test]
+    fn shrinking_lets_go_of_the_edges_and_never_empties_the_selection() {
+        let mut state = AppState::default();
+        let part = planted(&mut state, &[1], 6);
+        for point in 1..6 {
+            state.hair_vertex_selection.insert((part, 1, point));
+        }
+
+        state.dispatch(Action::GrowHairVertexSelection(-1));
+        let held: Vec<usize> = state
+            .hair_vertex_selection
+            .iter()
+            .map(|(_, _, point)| *point)
+            .collect();
+        assert_eq!(held, vec![1, 2, 3, 4], "the tip was the only free edge");
+
+        for _ in 0..10 {
+            state.dispatch(Action::GrowHairVertexSelection(-1));
+        }
+        assert!(
+            !state.hair_vertex_selection.is_empty(),
+            "shrinking emptied the selection, which no tool can recover from",
+        );
+    }
+
+    #[test]
+    fn growing_nothing_stays_nothing() {
+        let mut state = AppState::default();
+        planted(&mut state, &[1], 4);
+        state.dispatch(Action::GrowHairVertexSelection(1));
+        assert!(state.hair_vertex_selection.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod settle_tests {
+    use crate::hair_project::{HairProject, HairStrand};
+    use crate::hair_settle::SettleScope;
+    use crate::state::{Action, AppState};
+
+    fn planted(project: &mut HairProject, roots: &[u32]) -> u64 {
+        let id = project.add_part("Cap");
+        let Some(part) = project.parts.iter_mut().find(|part| part.id == id) else {
+            return id;
+        };
+        for root in roots {
+            part.strands.insert(
+                *root,
+                HairStrand::new((0..4).map(|step| [0.0, step as f32, 0.0]).collect()),
+            );
+        }
+        id
+    }
+
+    fn falling(strands: usize, points: usize) -> Vec<Vec<[f32; 3]>> {
+        vec![vec![[0.0, -1.0, 0.5]; points]; strands]
+    }
+
+    #[test]
+    fn keeping_a_shape_turns_the_physics_on_and_waits_for_it() {
+        let mut state = AppState::default();
+        state.dispatch(Action::KeepSettledHairShape(SettleScope::Everything));
+        assert!(state.hair_viewport_physics, "nothing would have fallen");
+        assert!(
+            state.hair_settle_seconds > 0.0,
+            "the read has to wait for the hair to land",
+        );
+        assert_eq!(
+            state.hair_settle_wanted,
+            Some(SettleScope::Everything),
+            "the ask has to survive until a paint carries it over",
+        );
+    }
+
+    #[test]
+    fn a_shift_moves_every_point_but_the_root() {
+        let mut state = AppState::default();
+        let id = planted(&mut state.hair_project, &[0, 1]);
+        state.hair_settle_wanted = Some(SettleScope::Everything);
+        state.dispatch(Action::AdoptSettledHair {
+            part_id: id,
+            shifts: falling(2, 4),
+        });
+
+        let part = state.hair_project.part(id).expect("the part");
+        for (root, strand) in &part.strands {
+            assert_eq!(
+                strand.points_cm[0],
+                [0.0, 0.0, 0.0],
+                "strand {root} tore off the scalp",
+            );
+            for step in 1..4 {
+                assert_eq!(
+                    strand.points_cm[step],
+                    [0.0, step as f32 - 1.0, 0.5],
+                    "strand {root} point {step} did not move by the shift",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_readback_that_flings_a_strand_across_the_room_is_refused() {
+        let mut state = AppState::default();
+        let id = planted(&mut state.hair_project, &[0]);
+        state.hair_settle_wanted = Some(SettleScope::Everything);
+        state.dispatch(Action::AdoptSettledHair {
+            part_id: id,
+            shifts: vec![vec![[0.0, -400.0, 0.0]; 4]],
+        });
+
+        let part = state.hair_project.part(id).expect("the part");
+        assert_eq!(
+            part.strands[&0].points_cm[2],
+            [0.0, 2.0, 0.0],
+            "a solver that came apart moved the hair anyway",
+        );
+    }
+
+    #[test]
+    fn a_readback_that_no_longer_lines_up_is_dropped_rather_than_guessed_at() {
+        let mut state = AppState::default();
+        let id = planted(&mut state.hair_project, &[0, 1]);
+        state.hair_settle_wanted = Some(SettleScope::Everything);
+
+        state.dispatch(Action::AdoptSettledHair {
+            part_id: id,
+            shifts: falling(1, 4),
+        });
+        state.dispatch(Action::AdoptSettledHair {
+            part_id: id,
+            shifts: falling(2, 9),
+        });
+
+        let part = state.hair_project.part(id).expect("the part");
+        for (root, strand) in &part.strands {
+            assert_eq!(
+                strand.points_cm[2],
+                [0.0, 2.0, 0.0],
+                "strand {root} was moved by a stale readback",
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod export_sorting_tests {
+    use super::*;
+    use crate::hair_project::{HairPartKind, HairProject};
+
+    fn project() -> HairProject {
+        HairProject::default()
+    }
+
+    fn named(project: &mut HairProject, name: &str, provider: &str, kind: HairPartKind) -> u64 {
+        let id = project.add_part(provider);
+        if let Some(part) = project.parts.iter_mut().find(|part| part.id == id) {
+            part.name = name.to_owned();
+            part.kind = kind;
+        }
+        id
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct AScalp;
+
+    #[test]
+    fn a_part_holding_nothing_is_left_out_rather_than_fatal() {
+        let mut project = project();
+        named(&mut project, "Scalp", "Cap", HairPartKind::Scalp);
+        named(&mut project, "Scalp 2", "Nowhere", HairPartKind::Scalp);
+
+        let sorted = sort_parts_for_export(&project.parts, |provider| {
+            (provider == "Cap").then_some(AScalp)
+        });
+        assert_eq!(sorted.carried.len(), 1, "the working cap should be written");
+        assert_eq!(sorted.blank, vec!["Scalp 2".to_owned()]);
+        assert!(
+            sorted.orphaned.is_empty(),
+            "an empty part must not stop the export",
+        );
+    }
+
+    #[test]
+    fn a_part_holding_hair_with_no_scalp_still_stops_the_export() {
+        let mut project = project();
+        let id = named(&mut project, "Bangs", "Nowhere", HairPartKind::Hair);
+        if let Some(part) = project.parts.iter_mut().find(|part| part.id == id) {
+            part.strands
+                .insert(0, crate::hair_project::HairStrand::new(vec![[0.0; 3]; 4]));
+        }
+
+        let sorted = sort_parts_for_export(&project.parts, |_| None::<AScalp>);
+        assert_eq!(
+            sorted.orphaned,
+            vec!["Bangs".to_owned()],
+            "hair that would be silently dropped has to be named",
+        );
+        assert!(sorted.carried.is_empty());
+    }
+
+    #[test]
+    fn a_hair_part_nobody_planted_is_blank_even_when_its_scalp_is_there() {
+        let mut project = project();
+        named(&mut project, "Empty", "Cap", HairPartKind::Hair);
+        let sorted = sort_parts_for_export(&project.parts, |_| Some(AScalp));
+        assert_eq!(sorted.blank, vec!["Empty".to_owned()]);
+        assert!(sorted.carried.is_empty());
+        assert!(sorted.orphaned.is_empty());
     }
 }

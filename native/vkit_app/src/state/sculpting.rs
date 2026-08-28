@@ -94,6 +94,51 @@ impl AppState {
         }
     }
 
+    pub(super) fn transform_sculpt_vertices(&mut self, pivot: [f64; 3], basis: [[f64; 3]; 3]) {
+        if !self.is_sculpting() || !self.tab_available(Tab::Morph) {
+            return;
+        }
+        let held: Vec<u32> = self.sculpt_vertex_selection.iter().copied().collect();
+        if held.len() < 2 {
+            return;
+        }
+        match self
+            .sculpt
+            .transform_vertices(&held, pivot, basis, [0.0; 3])
+        {
+            Ok(0) => {}
+            Ok(_) => self.sync_sculpt_preview(),
+            Err(error) => {
+                self.status = StatusMessage::with_detail(
+                    TextKey::SculptFailed,
+                    StatusTone::Error,
+                    error.to_string(),
+                );
+            }
+        }
+    }
+
+    pub(super) fn move_sculpt_vertices(&mut self, shift: [f64; 3]) {
+        if !self.is_sculpting() || !self.tab_available(Tab::Morph) {
+            return;
+        }
+        let held: Vec<u32> = self.sculpt_vertex_selection.iter().copied().collect();
+        if held.is_empty() {
+            return;
+        }
+        match self.sculpt.nudge_vertices(&held, shift) {
+            Ok(0) => {}
+            Ok(_) => self.sync_sculpt_preview(),
+            Err(error) => {
+                self.status = StatusMessage::with_detail(
+                    TextKey::SculptFailed,
+                    StatusTone::Error,
+                    error.to_string(),
+                );
+            }
+        }
+    }
+
     pub(super) fn end_sculpt_stroke(&mut self) {
         if !self.is_sculpting() || !self.tab_available(Tab::Morph) {
             return;

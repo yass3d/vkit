@@ -33,6 +33,19 @@ pub(super) fn handle_sculpt_interaction(
         }
         return;
     }
+    if state.sculpt_brush == SculptBrush::Vertex {
+        if !crate::viewport::vertex_gizmo::handle(
+            crate::viewport::vertex_gizmo::VertexOwner::Sculpt,
+            ui,
+            state,
+            viewport,
+            response,
+            camera,
+        ) {
+            crate::viewport::sculpt_vertex::handle(ui, state, viewport, response, camera);
+        }
+        return;
+    }
     if handle_sculpt_brush_size_gesture(ui, state, viewport) {
         return;
     }
@@ -250,6 +263,7 @@ pub(super) fn sculpt_brush_hint(ui: &Ui, brush: SculptBrush) -> String {
         SculptBrush::Smooth => Shortcut::SculptSmoothHold.label_now(ui),
         SculptBrush::Restore => Shortcut::SculptRestoreBrush.label_now(ui),
         SculptBrush::Mask => Shortcut::SculptAlternateHold.label_now(ui),
+        SculptBrush::Vertex => String::new(),
     }
 }
 
@@ -303,6 +317,9 @@ pub(super) fn sculpt_input_mode(
     modifiers: egui::Modifiers,
     brush: SculptBrush,
 ) -> SculptInputMode {
+    if matches!(brush, SculptBrush::Vertex) {
+        return SculptInputMode::Vertex;
+    }
     let smooth = Shortcut::SculptSmoothHold.held_in(ui, modifiers);
     let inflate = Shortcut::SculptInflateHold.held_in(ui, modifiers);
     let alternate = Shortcut::SculptAlternateHold.held_in(ui, modifiers);
@@ -320,6 +337,7 @@ pub(super) fn sculpt_input_mode(
             SculptBrush::Smooth => SculptInputMode::Smooth,
             SculptBrush::Restore => SculptInputMode::Restore,
             SculptBrush::Mask => SculptInputMode::Mask,
+            SculptBrush::Vertex => SculptInputMode::Vertex,
         }
     }
 }
@@ -331,7 +349,8 @@ pub(super) const fn brush_shown_for(mode: SculptInputMode, selected: SculptBrush
         | SculptInputMode::Inflate
         | SculptInputMode::Restore
         | SculptInputMode::RestoreFit
-        | SculptInputMode::Mask => selected,
+        | SculptInputMode::Mask
+        | SculptInputMode::Vertex => selected,
     }
 }
 
@@ -340,11 +359,9 @@ pub(super) fn displayed_sculpt_brush(ui: &Ui, state: &AppState) -> SculptBrush {
     {
         return state.sculpt_brush;
     }
-    let modifiers = ui.input(|input| input.modifiers);
-    brush_shown_for(
-        sculpt_input_mode(ui, modifiers, state.sculpt_brush),
-        state.sculpt_brush,
-    )
+    crate::viewport::open_sculpt_stroke_mode(ui).map_or(state.sculpt_brush, |mode| {
+        brush_shown_for(mode, state.sculpt_brush)
+    })
 }
 
 pub(super) fn handle_sculpt_brush_size_gesture(
@@ -409,7 +426,7 @@ pub(super) fn make_sculpt_viewport_dab(
         .max(1.0e-8);
     let radius_local = f64::from(world_per_point * state.sculpt_brush_radius_points.max(1.0));
     let operation = match input_mode {
-        SculptInputMode::Mask => return None,
+        SculptInputMode::Mask | SculptInputMode::Vertex => return None,
         SculptInputMode::Smooth => SculptOperation::Smooth,
         SculptInputMode::Restore => SculptOperation::Restore,
         SculptInputMode::RestoreFit => SculptOperation::RestoreFit,

@@ -1,5 +1,5 @@
 use egui::{Pos2, Rect, Vec2};
-use glam::{DVec3, EulerRot, Mat4, Quat, Vec3, Vec4};
+use glam::{DVec3, Mat4, Vec3, Vec4};
 
 use crate::scene::{Bounds3, Ray3};
 
@@ -12,8 +12,6 @@ pub const DEFAULT_VIEW_PITCH_RADIANS: f32 = 15.0_f32.to_radians();
 const DEFAULT_FOV_Y_RADIANS: f32 = DEFAULT_FOV_Y_DEGREES.to_radians();
 
 const ORBIT_RADIANS_PER_POINT: f32 = 0.0035;
-
-const TRACKBALL_RADIANS_PER_POINT: f32 = ORBIT_RADIANS_PER_POINT;
 
 const PITCH_LIMIT_RADIANS: f32 = 1.553_343;
 
@@ -410,24 +408,24 @@ impl TurntableCamera {
             .clamp(-PITCH_LIMIT_RADIANS, PITCH_LIMIT_RADIANS);
     }
 
-    pub fn apply_trackball(&mut self, drag_points: Vec2) {
-        if !drag_points.is_finite() || drag_points == Vec2::ZERO {
-            return;
-        }
-        let orientation =
-            Quat::from_euler(EulerRot::YXZ, self.yaw, -self.pitch, self.effective_roll());
-        let step = Quat::from_rotation_y(-drag_points.x * TRACKBALL_RADIANS_PER_POINT)
-            * Quat::from_rotation_x(-drag_points.y * TRACKBALL_RADIANS_PER_POINT);
-        let (yaw, pitch, roll) = (orientation * step).normalize().to_euler(EulerRot::YXZ);
-        if [yaw, pitch, roll].into_iter().all(f32::is_finite) {
-            self.yaw = yaw;
-            self.pitch = -pitch;
-            self.roll = roll.rem_euclid(std::f32::consts::TAU);
+    pub const fn level_roll(&mut self) {
+        self.roll = 0.0;
+    }
+
+    pub fn roll_degrees(&self) -> f32 {
+        let degrees = self.roll.to_degrees();
+        if degrees > 180.0 {
+            degrees - 360.0
+        } else {
+            degrees
         }
     }
 
-    pub const fn level_roll(&mut self) {
-        self.roll = 0.0;
+    pub fn set_roll_degrees(&mut self, degrees: f32) {
+        if !degrees.is_finite() {
+            return;
+        }
+        self.roll = degrees.to_radians().rem_euclid(std::f32::consts::TAU);
     }
 
     fn view_forward(&self) -> DVec3 {

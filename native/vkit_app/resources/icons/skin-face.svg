@@ -1,0 +1,20 @@
+<!-- Drawn on lucide's 24-grid for Vkit. The scan-face glyph this replaces put
+     four corner brackets around its eyes and smile, which read as a viewfinder
+     rather than as a face: a scanning frame, and nothing here scans. A circle
+     around the same features is the head they belong to. -->
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="9.25" />
+  <path d="M8 14.25s1.5 2 4 2 4-2 4-2" />
+  <path d="M9 9.25h.01" />
+  <path d="M15 9.25h.01" />
+</svg>

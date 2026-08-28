@@ -4,6 +4,7 @@ pub const RELEASES_PAGE: &str = "https://github.com/yass3d/vkit/releases";
 
 const HOST: &str = "api.github.com";
 
+#[cfg(debug_assertions)]
 pub const FAKE_UPDATE_VARIABLE: &str = "VKIT_FAKE_UPDATE";
 
 const PATH: &str = "/repos/yass3d/vkit/releases?per_page=20";
@@ -312,6 +313,7 @@ mod tests {
 
     #[test]
     fn the_summoned_badge_stays_away_until_it_is_asked_for() {
+        #[cfg(debug_assertions)]
         assert!(
             std::env::var(FAKE_UPDATE_VARIABLE).is_err(),
             "this test describes the unset case; the variable is set in this environment"
@@ -319,6 +321,11 @@ mod tests {
         assert!(
             summoned_badge().is_none(),
             "a build nobody asked must not claim an update: the badge was a visual              check, and a shipped screenshot of it would be a lie"
+        );
+        #[cfg(not(debug_assertions))]
+        assert!(
+            summoned_badge().is_none(),
+            "a shipped build has no way to be asked at all, whatever is in the environment"
         );
     }
 

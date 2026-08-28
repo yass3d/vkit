@@ -108,13 +108,10 @@ pub(super) fn handle_hair_interaction(
     }
 
     let tool = state.hair_project.active_tool;
-    if tool == HairTool::Pick || ui.input(|input| input.modifiers.command) {
+    if ui.input(|input| input.modifiers.command) {
         if response.clicked() {
             pick_part_under_pointer(ui, state, viewport, camera);
         }
-        return;
-    }
-    if state.hair_project.selected_part().is_none() {
         return;
     }
     let radius_points = state.hair_brush_radius_points;
@@ -154,18 +151,26 @@ pub(super) fn handle_hair_interaction(
         })
     };
     let mirror = state.hair_mirror_edit;
-    if !matches!(tool, HairTool::Pick)
-        && state
-            .hair_project
-            .selected_part()
-            .is_some_and(|part| part.kind.is_scalp())
-    {
+    if active.is_empty() && !matches!(tool, HairTool::Plant | HairTool::Vertex) {
         return;
     }
     match tool {
-        HairTool::Pick => {}
         HairTool::Vertex => {
-            if !crate::viewport::vertex_gizmo::handle(ui, state, viewport, response, camera) {
+            if crate::shortcuts::Shortcut::VertexSelectConnected.pressed(ui) {
+                if state.hair_strand_mask.is_empty() {
+                    crate::viewport::hair_vertex::select_connected(state);
+                } else {
+                    crate::viewport::hair_vertex::clear_strand_mask(state);
+                }
+            }
+            if !crate::viewport::vertex_gizmo::handle(
+                vertex_gizmo::VertexOwner::Hair,
+                ui,
+                state,
+                viewport,
+                response,
+                camera,
+            ) {
                 crate::viewport::hair_vertex::handle(ui, state, viewport, response, camera);
             }
         }
@@ -240,7 +245,11 @@ pub(super) fn handle_hair_interaction(
                 );
             }
         }
-        HairTool::Comb | HairTool::Pinch | HairTool::Puff | HairTool::Rigidity => {
+        HairTool::Comb
+        | HairTool::Pinch
+        | HairTool::Puff
+        | HairTool::Rigidity
+        | HairTool::Settle => {
             let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
             if pressed && response.hovered() {
                 crate::viewport::claim_stroke_pane(ui, HAIR_COMB_STROKE_ID, pane);
@@ -270,6 +279,15 @@ pub(super) fn handle_hair_interaction(
                         );
                     });
                 }
+            }
+            if tool == HairTool::Settle {
+                for part_id in active {
+                    handle_gravity_brush(ui, state, viewport, camera, part_id, radius_points);
+                }
+                if ui.input(|input| input.pointer.button_released(PointerButton::Primary)) {
+                    state.dispatch(Action::EndHairStroke);
+                }
+                return;
             }
             if tool == HairTool::Rigidity {
                 for part_id in active {
@@ -307,7 +325,7 @@ pub(super) fn handle_hair_interaction(
 }
 
 pub(super) fn paint_hair_brush_hud(ui: &Ui, state: &AppState, response: &Response) {
-    if state.hair_project.active_tool == crate::hair_project::HairTool::Pick {
+    if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
         return;
     }
     let hover = response
@@ -486,6 +504,128 @@ fn strand_cloud_hit_along(
     Some((center, radius))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum StrandReach<'a> {
+    All,
+
+    Some(std::borrow::Cow<'a, std::collections::BTreeSet<u32>>),
+}
+
+impl StrandReach<'_> {
+    #[must_use]
+    pub(super) fn allows(&self, strand: u32) -> bool {
+        match self {
+            Self::All => true,
+            Self::Some(held) => held.contains(&strand),
+        }
+    }
+}
+
+#[must_use]
+pub(super) fn stroke_reach<'a>(
+    ui: &Ui,
+    state: &'a AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    part_id: u64,
+    radius_points: f32,
+) -> StrandReach<'a> {
+    let masked = state
+        .hair_strand_mask
+        .get(&part_id)
+        .filter(|held| !held.is_empty());
+    let single = stroke_strand(ui, state, viewport, camera, part_id, radius_points);
+    match (masked, single) {
+        (None, None) => StrandReach::All,
+        (Some(held), None) => StrandReach::Some(std::borrow::Cow::Borrowed(held)),
+        (held, Some(one)) => {
+            if held.is_some_and(|held| !held.contains(&one)) {
+                StrandReach::Some(std::borrow::Cow::Owned(std::collections::BTreeSet::new()))
+            } else {
+                StrandReach::Some(std::borrow::Cow::Owned([one].into_iter().collect()))
+            }
+        }
+    }
+}
+
+fn stroke_strand(
+    ui: &Ui,
+    state: &AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    part_id: u64,
+    radius_points: f32,
+) -> Option<u32> {
+    if !state.hair_single_strand {
+        return None;
+    }
+    let latch = Id::new((HAIR_SINGLE_STRAND_LATCH_ID, part_id));
+    let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
+    if !down {
+        ui.data_mut(|data| data.remove::<u32>(latch));
+    }
+    if let Some(held) = ui.data(|data| data.get_temp::<u32>(latch)) {
+        return Some(held);
+    }
+    let (origin, direction) = pointer_ray(ui, viewport, camera, false)?;
+    let picked = ray_strand_target(
+        state,
+        camera,
+        viewport,
+        origin,
+        direction,
+        part_id,
+        radius_points,
+    )?;
+    if down {
+        ui.data_mut(|data| data.insert_temp(latch, picked));
+    }
+    Some(picked)
+}
+
+const HAIR_SINGLE_STRAND_LATCH_ID: &str = "vkit.viewport.hair.single-strand";
+
+fn ray_strand_target(
+    state: &AppState,
+    camera: TurntableCamera,
+    viewport: Rect,
+    origin: glam::Vec3,
+    direction: glam::Vec3,
+    part_id: u64,
+    tolerance_points: f32,
+) -> Option<u32> {
+    let part = state.hair_project.part(part_id)?;
+    let accept = tolerance_points.max(1.0);
+    let mut best: Option<(u32, f32)> = None;
+    for (index, strand) in &part.strands {
+        for pair in strand.points_cm.windows(2) {
+            let from = glam::Vec3::from_array(pair[0]);
+            let to = glam::Vec3::from_array(pair[1]);
+            let Some((closest, depth)) = ray_segment_approach(origin, direction, from, to) else {
+                continue;
+            };
+            let per_point = camera.world_units_per_point_at(closest, viewport.height());
+            if per_point <= 0.0 {
+                continue;
+            }
+            if (closest - (origin + direction * depth)).length() / per_point > accept {
+                continue;
+            }
+            if best.is_none_or(|(_, seen)| depth < seen) {
+                best = Some((*index, depth));
+            }
+        }
+    }
+    best.map(|(index, _)| index)
+}
+
+pub(super) fn targetable(state: &AppState, id: u64) -> bool {
+    state
+        .hair_project
+        .part(id)
+        .is_some_and(|part| part.visible && !part.kind.is_scalp())
+}
+
 fn auto_part_targets(
     ui: &Ui,
     state: &AppState,
@@ -498,7 +638,7 @@ fn auto_part_targets(
     let latch_id = Id::new(HAIR_AUTO_PART_LATCH_ID);
     let stroking = matches!(
         tool,
-        HairTool::Comb | HairTool::Pinch | HairTool::Puff | HairTool::Rigidity
+        HairTool::Comb | HairTool::Pinch | HairTool::Puff | HairTool::Rigidity | HairTool::Settle
     );
     let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
     if stroking
@@ -507,7 +647,7 @@ fn auto_part_targets(
     {
         return latched
             .into_iter()
-            .filter(|id| state.hair_project.is_part_editable(*id))
+            .filter(|id| targetable(state, *id))
             .collect();
     }
     if !down {
@@ -517,12 +657,14 @@ fn auto_part_targets(
     let mut targets = Vec::new();
     if let Some((origin, direction)) = pointer_ray(ui, viewport, camera, false)
         && let Some(id) = ray_part_target(state, camera, viewport, origin, direction, radius_points)
+        && targetable(state, id)
     {
         targets.push(id);
     }
     if mirror
         && let Some((origin, direction)) = pointer_ray(ui, viewport, camera, true)
         && let Some(id) = ray_part_target(state, camera, viewport, origin, direction, radius_points)
+        && targetable(state, id)
         && !targets.contains(&id)
     {
         targets.push(id);
@@ -537,6 +679,7 @@ fn pick_part_under_pointer(ui: &Ui, state: &mut AppState, viewport: Rect, camera
     let Some((origin, direction)) = pointer_ray(ui, viewport, camera, false) else {
         return;
     };
+    let additive = crate::shortcuts::Shortcut::ListAddToSelectionHold.held(ui);
     let Some(part_id) = ray_part_target(
         state,
         camera,
@@ -545,9 +688,11 @@ fn pick_part_under_pointer(ui: &Ui, state: &mut AppState, viewport: Rect, camera
         direction,
         PART_PICK_REACH_POINTS,
     ) else {
+        if !additive {
+            state.dispatch(Action::ClearHairSelection);
+        }
         return;
     };
-    let additive = crate::shortcuts::Shortcut::ListAddToSelectionHold.held(ui);
     state.dispatch(Action::ActivateHairPart {
         id: part_id,
         additive,
@@ -698,6 +843,7 @@ fn handle_cut_brush(
     radius_points: f32,
     mirror: bool,
 ) {
+    let reach = stroke_reach(ui, state, viewport, camera, part_id, radius_points);
     if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
         return;
     }
@@ -727,6 +873,9 @@ fn handle_cut_brush(
     let mut cut_indices = std::collections::BTreeSet::new();
     for center in centers {
         for (&scalp_index, strand) in &part.strands {
+            if !reach.allows(scalp_index) {
+                continue;
+            }
             if cut_indices.contains(&scalp_index) {
                 continue;
             }
@@ -808,6 +957,7 @@ fn handle_grow_brush(
     radius_points: f32,
     mirror: bool,
 ) {
+    let reach = stroke_reach(ui, state, viewport, camera, part_id, radius_points);
     if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
         return;
     }
@@ -834,6 +984,7 @@ fn handle_grow_brush(
     let gathered: Vec<u32> = part
         .strands
         .iter()
+        .filter(|(index, _)| reach.allows(**index))
         .filter(|(_, strand)| {
             strand.points_cm.iter().any(|point| {
                 centers.iter().any(|center| {
@@ -984,6 +1135,60 @@ fn relax_towards_rest(points: &mut [[f32; 3]], spacing: &[f32]) {
     }
 }
 
+fn handle_gravity_brush(
+    ui: &Ui,
+    state: &mut AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    part_id: u64,
+    radius_points: f32,
+) {
+    let reach = stroke_reach(ui, state, viewport, camera, part_id, radius_points);
+    if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
+        return;
+    }
+    let Some(part) = state.hair_project.part(part_id) else {
+        return;
+    };
+    let Some((center, radius, _)) = strand_cloud_hit(ui, viewport, camera, part, radius_points)
+    else {
+        return;
+    };
+    let pull = crate::hair_settle::PULL_CM * state.hair_brush_strength.clamp(0.05, 1.0);
+    let falloff = |point: &[f32; 3]| -> f32 {
+        let d = [
+            point[0] - center[0],
+            point[1] - center[1],
+            point[2] - center[2],
+        ];
+        let distance = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        let inside = (1.0 - (distance / radius).min(1.0)).clamp(0.0, 1.0);
+        inside * inside * (3.0 - 2.0 * inside)
+    };
+
+    let fallen: Vec<(u32, Vec<[f32; 3]>)> = part
+        .strands
+        .iter()
+        .filter(|(index, _)| reach.allows(**index))
+        .filter_map(|(index, strand)| {
+            let mut weights: Vec<f32> = strand.points_cm.iter().map(falloff).collect();
+            if let Some(root) = weights.first_mut() {
+                *root = 0.0;
+            }
+            let moved = crate::hair_settle::fall(&strand.points_cm, &weights, pull)?;
+            Some((*index, moved))
+        })
+        .collect();
+    if fallen.is_empty() {
+        return;
+    }
+    state.dispatch(Action::SetHairStrandPoints {
+        part_id,
+        strands: fallen,
+    });
+    ui.ctx().request_repaint();
+}
+
 fn handle_rigidity_brush(
     ui: &Ui,
     state: &mut AppState,
@@ -992,6 +1197,7 @@ fn handle_rigidity_brush(
     part_id: u64,
     radius_points: f32,
 ) {
+    let reach = stroke_reach(ui, state, viewport, camera, part_id, radius_points);
     if !ui.input(|input| input.pointer.button_down(PointerButton::Primary)) {
         return;
     }
@@ -1023,6 +1229,7 @@ fn handle_rigidity_brush(
     let strands: Vec<(u32, Vec<f32>)> = part
         .strands
         .iter()
+        .filter(|(index, _)| reach.allows(**index))
         .filter_map(|(index, strand)| {
             let weights: Vec<f32> = strand.points_cm.iter().map(falloff).collect();
             let values = crate::hair_rigidity::paint(&physics, strand, &weights, paint, strength)?;
@@ -1051,6 +1258,7 @@ fn handle_comb_brush(
     advance_stroke: bool,
     mirror: bool,
 ) {
+    let reach = stroke_reach(ui, state, viewport, camera, part_id, radius_points);
     let stroke_id = Id::new(HAIR_COMB_STROKE_ID);
     let pressed = ui.input(|input| input.pointer.button_pressed(PointerButton::Primary));
     let down = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
@@ -1106,15 +1314,18 @@ fn handle_comb_brush(
         let inside = (1.0 - (distance / radius).min(1.0)).clamp(0.0, 1.0);
         inside * inside * (3.0 - 2.0 * inside)
     };
-    let reach = radius * radius;
+    let within = radius * radius;
     let within = |point: &[f32; 3], center: &[f32; 3]| -> bool {
         let dx = point[0] - center[0];
         let dy = point[1] - center[1];
         let dz = point[2] - center[2];
-        dx * dx + dy * dy + dz * dz <= reach
+        dx * dx + dy * dy + dz * dz <= within
     };
     let mut captured = Vec::new();
     for (&scalp_index, strand) in &part.strands {
+        if !reach.allows(scalp_index) {
+            continue;
+        }
         let touched = strand
             .points_cm
             .iter()

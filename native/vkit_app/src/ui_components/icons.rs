@@ -78,8 +78,9 @@ pub enum Icon {
     VennThree,
     CrosshairBox,
     HairVertex,
-    GlobeGravity,
+    HairSettle,
     HairStream,
+    HairSingleStrand,
     Undo,
     Redo,
     Hammer,
@@ -106,15 +107,16 @@ pub enum Icon {
 
 impl Icon {
     #[cfg(test)]
-    pub const ALL: [Self; 65] = [
+    pub const ALL: [Self; 66] = [
         Self::Copy,
         Self::Paste,
         Self::Plus,
         Self::HairPlant,
         Self::VennThree,
         Self::CrosshairBox,
-        Self::GlobeGravity,
+        Self::HairSettle,
         Self::HairStream,
+        Self::HairSingleStrand,
         Self::Undo,
         Self::Redo,
         Self::Hammer,
@@ -291,7 +293,7 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::Folder => include_str!("../../resources/icons/folder.svg"),
         Icon::Save => include_str!("../../resources/icons/save.svg"),
         Icon::Camera => include_str!("../../resources/icons/camera.svg"),
-        Icon::HeadTexture => include_str!("../../resources/icons/scan-face.svg"),
+        Icon::HeadTexture => include_str!("../../resources/icons/skin-face.svg"),
         Icon::EyeOpen => include_str!("../../resources/icons/eye.svg"),
         Icon::EyeClosed => include_str!("../../resources/icons/eye-off.svg"),
         Icon::Lock => include_str!("../../resources/icons/lock.svg"),
@@ -323,8 +325,11 @@ const fn icon_art(glyph: Icon) -> IconArt {
         Icon::VennThree => include_str!("../../resources/icons/venn-three.svg"),
         Icon::CrosshairBox => include_str!("../../resources/icons/crosshair-box.svg"),
         Icon::HairVertex => include_str!("../../resources/icons/hair-vertex.svg"),
-        Icon::GlobeGravity => include_str!("../../resources/icons/globe-gravity.svg"),
+        Icon::HairSettle => include_str!("../../resources/icons/hair-settle.svg"),
         Icon::HairStream => include_str!("../../resources/icons/hair-stream.svg"),
+        Icon::HairSingleStrand => {
+            include_str!("../../resources/icons/hair-single-strand.svg")
+        }
         Icon::Undo => include_str!("../../resources/icons/rotate-ccw.svg"),
         Icon::Redo => include_str!("../../resources/icons/rotate-cw.svg"),
         Icon::Hammer => include_str!("../../resources/icons/hammer.svg"),
@@ -486,8 +491,9 @@ mod tests {
                 Icon::VennThree => {}
                 Icon::CrosshairBox => {}
                 Icon::HairVertex => {}
-                Icon::GlobeGravity => {}
+                Icon::HairSettle => {}
                 Icon::HairStream => {}
+                Icon::HairSingleStrand => {}
                 Icon::Undo => {}
                 Icon::Redo => {}
                 Icon::Hammer => {}
@@ -550,7 +556,7 @@ mod tests {
         let count = seen.len();
         seen.dedup();
         assert_eq!(seen.len(), count, "an icon is listed twice");
-        assert_eq!(count, 65, "the enum has 65 icons");
+        assert_eq!(count, 66, "the enum has 66 icons");
     }
 
     #[test]
@@ -614,7 +620,7 @@ mod tests {
             }
         }
 
-        assert_eq!(from_svg, 56);
+        assert_eq!(from_svg, 57);
         assert_eq!(drawn, 9);
     }
 

@@ -73,6 +73,7 @@ impl AppState {
             self.status = StatusMessage::new(TextKey::MorphUnavailable, StatusTone::Warning);
             return;
         }
+        self.note_hand_morph_edit();
 
         let snapshot = MorphResetUndo {
             values: self.morph_library.snapshot_values(),
@@ -241,6 +242,21 @@ impl AppState {
         self.status = StatusMessage::default();
     }
 
+    pub(super) fn reset_face_morph(&mut self, id: &str) {
+        let Some(default) = self
+            .morph_library
+            .controls()
+            .iter()
+            .find(|control| control.id == id)
+            .map(|control| control.target.default as f32)
+        else {
+            self.status = StatusMessage::new(TextKey::MorphNotInLibrary, StatusTone::Warning);
+            return;
+        };
+        self.morph_library.close_track(id);
+        self.set_face_morph(id, default);
+    }
+
     pub(super) fn set_face_morph(&mut self, id: &str, value: f32) {
         if !self.tab_available(Tab::Morph) {
             self.status = StatusMessage::new(TextKey::SculptNeedsBaseHead, StatusTone::Warning);
@@ -248,6 +264,7 @@ impl AppState {
         }
 
         self.active_tab = Tab::Morph;
+        self.note_hand_morph_edit();
 
         if self.morph_edit_open.as_deref() != Some(id) {
             if self.history_branch_needs_asking() {

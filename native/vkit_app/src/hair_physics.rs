@@ -946,7 +946,17 @@ impl HairPhysicsScene {
         mesh: &Arc<SurfaceMesh>,
         simulate: HairSimulation,
     ) -> bool {
-        same_inputs(
+        self.why_not(preview, mesh, simulate).is_none()
+    }
+
+    #[must_use]
+    pub(crate) fn why_not(
+        &self,
+        preview: &Arc<HairPreview>,
+        mesh: &Arc<SurfaceMesh>,
+        simulate: HairSimulation,
+    ) -> Option<&'static str> {
+        why_not_same(
             (&self.preview, &self.mesh, self.simulate),
             (preview, mesh, simulate),
         )
@@ -981,6 +991,46 @@ impl HairPhysicsScene {
             self.mesh_revision = mesh.revision;
             self.mesh = mesh;
         }
+    }
+
+    pub(crate) fn capture_into(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        capture: &crate::hair_settle::Capture,
+    ) {
+        let size = u64::from(self.particle_count) * std::mem::size_of::<GpuParticle>() as u64;
+        if size == 0 {
+            return;
+        }
+        let staging = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("vkit.hair-physics.settle-readback"),
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        }));
+        encoder.copy_buffer_to_buffer(&self.particle_buffer, 0, &staging, 0, size);
+
+        let preview = Arc::clone(&self.preview);
+        let mesh = Arc::clone(&self.mesh);
+        let sink = capture.sink.clone();
+        let part_id = capture.part_id;
+        let held = Arc::clone(&staging);
+        staging
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_err() {
+                    return;
+                }
+                let view = held.slice(..).get_mapped_range();
+                let particles: &[GpuParticle] = bytemuck::cast_slice(&view);
+                let shifts = shifts_from_particles(&preview, &mesh, particles);
+                drop(view);
+                held.unmap();
+                if let Some(shifts) = shifts {
+                    sink.deliver(part_id, shifts);
+                }
+            });
     }
 
     pub(crate) fn step(
@@ -1130,13 +1180,30 @@ fn same_inputs(
     held: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
     asked: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
 ) -> bool {
+    why_not_same(held, asked).is_none()
+}
+
+fn why_not_same(
+    held: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
+    asked: (&Arc<HairPreview>, &Arc<SurfaceMesh>, HairSimulation),
+) -> Option<&'static str> {
     let (held_preview, held_mesh, held_simulate) = held;
     let (preview, mesh, simulate) = asked;
-    held_simulate == simulate
-        && Arc::ptr_eq(held_preview, preview)
-        && held_mesh.topology_revision == mesh.topology_revision
-        && held_mesh.mesh.vertices.len() == mesh.mesh.vertices.len()
-        && held_mesh.mesh.triangles.len() == mesh.mesh.triangles.len()
+    if held_simulate != simulate {
+        return Some("simulation-mode");
+    }
+    if !Arc::ptr_eq(held_preview, preview) {
+        return Some("preview-rebuilt");
+    }
+    if held_mesh.topology_revision != mesh.topology_revision {
+        return Some("head-topology");
+    }
+    if held_mesh.mesh.vertices.len() != mesh.mesh.vertices.len()
+        || held_mesh.mesh.triangles.len() != mesh.mesh.triangles.len()
+    {
+        return Some("head-size");
+    }
+    None
 }
 
 struct SceneData {
@@ -1971,6 +2038,41 @@ fn head_field_for_mesh(mesh: &SurfaceMesh) -> (Vec<GpuHeadFieldElement>, u32) {
     }
     let count = grid.distances.len() as u32;
     (packed, count)
+}
+
+fn shifts_from_particles(
+    preview: &HairPreview,
+    mesh: &SurfaceMesh,
+    particles: &[GpuParticle],
+) -> Option<crate::hair_settle::Shifts> {
+    let part = preview.parts.first()?;
+    let mut shifts = Vec::with_capacity(part.guides.len());
+    let mut next = 0_usize;
+    for guide in part.guides.iter() {
+        let frame = binding_frame(&guide.binding, mesh)?;
+        let mut moved = Vec::with_capacity(guide.local_points.len());
+        for local in guide.local_points.iter() {
+            let particle = particles.get(next)?;
+            next += 1;
+            let settled = Vec3::new(
+                particle.position[0],
+                particle.position[1],
+                particle.position[2],
+            ) - frame.0;
+            let settled = [
+                settled.dot(frame.1),
+                settled.dot(frame.2),
+                settled.dot(frame.3),
+            ];
+            moved.push([
+                settled[0] - local[0],
+                settled[1] - local[1],
+                settled[2] - local[2],
+            ]);
+        }
+        shifts.push(moved);
+    }
+    Some(shifts)
 }
 
 fn deformed_guide_points(guide: &HairPreviewGuide, mesh: &SurfaceMesh) -> Option<Vec<Vec3>> {

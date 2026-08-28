@@ -14,6 +14,8 @@ pub struct HeadCollider {
     mesh: Mesh,
     projector: SurfaceProjector,
     revision: u64,
+
+    open_edges: Vec<[bool; 3]>,
 }
 
 impl std::fmt::Debug for HeadCollider {
@@ -41,10 +43,12 @@ impl HeadCollider {
     #[must_use]
     pub fn new(mesh: Mesh, revision: u64) -> Option<Self> {
         let projector = projector_for_mesh(&mesh).ok()?;
+        let open_edges = open_edges_of(&mesh);
         Some(Self {
             mesh,
             projector,
             revision,
+            open_edges,
         })
     }
 
@@ -73,13 +77,16 @@ impl HeadCollider {
         let at = Vec3::from_array(point);
         let offset = at - surface;
         let distance = offset.length();
-        let outside = offset.dot(normal) >= 0.0;
+        let past_the_rim = self.landed_on_an_open_edge(hit.primitive_id as usize, surface);
+        let outside = past_the_rim || offset.dot(normal) >= 0.0;
         if outside && distance >= clearance {
             return point;
         }
         let out = if distance > 1.0e-5 {
             let direction = offset / distance;
             if outside { direction } else { normal }
+        } else if past_the_rim {
+            return point;
         } else {
             normal
         };
@@ -89,6 +96,39 @@ impl HeadCollider {
             clearance + distance
         };
         (at + out * reach).to_array()
+    }
+
+    fn landed_on_an_open_edge(&self, triangle: usize, surface: Vec3) -> bool {
+        let (Some(corners), Some(open)) = (
+            self.mesh.triangles.get(triangle),
+            self.open_edges.get(triangle),
+        ) else {
+            return false;
+        };
+        let corner = |index: usize| {
+            self.mesh
+                .vertices
+                .get(corners[index] as usize)
+                .map(|point| Vec3::new(point[0] as f32, point[1] as f32, point[2] as f32))
+        };
+        for (step, open) in open.iter().enumerate() {
+            if !open {
+                continue;
+            }
+            let (Some(from), Some(to)) = (corner(step), corner((step + 1) % 3)) else {
+                continue;
+            };
+            let span = to - from;
+            let length = span.length();
+            if length <= 1.0e-6 {
+                continue;
+            }
+            let along = ((surface - from).dot(span) / (length * length)).clamp(0.0, 1.0);
+            if (surface - (from + span * along)).length() <= length * 1.0e-3 {
+                return true;
+            }
+        }
+        false
     }
 
     #[must_use]
@@ -110,6 +150,10 @@ impl HeadCollider {
     }
 
     pub fn clear_strand(&self, points: &mut [[f32; 3]], clearance: f32) {
+        self.clear_strand_pinning(points, clearance, &[]);
+    }
+
+    pub fn clear_strand_pinning(&self, points: &mut [[f32; 3]], clearance: f32, pinned: &[usize]) {
         let lengths: Vec<f32> = points
             .windows(2)
             .map(|pair| {
@@ -117,12 +161,29 @@ impl HeadCollider {
                 d.length()
             })
             .collect();
+        let held: Vec<[f32; 3]> = pinned
+            .iter()
+            .filter_map(|index| points.get(*index).copied())
+            .collect();
         for _ in 0..SEGMENT_PASSES {
             for (position, point) in points.iter_mut().enumerate().skip(1) {
+                if pinned.contains(&position) {
+                    continue;
+                }
                 *point = self.clear(*point, clearance * root_ease(position as f32));
             }
             let crossed = self.clear_segments(points, clearance);
-            restore_lengths(points, &lengths);
+            for (index, at) in pinned.iter().zip(&held) {
+                if let Some(point) = points.get_mut(*index) {
+                    *point = *at;
+                }
+            }
+            restore_lengths_around(points, &lengths, pinned);
+            for (index, at) in pinned.iter().zip(&held) {
+                if let Some(point) = points.get_mut(*index) {
+                    *point = *at;
+                }
+            }
             if !crossed {
                 break;
             }
@@ -173,18 +234,54 @@ fn root_ease(position: f32) -> f32 {
     (position / ROOT_EASE_POINTS).clamp(0.0, 1.0)
 }
 
-fn restore_lengths(points: &mut [[f32; 3]], lengths: &[f32]) {
-    for index in 1..points.len() {
-        let Some(rest) = lengths.get(index - 1) else {
-            return;
-        };
-        let anchor = Vec3::from_array(points[index - 1]);
-        let offset = Vec3::from_array(points[index]) - anchor;
-        let Some(direction) = offset.try_normalize() else {
-            continue;
-        };
-        points[index] = (anchor + direction * *rest).to_array();
+fn restore_lengths_around(points: &mut [[f32; 3]], lengths: &[f32], pinned: &[usize]) {
+    let mut anchors: Vec<usize> = pinned
+        .iter()
+        .copied()
+        .filter(|index| *index < points.len())
+        .collect();
+    anchors.push(0);
+    anchors.sort_unstable();
+    anchors.dedup();
+
+    let reach = |points: &mut [[f32; 3]], from: usize, to: usize, rest: f32| {
+        let anchor = Vec3::from_array(points[from]);
+        let offset = Vec3::from_array(points[to]) - anchor;
+        if let Some(direction) = offset.try_normalize() {
+            points[to] = (anchor + direction * rest).to_array();
+        }
+    };
+
+    for (step, anchor) in anchors.iter().enumerate() {
+        let stop = anchors.get(step + 1).copied().unwrap_or(points.len());
+        for index in (anchor + 1)..stop {
+            let Some(rest) = lengths.get(index - 1) else {
+                break;
+            };
+            reach(points, index - 1, index, *rest);
+        }
     }
+}
+
+fn open_edges_of(mesh: &Mesh) -> Vec<[bool; 3]> {
+    use std::collections::HashMap;
+
+    let mut uses: HashMap<(u32, u32), u32> = HashMap::with_capacity(mesh.triangles.len() * 3);
+    for corners in &mesh.triangles {
+        for step in 0..3 {
+            let (a, b) = (corners[step], corners[(step + 1) % 3]);
+            *uses.entry((a.min(b), a.max(b))).or_default() += 1;
+        }
+    }
+    mesh.triangles
+        .iter()
+        .map(|corners| {
+            std::array::from_fn(|step| {
+                let (a, b) = (corners[step], corners[(step + 1) % 3]);
+                uses.get(&(a.min(b), a.max(b))).copied().unwrap_or(0) < 2
+            })
+        })
+        .collect()
 }
 
 fn triangle_normal(mesh: &Mesh, triangle: [u32; 3]) -> Option<Vec3> {
@@ -209,6 +306,58 @@ mod tests {
         .expect("a triangle is a mesh")
     }
 
+    fn neck() -> Mesh {
+        let sides = 8;
+        let mut vertices = Vec::new();
+        for step in 0..sides {
+            let angle = std::f64::consts::TAU * step as f64 / sides as f64;
+            let (x, z) = (angle.cos() * 5.0, angle.sin() * 5.0);
+            vertices.push([x, 0.0, z]);
+            vertices.push([x, -6.0, z]);
+        }
+        let mut triangles = Vec::new();
+        for step in 0..sides {
+            let a = (step * 2) as u32;
+            let b = a + 1;
+            let c = (((step + 1) % sides) * 2) as u32;
+            let d = c + 1;
+            triangles.push([a, d, b]);
+            triangles.push([a, c, d]);
+        }
+        Mesh::new(vertices, triangles).expect("a tube is a mesh")
+    }
+
+    #[test]
+    fn hair_falling_past_the_neck_is_not_shoved_sideways() {
+        let collider = HeadCollider::new(neck(), 1).expect("collider");
+
+        for depth in [1.0, 8.0, 20.0, 40.0] {
+            let hanging = [1.0, -6.0 - depth, 0.5];
+            let solved = collider.clear(hanging, SKIN_CLEARANCE_CM);
+            let moved = ((solved[0] - hanging[0]).powi(2)
+                + (solved[1] - hanging[1]).powi(2)
+                + (solved[2] - hanging[2]).powi(2))
+            .sqrt();
+            assert!(
+                moved < 1.0e-4,
+                "a point {depth}cm below the rim was moved {moved}cm to {solved:?}",
+            );
+        }
+
+        let facet = 5.0 * (std::f32::consts::FRAC_PI_8).cos();
+        let in_the_cavity = [4.0, -3.0, 0.0];
+        let pushed = collider.clear(in_the_cavity, SKIN_CLEARANCE_CM);
+        let radius = pushed[0].hypot(pushed[2]);
+        assert!(
+            radius > facet,
+            "a point inside the neck stayed inside it: {pushed:?} at radius {radius}",
+        );
+        assert!(
+            (pushed[1] - in_the_cavity[1]).abs() < 0.5,
+            "clearing the wall should not slide the point along it",
+        );
+    }
+
     #[test]
     fn a_point_inside_the_head_comes_out_to_the_clearance() {
         let collider = HeadCollider::new(floor(), 1).expect("collider");
@@ -218,6 +367,50 @@ mod tests {
             "a buried point must surface to the clearance, got {sunk:?}",
         );
         assert!(sunk[0].abs() < 1.0e-5 && sunk[2].abs() < 1.0e-5);
+    }
+
+    #[test]
+    fn a_strand_that_touches_nothing_comes_back_unchanged() {
+        let collider = HeadCollider::new(floor(), 1).expect("collider");
+        let mut points = [
+            [0.0, 4.0, 0.0],
+            [0.5, 5.0, 0.0],
+            [3.0, 5.4, 0.2],
+            [3.2, 7.0, 0.3],
+            [3.3, 7.2, 0.35],
+        ];
+        let before = points;
+        collider.clear_strand(&mut points, SKIN_CLEARANCE_CM);
+        assert_eq!(points, before, "a strand in open air was rearranged");
+    }
+
+    #[test]
+    fn a_pinned_point_survives_the_solve_and_so_do_the_ones_past_it() {
+        let collider = HeadCollider::new(floor(), 1).expect("collider");
+        let mut points = [
+            [0.0, 4.0, 0.0],
+            [0.0, 5.0, 0.0],
+            [6.0, 5.5, 0.0],
+            [6.0, 6.5, 0.0],
+        ];
+        let placed = points[2];
+        let tail = points[3];
+        collider.clear_strand_pinning(&mut points, SKIN_CLEARANCE_CM, &[2]);
+        assert_eq!(points[2], placed, "the point the reader placed was moved");
+        assert_eq!(points[0], [0.0, 4.0, 0.0], "the root left the scalp");
+        assert_eq!(points[3], tail, "the tail slid after a pin it hangs from");
+    }
+
+    #[test]
+    fn pinning_does_not_stop_the_rest_of_the_strand_surfacing() {
+        let collider = HeadCollider::new(floor(), 1).expect("collider");
+        let mut points = [[0.0, 4.0, 0.0], [0.0, -2.0, 0.0], [0.0, 6.0, 0.0]];
+        collider.clear_strand_pinning(&mut points, SKIN_CLEARANCE_CM, &[2]);
+        assert!(
+            points[1][1] > -2.0,
+            "a buried point stayed buried: {:?}",
+            points[1],
+        );
     }
 
     #[test]

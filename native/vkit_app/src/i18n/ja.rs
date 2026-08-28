@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "VaM 互換のレンダリングスムージングです。0 は編集用のベースメッシュ、3 は VaM の既定値、4 が最大です。モーフ、UV、スカルプト、テクスチャベイクはベーストポロジーを保ちます",
         ),
+        TextKey::ShowWornHair => Some("装着中の髪を表示"),
+        TextKey::ShowWornHairHint => Some("全タブで表示。ここでは変形しません"),
         TextKey::FaceMatch => Some("生成"),
         TextKey::ResultPreview | TextKey::Save => Some("保存"),
         TextKey::TextureStage => Some("テクスチャ"),
@@ -46,8 +48,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("画面上で物理をプレビューします。エクスポートとは関係ありません。")
         }
+        TextKey::HairKeepSettledShape => Some("適用"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("全パートに物理をかけ、毛が落ち着いた位置をそのまま形状にします。")
+        }
         TextKey::HairMirrorEdit => Some("ミラー編集"),
         TextKey::HairMirrorEditHint => Some("ブラシが左右対称に両側を同時に編集します。"),
+        TextKey::HairSingleStrand => Some("一本だけ"),
+        TextKey::HairSingleStrandHint => {
+            Some("どうストロークしても、最初に触れた一本だけを編集します。")
+        }
         TextKey::HairAutoPart => Some("パーツ自動編集"),
         TextKey::HairAutoPartHint => {
             Some("アクティブレイヤーの代わりに、カーソル下で認識したパーツのみ編集します。")
@@ -85,6 +95,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolComb => Some("とかす"),
         TextKey::HairToolPlantHint => Some("ブラシ下の頭皮頂点に毛を植えます"),
         TextKey::HairToolGrowHint => Some("ブラシ下の毛束を伸ばします。Altで縮みます"),
+        TextKey::HairToolSettle => Some("落とす"),
+        TextKey::HairToolSettleHint => {
+            Some("ブラシ内の毛を落として、落ち着いた位置をそのまま形にします。")
+        }
         TextKey::HairToolEraseHint => Some("ブラシ下の毛束を消します"),
         TextKey::HairToolCombHint => Some("ブラシ下の毛束を梳きます。根元は固定されます"),
         TextKey::HairToolPinch => Some("まとめる"),
@@ -274,6 +288,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("VaM カタログを読み込み中"),
         TextKey::VaMFailed => Some("VaM カタログの読み込みに失敗しました"),
         TextKey::RefreshSkins => Some("スキン一覧を更新"),
+        TextKey::RescanVaMFolder => Some("VaM フォルダーを再スキャン"),
         TextKey::MorphLoading => Some("モーフを読み込み中"),
         TextKey::MorphLoadFailed => Some("モーフの読み込みに失敗しました"),
         TextKey::DefaultSkinMissing => {
@@ -331,10 +346,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("テクスチャキャンバス"),
         TextKey::ReferenceImages => Some("リファレンス"),
         TextKey::ReferenceImagesEmpty => Some("リファレンス画像なし"),
+        TextKey::ReferenceImageUnreadable => {
+            Some("この画像を読み込めないため、一覧にはありますが画面には出ません")
+        }
         TextKey::ReferenceImageAdd => Some("画像を追加"),
         TextKey::ReferenceImageRemove => Some("削除"),
+        TextKey::ReferenceImageLock => Some("固定"),
+        TextKey::ReferenceImageUnlock => Some("固定解除"),
         TextKey::ReferenceImageRaise => Some("前へ"),
         TextKey::ReferenceImageLower => Some("後ろへ"),
+        TextKey::ReferenceHeadRow => Some("頭"),
+        TextKey::ReferenceHeadRowHint => Some("この行より上の画像は頭に重なります"),
         TextKey::ShortcutTextureCanvasPan => Some("キャンバス移動（押しながら）"),
         TextKey::ShortcutDiagnosticLogCopy => Some("ログをコピー"),
         TextKey::ShortcutLightRotate => Some("ライト回転（押しながら）"),
@@ -343,6 +365,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("他のレイヤーを隠す"),
         TextKey::ShortcutLayerLocalView => Some("これだけ表示（切替）"),
         TextKey::ShortcutLayerInvertSelection => Some("選択を反転"),
+        TextKey::ShortcutLayerSelectAll => Some("レイヤーを全選択"),
+        TextKey::ShortcutLayerRemove => Some("選択レイヤーを削除"),
+        TextKey::ShortcutVertexSelectConnected => Some("毛束をすべて選択"),
+        TextKey::ShortcutVertexGrowSelection => Some("選択を広げる"),
+        TextKey::ShortcutVertexShrinkSelection => Some("選択を狭める"),
         TextKey::ShortcutSculptSmoothHold => Some("押している間スムーズ"),
         TextKey::ShortcutSculptInflateHold => Some("押している間膨らませる"),
         TextKey::ShortcutSculptAlternateHold => Some("押している間逆方向"),
@@ -398,17 +425,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterShow => Some("片側だけ動くモーフを表示"),
         TextKey::MorphOneSidedFilterHide => Some("片側だけ動くモーフを隠す"),
         TextKey::AppearanceSearch => Some("外見を検索"),
+        TextKey::SourceFilterAll => Some("すべて"),
+        TextKey::SourceFilterLooks => Some("ルック"),
+        TextKey::SourceFilterMorphs => Some("モーフ"),
         TextKey::AppearanceLayers => Some("外見レイヤー"),
         TextKey::AddAppearanceLayer => Some("選択した外見を追加"),
         TextKey::AppearanceLayersEmpty => Some("レイヤーなし"),
         TextKey::AppearanceLayerRaise => Some("上へ"),
         TextKey::AppearanceLayerLower => Some("下へ"),
         TextKey::LookFind => Some("外見を読み込む"),
-        TextKey::CameraTrackballArmed => {
-            Some("トラックボール · ドラッグで自由回転 · クリックまたは R で終了")
-        }
-        TextKey::HelpTrackball => Some("トラックボール回転"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("回転 · ドラッグで選択を回す · クリックまたは R で確定"),
+        TextKey::HelpVertexRotate => Some("選択を回転"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("2 つの角度から見る — ビューを分割"),
         TextKey::SplitModelViewName => Some("分割ビュー"),
         TextKey::HelpLevelRoll => Some("傾き（ロール）をリセット"),
@@ -575,6 +603,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("ネイティブフィッティングコアを統合中です"),
         TextKey::MorphPreviewUpdated => Some("モーフプレビューを更新しました"),
+        TextKey::MorphResolving => Some("モーフを読み込み中"),
         TextKey::MorphsReset => Some("モーフをリセットしました"),
         TextKey::MorphsResetUndone => Some("リセットを元に戻しました"),
         TextKey::MorphEditUndone => Some("モーフ調整を元に戻しました"),
@@ -613,10 +642,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("ヘアプリセット"),
         TextKey::HairPresetLoad => Some("読み込む"),
-        TextKey::HairToolPick => Some("レイヤーを選ぶ"),
-        TextKey::HairToolPickHint => Some(
-            "ビューポートで毛束をクリックすると、そのレイヤーが有効になります。ブラシは次のクリックから動きます。",
-        ),
         TextKey::HelpHairPick => Some("カーソル下のレイヤーを選ぶ"),
         TextKey::ShortcutHairPick => Some("V、またはどのブラシでも Ctrl + クリック"),
         TextKey::HelpHairSmooth => Some("とかす代わりにならす"),
@@ -652,6 +677,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("透視投影"),
         TextKey::Orthographic => Some("平行投影"),
         TextKey::Fov => Some("視野角"),
+        TextKey::CameraRoll => Some("ロール"),
         TextKey::ResetCamera => Some("カメラをリセット"),
         TextKey::WindowMinimize => Some("最小化"),
         TextKey::WindowMaximize => Some("最大化"),
@@ -677,6 +703,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("表面の凹凸をなめらかにします"),
         TextKey::SculptBrushRestoreTooltip => Some("ベース形状に復元します"),
+        TextKey::SculptBrushVertex => Some("頂点"),
+        TextKey::SculptBrushVertexTooltip => Some(
+            "メッシュの点を直接動かします。クリックで掴み、ドラッグで移動、軸を固定したいときはギズモを使います。",
+        ),
         TextKey::SculptBrushMask => Some("マスク"),
         TextKey::SculptBrushMaskTooltip => {
             Some("選択中の外見レイヤーを削り、下のレイヤーを出します。Altで戻します")

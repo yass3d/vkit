@@ -58,11 +58,9 @@ const TITLE_WINDOW_BUTTON_WIDTH: f32 = 40.0;
 const PRIMARY_FOOTER_HEIGHT: f32 = 112.0;
 pub(crate) const SINGLE_ACTION_FOOTER_HEIGHT: f32 = 62.0;
 const ALIGNMENT_FOOTER_HEIGHT: f32 = SINGLE_ACTION_FOOTER_HEIGHT;
-const MORPH_ACTION_FOOTER_HEIGHT: f32 = 118.0;
 const MORPH_ROW_HEIGHT: f32 = 48.0;
 const MORPH_ROW_GAP: f32 = 1.0;
 const MORPH_FILTER_LIST_GAP: f32 = 6.0;
-const MORPH_APPLY_HEIGHT: f32 = CONTROL_H_PRIMARY;
 const MORPH_ROW_HORIZONTAL_INSET: f32 = 8.0;
 const MORPH_ROW_VERTICAL_INSET: f32 = 4.0;
 const MORPH_ROW_LABEL_HEIGHT: f32 = 16.0;
@@ -178,11 +176,6 @@ fn visible_tab_is_active(state: &AppState, tab: Tab) -> bool {
 struct InspectorShellRegions {
     body: Rect,
     footer: Rect,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct MorphFooterButtons {
-    apply: Rect,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -316,17 +309,6 @@ fn inspector_list_budget(ui: &Ui, cursor_top: f32, footer: f32) -> Option<f32> {
     Some((limit - cursor_top - footer).max(0.0))
 }
 
-fn morph_footer_buttons(footer: Rect) -> MorphFooterButtons {
-    let footer = footer.shrink2(vec2(0.0, 8.0));
-    let apply_height = MORPH_APPLY_HEIGHT.min(footer.height().max(0.0));
-    MorphFooterButtons {
-        apply: Rect::from_min_size(
-            pos2(footer.left(), footer.bottom() - apply_height),
-            vec2(footer.width(), apply_height),
-        ),
-    }
-}
-
 fn pin_footer_buttons(footer: Rect) -> PinFooterButtons {
     let inset = footer.shrink2(vec2(0.0, 8.0));
     let generate_height = PRIMARY_ACTION_HEIGHT.min(inset.height().max(0.0));
@@ -389,7 +371,10 @@ pub fn draw(root: &mut Ui, state: &mut AppState) {
                 Shortcut::HairPinchTool,
                 crate::hair_project::HairTool::Pinch,
             ),
-            (Shortcut::HairPickTool, crate::hair_project::HairTool::Pick),
+            (
+                Shortcut::HairPickTool,
+                crate::hair_project::HairTool::Vertex,
+            ),
         ]
         .into_iter()
         .find_map(|(shortcut, tool)| shortcut.pressed(root).then_some(tool));
@@ -563,19 +548,44 @@ fn draw_top_bar(root: &mut Ui, state: &mut AppState) {
                     COLOR_MUTED
                 };
 
+                let muted_hair = tab == Tab::Hair
+                    && state.hair_hide_strands
+                    && !state.hair_project.parts.is_empty();
+                let badge = muted_hair
+                    .then(|| Vec2::splat(FONT_BODY * 0.9))
+                    .map(|size| {
+                        Rect::from_center_size(
+                            pos2(cell.right() - size.x * 0.75, cell.center().y),
+                            size,
+                        )
+                    });
+                let label_width = badge.map_or(cell.width(), |badge| {
+                    (cell.width() - badge.width() * 2.0).max(0.0)
+                });
                 let fitted = crate::ui_components::ellipsize_to_width(
                     ui,
                     label,
-                    cell.width(),
+                    label_width,
                     FontId::proportional(FONT_BODY),
                 );
                 ui.painter().text(
-                    cell.center(),
+                    pos2(
+                        cell.center().x - badge.map_or(0.0, |badge| badge.width() * 0.6),
+                        cell.center().y,
+                    ),
                     Align2::CENTER_CENTER,
                     &fitted,
                     FontId::proportional(FONT_BODY),
                     color,
                 );
+                if let Some(badge) = badge {
+                    crate::ui_components::paint_icon(
+                        ui.painter(),
+                        badge,
+                        crate::ui_components::Icon::EyeClosed,
+                        color.gamma_multiply(0.55),
+                    );
+                }
 
                 response.widget_info(|| {
                     WidgetInfo::selected(WidgetType::Button, available, active, label)
@@ -1611,6 +1621,36 @@ fn draw_vam_edit_source_picker(
         !state.vam_edit_sources.is_empty(),
     );
 
+    let filters = crate::vam_edit_sources::EditSourceFilter::ALL;
+    let labels = filters
+        .iter()
+        .map(|filter| {
+            text(
+                state.locale,
+                match filter {
+                    crate::vam_edit_sources::EditSourceFilter::All => TextKey::SourceFilterAll,
+                    crate::vam_edit_sources::EditSourceFilter::Looks => TextKey::SourceFilterLooks,
+                    crate::vam_edit_sources::EditSourceFilter::Morphs => {
+                        TextKey::SourceFilterMorphs
+                    }
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    let active = filters
+        .iter()
+        .position(|filter| *filter == state.vam_edit_filter);
+    let (_, picked) = crate::ui_components::chips(
+        ui,
+        egui::Id::new("vkit.vam-edit-source.kind"),
+        active,
+        &labels,
+    );
+    if let Some(index) = picked {
+        state.vam_edit_filter = filters[index];
+    }
+    ui.add_space(SPACE_2);
+
     let query = state.vam_edit_query.trim().to_lowercase();
     let mut hidden_for_other_figure = 0_usize;
     let filtered = state
@@ -1618,7 +1658,7 @@ fn draw_vam_edit_source_picker(
         .iter()
         .enumerate()
         .filter_map(|(index, source)| {
-            if source.kind != VaMEditSourceKind::AppearancePreset {
+            if !state.vam_edit_filter.admits(source.kind) {
                 return None;
             }
             if !(query.is_empty()
@@ -1691,6 +1731,7 @@ fn draw_vam_edit_source_picker(
                             selected_row,
                             &source.path.to_string_lossy(),
                             source.resolves_nothing(),
+                            source.kind,
                         );
                         if response.clicked() {
                             selected = Some(source.stable_id.clone());
@@ -1773,6 +1814,7 @@ fn selectable_list_row_styled(
     response
 }
 
+#[allow(clippy::too_many_arguments)]
 fn vam_edit_source_row(
     ui: &mut Ui,
     locale: Locale,
@@ -1780,6 +1822,7 @@ fn vam_edit_source_row(
     selected: bool,
     tooltip: &str,
     resolves_nothing: bool,
+    kind: VaMEditSourceKind,
 ) -> Response {
     let (rect, response) = ui.allocate_exact_size(
         vec2(ui.available_width().max(0.0), CONTROL_HEIGHT),
@@ -1792,9 +1835,33 @@ fn vam_edit_source_row(
     } else {
         COLOR_TEXT
     };
+    let kind_label = text(
+        locale,
+        match kind {
+            VaMEditSourceKind::MorphPair => TextKey::SourceFilterMorphs,
+            VaMEditSourceKind::AppearancePreset => TextKey::SourceFilterLooks,
+        },
+    );
+    let kind_width = ui
+        .painter()
+        .layout_no_wrap(
+            kind_label.to_owned(),
+            FontId::proportional(FONT_XS),
+            COLOR_MUTED,
+        )
+        .size()
+        .x;
+    ui.painter().text(
+        pos2(rect.right() - 8.0, rect.center().y),
+        Align2::RIGHT_CENTER,
+        kind_label,
+        FontId::proportional(FONT_XS),
+        COLOR_MUTED,
+    );
+
     let label_rect = Rect::from_min_max(
         pos2(rect.left() + 10.0, rect.top()),
-        pos2(rect.right() - 8.0, rect.bottom()),
+        pos2(rect.right() - 8.0 - kind_width - SPACE_2, rect.bottom()),
     );
     ui.painter().with_clip_rect(label_rect).text(
         pos2(label_rect.left(), label_rect.center().y),
@@ -3039,8 +3106,10 @@ fn draw_symmetry_change_confirmation(root: &mut Ui, state: &mut AppState) {
 fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
     let footer_height = if state.is_texturing() {
         ALIGNMENT_FOOTER_HEIGHT
+    } else if state.morph_look_find_open {
+        0.0
     } else {
-        MORPH_ACTION_FOOTER_HEIGHT
+        SINGLE_ACTION_FOOTER_HEIGHT
     };
     show_inspector_shell(
         ui,
@@ -3143,14 +3212,16 @@ fn draw_morph_inspector(ui: &mut Ui, state: &mut AppState) {
                 }
                 return;
             }
-            let buttons = morph_footer_buttons(footer);
-            let busy = state.busy();
-
             if state.morph_look_find_open {
                 return;
             }
-            let apply =
-                next_step_button(ui, buttons.apply, text(state.locale, TextKey::Next), !busy);
+            let busy = state.busy();
+            let apply = next_step_button(
+                ui,
+                primary_action_rect(footer),
+                text(state.locale, TextKey::Next),
+                !busy,
+            );
             if apply.clicked() {
                 state.dispatch(Action::BakeMorph);
             }
@@ -3258,7 +3329,7 @@ fn draw_face_morph_list(ui: &mut Ui, state: &mut AppState) {
             ),
             VisibleMorphRow::Control(control_index) => {
                 let control = &state.morph_library.controls()[control_index];
-                let (minimum, maximum) = control.target.slider_bounds(f64::from(control.value));
+                let (minimum, maximum) = control.track_bounds();
                 let (numeric_minimum, numeric_maximum) = control.target.entry_bounds();
 
                 let value = state
@@ -3292,15 +3363,21 @@ fn draw_face_morph_list(ui: &mut Ui, state: &mut AppState) {
             availability,
         );
         match (row, changed) {
-            (VisibleMorphRow::EyeClosure, Some(value)) => {
+            (VisibleMorphRow::EyeClosure, Some(MorphEdit::Set(value))) => {
                 state.dispatch(Action::SetEyeClosure(value));
             }
-            (VisibleMorphRow::Control(_), Some(value)) => {
+            (VisibleMorphRow::EyeClosure, Some(MorphEdit::Reset)) => {
+                state.dispatch(Action::SetEyeClosure(default));
+            }
+            (VisibleMorphRow::Control(_), Some(MorphEdit::Set(value))) => {
                 if let Some(gaze) = state.gaze_for_eyelid_control_value(&id, value) {
                     state.dispatch(Action::SetManualEyeGaze(gaze));
                 } else {
                     state.dispatch(Action::SetFaceMorph { id, value });
                 }
+            }
+            (VisibleMorphRow::Control(_), Some(MorphEdit::Reset)) => {
+                state.dispatch(Action::ResetFaceMorph { id });
             }
             (_, None) => {}
         }
@@ -3379,6 +3456,12 @@ fn normalize_ui_search(value: &str) -> String {
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MorphEdit {
+    Set(f32),
+    Reset,
+}
+
 #[derive(Clone, Debug)]
 struct MorphRange {
     slider: std::ops::RangeInclusive<f32>,
@@ -3395,7 +3478,7 @@ fn draw_morph_row(
     mut value: f32,
     range: MorphRange,
     availability: MorphAvailability,
-) -> Option<f32> {
+) -> Option<MorphEdit> {
     let (minimum, maximum) = (*range.slider.start(), *range.slider.end());
     let (numeric_minimum, numeric_maximum) = (*range.numeric.start(), *range.numeric.end());
     let default = range.default;
@@ -3526,9 +3609,9 @@ fn draw_morph_row(
 
     ui.set_clip_rect(inherited_clip);
     if reset_response.clicked() {
-        Some(default)
+        Some(MorphEdit::Reset)
     } else if slider_response.changed() {
-        Some(value)
+        Some(MorphEdit::Set(value))
     } else {
         None
     }

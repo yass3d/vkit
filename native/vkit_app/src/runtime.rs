@@ -1,3 +1,5 @@
+const SETTLE_PATIENCE_FRAMES: u32 = 180;
+
 use std::{
     error::Error,
     ffi::OsString,
@@ -717,6 +719,8 @@ fn bind_windows_window_icons(window: &Window) -> Result<(), String> {
 const fn numpad_action(shortcut: Shortcut) -> Option<Action> {
     use crate::camera::StandardView;
     match shortcut {
+        Shortcut::VertexGrowSelection => Some(Action::GrowHairVertexSelection(1)),
+        Shortcut::VertexShrinkSelection => Some(Action::GrowHairVertexSelection(-1)),
         Shortcut::ViewReset => Some(Action::ResetCamera),
         Shortcut::ViewToggleProjection => Some(Action::ToggleProjection),
         Shortcut::ViewFront => Some(Action::SetStandardView(StandardView::Front)),
@@ -840,6 +844,8 @@ struct Runtime {
 
     font_probe_pending: bool,
     hair_disturbance: (u64, bool, bool),
+
+    settle_patience: u32,
     last_morph_timing_serial: u64,
     morph_timing_log_count: u8,
     last_sculpt_timing_serial: u64,
@@ -1194,6 +1200,7 @@ impl Runtime {
             installed_font_locale: startup_locale,
             font_probe_pending: true,
             hair_disturbance: (0, false, false),
+            settle_patience: 0,
             last_morph_timing_serial: 0,
             morph_timing_log_count: 0,
             last_sculpt_timing_serial: 0,
@@ -1234,6 +1241,30 @@ impl Runtime {
         self.poll_texture_assets();
     }
 
+    fn collect_settled_hair(&mut self) {
+        let landed = self.state.hair_settle_sink.take();
+        let asking = self.state.hair_settle_wanted.is_some();
+        let answered = !landed.is_empty();
+        for (part_id, shifts) in landed {
+            self.state
+                .dispatch(Action::AdoptSettledHair { part_id, shifts });
+        }
+        if answered {
+            self.state.hair_settle_wanted = None;
+            self.settle_patience = 0;
+            return;
+        }
+        if !asking {
+            self.settle_patience = 0;
+            return;
+        }
+        self.settle_patience += 1;
+        if self.settle_patience > SETTLE_PATIENCE_FRAMES {
+            self.state.hair_settle_wanted = None;
+            self.settle_patience = 0;
+        }
+    }
+
     fn render(&mut self, event_loop: &ActiveEventLoop) -> Option<Instant> {
         self.pump_lanes();
 
@@ -1248,6 +1279,7 @@ impl Runtime {
             self.hair_disturbance = disturbance;
             self.state.hair_simulation_seconds = crate::state::HAIR_SIMULATION_SECONDS;
         }
+        self.collect_settled_hair();
         if self.state.hair_settle_seconds > 0.0 || self.state.hair_simulation_seconds > 0.0 {
             let elapsed = self.context.input(|input| input.stable_dt);
             self.state

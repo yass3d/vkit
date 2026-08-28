@@ -658,6 +658,168 @@ macro_rules! skin_shader_source {
 
 pub(super) const SKIN_SHADER: &str =
     skin_shader_source!(crate::shader_color::color_grading_wgsl!());
+pub(super) const LINE_SHADER: &str = concat!(
+    crate::shader_scene::scene_uniform_wgsl!(),
+    r#"
+struct LineInstance {
+    @location(0) from_position: vec3<f32>,
+    @location(1) from_width: f32,
+    @location(2) to_position: vec3<f32>,
+    @location(3) to_width: f32,
+    @location(4) from_colour: vec4<f32>,
+    @location(5) to_colour: vec4<f32>,
+};
+
+struct LineVertex {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) colour: vec4<f32>,
+    @location(1) across: f32,
+};
+
+const LINE_LIFT: f32 = 0.0045;
+
+fn lift_toward_eye(world: vec3<f32>) -> vec3<f32> {
+    let toward = scene.eye.xyz - world;
+    let reach = length(toward);
+    if (reach <= 1.0e-6) {
+        return world;
+    }
+    return world + (toward / reach) * (reach * LINE_LIFT);
+}
+
+@vertex
+fn vs_line(
+    @builtin(vertex_index) vertex_index: u32,
+    instance: LineInstance,
+) -> LineVertex {
+    var alongs = array<f32, 6>(0.0, 1.0, 1.0, 0.0, 1.0, 0.0);
+    var acrosses = array<f32, 6>(-1.0, -1.0, 1.0, -1.0, 1.0, 1.0);
+    let along = alongs[vertex_index];
+    let across = acrosses[vertex_index];
+
+    let from_world = lift_toward_eye((scene.model * vec4<f32>(instance.from_position, 1.0)).xyz);
+    let to_world = lift_toward_eye((scene.model * vec4<f32>(instance.to_position, 1.0)).xyz);
+    let from_clip = scene.view_projection * vec4<f32>(from_world, 1.0);
+    let to_clip = scene.view_projection * vec4<f32>(to_world, 1.0);
+
+    let viewport = max(scene.grading.yz, vec2<f32>(1.0, 1.0));
+    let from_screen = from_clip.xy / max(abs(from_clip.w), 1.0e-6) * viewport;
+    let to_screen = to_clip.xy / max(abs(to_clip.w), 1.0e-6) * viewport;
+    var run = to_screen - from_screen;
+    if (length(run) < 1.0e-6) {
+        run = vec2<f32>(1.0, 0.0);
+    }
+    let side = normalize(vec2<f32>(-run.y, run.x));
+
+    let clip = mix(from_clip, to_clip, along);
+    let width = mix(instance.from_width, instance.to_width, along);
+    let offset = side * across * width / viewport;
+
+    var output: LineVertex;
+    output.clip = vec4<f32>(
+        clip.x + offset.x * clip.w,
+        clip.y + offset.y * clip.w,
+        clip.z,
+        clip.w,
+    );
+    output.colour = mix(instance.from_colour, instance.to_colour, along);
+    output.across = across;
+    return output;
+}
+
+@fragment
+fn fs_line(input: LineVertex) -> @location(0) vec4<f32> {
+    let feather = max(fwidth(input.across), 1.0e-4);
+    let inside = clamp((1.0 - abs(input.across)) / feather, 0.0, 1.0);
+    return vec4<f32>(input.colour.rgb, input.colour.a * inside);
+}
+"#
+);
+
+pub(super) const MARKER_SHADER: &str = concat!(
+    crate::shader_scene::scene_uniform_wgsl!(),
+    r#"
+struct MarkerInstance {
+    @location(0) centre: vec3<f32>,
+    @location(1) radius: f32,
+    @location(2) fill: vec4<f32>,
+    @location(3) ring: vec4<f32>,
+    @location(4) shape: f32,
+};
+
+struct MarkerVertex {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) corner: vec2<f32>,
+    @location(1) fill: vec4<f32>,
+    @location(2) ring: vec4<f32>,
+    @location(3) edge: f32,
+    @location(4) shape: f32,
+};
+
+const MARKER_LIFT: f32 = 0.0045;
+
+@vertex
+fn vs_marker(
+    @builtin(vertex_index) vertex_index: u32,
+    instance: MarkerInstance,
+) -> MarkerVertex {
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, 1.0),
+    );
+    let corner = corners[vertex_index];
+
+    let world = (scene.model * vec4<f32>(instance.centre, 1.0)).xyz;
+    let toward_eye = scene.eye.xyz - world;
+    let distance = length(toward_eye);
+    var lifted = world;
+    if (distance > 1.0e-6) {
+        lifted = world + (toward_eye / distance) * (distance * MARKER_LIFT);
+    }
+
+    var clip = scene.view_projection * vec4<f32>(lifted, 1.0);
+    let viewport = max(scene.grading.yz, vec2<f32>(1.0, 1.0));
+    let span = vec2<f32>(instance.radius * 2.0) / viewport;
+    clip = vec4<f32>(
+        clip.x + corner.x * span.x * clip.w,
+        clip.y + corner.y * span.y * clip.w,
+        clip.z,
+        clip.w,
+    );
+
+    var output: MarkerVertex;
+    output.clip = clip;
+    output.corner = corner;
+    output.fill = instance.fill;
+    output.ring = instance.ring;
+    output.edge = clamp(instance.radius / max(instance.radius + 1.0, 1.0e-6), 0.05, 0.95);
+    output.shape = instance.shape;
+    return output;
+}
+
+@fragment
+fn fs_marker(input: MarkerVertex) -> @location(0) vec4<f32> {
+    let radial = mix(
+        length(input.corner),
+        max(abs(input.corner.x), abs(input.corner.y)),
+        input.shape,
+    );
+    if (radial > 1.0) {
+        discard;
+    }
+    let feather = max(fwidth(radial), 1.0e-4);
+    let outside = clamp((1.0 - radial) / feather, 0.0, 1.0);
+    let inside = clamp((input.edge - radial) / feather, 0.0, 1.0);
+    let colour = mix(input.ring, input.fill, inside);
+    return vec4<f32>(colour.rgb, colour.a * outside);
+}
+"#
+);
+
 pub(super) const DEPTH_RESET_SHADER: &str = r#"
 struct DepthResetOutput {
     @builtin(frag_depth) depth: f32,

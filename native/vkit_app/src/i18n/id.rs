@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "Penghalusan render yang kompatibel dengan VaM. 0 adalah mesh dasar yang bisa disunting, 3 adalah bawaan VaM, dan 4 adalah maksimum. Morph, UV, sculpting, dan bake tekstur tetap mempertahankan topologi dasar",
         ),
+        TextKey::ShowWornHair => Some("Tampilkan rambut"),
+        TextKey::ShowWornHairHint => Some("Di semua tab; tidak diubah di sini"),
         TextKey::FaceMatch => Some("Buat"),
         TextKey::ResultPreview => Some("Simpan"),
         TextKey::Save => Some("Simpan"),
@@ -48,8 +50,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("Melihat pratinjau fisika di layar. Tidak ada hubungannya dengan ekspor.")
         }
+        TextKey::HairKeepSettledShape => Some("Terapkan"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("Menjalankan fisika pada semua bagian, lalu menyimpan posisi jatuhnya helai.")
+        }
         TextKey::HairMirrorEdit => Some("Edit cermin"),
         TextKey::HairMirrorEditHint => Some("Kuas mengedit kedua sisi sekaligus secara simetris."),
+        TextKey::HairSingleStrand => Some("Satu helai"),
+        TextKey::HairSingleStrandHint => {
+            Some("Sapuan hanya mengedit helai tempat ia dimulai, sejauh apa pun.")
+        }
         TextKey::HairAutoPart => Some("Part otomatis"),
         TextKey::HairAutoPartHint => {
             Some("Kuas hanya mengedit part yang dikenali di bawah kursor, bukan layer aktif.")
@@ -86,6 +96,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolPlantHint => Some("Menanam helai pada titik kulit kepala di bawah kuas"),
         TextKey::HairToolGrowHint => {
             Some("Memanjangkan helai di bawah kuas; tahan Alt untuk memendekkan")
+        }
+        TextKey::HairToolSettle => Some("Jatuhkan"),
+        TextKey::HairToolSettleHint => {
+            Some("Menjatuhkan helai di bawah kuas dan menyimpan posisi jatuhnya.")
         }
         TextKey::HairToolEraseHint => Some("Menghapus helai di bawah kuas"),
         TextKey::HairToolCombHint => Some("Menyisir helai di bawah kuas; akarnya tetap di tempat"),
@@ -279,6 +293,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("Mengindeks katalog VaM"),
         TextKey::VaMFailed => Some("Katalog VaM gagal"),
         TextKey::RefreshSkins => Some("Segarkan pustaka kulit"),
+        TextKey::RescanVaMFolder => Some("Pindai ulang folder VaM"),
         TextKey::MorphLoading => Some("Memuat morph"),
         TextKey::MorphLoadFailed => Some("Gagal memuat morph"),
         TextKey::DefaultSkinMissing => Some("Kulit itu tidak ditemukan. Periksa folder VaM"),
@@ -334,10 +349,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("Kanvas tekstur"),
         TextKey::ReferenceImages => Some("Referensi"),
         TextKey::ReferenceImagesEmpty => Some("Tidak ada gambar referensi"),
+        TextKey::ReferenceImageUnreadable => {
+            Some("Gambar ini tidak dapat dibaca, jadi ada di daftar tetapi tidak di layar")
+        }
         TextKey::ReferenceImageAdd => Some("Tambah gambar"),
         TextKey::ReferenceImageRemove => Some("Hapus"),
+        TextKey::ReferenceImageLock => Some("Kunci"),
+        TextKey::ReferenceImageUnlock => Some("Buka kunci"),
         TextKey::ReferenceImageRaise => Some("Maju"),
         TextKey::ReferenceImageLower => Some("Mundur"),
+        TextKey::ReferenceHeadRow => Some("Kepala"),
+        TextKey::ReferenceHeadRowHint => Some("Gambar di atas baris ini menutupi kepala"),
         TextKey::ShortcutTextureCanvasPan => Some("Geser kanvas (tahan)"),
         TextKey::ShortcutDiagnosticLogCopy => Some("Salin log"),
         TextKey::ShortcutLightRotate => Some("Putar cahaya (tahan)"),
@@ -346,6 +368,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("Sembunyikan lapisan lain"),
         TextKey::ShortcutLayerLocalView => Some("Tampilkan ini saja (alih)"),
         TextKey::ShortcutLayerInvertSelection => Some("Balik pilihan"),
+        TextKey::ShortcutLayerSelectAll => Some("Pilih semua lapisan"),
+        TextKey::ShortcutLayerRemove => Some("Hapus lapisan terpilih"),
+        TextKey::ShortcutVertexSelectConnected => Some("Pilih seluruh helai"),
+        TextKey::ShortcutVertexGrowSelection => Some("Perluas pilihan"),
+        TextKey::ShortcutVertexShrinkSelection => Some("Persempit pilihan"),
         TextKey::ShortcutSculptSmoothHold => Some("Tahan untuk menghaluskan"),
         TextKey::ShortcutSculptInflateHold => Some("Tahan untuk mengembang"),
         TextKey::ShortcutSculptAlternateHold => Some("Tahan untuk membalik"),
@@ -405,17 +432,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
             Some("Sembunyikan morph yang menggerakkan satu sisi saja")
         }
         TextKey::AppearanceSearch => Some("Cari Look"),
+        TextKey::SourceFilterAll => Some("Semua"),
+        TextKey::SourceFilterLooks => Some("Look"),
+        TextKey::SourceFilterMorphs => Some("Morph"),
         TextKey::AppearanceLayers => Some("Lapisan penampilan"),
         TextKey::AddAppearanceLayer => Some("Tambahkan penampilan terpilih"),
         TextKey::AppearanceLayersEmpty => Some("Belum ada lapisan"),
         TextKey::AppearanceLayerRaise => Some("Naik"),
         TextKey::AppearanceLayerLower => Some("Turun"),
         TextKey::LookFind => Some("Muat Look"),
-        TextKey::CameraTrackballArmed => {
-            Some("Trackball · seret untuk memutar bebas · klik atau R untuk keluar")
-        }
-        TextKey::HelpTrackball => Some("Rotasi trackball"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("Putar · seret · klik atau R untuk selesai"),
+        TextKey::HelpVertexRotate => Some("Putar pilihan"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("Lihat dari dua sudut — bagi tampilan"),
         TextKey::SplitModelViewName => Some("Tampilan terbagi"),
         TextKey::HelpLevelRoll => Some("Ratakan cakrawala"),
@@ -578,6 +606,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("Integrasi inti fitting native sedang berjalan"),
         TextKey::MorphPreviewUpdated => Some("Pratinjau morph diperbarui"),
+        TextKey::MorphResolving => Some("Memuat morph"),
         TextKey::MorphsReset => Some("Morph diatur ulang"),
         TextKey::MorphsResetUndone => Some("Pengaturan ulang morph diurungkan"),
         TextKey::MorphEditUndone => Some("Penyesuaian morph diurungkan"),
@@ -616,10 +645,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("Praatur rambut"),
         TextKey::HairPresetLoad => Some("Muat"),
-        TextKey::HairToolPick => Some("Pilih lapisan"),
-        TextKey::HairToolPickHint => Some(
-            "Klik untai di viewport untuk mengaktifkan lapisannya. Kuas menunggu klik berikutnya.",
-        ),
         TextKey::HelpHairPick => Some("Pilih lapisan di bawah kursor"),
         TextKey::ShortcutHairPick => Some("V, atau Ctrl + klik dengan kuas apa pun"),
         TextKey::HelpHairSmooth => Some("Haluskan alih-alih menyisir"),
@@ -653,6 +678,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("Perspektif"),
         TextKey::Orthographic => Some("Ortografis"),
         TextKey::Fov => Some("FOV"),
+        TextKey::CameraRoll => Some("Guling"),
         TextKey::ResetCamera => Some("Atur Ulang Kamera"),
         TextKey::WindowMinimize => Some("Minimalkan"),
         TextKey::WindowMaximize => Some("Maksimalkan"),
@@ -678,6 +704,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         ),
         TextKey::SculptBrushSmoothTooltip => Some("Menghaluskan detail permukaan"),
         TextKey::SculptBrushRestoreTooltip => Some("Mengembalikan ke arah bentuk dasar"),
+        TextKey::SculptBrushVertex => Some("Titik"),
+        TextKey::SculptBrushVertexTooltip => Some(
+            "Memindahkan titik mesh secara langsung. Klik untuk mengambil, seret untuk memindahkan, gizmo untuk mengunci sumbu.",
+        ),
         TextKey::SculptBrushMask => Some("Masker"),
         TextKey::SculptBrushMaskTooltip => Some(
             "Mengikis lapisan penampilan terpilih agar yang di bawah tampak. Alt mengembalikan",

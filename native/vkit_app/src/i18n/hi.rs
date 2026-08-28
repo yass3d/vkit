@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "VaM-संगत रेंडर स्मूदिंग। 0 संपादन योग्य बेस मेश है, 3 VaM का डिफ़ॉल्ट है और 4 अधिकतम। मॉर्फ, UV, स्कल्प्ट और टेक्सचर बेकिंग बेस टोपोलॉजी को बनाए रखते हैं",
         ),
+        TextKey::ShowWornHair => Some("पहने बाल दिखाएँ"),
+        TextKey::ShowWornHairHint => Some("सभी टैब पर; यहाँ बदलाव नहीं होता"),
         TextKey::FaceMatch => Some("बनाएँ"),
         TextKey::ResultPreview => Some("सहेजें"),
         TextKey::Save => Some("सहेजें"),
@@ -44,8 +46,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("स्क्रीन पर भौतिकी का पूर्वावलोकन। निर्यात से कोई संबंध नहीं।")
         }
+        TextKey::HairKeepSettledShape => Some("लागू करें"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("हर हिस्से पर भौतिकी चलाकर, लटें जहाँ गिरीं वही आकार बना देता है।")
+        }
         TextKey::HairMirrorEdit => Some("मिरर संपादन"),
         TextKey::HairMirrorEditHint => Some("ब्रश दोनों ओर एक साथ सममित रूप से संपादित करता है।"),
+        TextKey::HairSingleStrand => Some("एक लट"),
+        TextKey::HairSingleStrandHint => Some("स्ट्रोक सिर्फ़ उसी लट को बदलता है जिस पर वह शुरू हुआ।"),
         TextKey::HairAutoPart => Some("स्वतः पार्ट"),
         TextKey::HairAutoPartHint => {
             Some("सक्रिय परतों के बजाय, कर्सर के नीचे पहचाने गए पार्ट को ही संपादित करता है।")
@@ -79,6 +87,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolComb => Some("कंघी"),
         TextKey::HairToolPlantHint => Some("ब्रश के नीचे स्कैल्प बिंदुओं पर बाल उगाएँ"),
         TextKey::HairToolGrowHint => Some("ब्रश के नीचे लटें लंबी करें; छोटा करने के लिए Alt दबाएँ"),
+        TextKey::HairToolSettle => Some("गिरने दें"),
+        TextKey::HairToolSettleHint => {
+            Some("ब्रश के नीचे की लटों को गिरने देता है और जहाँ गिरें वहीं रखता है।")
+        }
         TextKey::HairToolEraseHint => Some("ब्रश के नीचे लटें हटाएँ"),
         TextKey::HairToolCombHint => Some("ब्रश के नीचे लटें खींचकर सँवारें; जड़ें स्थिर रहती हैं"),
         TextKey::HairToolPinch => Some("समेटें"),
@@ -261,6 +273,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("VaM कैटलॉग इंडेक्स हो रहा है"),
         TextKey::VaMFailed => Some("VaM कैटलॉग विफल"),
         TextKey::RefreshSkins => Some("स्किन लाइब्रेरी रिफ़्रेश"),
+        TextKey::RescanVaMFolder => Some("VaM फ़ोल्डर फिर से स्कैन करें"),
         TextKey::MorphLoading => Some("मॉर्फ लोड हो रहा है"),
         TextKey::MorphLoadFailed => Some("मॉर्फ लोड विफल"),
         TextKey::DefaultSkinMissing => Some("वह स्किन नहीं मिली। VaM फ़ोल्डर जाँचें"),
@@ -316,10 +329,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("टेक्सचर कैनवास"),
         TextKey::ReferenceImages => Some("संदर्भ"),
         TextKey::ReferenceImagesEmpty => Some("कोई संदर्भ चित्र नहीं"),
+        TextKey::ReferenceImageUnreadable => {
+            Some("यह छवि पढ़ी नहीं जा सकी, इसलिए सूची में है पर स्क्रीन पर नहीं")
+        }
         TextKey::ReferenceImageAdd => Some("चित्र जोड़ें"),
         TextKey::ReferenceImageRemove => Some("हटाएँ"),
+        TextKey::ReferenceImageLock => Some("लॉक करें"),
+        TextKey::ReferenceImageUnlock => Some("अनलॉक करें"),
         TextKey::ReferenceImageRaise => Some("आगे लाएँ"),
         TextKey::ReferenceImageLower => Some("पीछे भेजें"),
+        TextKey::ReferenceHeadRow => Some("सिर"),
+        TextKey::ReferenceHeadRowHint => Some("इस पंक्ति के ऊपर की छवियाँ सिर को ढकती हैं"),
         TextKey::ShortcutTextureCanvasPan => Some("कैनवास पैन करें (दबाए रखें)"),
         TextKey::ShortcutDiagnosticLogCopy => Some("लॉग कॉपी करें"),
         TextKey::ShortcutLightRotate => Some("रोशनी घुमाएँ (दबाए रखें)"),
@@ -328,6 +348,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("बाकी लेयर छिपाएँ"),
         TextKey::ShortcutLayerLocalView => Some("केवल यही दिखाएँ (टॉगल)"),
         TextKey::ShortcutLayerInvertSelection => Some("चयन उलटें"),
+        TextKey::ShortcutLayerSelectAll => Some("सभी लेयर चुनें"),
+        TextKey::ShortcutLayerRemove => Some("चयनित लेयर हटाएँ"),
+        TextKey::ShortcutVertexSelectConnected => Some("पूरी लट चुनें"),
+        TextKey::ShortcutVertexGrowSelection => Some("चयन बढ़ाएँ"),
+        TextKey::ShortcutVertexShrinkSelection => Some("चयन घटाएँ"),
         TextKey::ShortcutSculptSmoothHold => Some("स्मूद करने के लिए दबाए रखें"),
         TextKey::ShortcutSculptInflateHold => Some("फुलाने के लिए दबाए रखें"),
         TextKey::ShortcutSculptAlternateHold => Some("उलटा करने के लिए दबाए रखें"),
@@ -380,15 +405,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::NoMatchingHair => Some("कोई मेल खाता हेयर प्रीसेट नहीं"),
         TextKey::MorphSearch => Some("मॉर्फ खोजें"),
         TextKey::AppearanceSearch => Some("लुक खोजें"),
+        TextKey::SourceFilterAll => Some("सभी"),
+        TextKey::SourceFilterLooks => Some("लुक"),
+        TextKey::SourceFilterMorphs => Some("मॉर्फ"),
         TextKey::AppearanceLayers => Some("रूप परतें"),
         TextKey::AddAppearanceLayer => Some("चयनित रूप जोड़ें"),
         TextKey::AppearanceLayersEmpty => Some("अभी कोई परत नहीं"),
         TextKey::AppearanceLayerRaise => Some("ऊपर ले जाएँ"),
         TextKey::AppearanceLayerLower => Some("नीचे ले जाएँ"),
         TextKey::LookFind => Some("लुक लोड करें"),
-        TextKey::CameraTrackballArmed => Some("ट्रैकबॉल · स्वतंत्र घुमाने के लिए खींचें · क्लिक या R से बाहर"),
-        TextKey::HelpTrackball => Some("ट्रैकबॉल घुमाव"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("घुमाएँ · खींचें · क्लिक या R से समाप्त"),
+        TextKey::HelpVertexRotate => Some("चयन घुमाएँ"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("दो कोणों से देखें — व्यू बाँटें"),
         TextKey::SplitModelViewName => Some("विभाजित दृश्य"),
         TextKey::HelpLevelRoll => Some("क्षितिज समतल करें"),
@@ -527,6 +555,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("नेटिव फ़िटिंग कोर का एकीकरण चल रहा है"),
         TextKey::MorphPreviewUpdated => Some("मॉर्फ प्रीव्यू अपडेट हुआ"),
+        TextKey::MorphResolving => Some("मॉर्फ़ लोड हो रहे हैं"),
         TextKey::MorphsReset => Some("मॉर्फ रीसेट"),
         TextKey::MorphsResetUndone => Some("मॉर्फ रीसेट पूर्ववत"),
         TextKey::MorphEditUndone => Some("मॉर्फ समायोजन पूर्ववत"),
@@ -565,10 +594,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("बालों के प्रीसेट"),
         TextKey::HairPresetLoad => Some("लोड करें"),
-        TextKey::HairToolPick => Some("परत चुनें"),
-        TextKey::HairToolPickHint => {
-            Some("व्यूपोर्ट में किसी लट पर क्लिक करके उसकी परत सक्रिय करें। ब्रश अगली क्लिक से चलेगा।")
-        }
         TextKey::HelpHairPick => Some("कर्सर के नीचे की परत चुनें"),
         TextKey::ShortcutHairPick => Some("V, या किसी भी ब्रश से Ctrl + क्लिक"),
         TextKey::HelpHairSmooth => Some("कंघी के बजाय चिकना करें"),
@@ -600,6 +625,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("पर्सपेक्टिव"),
         TextKey::Orthographic => Some("ऑर्थोग्राफ़िक"),
         TextKey::Fov => Some("FOV"),
+        TextKey::CameraRoll => Some("रोल"),
         TextKey::ResetCamera => Some("कैमरा रीसेट"),
         TextKey::WindowMinimize => Some("छोटा करें"),
         TextKey::WindowMaximize => Some("बड़ा करें"),
@@ -625,6 +651,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("सतह की डिटेल को स्मूद करता है"),
         TextKey::SculptBrushRestoreTooltip => Some("बेस आकार की ओर वापस लाता है"),
+        TextKey::SculptBrushVertex => Some("वर्टेक्स"),
+        TextKey::SculptBrushVertexTooltip => {
+            Some("मेश के बिंदु सीधे हिलाएँ। पकड़ने के लिए क्लिक, हिलाने के लिए ड्रैग, अक्ष रोकने के लिए गिज़्मो।")
+        }
         TextKey::SculptBrushMask => Some("मास्क"),
         TextKey::SculptBrushMaskTooltip => {
             Some("चयनित रूप परत को हटाकर नीचे वाली दिखाएँ। Alt से वापस लगाएँ")

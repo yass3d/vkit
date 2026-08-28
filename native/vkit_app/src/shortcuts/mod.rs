@@ -433,7 +433,7 @@ mod untokenised_input_tests {
         ),
         (
             "viewport/hair_input.rs",
-            15,
+            18,
             "button state mid-stroke, and the pick fallback that follows the tool",
         ),
         (
@@ -460,6 +460,11 @@ mod untokenised_input_tests {
             "ui/hair_ui.rs",
             2,
             "Escape cancelling a rename inside a text field, which is not a shortcut",
+        ),
+        (
+            "list_reorder.rs",
+            2,
+            "letting go of a dragged row, which is the whole of what this file does",
         ),
         (
             "viewport/pins.rs",

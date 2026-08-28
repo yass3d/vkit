@@ -6,6 +6,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SurfaceSmoothTooltip => {
             "VaM-compatible render smoothing. 0 is the editable base mesh, 3 is the VaM default, and 4 is the maximum. Morphs, UVs, sculpting, and texture baking keep the base topology"
         }
+        TextKey::ShowWornHair => "Show worn hair",
+        TextKey::ShowWornHairHint => "On every tab. Nothing here reshapes it.",
         TextKey::FaceMatch => "Create",
         TextKey::ResultPreview | TextKey::Save => "Save",
         TextKey::DetailCorrection => "Sculpt",
@@ -18,7 +20,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
             "Some strands had nowhere to sit on the new scalp mesh and were dropped"
         }
         TextKey::HairScalpMissing => {
-            "Scalp provider mesh is not available; open a VaM root and rescan"
+            "These parts use a scalp mesh that could not be found, so nothing was exported. Open a VaM folder and rescan"
         }
         TextKey::HairShowPoints => "Show points",
         TextKey::HairShowPointsHint => {
@@ -46,9 +48,17 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairViewportPhysicsHint => {
             "Previews the physics on screen. Nothing to do with the export."
         }
+        TextKey::HairKeepSettledShape => "Apply",
+        TextKey::HairKeepSettledShapeHint => {
+            "Runs the physics on every part, then writes where the strands landed back into them."
+        }
         TextKey::HairMirrorEdit => "Mirror Edit",
         TextKey::HairMirrorEditHint => {
             "Brushes edit both sides of the head at once, left-right symmetric."
+        }
+        TextKey::HairSingleStrand => "Single strand",
+        TextKey::HairSingleStrandHint => {
+            "A stroke edits only the strand it started on, however far it wanders."
         }
         TextKey::HairAutoPart => "Auto Part",
         TextKey::HairAutoPartHint => {
@@ -89,6 +99,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolComb => "Comb",
         TextKey::HairToolPlantHint => "Grow strands on the scalp vertices under the brush",
         TextKey::HairToolGrowHint => "Lengthen the strands under the brush; hold Alt to shorten",
+        TextKey::HairToolSettle => "Settle",
+        TextKey::HairToolSettleHint => {
+            "Lets the strands under the brush fall, and keeps where they land."
+        }
         TextKey::HairToolEraseHint => "Remove the strands under the brush",
         TextKey::HairToolCombHint => {
             "Drag the strands under the brush into shape; the roots stay put"
@@ -277,6 +291,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::VaMIndexing => "Indexing VaM catalog",
         TextKey::VaMFailed => "VaM catalog failed",
         TextKey::RefreshSkins => "Refresh skin library",
+        TextKey::RescanVaMFolder => "Rescan the VaM folder",
         TextKey::MorphLoading => "Loading morph",
         TextKey::MorphLoadFailed => "Morph load failed",
         TextKey::DefaultSkinMissing => "Could not find that skin. Check the VaM folder",
@@ -332,10 +347,17 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutGroupTexture => "Texture canvas",
         TextKey::ReferenceImages => "Reference",
         TextKey::ReferenceImagesEmpty => "No reference pictures",
+        TextKey::ReferenceImageUnreadable => {
+            "This picture could not be read, so it is in the list but not on screen"
+        }
         TextKey::ReferenceImageAdd => "Add a picture",
         TextKey::ReferenceImageRemove => "Remove",
+        TextKey::ReferenceImageLock => "Lock in place",
+        TextKey::ReferenceImageUnlock => "Unlock",
         TextKey::ReferenceImageRaise => "Bring forward",
         TextKey::ReferenceImageLower => "Send back",
+        TextKey::ReferenceHeadRow => "Head",
+        TextKey::ReferenceHeadRowHint => "Pictures above this row cover the head",
         TextKey::ShortcutTextureCanvasPan => "Pan the canvas (hold)",
         TextKey::ShortcutDiagnosticLogCopy => "Copy the log",
         TextKey::ShortcutLightRotate => "Turn the light (hold)",
@@ -344,6 +366,11 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutLayerIsolate => "Hide the other layers",
         TextKey::ShortcutLayerLocalView => "Show only this one (toggle)",
         TextKey::ShortcutLayerInvertSelection => "Invert the selection",
+        TextKey::ShortcutLayerSelectAll => "Select all layers",
+        TextKey::ShortcutLayerRemove => "Delete selected layers",
+        TextKey::ShortcutVertexSelectConnected => "Select the whole strand",
+        TextKey::ShortcutVertexGrowSelection => "Grow the selection",
+        TextKey::ShortcutVertexShrinkSelection => "Shrink the selection",
         TextKey::ShortcutSculptSmoothHold => "Hold to smooth",
         TextKey::ShortcutSculptInflateHold => "Hold to inflate",
         TextKey::ShortcutSculptAlternateHold => "Hold for the other way round",
@@ -399,15 +426,18 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphOneSidedFilterShow => "Show morphs that move one side only",
         TextKey::MorphOneSidedFilterHide => "Hide morphs that move one side only",
         TextKey::AppearanceSearch => "Search Looks",
+        TextKey::SourceFilterAll => "All",
+        TextKey::SourceFilterLooks => "Looks",
+        TextKey::SourceFilterMorphs => "Morphs",
         TextKey::AppearanceLayers => "Appearance layers",
         TextKey::AddAppearanceLayer => "Add the selected appearance",
         TextKey::AppearanceLayersEmpty => "No layers yet",
         TextKey::AppearanceLayerRaise => "Move up",
         TextKey::AppearanceLayerLower => "Move down",
         TextKey::LookFind => "Load Look",
-        TextKey::CameraTrackballArmed => "Trackball · drag to turn freely · click or R to leave",
-        TextKey::HelpTrackball => "Trackball rotate",
-        TextKey::ShortcutTrackball => "R",
+        TextKey::VertexRotateArmed => "Rotate · drag to turn the selection · click or R to finish",
+        TextKey::HelpVertexRotate => "Rotate selection",
+        TextKey::ShortcutVertexRotate => "R",
         TextKey::SplitModelViewTooltip => "See it from two angles — split the view",
         TextKey::SplitModelViewName => "Split View",
         TextKey::HelpLevelRoll => "Level the horizon",
@@ -572,6 +602,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::NativeCorePending => "Native fitting core integration is in progress",
         TextKey::MorphPreviewUpdated => "Morph preview updated",
+        TextKey::MorphResolving => "Loading morphs",
         TextKey::MorphsReset => "Morphs reset",
         TextKey::MorphsResetUndone => "Morph reset undone",
         TextKey::MorphEditUndone => "Morph adjustment undone",
@@ -610,10 +641,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutRedo => "Ctrl+Y",
         TextKey::HairPresetSection => "Hair presets",
         TextKey::HairPresetLoad => "Load",
-        TextKey::HairToolPick => "Pick layer",
-        TextKey::HairToolPickHint => {
-            "Click a strand in the viewport to make its layer the active one. The brush waits for the next click."
-        }
         TextKey::HelpHairPick => "Pick the layer under the cursor",
         TextKey::ShortcutHairPick => "V, or Ctrl + click with any brush",
         TextKey::HelpHairSmooth => "Smooth instead of comb",
@@ -645,6 +672,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::Perspective => "Perspective",
         TextKey::Orthographic => "Orthographic",
         TextKey::Fov => "FOV",
+        TextKey::CameraRoll => "Roll",
         TextKey::ResetCamera => "Reset Camera",
         TextKey::WindowMinimize => "Minimize",
         TextKey::WindowMaximize => "Maximize",
@@ -670,6 +698,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::SculptBrushSmoothTooltip => "Smooths out surface detail",
         TextKey::SculptBrushRestoreTooltip => "Restores toward the base shape",
+        TextKey::SculptBrushVertex => "Vertices",
+        TextKey::SculptBrushVertexTooltip => {
+            "Move the mesh's own points. Click one to take it, drag to move it, and use the gizmo when you want an axis held."
+        }
         TextKey::SculptBrushMask => "Mask",
         TextKey::SculptBrushMaskTooltip => {
             "Carve the selected appearance layer away so the one below shows. Alt paints it back"

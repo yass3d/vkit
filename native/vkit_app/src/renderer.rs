@@ -25,7 +25,9 @@ mod shaders;
 mod skin;
 
 use self::mesh::*;
-pub use self::mesh::{MeshPaintCallback, RenderStyle};
+pub use self::mesh::{LineInstance, MarkerInstance, MeshPaintCallback, RenderStyle};
+#[cfg(test)]
+pub(crate) use self::mesh::{MarkerLayer, mesh_pass_shape_for_test};
 pub use self::offscreen::OffscreenTarget;
 use self::scene_surface::ScenePlacement;
 pub use self::scene_surface::{SceneSpot, SceneSurface};
@@ -1286,6 +1288,8 @@ mod tests {
             ("skin", SKIN_SHADER),
             ("depth-reset", DEPTH_RESET_SHADER),
             ("mip-blit", MIP_BLIT_SHADER),
+            ("marker", shaders::MARKER_SHADER),
+            ("line", shaders::LINE_SHADER),
             ("hair", crate::hair_renderer::HAIR_SHADER),
             ("hair-physics", crate::hair_physics::HAIR_PHYSICS_SHADER),
             ("scalp", crate::hair_renderer::SCALP_SHADER),

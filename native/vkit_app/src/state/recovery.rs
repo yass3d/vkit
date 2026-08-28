@@ -35,6 +35,7 @@ impl AppState {
                 .iter()
                 .map(layer_record)
                 .collect(),
+            hand_morph_edits: self.hand_morph_edits(),
         }
     }
 

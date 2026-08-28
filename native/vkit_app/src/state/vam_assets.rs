@@ -508,6 +508,27 @@ impl AppState {
             .replace_source(MorphSource::VaMBuiltin, controls);
     }
 
+    fn morph_loading_status(&mut self, control_id: &str) -> StatusMessage {
+        let remaining = self.morph_library.loading_count();
+        self.morph_resolution_peak = self.morph_resolution_peak.max(remaining + 1);
+        if remaining == 0 {
+            self.morph_resolution_peak = 0;
+            return StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Success);
+        }
+        let total = self.morph_resolution_peak;
+        let done = total.saturating_sub(remaining);
+        let name = self
+            .morph_library
+            .label_of(control_id)
+            .unwrap_or(control_id)
+            .to_owned();
+        StatusMessage::with_detail(
+            TextKey::MorphResolving,
+            StatusTone::Info,
+            format!("{name} ({done}/{total})"),
+        )
+    }
+
     pub(super) fn finish_vam_morph(
         &mut self,
         catalog_revision: u64,
@@ -549,8 +570,7 @@ impl AppState {
                             error,
                         );
                     } else {
-                        self.status =
-                            StatusMessage::new(TextKey::MorphPreviewUpdated, StatusTone::Info);
+                        self.status = self.morph_loading_status(control_id);
                     }
                 }
                 Ok(false) => {}

@@ -35,7 +35,6 @@ impl HairExportSexes {
 pub enum HairTool {
     #[default]
     Plant,
-    Pick,
     Grow,
     Erase,
     Comb,
@@ -49,6 +48,8 @@ pub enum HairTool {
     Vertex,
 
     Rigidity,
+
+    Settle,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -371,6 +372,15 @@ impl HairProject {
         }
     }
 
+    pub fn clear_selection(&mut self) -> bool {
+        if self.active_part_ids.is_empty() && self.selected_part_id.is_none() {
+            return false;
+        }
+        self.active_part_ids.clear();
+        self.selected_part_id = None;
+        true
+    }
+
     pub fn editable_parts(&self) -> Vec<u64> {
         self.parts
             .iter()
@@ -426,6 +436,10 @@ impl HairProject {
 
     pub const fn stroke_open(&self) -> bool {
         self.stroke_open
+    }
+
+    pub const fn control_open(&self) -> bool {
+        self.open_control.is_some()
     }
 
     pub fn history_position(&self) -> (usize, usize) {
@@ -546,6 +560,20 @@ impl HairProject {
         self.activate_part(id, false);
         self.touch(id);
         id
+    }
+
+    pub fn move_part_to(&mut self, id: u64, insertion_index: usize) {
+        let Some(index) = self.parts.iter().position(|part| part.id == id) else {
+            return;
+        };
+        let part = self.parts.remove(index);
+        let adjusted = insertion_index
+            .saturating_sub(usize::from(index < insertion_index))
+            .min(self.parts.len());
+        self.parts.insert(adjusted, part);
+        if adjusted != index {
+            self.bump();
+        }
     }
 
     #[must_use]
@@ -1081,6 +1109,39 @@ impl HairProject {
 mod tests {
     use super::*;
     use vkit_core::vam::HairScalpGeometry;
+
+    #[test]
+    fn a_part_dropped_on_a_gap_lands_in_it() {
+        let mut project = HairProject::default();
+        let first = project.add_part("scalp");
+        let second = project.add_part("scalp");
+        let third = project.add_part("scalp");
+        let order = |project: &HairProject| -> Vec<u64> {
+            project.parts.iter().map(|part| part.id).collect()
+        };
+        assert_eq!(order(&project), vec![first, second, third]);
+
+        project.move_part_to(third, 1);
+        assert_eq!(order(&project), vec![first, third, second]);
+
+        project.move_part_to(first, 3);
+        assert_eq!(order(&project), vec![third, second, first]);
+
+        project.move_part_to(third, 0);
+        assert_eq!(order(&project), vec![third, second, first], "already there");
+    }
+
+    #[test]
+    fn moving_a_part_nowhere_is_not_an_edit() {
+        let mut project = HairProject::default();
+        let only = project.add_part("scalp");
+        let before = project.edit_revision;
+        project.move_part_to(only, 0);
+        project.move_part_to(only, 1);
+        assert_eq!(project.edit_revision, before, "a still list was touched");
+        project.move_part_to(9_999, 0);
+        assert_eq!(project.parts.len(), 1, "an unknown part invented a row");
+    }
 
     fn synthetic_cap() -> BuiltinHairScalp {
         BuiltinHairScalp {

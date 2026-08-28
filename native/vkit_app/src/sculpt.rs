@@ -19,13 +19,25 @@ pub enum SculptBrush {
     Restore,
 
     Mask,
+
+    Vertex,
 }
 
 impl SculptBrush {
-    pub const ALL: [Self; 4] = [Self::Move, Self::Smooth, Self::Restore, Self::Mask];
+    pub const ALL: [Self; 5] = [
+        Self::Move,
+        Self::Vertex,
+        Self::Smooth,
+        Self::Restore,
+        Self::Mask,
+    ];
 
     pub const fn edits_geometry(self) -> bool {
         !matches!(self, Self::Mask)
+    }
+
+    pub const fn is_a_brush(self) -> bool {
+        !matches!(self, Self::Vertex)
     }
 }
 
@@ -163,6 +175,8 @@ impl Default for SculptSession {
     }
 }
 
+const IDENTITY_BASIS: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
 impl SculptSession {
     pub fn begin(&mut self, mesh: &OrderedObjMesh) -> Result<(), SculptError> {
         let topology = Arc::new(SculptTopology::build(mesh)?);
@@ -211,6 +225,17 @@ impl SculptSession {
 
     pub const fn editable_targets(&self) -> SculptTargets {
         self.targets
+    }
+
+    #[must_use]
+    pub fn is_vertex_editable(&self, index: u32) -> bool {
+        let Some(topology) = self.topology.as_ref() else {
+            return false;
+        };
+        topology
+            .vertex_targets
+            .get(index as usize)
+            .is_some_and(|mask| self.targets.intersects_bits(*mask))
     }
 
     pub const fn visible_targets(&self) -> SculptTargets {
@@ -358,6 +383,16 @@ impl SculptSession {
                 (squared <= radius_squared).then(|| (index as u32, squared.sqrt()))
             })
             .collect()
+    }
+
+    #[must_use]
+    pub fn display_vertices(&self) -> Option<&[[f64; 3]]> {
+        let working = self.working.as_ref()?;
+        Some(
+            self.presentation_vertices
+                .as_deref()
+                .unwrap_or(&working.vertices),
+        )
     }
 
     pub fn working_mesh(&self) -> Option<&OrderedObjMesh> {
@@ -822,6 +857,65 @@ impl SculptSession {
             self.changed = true;
         }
         Ok(proposals.len())
+    }
+
+    pub fn nudge_vertices(
+        &mut self,
+        indices: &[u32],
+        shift: [f64; 3],
+    ) -> Result<usize, SculptError> {
+        self.transform_vertices(indices, [0.0; 3], IDENTITY_BASIS, shift)
+    }
+
+    pub fn transform_vertices(
+        &mut self,
+        indices: &[u32],
+        pivot: [f64; 3],
+        basis: [[f64; 3]; 3],
+        shift: [f64; 3],
+    ) -> Result<usize, SculptError> {
+        let finite = shift
+            .iter()
+            .chain(pivot.iter())
+            .all(|axis| axis.is_finite())
+            && basis.iter().flatten().all(|axis| axis.is_finite());
+        if !finite {
+            return Err(SculptError::NotInitialized);
+        }
+        let working = self.working.as_mut().ok_or(SculptError::NotInitialized)?;
+        let stroke = self
+            .active_stroke
+            .as_mut()
+            .ok_or(SculptError::NotInitialized)?;
+        let mut moved = 0;
+        for index in indices {
+            let Some(vertex) = working.vertices.get_mut(*index as usize) else {
+                continue;
+            };
+            stroke.before.entry(*index).or_insert(*vertex);
+            let local = [
+                vertex[0] - pivot[0],
+                vertex[1] - pivot[1],
+                vertex[2] - pivot[2],
+            ];
+            let mut placed = [0.0f64; 3];
+            for axis in 0..3 {
+                placed[axis] = pivot[axis]
+                    + basis[axis][0] * local[0]
+                    + basis[axis][1] * local[1]
+                    + basis[axis][2] * local[2]
+                    + shift[axis];
+            }
+            if !placed.iter().all(|axis| axis.is_finite()) {
+                continue;
+            }
+            *vertex = placed;
+            moved += 1;
+        }
+        if moved > 0 {
+            self.presentation_vertices = None;
+        }
+        Ok(moved)
     }
 
     pub fn end_stroke(&mut self) -> Result<bool, SculptError> {

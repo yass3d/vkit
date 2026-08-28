@@ -31,8 +31,23 @@ pub(super) fn add_hair_scalp_guide(
             color: color_array(crate::theme::COLOR_MUTED, guide_alpha),
             style: RenderStyle::Xray,
             depth_scope: RenderDepthScope::Shared,
+            bed_markers: None,
+            markers: None,
+            lines: None,
         },
     );
+}
+
+fn settle_capture(state: &AppState, part_id: u64) -> Option<crate::hair_settle::Capture> {
+    if state.hair_settle_seconds > 0.0 {
+        return None;
+    }
+    match state.hair_settle_wanted.as_ref()? {
+        crate::hair_settle::SettleScope::Everything => Some(crate::hair_settle::Capture {
+            part_id,
+            sink: state.hair_settle_sink.clone(),
+        }),
+    }
 }
 
 pub(super) fn draw_hair_part_previews(
@@ -41,7 +56,7 @@ pub(super) fn draw_hair_part_previews(
     state: &AppState,
     camera: TurntableCamera,
 ) {
-    if state.hair_hide_strands && state.is_hair_editing() && state.hair_thumbnail.is_none() {
+    if state.hair_hide_strands && state.hair_thumbnail.is_none() {
         return;
     }
     warm_builtin_scalp_images(ui, state);
@@ -49,7 +64,7 @@ pub(super) fn draw_hair_part_previews(
     let view = ResultRenderView {
         camera,
         grading: state.viewport_grading(),
-        smooth_passes: state.surface_smooth_passes,
+        smooth_passes: state.drawn_smooth_passes(),
     };
     for (index, drawn_part) in state.hair_project.parts.iter().enumerate() {
         let Some(head) = head.as_ref() else {
@@ -81,11 +96,12 @@ pub(super) fn draw_hair_part_previews(
             preview,
             HAIR_AUTHORING_SCENE_KEY + index as u64,
             view,
-            if state.hair_viewport_physics {
+            if state.hair_viewport_physics && state.is_hair_editing() {
                 crate::hair_physics::HairSimulation::Every
             } else {
                 crate::hair_physics::HairSimulation::Off
             },
+            settle_capture(state, drawn_part.id),
         );
     }
 }
@@ -124,45 +140,98 @@ pub(super) fn add_hair_authoring_overlays(
     let painter = ui.painter().with_clip_rect(ui.clip_rect().intersect(rect));
     let painter = &painter;
     let normals = scalp.normals();
+
+    let scale = ui.ctx().pixels_per_point();
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    let mut bed = Vec::new();
+    if furniture && state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity {
+        stiffness_ribbons(state, &mut lines);
+    } else if furniture && state.hair_show_streams {
+        hair_streams(state, &mut lines, &mut points, scale, Some((camera, rect)));
+    }
+    if furniture && state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
+        super::hair_vertex::handles(state, &mut points, scale, Some((camera, rect)));
+    }
+    if furniture && state.hair_show_points {
+        let pitch = scalp_pitch(&scalp);
+        for (index, vertex) in scalp.vertices_cm.iter().enumerate() {
+            let world = glam::Vec3::new(vertex[0], vertex[1], vertex[2]);
+            let normal = normals
+                .get(index)
+                .map(|n| glam::Vec3::new(n[0], n[1], n[2]))
+                .unwrap_or(glam::Vec3::Z);
+            if normal.dot(eye - world) <= 0.0 {
+                continue;
+            }
+            let planted = part.strands.contains_key(&(index as u32));
+            let color = if planted {
+                crate::theme::COLOR_HAIR_POINT_PLANTED
+            } else {
+                crate::theme::COLOR_HAIR_POINT_OPEN
+            };
+            let radius = scalp_point_size(planted).points(camera, rect, world, pitch);
+            bed.push(crate::renderer::MarkerInstance {
+                position: [world.x, world.y, world.z],
+                radius: radius * scale,
+                fill: rgba(color),
+                ring: rgba(color),
+                shape: crate::renderer::MarkerInstance::SQUARE,
+            });
+        }
+    }
     draw_hair_part_previews(ui, rect, state, camera);
+    place_hair_overlays(ui, rect, state, camera, lines, bed, points);
 
     if furniture && state.hair_show_colliders {
         draw_body_capsules(ui, painter, rect, state, camera);
     }
-    if furniture && state.hair_project.active_tool == crate::hair_project::HairTool::Rigidity {
-        draw_stiffness_streams(ui, painter, rect, state, camera);
-    } else if furniture && state.hair_show_streams {
-        draw_hair_streams(ui, painter, rect, state, camera);
-    }
+}
 
-    if !furniture || !state.hair_show_points {
+fn place_hair_overlays(
+    ui: &Ui,
+    rect: Rect,
+    state: &AppState,
+    camera: TurntableCamera,
+    lines: Vec<crate::renderer::LineInstance>,
+    bed: Vec<crate::renderer::MarkerInstance>,
+    points: Vec<crate::renderer::MarkerInstance>,
+) {
+    if lines.is_empty() && points.is_empty() && bed.is_empty() {
         return;
     }
-    let field = hair_depth_field(ui, state, rect, camera);
-    for (index, vertex) in scalp.vertices_cm.iter().enumerate() {
-        let world = glam::Vec3::new(vertex[0], vertex[1], vertex[2]);
-        let normal = normals
-            .get(index)
-            .map(|n| glam::Vec3::new(n[0], n[1], n[2]))
-            .unwrap_or(glam::Vec3::Z);
-        if normal.dot(eye - world) <= 0.0 {
-            continue;
-        }
-        let Some(projected) = camera.project(world, rect) else {
-            continue;
-        };
-        if field.hides(projected.screen, (world - eye).length()) {
-            continue;
-        }
-        let planted = part.strands.contains_key(&(index as u32));
-        let (radius, color) = if planted {
-            (2.4, crate::theme::COLOR_HAIR_POINT_PLANTED)
-        } else {
-            (1.8, crate::theme::COLOR_HAIR_POINT_OPEN)
-        };
-        painter.circle_filled(projected.screen, radius, color);
-    }
+    let Some(head) = overlay_mesh(state) else {
+        return;
+    };
+    super::render_callbacks::add_overlay_callback(
+        ui,
+        rect,
+        HAIR_OVERLAY_SCENE_KEY,
+        head,
+        ResultRenderView {
+            camera,
+            grading: state.viewport_grading(),
+            smooth_passes: state.drawn_smooth_passes(),
+        },
+        super::render_callbacks::OverlayGeometry {
+            bed: (!bed.is_empty()).then(|| std::sync::Arc::new(bed)),
+            lines: (!lines.is_empty()).then(|| std::sync::Arc::new(lines)),
+            markers: (!points.is_empty()).then(|| std::sync::Arc::new(points)),
+        },
+    );
 }
+
+pub(super) fn overlay_mesh(state: &AppState) -> Option<Arc<crate::scene::SurfaceMesh>> {
+    state.workspace.result.clone().or_else(|| {
+        state
+            .hair_project
+            .selected_part()
+            .and_then(|part| state.hair_scalps.get(&part.provider_name))
+            .map(|scalp| Arc::clone(&scalp.surface))
+    })
+}
+
+const HAIR_OVERLAY_SCENE_KEY: u64 = 0x7161_0000_0000_0000;
 
 pub(super) const SCALP_TEXTURE_MAX_EDGE: u32 = 2048;
 
@@ -462,7 +531,7 @@ pub(crate) fn authoring_hair_preview(
         && cached_tint == tinted
         && cached_lit == lit
         && (cached_revision == revision
-            || (state.hair_project.stroke_open()
+            || ((state.hair_project.stroke_open() || state.hair_project.control_open())
                 && state.hair_thumbnail.is_none()
                 && now - built_at < HAIR_STROKE_REBUILD_SECONDS))
     {
@@ -705,145 +774,16 @@ pub(super) fn draw_thumbnail_shot_pulse(ui: &Ui, state: &mut AppState, rect: Rec
     );
 }
 
-const DEPTH_FIELD_CELL: f32 = 4.0;
-const DEPTH_FIELD_SLACK_CM: f32 = 2.0;
+use super::surface_depth::SurfaceDepth;
 
-pub(super) struct HairDepthField {
-    rect: Rect,
-    cols: usize,
-    rows: usize,
-    nearest: Vec<f32>,
-}
-
-impl HairDepthField {
-    pub(super) fn new(rect: Rect) -> Self {
-        let cols = ((rect.width() / DEPTH_FIELD_CELL).ceil() as usize).max(1);
-        let rows = ((rect.height() / DEPTH_FIELD_CELL).ceil() as usize).max(1);
-        Self {
-            rect,
-            cols,
-            rows,
-            nearest: vec![f32::INFINITY; cols * rows],
-        }
-    }
-
-    fn coords(&self, screen: Pos2) -> Option<(usize, usize)> {
-        let x = ((screen.x - self.rect.left()) / DEPTH_FIELD_CELL).floor();
-        let y = ((screen.y - self.rect.top()) / DEPTH_FIELD_CELL).floor();
-        if x < 0.0 || y < 0.0 {
-            return None;
-        }
-        let (x, y) = (x as usize, y as usize);
-        (x < self.cols && y < self.rows).then_some((x, y))
-    }
-
-    fn mark(&mut self, screen: Pos2, distance: f32) {
-        if let Some((x, y)) = self.coords(screen) {
-            let cell = &mut self.nearest[y * self.cols + x];
-            if distance < *cell {
-                *cell = distance;
-            }
-        }
-    }
-
-    fn fill_triangle(&mut self, a: (Pos2, f32), b: (Pos2, f32), c: (Pos2, f32)) {
-        let area = (b.0.x - a.0.x) * (c.0.y - a.0.y) - (c.0.x - a.0.x) * (b.0.y - a.0.y);
-        if area.abs() < 1.0e-6 {
-            self.draw_span(a, b);
-            self.draw_span(b, c);
-            self.draw_span(c, a);
-            return;
-        }
-        let left = a.0.x.min(b.0.x).min(c.0.x).max(self.rect.left());
-        let right = a.0.x.max(b.0.x).max(c.0.x).min(self.rect.right());
-        let top = a.0.y.min(b.0.y).min(c.0.y).max(self.rect.top());
-        let bottom = a.0.y.max(b.0.y).max(c.0.y).min(self.rect.bottom());
-        if left > right || top > bottom {
-            return;
-        }
-        let Some((first_col, first_row)) = self.coords(pos2(left, top)) else {
-            return;
-        };
-        let last_col = self
-            .coords(pos2(right, bottom))
-            .map_or(first_col, |(col, _)| col);
-        let last_row = self
-            .coords(pos2(right, bottom))
-            .map_or(first_row, |(_, row)| row);
-        for row in first_row..=last_row.min(self.rows - 1) {
-            for col in first_col..=last_col.min(self.cols - 1) {
-                let centre = pos2(
-                    self.rect.left() + (col as f32 + 0.5) * DEPTH_FIELD_CELL,
-                    self.rect.top() + (row as f32 + 0.5) * DEPTH_FIELD_CELL,
-                );
-                let w0 = ((b.0.x - centre.x) * (c.0.y - centre.y)
-                    - (c.0.x - centre.x) * (b.0.y - centre.y))
-                    / area;
-                let w1 = ((c.0.x - centre.x) * (a.0.y - centre.y)
-                    - (a.0.x - centre.x) * (c.0.y - centre.y))
-                    / area;
-                let w2 = 1.0 - w0 - w1;
-                if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
-                    continue;
-                }
-                let depth = w0 * a.1 + w1 * b.1 + w2 * c.1;
-                let cell = &mut self.nearest[row * self.cols + col];
-                if depth < *cell {
-                    *cell = depth;
-                }
-            }
-        }
-    }
-
-    fn draw_span(&mut self, from: (Pos2, f32), to: (Pos2, f32)) {
-        let steps = ((from.0 - to.0).length() / DEPTH_FIELD_CELL)
-            .ceil()
-            .max(1.0);
-        let steps = (steps as usize).min(512);
-        for step in 0..=steps {
-            let t = step as f32 / steps as f32;
-            self.mark(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t);
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn probe(rect: Rect) -> Self {
-        Self::new(rect)
-    }
-
-    #[cfg(test)]
-    pub(super) fn probe_mark(&mut self, screen: Pos2, distance: f32) {
-        self.mark(screen, distance);
-    }
-
-    #[cfg(test)]
-    pub(super) fn probe_fill(&mut self, a: (Pos2, f32), b: (Pos2, f32), c: (Pos2, f32)) {
-        self.fill_triangle(a, b, c);
-    }
-
-    #[must_use]
-    pub(super) fn hides(&self, screen: Pos2, distance: f32) -> bool {
-        let Some((x, y)) = self.coords(screen) else {
-            return false;
-        };
-        let mut nearest = f32::INFINITY;
-        for row in y.saturating_sub(1)..=(y + 1).min(self.rows - 1) {
-            for col in x.saturating_sub(1)..=(x + 1).min(self.cols - 1) {
-                nearest = nearest.min(self.nearest[row * self.cols + col]);
-            }
-        }
-        distance > nearest + DEPTH_FIELD_SLACK_CM
-    }
-}
-
-type CachedField = (u64, Arc<HairDepthField>);
+type CachedField = (u64, Arc<SurfaceDepth>);
 
 pub(super) fn hair_depth_field(
     ui: &Ui,
     state: &AppState,
     rect: Rect,
     camera: TurntableCamera,
-) -> Arc<HairDepthField> {
+) -> Arc<SurfaceDepth> {
     use std::hash::{Hash, Hasher};
 
     let eye = camera.eye();
@@ -872,7 +812,10 @@ pub(super) fn hair_depth_field(
         return field;
     }
 
-    let mut field = HairDepthField::new(rect);
+    let scale = head.as_deref().map_or(0.0, |head| {
+        camera.world_units_per_point_at(head.visible_bounds.center(), rect.height())
+    });
+    let mut field = SurfaceDepth::new(rect, scale);
     if let Some(head) = head.as_deref() {
         let projected: Vec<Option<(Pos2, f32)>> = head
             .mesh
@@ -894,7 +837,7 @@ pub(super) fn hair_depth_field(
             field.fill_triangle(a, b, c);
         }
     }
-    if !state.hair_hide_strands {
+    if false {
         let solo = state.hair_isolated_part();
         for part in &state.hair_project.parts {
             match solo {
@@ -925,29 +868,14 @@ pub(super) fn hair_depth_field(
     field
 }
 
-fn draw_stiffness_streams(
-    ui: &Ui,
-    painter: &egui::Painter,
-    rect: Rect,
-    state: &AppState,
-    camera: TurntableCamera,
-) {
-    let field = hair_depth_field(ui, state, rect, camera);
-    let eye = camera.eye();
+pub(super) fn stiffness_ribbons(state: &AppState, into: &mut Vec<crate::renderer::LineInstance>) {
     for part_id in state.hair_project.editable_parts() {
         let Some(part) = state.hair_project.part(part_id) else {
             continue;
         };
         let physics = crate::hair_export::authoring_physics(part);
         for strand in part.strands.values() {
-            if !strand_is_shown(strand, &field, rect, camera, eye) {
-                continue;
-            }
             let points = strand.points_cm.len();
-            let seen = |index: usize| -> Option<Pos2> {
-                let world = glam::Vec3::from_array(*strand.points_cm.get(index)?);
-                Some(camera.project(world, rect)?.screen)
-            };
             let stiffness =
                 |index: usize| -> f32 {
                     strand.rigidity.get(index).copied().unwrap_or_else(|| {
@@ -956,25 +884,32 @@ fn draw_stiffness_streams(
                 };
             let along = |index: usize| index as f32 / (points.saturating_sub(1).max(1)) as f32;
             for index in 1..points {
-                let (Some(from), Some(to)) = (seen(index - 1), seen(index)) else {
+                let (Some(from), Some(to)) =
+                    (strand.points_cm.get(index - 1), strand.points_cm.get(index))
+                else {
                     continue;
                 };
-                let step = to - from;
-                if step.length_sq() < 1.0e-6 {
-                    continue;
-                }
-                let across = step.rot90() / step.length();
-                let near = across * crate::hair_rigidity::half_width(along(index - 1));
-                let far = across * crate::hair_rigidity::half_width(along(index));
-                let middle = (stiffness(index - 1) + stiffness(index)) * 0.5;
-                painter.add(egui::Shape::convex_polygon(
-                    vec![from + near, to + far, to - far, from - near],
-                    crate::hair_rigidity::ink(middle),
-                    egui::Stroke::NONE,
-                ));
+                into.push(crate::renderer::LineInstance {
+                    from_position: *from,
+                    from_width: crate::hair_rigidity::half_width(along(index - 1)),
+                    to_position: *to,
+                    to_width: crate::hair_rigidity::half_width(along(index)),
+                    from_colour: rgba(crate::hair_rigidity::ink(stiffness(index - 1))),
+                    to_colour: rgba(crate::hair_rigidity::ink(stiffness(index))),
+                });
             }
         }
     }
+}
+
+fn rgba(colour: egui::Color32) -> [f32; 4] {
+    let [r, g, b, a] = colour.to_array();
+    [
+        f32::from(r) / 255.0,
+        f32::from(g) / 255.0,
+        f32::from(b) / 255.0,
+        f32::from(a) / 255.0,
+    ]
 }
 
 fn draw_body_capsules(
@@ -1033,85 +968,139 @@ fn draw_body_capsules(
     }
 }
 
-pub(super) fn strand_is_shown(
-    strand: &crate::hair_project::HairStrand,
-    field: &HairDepthField,
-    rect: Rect,
-    camera: TurntableCamera,
-    eye: glam::Vec3,
-) -> bool {
-    let Some(root) = strand.points_cm.first() else {
-        return false;
-    };
-    let world = glam::Vec3::from_array(*root);
-    camera
-        .project(world, rect)
-        .is_some_and(|projected| !field.hides(projected.screen, (world - eye).length()))
+fn stream_point_size() -> super::marker_size::MarkerSize {
+    super::marker_size::MarkerSize::new(0.13, 0.25..=3.0)
 }
 
-const STREAM_POINT_RADIUS: f32 = 1.6;
-const STREAM_POINT_ACTIVE_RADIUS: f32 = 3.0;
+fn stream_point_active_size() -> super::marker_size::MarkerSize {
+    super::marker_size::MarkerSize::new(0.22, 1.2..=5.0)
+}
 
-fn draw_hair_streams(
-    ui: &Ui,
-    painter: &egui::Painter,
-    rect: Rect,
+pub(super) fn hair_streams(
     state: &AppState,
-    camera: TurntableCamera,
+    lines: &mut Vec<crate::renderer::LineInstance>,
+    markers: &mut Vec<crate::renderer::MarkerInstance>,
+    scale: f32,
+    sizing: Option<(TurntableCamera, Rect)>,
 ) {
     let tinted = part_tint_active(state);
-    let field = hair_depth_field(ui, state, rect, camera);
-    let eye = camera.eye();
+    let mut picked = Vec::new();
     for part_id in state.hair_project.editable_parts() {
         let Some(part) = state.hair_project.part(part_id) else {
             continue;
         };
-        let ink = if tinted {
+        let colour = if tinted {
             part_tint_ink(part_id)
         } else {
             crate::theme::COLOR_PRIMARY
         };
+        let ink = dimmed(rgba(colour), STREAM_INK);
+        let picked_ink = rgba(crate::theme::COLOR_HAIR_POINT_ACTIVE);
+        let picked_fill = rgba(crate::theme::COLOR_HAIR_POINT_SELECTED);
+        let neighbouring_strands = state
+            .hair_scalps
+            .get(&part.provider_name)
+            .map_or(f32::INFINITY, |scalp| scalp_pitch(scalp));
         for (strand_id, strand) in &part.strands {
-            if !strand_is_shown(strand, &field, rect, camera, eye) {
-                continue;
+            picked.clear();
+            picked.extend((0..strand.points_cm.len()).map(|index| {
+                state
+                    .hair_vertex_selection
+                    .contains(&(part_id, *strand_id, index))
+            }));
+
+            for (index, pair) in strand.points_cm.windows(2).enumerate() {
+                let joined = picked[index] && picked[index + 1];
+                let ink = if joined { picked_ink } else { ink };
+                lines.push(crate::renderer::LineInstance {
+                    from_position: pair[0],
+                    from_width: STREAM_WIDTH * scale,
+                    to_position: pair[1],
+                    to_width: STREAM_WIDTH * scale,
+                    from_colour: ink,
+                    to_colour: ink,
+                });
             }
-            let mut run: Vec<Pos2> = Vec::new();
-            let flush = |run: &mut Vec<Pos2>| {
-                if run.len() >= 2 {
-                    painter.add(egui::Shape::line(
-                        std::mem::take(run),
-                        egui::Stroke::new(1.0, ink.gamma_multiply(0.75)),
-                    ));
-                } else {
-                    run.clear();
-                }
-            };
             for (index, point) in strand.points_cm.iter().enumerate() {
-                let world = glam::Vec3::from_array(*point);
-                match camera.project(world, rect) {
-                    Some(projected) => {
-                        run.push(projected.screen);
-                        let editing = state
-                            .hair_vertex_selection
-                            .contains(&(part_id, *strand_id, index));
-                        painter.circle_filled(
-                            projected.screen,
-                            if editing {
-                                STREAM_POINT_ACTIVE_RADIUS
-                            } else {
-                                STREAM_POINT_RADIUS
-                            },
-                            if editing {
-                                crate::theme::COLOR_HAIR_POINT_ACTIVE
-                            } else {
-                                crate::theme::COLOR_HAIR_POINT
-                            },
-                        );
+                let editing = picked[index];
+                let neighbour = if index > 0 { index - 1 } else { 1 };
+                let span = strand
+                    .points_cm
+                    .get(neighbour)
+                    .map(|other| {
+                        (glam::Vec3::from_array(*other) - glam::Vec3::from_array(*point)).length()
+                    })
+                    .unwrap_or(1.0)
+                    .min(neighbouring_strands);
+                let size = if editing {
+                    stream_point_active_size()
+                } else {
+                    stream_point_size()
+                };
+                let radius = match sizing {
+                    Some((camera, viewport)) => {
+                        size.points(camera, viewport, glam::Vec3::from_array(*point), span)
                     }
-                    _ => flush(&mut run),
-                }
+                    None => size.smallest(),
+                };
+                markers.push(crate::renderer::MarkerInstance {
+                    position: *point,
+                    radius: radius * scale,
+                    shape: crate::renderer::MarkerInstance::ROUND,
+                    fill: if editing {
+                        picked_fill
+                    } else {
+                        rgba(crate::theme::COLOR_HAIR_POINT)
+                    },
+                    ring: if editing {
+                        picked_fill
+                    } else {
+                        rgba(crate::theme::COLOR_HAIR_POINT)
+                    },
+                });
             }
-            flush(&mut run);
         }
     }
+}
+
+const STREAM_WIDTH: f32 = 3.0;
+
+const STREAM_INK: f32 = 0.55;
+
+fn dimmed(colour: [f32; 4], amount: f32) -> [f32; 4] {
+    [
+        colour[0] * amount,
+        colour[1] * amount,
+        colour[2] * amount,
+        colour[3],
+    ]
+}
+
+fn scalp_point_size(planted: bool) -> super::marker_size::MarkerSize {
+    super::marker_size::MarkerSize::new(if planted { 0.20 } else { 0.16 }, 0.3..=3.6)
+}
+
+fn scalp_pitch(scalp: &crate::hair_project::ScalpAuthoring) -> f32 {
+    let points = &scalp.vertices_cm;
+    if points.len() < 2 {
+        return 1.0;
+    }
+    let step = (points.len() / 64).max(1);
+    let mut total = 0.0;
+    let mut counted = 0.0;
+    for index in (0..points.len()).step_by(step) {
+        let here = glam::Vec3::from_array(points[index]);
+        let mut nearest = f32::INFINITY;
+        for other in points.iter().step_by(step) {
+            let gap = (glam::Vec3::from_array(*other) - here).length();
+            if gap > 1.0e-4 {
+                nearest = nearest.min(gap);
+            }
+        }
+        if nearest.is_finite() {
+            total += nearest;
+            counted += 1.0;
+        }
+    }
+    if counted > 0.0 { total / counted } else { 1.0 }
 }

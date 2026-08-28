@@ -2539,3 +2539,48 @@ fn the_sculpt_history_walks_both_ways_and_a_new_stroke_closes_the_way_forward() 
     assert_eq!(session.history_position(), (2, 0));
     assert!(!session.redo().unwrap());
 }
+
+#[test]
+fn moving_vertices_by_hand_is_undone_like_any_other_stroke() {
+    let mut sculpt = SculptSession::default();
+    sculpt.begin(&noisy_grid()).expect("a mesh to work on");
+    let before = sculpt.working_mesh().expect("working").vertices[1];
+
+    assert!(
+        sculpt.nudge_vertices(&[1], [1.0, 0.0, 0.0]).is_err(),
+        "a move outside a stroke has nowhere to record itself",
+    );
+
+    sculpt.begin_stroke().expect("a stroke");
+    assert_eq!(sculpt.nudge_vertices(&[1, 2], [1.0, 0.0, 0.0]).unwrap(), 2);
+    assert_eq!(sculpt.nudge_vertices(&[1], [0.5, 0.0, 0.0]).unwrap(), 1);
+    let moved = sculpt.working_mesh().expect("working").vertices[1];
+    assert!(
+        (moved[0] - before[0] - 1.5).abs() < 1.0e-9,
+        "two nudges on one point did not add up: {moved:?} from {before:?}",
+    );
+
+    assert!(sculpt.end_stroke().expect("end"));
+    assert!(sculpt.undo().expect("undo"));
+    assert_eq!(
+        sculpt.working_mesh().expect("working").vertices[1],
+        before,
+        "undo did not put the point back",
+    );
+}
+
+#[test]
+fn a_nudge_that_names_nothing_real_moves_nothing() {
+    let mut sculpt = SculptSession::default();
+    sculpt.begin(&noisy_grid()).expect("a mesh to work on");
+    sculpt.begin_stroke().expect("a stroke");
+    assert_eq!(sculpt.nudge_vertices(&[9_999], [1.0, 0.0, 0.0]).unwrap(), 0);
+    assert!(
+        sculpt.nudge_vertices(&[0], [f64::NAN, 0.0, 0.0]).is_err(),
+        "a shift that is not a number reached the mesh",
+    );
+    assert!(
+        !sculpt.end_stroke().expect("end"),
+        "a stroke that moved nothing was kept in the history",
+    );
+}

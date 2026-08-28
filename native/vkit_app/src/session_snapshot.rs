@@ -26,6 +26,9 @@ pub struct SessionSnapshot {
     pub sculpt: SparseDisplacement,
     #[serde(default)]
     pub texture_layers: Vec<TextureLayerRecord>,
+
+    #[serde(default)]
+    pub hand_morph_edits: u32,
 }
 
 impl SessionSnapshot {
@@ -37,6 +40,17 @@ impl SessionSnapshot {
                 .iter()
                 .any(|layer| layer.source_path.is_some())
             || self.eye_closure != 0.0
+    }
+
+    pub fn worth_offering(&self) -> bool {
+        self.hand_morph_edits > 0
+            || !self.sculpt.is_empty()
+            || self
+                .texture_layers
+                .iter()
+                .any(|layer| layer.source_path.is_some())
+            || self.eye_closure != 0.0
+            || (self.look_id.is_none() && !self.morph_values.is_empty())
     }
 
     pub const fn is_readable(&self) -> bool {
@@ -210,6 +224,92 @@ impl RunLengthMask {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_session_that_only_picked_a_look_is_saved_but_never_offered() {
+        let mut snapshot = SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            look_id: Some("Custom/Aria.vap".to_owned()),
+            morph_values: (0..40)
+                .map(|index| (format!("morph-{index}"), 0.6))
+                .collect(),
+            ..SessionSnapshot::default()
+        };
+        assert!(snapshot.has_work(), "worth writing -- it costs nothing");
+        assert!(
+            !snapshot.worth_offering(),
+            "a look you can pick again is not work you lost",
+        );
+
+        snapshot.hand_morph_edits = 1;
+        assert!(snapshot.worth_offering());
+    }
+
+    #[test]
+    fn anything_that_cannot_be_redone_in_a_click_is_offered() {
+        let look = |snapshot: SessionSnapshot| SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            look_id: Some("Aria".to_owned()),
+            ..snapshot
+        };
+
+        for (what, snapshot) in [
+            (
+                "a sculpt",
+                look(SessionSnapshot {
+                    sculpt: SparseDisplacement::from_dense(&[[0.0, 0.0, 0.0], [0.0, 0.4, 0.0]]),
+                    ..SessionSnapshot::default()
+                }),
+            ),
+            (
+                "closed eyes",
+                look(SessionSnapshot {
+                    eye_closure: 1.0,
+                    ..SessionSnapshot::default()
+                }),
+            ),
+            (
+                "a hand-moved morph",
+                look(SessionSnapshot {
+                    hand_morph_edits: 3,
+                    morph_values: [("brow".to_owned(), 0.2)].into_iter().collect(),
+                    ..SessionSnapshot::default()
+                }),
+            ),
+            (
+                "morphs with no look to re-pick",
+                SessionSnapshot {
+                    version: SNAPSHOT_VERSION,
+                    morph_values: [("brow".to_owned(), 0.2)].into_iter().collect(),
+                    ..SessionSnapshot::default()
+                },
+            ),
+        ] {
+            assert!(snapshot.worth_offering(), "{what} was not offered");
+        }
+
+        assert!(
+            !SessionSnapshot {
+                version: SNAPSHOT_VERSION,
+                ..SessionSnapshot::default()
+            }
+            .worth_offering(),
+            "an untouched session has nothing to offer",
+        );
+    }
+
+    #[test]
+    fn a_snapshot_from_before_the_count_does_not_invent_hand_work() {
+        let older = serde_json::json!({
+            "version": SNAPSHOT_VERSION,
+            "look_id": "Aria",
+            "morph_values": {"brow": 0.5},
+        });
+        let snapshot: SessionSnapshot = serde_json::from_value(older).unwrap();
+        assert_eq!(snapshot.hand_morph_edits, 0);
+        assert!(snapshot.has_work());
+        assert!(!snapshot.worth_offering());
+    }
+
     use super::*;
 
     #[test]
@@ -328,6 +428,7 @@ mod tests {
             figure_sex: FigureSex::Male,
             look_id: Some("var:Author.Look.1:/Custom/x.vap".to_owned()),
             morph_values: BTreeMap::from([("nose".to_owned(), -0.25)]),
+            hand_morph_edits: 7,
             eye_closure: 0.5,
             sculpt: SparseDisplacement::from_dense(&[[0.0; 3], [0.1, 0.2, 0.3]]),
             texture_layers: vec![TextureLayerRecord {

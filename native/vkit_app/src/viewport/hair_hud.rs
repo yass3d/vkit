@@ -4,14 +4,8 @@ use crate::ui_components::Icon;
 
 pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 10] = [
     (
-        HairTool::Pick,
-        Icon::CursorPick,
-        TextKey::HairToolPick,
-        TextKey::HairToolPickHint,
-    ),
-    (
         HairTool::Vertex,
-        Icon::HairVertex,
+        Icon::CursorPick,
         TextKey::HairToolVertex,
         TextKey::HairToolVertexHint,
     ),
@@ -26,6 +20,12 @@ pub(super) const HAIR_TOOLS: [(HairTool, Icon, TextKey, TextKey); 10] = [
         Icon::HairLength,
         TextKey::HairToolGrow,
         TextKey::HairToolGrowHint,
+    ),
+    (
+        HairTool::Settle,
+        Icon::HairSettle,
+        TextKey::HairToolSettle,
+        TextKey::HairToolSettleHint,
     ),
     (
         HairTool::Cut,
@@ -109,6 +109,7 @@ pub(super) fn hair_hud_plan(state: &AppState, viewport: Rect) -> Option<HairHudP
 pub(super) enum HairSwitch {
     MirrorEdit,
     AutoPart,
+    SingleStrand,
     PartTint,
     ShowColliders,
     ShowPoints,
@@ -122,6 +123,7 @@ impl HairSwitch {
         match self {
             Self::MirrorEdit => &mut state.hair_mirror_edit,
             Self::AutoPart => &mut state.hair_auto_part,
+            Self::SingleStrand => &mut state.hair_single_strand,
             Self::PartTint => &mut state.hair_part_tint,
             Self::ShowColliders => &mut state.hair_show_colliders,
             Self::ShowPoints => &mut state.hair_show_points,
@@ -148,6 +150,13 @@ pub(super) const HAIR_SWITCHES: &[(HairSwitch, Icon, TextKey, TextKey, bool)] = 
         false,
     ),
     (
+        HairSwitch::SingleStrand,
+        Icon::HairSingleStrand,
+        TextKey::HairSingleStrand,
+        TextKey::HairSingleStrandHint,
+        false,
+    ),
+    (
         HairSwitch::PartTint,
         Icon::VennThree,
         TextKey::HairPartTint,
@@ -170,7 +179,7 @@ pub(super) const HAIR_SWITCHES: &[(HairSwitch, Icon, TextKey, TextKey, bool)] = 
     ),
     (
         HairSwitch::ViewportPhysics,
-        Icon::GlobeGravity,
+        Icon::HairSettle,
         TextKey::HairViewportPhysics,
         TextKey::HairViewportPhysicsHint,
         false,
@@ -301,7 +310,53 @@ fn draw_hair_header(ui: &mut Ui, state: &mut AppState, viewport: Rect) {
         if response.clicked() {
             *switch.of(state) = !on;
         }
+        if switch == HairSwitch::ViewportPhysics {
+            draw_settle_popup(state, &response);
+        }
     }
+}
+
+const SETTLE_POPUP_ID: &str = "vkit.viewport.hair.settle-popup";
+
+const SETTLE_POPUP_WIDTH: f32 = 232.0;
+
+fn draw_settle_popup(state: &mut AppState, response: &egui::Response) {
+    egui::Popup::from_toggle_button_response(response)
+        .id(egui::Id::new(SETTLE_POPUP_ID))
+        .frame(
+            egui::Frame::new()
+                .fill(crate::theme::COLOR_TOPBAR)
+                .stroke(egui::Stroke::new(1.0, crate::theme::COLOR_BORDER))
+                .corner_radius(f32::from(crate::theme::RADIUS_POPOVER))
+                .inner_margin(egui::Margin::same(8)),
+        )
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.set_width(SETTLE_POPUP_WIDTH);
+            ui.label(
+                egui::RichText::new(text(state.locale, TextKey::HairKeepSettledShapeHint))
+                    .size(crate::theme::FONT_XS)
+                    .color(crate::theme::COLOR_MUTED),
+            );
+            ui.add_space(crate::theme::SPACE_2);
+
+            let planted = state
+                .hair_project
+                .parts
+                .iter()
+                .any(|part| !part.strands.is_empty());
+            let waiting = state.hair_settle_wanted.is_some();
+            let armed = planted && !waiting;
+            let keep = ui.add_enabled(
+                armed,
+                egui::Button::new(text(state.locale, TextKey::HairKeepSettledShape)),
+            );
+            if keep.clicked() {
+                state.dispatch(Action::KeepSettledHairShape(
+                    crate::hair_settle::SettleScope::Everything,
+                ));
+            }
+        });
 }
 
 fn toolbox_columns(state: &AppState) -> usize {
@@ -388,16 +443,15 @@ pub(super) fn draw_hair_toolbox(ui: &mut Ui, state: &mut AppState, viewport: Rec
 const fn tool_shortcut(tool: HairTool) -> Option<crate::shortcuts::Shortcut> {
     use crate::shortcuts::Shortcut;
     match tool {
-        HairTool::Pick => Some(Shortcut::HairPickTool),
+        HairTool::Vertex => Some(Shortcut::HairPickTool),
         HairTool::Plant => Some(Shortcut::HairPlantTool),
         HairTool::Grow => Some(Shortcut::HairGrowTool),
         HairTool::Cut => Some(Shortcut::HairCutTool),
         HairTool::Erase => Some(Shortcut::HairEraseTool),
         HairTool::Comb => Some(Shortcut::HairCombBrush),
-        HairTool::Vertex => None,
         HairTool::Puff => Some(Shortcut::HairPuffTool),
         HairTool::Pinch => Some(Shortcut::HairPinchTool),
-        HairTool::Rigidity => None,
+        HairTool::Rigidity | HairTool::Settle => None,
     }
 }
 
@@ -418,7 +472,8 @@ pub(crate) const fn brush_slot(tool: crate::hair_project::HairTool) -> BrushSlot
         | HairTool::Cut
         | HairTool::Grow
         | HairTool::Puff
-        | HairTool::Rigidity => BrushSlot::Strength,
-        HairTool::Erase | HairTool::Pick | HairTool::Vertex => BrushSlot::Empty,
+        | HairTool::Rigidity
+        | HairTool::Settle => BrushSlot::Strength,
+        HairTool::Erase | HairTool::Vertex => BrushSlot::Empty,
     }
 }

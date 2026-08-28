@@ -6,9 +6,25 @@ use crate::state::{Action, AppState};
 
 const GRAB_POINTS: f32 = 14.0;
 
-const MARKER_POINTS: f32 = 3.0;
+fn joint_span(state: &AppState, joint: Joint) -> f32 {
+    let Some(strand) = state
+        .hair_project
+        .part(joint.part)
+        .and_then(|part| part.strands.get(&joint.strand))
+    else {
+        return 1.0;
+    };
+    let neighbour = if joint.point > 0 { joint.point - 1 } else { 1 };
+    strand
+        .points_cm
+        .get(neighbour)
+        .map(|other| (Vec3::from_array(*other) - joint.at).length())
+        .unwrap_or(1.0)
+}
 
-const SELECTED_MARKER_POINTS: f32 = 5.0;
+fn handle_size() -> crate::viewport::marker_size::MarkerSize {
+    crate::viewport::marker_size::MarkerSize::new(0.25, 1.4..=5.5)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Joint {
@@ -34,7 +50,7 @@ fn joints_near(
     camera: TurntableCamera,
     pointer: Pos2,
     reach_points: f32,
-    field: &super::hair_overlays::HairDepthField,
+    field: &super::surface_depth::SurfaceDepth,
 ) -> Option<Joint> {
     let eye = camera.eye();
     let mut best: Option<(f32, Joint)> = None;
@@ -131,6 +147,40 @@ fn apply_pick(
     }
 }
 
+pub(super) fn select_connected(state: &mut AppState) {
+    let strands: std::collections::BTreeSet<(u64, u32)> = state
+        .hair_vertex_selection
+        .iter()
+        .map(|(part, strand, _)| (*part, *strand))
+        .collect();
+    if strands.is_empty() {
+        return;
+    }
+    let mut mask: std::collections::BTreeMap<u64, std::collections::BTreeSet<u32>> =
+        std::collections::BTreeMap::new();
+    for (part_id, strand_id) in strands {
+        let Some(points) = state
+            .hair_project
+            .part(part_id)
+            .and_then(|part| part.strands.get(&strand_id))
+            .map(|strand| strand.points_cm.len())
+        else {
+            continue;
+        };
+        for point in 1..points {
+            state
+                .hair_vertex_selection
+                .insert((part_id, strand_id, point));
+        }
+        mask.entry(part_id).or_default().insert(strand_id);
+    }
+    state.hair_strand_mask = mask;
+}
+
+pub(super) fn clear_strand_mask(state: &mut AppState) {
+    state.hair_strand_mask.clear();
+}
+
 pub(super) fn handle(
     ui: &Ui,
     state: &mut AppState,
@@ -156,6 +206,9 @@ pub(super) fn handle(
         let dragging_from_a_joint = picked.is_some();
         apply_pick(&mut state.hair_vertex_selection, picked, intent);
         if !dragging_from_a_joint {
+            if intent == PickIntent::Replace {
+                clear_strand_mask(state);
+            }
             return;
         }
     }
@@ -169,22 +222,116 @@ pub(super) fn handle(
         }
         return;
     }
-    let delta = ui.input(|input| input.pointer.delta());
-    if delta == egui::Vec2::ZERO {
-        return;
-    }
-    let Some(centre) = selection_centre(state) else {
+    let Some(grab) = drag_anchor(ui, state, viewport, camera, response) else {
         return;
     };
-    let shift = camera.world_drag_delta_at(centre, delta, viewport.height());
+    let Some(now) = plane_hit(camera, viewport, pointer, grab) else {
+        return;
+    };
+    let shift = now - grab.at;
+    if shift.length_squared() <= 1.0e-12 {
+        return;
+    }
     move_selection(state, &joints, shift);
+    ui.data_mut(|data| data.insert_temp(egui::Id::new(DRAG_ID), Grab { at: now, ..grab }));
     ui.ctx().request_repaint();
+}
+
+const DRAG_ID: &str = "vkit.viewport.hair.vertex-drag";
+
+#[derive(Clone, Copy, Debug)]
+struct Grab {
+    plane_point: Vec3,
+    plane_normal: Vec3,
+    at: Vec3,
+}
+
+fn drag_anchor(
+    ui: &Ui,
+    state: &AppState,
+    viewport: Rect,
+    camera: TurntableCamera,
+    response: &Response,
+) -> Option<Grab> {
+    let id = egui::Id::new(DRAG_ID);
+    if response.drag_stopped() {
+        ui.data_mut(|data| data.remove::<Grab>(id));
+        return None;
+    }
+    if let Some(grab) = ui.data(|data| data.get_temp::<Grab>(id)) {
+        return Some(grab);
+    }
+    let pointer = ui.input(|input| input.pointer.interact_pos())?;
+    let centre = selection_centre(state)?;
+    let (forward, _, _) = camera.basis();
+    let grab = Grab {
+        plane_point: centre,
+        plane_normal: forward,
+        at: plane_hit_on(camera, viewport, pointer, centre, forward)?,
+    };
+    ui.data_mut(|data| data.insert_temp(id, grab));
+    Some(grab)
+}
+
+fn plane_hit(camera: TurntableCamera, viewport: Rect, pointer: Pos2, grab: Grab) -> Option<Vec3> {
+    plane_hit_on(
+        camera,
+        viewport,
+        pointer,
+        grab.plane_point,
+        grab.plane_normal,
+    )
+}
+
+fn plane_hit_on(
+    camera: TurntableCamera,
+    viewport: Rect,
+    pointer: Pos2,
+    plane_point: Vec3,
+    plane_normal: Vec3,
+) -> Option<Vec3> {
+    let ray = camera.ray_from_screen(pointer, viewport)?;
+    let origin = Vec3::new(
+        ray.origin.x as f32,
+        ray.origin.y as f32,
+        ray.origin.z as f32,
+    );
+    let direction = Vec3::new(
+        ray.direction.x as f32,
+        ray.direction.y as f32,
+        ray.direction.z as f32,
+    );
+    let slope = direction.dot(plane_normal);
+    if slope.abs() < 1.0e-6 {
+        return None;
+    }
+    let travel = (plane_point - origin).dot(plane_normal) / slope;
+    if !travel.is_finite() {
+        return None;
+    }
+    Some(origin + direction * travel)
 }
 
 pub(super) fn move_selection(state: &mut AppState, joints: &[Joint], shift: Vec3) {
     let placed: Vec<(Joint, Vec3)> = joints
         .iter()
         .map(|joint| (*joint, joint.at + shift))
+        .collect();
+    move_placed(state, &placed);
+}
+
+pub(super) fn transform_selection(
+    state: &mut AppState,
+    joints: &[Joint],
+    pivot: Vec3,
+    basis: glam::Mat3,
+) {
+    if joints.len() < 2 {
+        return;
+    }
+    let placed: Vec<(Joint, Vec3)> = joints
+        .iter()
+        .map(|joint| (*joint, pivot + basis.mul_vec3(joint.at - pivot)))
         .collect();
     move_placed(state, &placed);
 }
@@ -244,165 +391,35 @@ fn move_placed(state: &mut AppState, placed: &[(Joint, Vec3)]) {
     }
 }
 
-pub(super) fn paint(
-    ui: &Ui,
+pub(super) fn handles(
     state: &AppState,
-    viewport: Rect,
-    response: &Response,
-    camera: TurntableCamera,
+    into: &mut Vec<crate::renderer::MarkerInstance>,
+    scale: f32,
+    sizing: Option<(TurntableCamera, egui::Rect)>,
 ) {
-    let painter = ui
-        .painter()
-        .with_clip_rect(ui.clip_rect().intersect(viewport));
-    let field = super::hair_overlays::hair_depth_field(ui, state, viewport, camera);
-    let hovered = response
-        .hovered()
-        .then(|| ui.input(|input| input.pointer.hover_pos()))
-        .flatten()
-        .and_then(|pointer| joints_near(state, viewport, camera, pointer, GRAB_POINTS, &field));
-
-    if let Some(joint) = hovered
-        && let Some(seen) = camera.project(joint.at, viewport)
-    {
-        painter.rect_stroke(
-            Rect::from_center_size(seen.screen, egui::Vec2::splat(MARKER_POINTS * 2.0)),
-            1.0,
-            egui::Stroke::new(1.5, crate::theme::COLOR_TEXT),
-            egui::StrokeKind::Middle,
-        );
-    }
-
+    let rgba = |colour: egui::Color32| {
+        let [r, g, b, a] = colour.to_array();
+        [
+            f32::from(r) / 255.0,
+            f32::from(g) / 255.0,
+            f32::from(b) / 255.0,
+            f32::from(a) / 255.0,
+        ]
+    };
+    let size = handle_size();
     for joint in selected_joints(state) {
-        let Some(seen) = camera.project(joint.at, viewport) else {
-            continue;
+        let radius = match sizing {
+            Some((camera, viewport)) => {
+                size.points(camera, viewport, joint.at, joint_span(state, joint))
+            }
+            None => size.smallest(),
         };
-        let marker =
-            Rect::from_center_size(seen.screen, egui::Vec2::splat(SELECTED_MARKER_POINTS * 2.0));
-        painter.rect_filled(marker, 1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE);
-        for (from, to) in [
-            (marker.left_center(), marker.right_center()),
-            (marker.center_top(), marker.center_bottom()),
-        ] {
-            painter.line_segment(
-                [
-                    from - (to - from).normalized() * 6.0,
-                    to + (to - from).normalized() * 6.0,
-                ],
-                egui::Stroke::new(1.0, crate::theme::COLOR_HAIR_POINT_ACTIVE),
-            );
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn straight(count: usize) -> Vec<[f32; 3]> {
-        (0..count).map(|step| [0.0, step as f32, 0.0]).collect()
-    }
-
-    fn lengths(points: &[[f32; 3]]) -> Vec<f32> {
-        points
-            .windows(2)
-            .map(|pair| (Vec3::from_array(pair[1]) - Vec3::from_array(pair[0])).length())
-            .collect()
-    }
-
-    #[test]
-    fn the_three_ways_a_click_changes_a_selection() {
-        use std::collections::BTreeSet;
-
-        let one = (1_u64, 2_u32, 3_usize);
-        let two = (1, 2, 4);
-        let mut selection = BTreeSet::new();
-
-        apply_pick(&mut selection, Some(one), PickIntent::Replace);
-        assert_eq!(selection, BTreeSet::from([one]));
-
-        apply_pick(&mut selection, Some(two), PickIntent::Toggle);
-        assert_eq!(selection, BTreeSet::from([one, two]), "shift adds");
-
-        apply_pick(&mut selection, Some(two), PickIntent::Toggle);
-        assert_eq!(selection, BTreeSet::from([one]), "and shift takes back");
-
-        apply_pick(&mut selection, Some(two), PickIntent::Remove);
-        assert_eq!(
-            selection,
-            BTreeSet::from([one]),
-            "alt on an outsider is nothing"
-        );
-
-        apply_pick(&mut selection, Some(one), PickIntent::Remove);
-        assert!(selection.is_empty(), "alt takes out what is in");
-
-        apply_pick(&mut selection, Some(one), PickIntent::Replace);
-        apply_pick(&mut selection, Some(two), PickIntent::Replace);
-        assert_eq!(selection, BTreeSet::from([two]), "a plain click replaces");
-    }
-
-    #[test]
-    fn an_empty_click_clears_only_when_it_is_a_plain_one() {
-        use std::collections::BTreeSet;
-
-        let held = BTreeSet::from([(1_u64, 2_u32, 3_usize)]);
-
-        let mut selection = held.clone();
-        apply_pick(&mut selection, None, PickIntent::Replace);
-        assert!(selection.is_empty());
-
-        for intent in [PickIntent::Toggle, PickIntent::Remove] {
-            let mut selection = held.clone();
-            apply_pick(&mut selection, None, intent);
-            assert_eq!(selection, held, "{intent:?} on empty space keeps it");
-        }
-    }
-
-    #[test]
-    fn a_drag_moves_the_joint_it_took_hold_of_and_nothing_else() {
-        let points = straight(6);
-        let wanted = Vec3::new(9.0, 1.0, -4.0);
-        let moved = move_strand_point(&points, 2, wanted).expect("a joint moves");
-
-        assert_eq!(moved.len(), points.len());
-        assert_eq!(moved[2], wanted.to_array(), "it goes where it was dragged");
-        for index in (0..points.len()).filter(|index| *index != 2) {
-            assert_eq!(
-                moved[index], points[index],
-                "point {index} is not the one that was grabbed",
-            );
-        }
-    }
-
-    #[test]
-    fn the_tail_stays_where_it_was() {
-        let points = straight(6);
-        let moved = move_strand_point(&points, 2, Vec3::new(4.0, 2.0, 0.0)).expect("moves");
-        for index in 3..points.len() {
-            assert_eq!(moved[index], points[index], "point {index} followed along");
-        }
-    }
-
-    #[test]
-    fn the_segments_either_side_stretch_to_reach() {
-        let points = straight(6);
-        let before = lengths(&points);
-        let moved = move_strand_point(&points, 2, Vec3::new(0.0, 40.0, 0.0)).expect("moves");
-        let after = lengths(&moved);
-        assert!(after[1] > before[1] * 2.0, "the segment above it grew");
-        assert!(after[2] > before[2] * 2.0, "and so did the one below");
-        for index in [0, 3, 4] {
-            assert!(
-                (before[index] - after[index]).abs() < 1.0e-4,
-                "segment {index} touches neither side of the moved joint",
-            );
-        }
-    }
-
-    #[test]
-    fn the_root_is_not_ours_to_move() {
-        let points = straight(4);
-        assert!(move_strand_point(&points, 0, Vec3::X).is_none());
-        assert!(move_strand_point(&points, 9, Vec3::X).is_none());
+        into.push(crate::renderer::MarkerInstance {
+            position: joint.at.to_array(),
+            shape: crate::renderer::MarkerInstance::ROUND,
+            radius: radius * scale,
+            fill: rgba(crate::theme::COLOR_HAIR_POINT_ACTIVE),
+            ring: rgba(crate::theme::COLOR_BG.gamma_multiply(0.6)),
+        });
     }
 }

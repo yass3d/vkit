@@ -72,36 +72,12 @@ pub(super) fn handle_camera_control_shortcuts(
     if crate::shortcuts::Shortcut::ViewLevelRoll.pressed(ui) {
         camera.level_roll();
     }
-    let update = crate::sweep_gesture::handle_sweep(
-        ui,
-        Id::new(ROLL_SWEEP_ID),
-        crate::shortcuts::Shortcut::ViewTrackball,
-        rect,
-        0.0,
-        0.0,
-        None,
-    );
-    if crate::sweep_gesture::sweep_active(ui, Id::new(ROLL_SWEEP_ID)) {
-        camera.apply_trackball(ui.input(|input| input.pointer.delta()));
+    let _ = (rect, pane);
+    if state.camera_control != ControlMode::Orbit {
+        state.dispatch(Action::SetCameraControl(ControlMode::Orbit));
     }
-    let armed = crate::sweep_gesture::sweep_active(ui, Id::new(ROLL_SWEEP_ID));
-    ui.data_mut(|data| {
-        if armed {
-            data.insert_temp(Id::new(CAMERA_KEY_OWNER_ID), pane);
-        } else {
-            data.remove::<ViewPane>(Id::new(CAMERA_KEY_OWNER_ID));
-        }
-    });
-    let mode = if armed {
-        ControlMode::Trackball
-    } else {
-        ControlMode::Orbit
-    };
-    if state.camera_control != mode {
-        state.dispatch(Action::SetCameraControl(mode));
-    }
-
-    update.consumed || update.finished
+    ui.data_mut(|data| data.remove::<ViewPane>(Id::new(CAMERA_KEY_OWNER_ID)));
+    false
 }
 
 pub(super) fn brush_sweep_owns_pointer(ui: &Ui) -> bool {

@@ -546,6 +546,10 @@ pub(super) fn detail_hud_row_ui(ui: &mut Ui, salt: Id, row: Rect, gap: f32) -> U
 }
 
 pub(super) fn detail_hud_numeric_controls(hud: &mut Ui, state: &mut AppState, control_width: f32) {
+    if !state.sculpt_brush.is_a_brush() {
+        hud.add_space(control_width * 2.0 + hud.spacing().item_spacing.x);
+        return;
+    }
     let mut radius = state.sculpt_brush_radius_points;
     let radius_changed = detail_numeric_control(
         hud,

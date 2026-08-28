@@ -93,6 +93,10 @@ impl AppState {
         self.with_relevant_cameras(|camera| camera.look_from_standard_view(view));
     }
 
+    pub(super) fn set_relevant_roll(&mut self, degrees: f32) {
+        self.with_relevant_cameras(|camera| camera.set_roll_degrees(degrees));
+    }
+
     pub(super) fn set_relevant_fov(&mut self, value: f32) {
         self.with_relevant_cameras(|camera| {
             camera.set_fov_y_degrees_with_dolly_compensation(value);

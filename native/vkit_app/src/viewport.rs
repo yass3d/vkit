@@ -66,6 +66,7 @@ pub(crate) mod hair_overlays;
 mod hair_vertex;
 mod help;
 mod islands;
+mod marker_size;
 mod pins;
 mod reference_overlay;
 mod reference_panel;
@@ -165,6 +166,29 @@ const DETAIL_GROUP_ITEM_GAP: f32 = 4.0;
 
 const GIZMO_DRAG_ID: &str = "vkit.viewport.alignment.gizmo.drag";
 const SCULPT_DRAG_ID: &str = "vkit.viewport.sculpt.stroke";
+
+#[cfg(test)]
+fn open_a_sculpt_stroke_for_test(ui: &Ui, input_mode: SculptInputMode) {
+    ui.data_mut(|data| {
+        data.insert_temp(
+            Id::new(SCULPT_DRAG_ID),
+            SculptViewportStroke {
+                mask_step_open: false,
+                center_local: [0.0; 3],
+                last_pointer: Pos2::ZERO,
+                last_sample_pointer: Pos2::ZERO,
+                distance_since_last_sample: 0.0,
+                smooth_time_accumulator_seconds: 0.0,
+                input_mode,
+            },
+        );
+    });
+}
+
+fn open_sculpt_stroke_mode(ui: &Ui) -> Option<SculptInputMode> {
+    ui.data(|data| data.get_temp::<SculptViewportStroke>(Id::new(SCULPT_DRAG_ID)))
+        .map(|stroke| stroke.input_mode)
+}
 const TEXTURE_BRUSH_UV_SCALE_ID: &str = "vkit.viewport.texture.points_per_uv";
 const SCULPT_BRUSH_SIZE_SENSITIVITY: f32 = 0.75;
 const SCULPT_DAB_SPACING_RADIUS_FRACTION: f32 = 0.2;
@@ -216,6 +240,9 @@ enum AlignmentGizmoDrag {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AlignmentGizmoHit {
     Move(usize),
+
+    Plane(usize),
+
     Rotate(usize),
     Scale,
 }
@@ -224,17 +251,20 @@ enum AlignmentGizmoHit {
 struct GizmoHandles {
     rotate: bool,
     scale: bool,
+    plane: bool,
 }
 
 impl GizmoHandles {
     const ALL: Self = Self {
         rotate: true,
         scale: true,
+        plane: true,
     };
 
     const MOVE_ONLY: Self = Self {
         rotate: false,
         scale: false,
+        plane: true,
     };
 }
 
@@ -243,6 +273,9 @@ struct AlignmentGizmoGeometry {
     axis_ends: [Option<Pos2>; 3],
     axis_world_units_per_point: [Option<f64>; 3],
     rings: [Vec<Pos2>; 3],
+
+    plane_quads: [Vec<Pos2>; 3],
+
     scale_handle: Pos2,
     world_center: glam::Vec3,
 }
@@ -268,6 +301,8 @@ enum SculptInputMode {
     RestoreFit,
 
     Mask,
+
+    Vertex,
 }
 
 impl SculptInputMode {
@@ -464,6 +499,14 @@ pub fn draw_result(ui: &mut Ui, state: &mut AppState, rect: Rect, title: &str) {
     draw_result_in(ui, state, rect, title, ViewPane::Primary, true, None);
 }
 
+fn scene_pointer_taken(ui: &Ui, state: &AppState, chrome: Rect, roll_owns_pointer: bool) -> bool {
+    state.import_progress.is_some()
+        || roll_owns_pointer
+        || camera_mode_owns_pointer(state)
+        || crate::sweep_gesture::press_spent(ui)
+        || viewport_tools_pointer_blocked(ui, state, chrome)
+}
+
 fn draw_result_in(
     ui: &mut Ui,
     state: &mut AppState,
@@ -476,7 +519,7 @@ fn draw_result_in(
     crate::sweep_gesture::set_commit_style(ui, state.brush_sweep_commit);
     paint_viewport_background(ui, state, rect);
     reference_overlay::note_reference_aspects(ui, state);
-    reference_overlay::paint_reference_images(ui, state, rect);
+    reference_overlay::paint_reference_images(ui, state, rect, reference_overlay::Band::Behind);
     let response = ui.interact(
         rect,
         Id::new(pane.interaction_id()),
@@ -486,11 +529,7 @@ fn draw_result_in(
     let roll_owns_pointer =
         camera_keys && handle_camera_control_shortcuts(ui, state, rect, &mut swept, pane);
     state.workspace.result_camera = swept;
-    let pointer_taken = state.import_progress.is_some()
-        || roll_owns_pointer
-        || camera_mode_owns_pointer(state)
-        || crate::sweep_gesture::press_spent(ui)
-        || viewport_tools_pointer_blocked(ui, state, chrome.unwrap_or(rect));
+    let pointer_taken = scene_pointer_taken(ui, state, chrome.unwrap_or(rect), roll_owns_pointer);
     crate::sweep_gesture::settle_press(ui);
 
     let pointer_position = ui.input(|input| input.pointer.interact_pos());
@@ -517,11 +556,13 @@ fn draw_result_in(
             .is_some()
         }
     };
+    let sweeping = brush_sweep_owns_pointer(ui);
     let reference_owns_pointer = !pointer_taken
+        && !sweeping
         && reference_overlay::handle_reference_drag(ui, state, rect, model_under_pointer);
 
     let pointer_taken = pointer_taken || reference_owns_pointer;
-    let camera_blocked = pointer_taken || brush_sweep_owns_pointer(ui);
+    let camera_blocked = pointer_taken || sweeping;
     let input_blocked = pointer_taken;
     if !camera_blocked {
         let result = state.workspace.result.clone();
@@ -571,7 +612,11 @@ fn draw_result_in(
     let render_view = ResultRenderView {
         camera,
         grading: state.viewport_grading(),
-        smooth_passes: state.surface_smooth_passes,
+        smooth_passes: if state.editing_the_cage() {
+            0
+        } else {
+            state.surface_smooth_passes
+        },
     };
 
     if !texture_paint_mode(state) && !projection_stencil_mode(state) {
@@ -640,6 +685,9 @@ fn draw_result_in(
                     } else {
                         RenderDepthScope::Shared
                     },
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -665,15 +713,19 @@ fn draw_result_in(
         add_hair_authoring_overlays(ui, rect, state, camera, state.is_hair_editing() && !framing);
     }
     draw_template_install_fade(ui, state, rect);
+    reference_overlay::paint_reference_images(ui, state, rect, reference_overlay::Band::InFront);
 
     if state.is_sculpting() {
-        paint_sculpt_brush_hud(ui, state, &response);
+        if state.sculpt_brush == SculptBrush::Vertex {
+            vertex_gizmo::paint(vertex_gizmo::VertexOwner::Sculpt, ui, state, rect, camera);
+        } else {
+            paint_sculpt_brush_hud(ui, state, &response);
+        }
     }
 
     if state.is_hair_editing() && state.hair_thumbnail.is_none() {
         if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
-            hair_vertex::paint(ui, state, rect, &response, swept);
-            vertex_gizmo::paint(ui, state, rect, swept);
+            vertex_gizmo::paint(vertex_gizmo::VertexOwner::Hair, ui, state, rect, swept);
         } else {
             hair_input::paint_hair_brush_hud(ui, state, &response);
         }
@@ -747,6 +799,8 @@ fn draw_edit_side(
     roll_owns_pointer: bool,
 ) {
     paint_viewport_background(ui, state, rect);
+    reference_overlay::note_reference_aspects(ui, state);
+    reference_overlay::paint_reference_images(ui, state, rect, reference_overlay::Band::Behind);
     let response = ui.interact(
         rect,
         Id::new(match side {
@@ -874,6 +928,9 @@ fn draw_edit_side(
                     color: color_array(color, 1.0),
                     style: RenderStyle::Solid,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -894,6 +951,9 @@ fn draw_edit_side(
                     color: color_array(wireframe_color(state), wire_alpha),
                     style: RenderStyle::Wire,
                     depth_scope: RenderDepthScope::Shared,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -914,6 +974,9 @@ fn draw_edit_side(
                     color: color_array(color, xray_alpha),
                     style: RenderStyle::Xray,
                     depth_scope: RenderDepthScope::ResetBeforeDraw,
+                    bed_markers: None,
+                    markers: None,
+                    lines: None,
                 },
             );
         }
@@ -927,6 +990,7 @@ fn draw_edit_side(
         }
     }
 
+    reference_overlay::paint_reference_images(ui, state, rect, reference_overlay::Band::InFront);
     paint_viewport_chrome(ui, state, rect, camera);
 }
 
@@ -946,6 +1010,7 @@ fn sculpt_brush_icon(brush: SculptBrush) -> Icon {
         SculptBrush::Smooth => Icon::BrushSmooth,
         SculptBrush::Restore => Icon::BrushRestore,
         SculptBrush::Mask => Icon::Eraser,
+        SculptBrush::Vertex => Icon::HairVertex,
     }
 }
 
@@ -955,6 +1020,7 @@ fn sculpt_brush_text_key(brush: SculptBrush) -> TextKey {
         SculptBrush::Smooth => TextKey::SculptBrushSmooth,
         SculptBrush::Restore => TextKey::SculptBrushRestore,
         SculptBrush::Mask => TextKey::SculptBrushMask,
+        SculptBrush::Vertex => TextKey::SculptBrushVertex,
     }
 }
 
@@ -964,6 +1030,7 @@ fn sculpt_brush_tooltip_key(brush: SculptBrush) -> TextKey {
         SculptBrush::Smooth => TextKey::SculptBrushSmoothTooltip,
         SculptBrush::Restore => TextKey::SculptBrushRestoreTooltip,
         SculptBrush::Mask => TextKey::SculptBrushMaskTooltip,
+        SculptBrush::Vertex => TextKey::SculptBrushVertexTooltip,
     }
 }
 
@@ -1009,6 +1076,8 @@ pub(crate) use hair_hud::draw_hair_workspace;
 pub(crate) use hair_input::clear_hair_pointer_state;
 mod sculpt_input;
 mod sculpt_toolbox;
+mod sculpt_vertex;
+mod surface_depth;
 mod texture_toolbox;
 mod toolbox;
 mod vertex_gizmo;
@@ -1024,11 +1093,17 @@ struct SceneView {
     transform: ModelTransform,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct MeshDraw {
     color: [f32; 4],
     style: RenderStyle,
     depth_scope: RenderDepthScope,
+
+    bed_markers: Option<std::sync::Arc<Vec<crate::renderer::MarkerInstance>>>,
+
+    markers: Option<std::sync::Arc<Vec<crate::renderer::MarkerInstance>>>,
+
+    lines: Option<std::sync::Arc<Vec<crate::renderer::LineInstance>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1076,7 +1151,7 @@ fn paint_camera_mode_badge(ui: &Ui, state: &AppState, chrome: &mut ViewportChrom
     if !state.camera_control.needs_an_exit() {
         return;
     }
-    let label = text(state.locale, TextKey::CameraTrackballArmed);
+    let label = text(state.locale, TextKey::VertexRotateArmed);
     let galley =
         ui.painter()
             .layout_no_wrap(label.to_owned(), FontId::proportional(FONT_XS), COLOR_TEXT);
@@ -1183,6 +1258,7 @@ const fn style_alpha(style: RenderStyle) -> f32 {
     match style {
         RenderStyle::Solid | RenderStyle::Wire => 1.0,
         RenderStyle::Xray => 0.28,
+        RenderStyle::Overlay => 0.0,
     }
 }
 

@@ -21,9 +21,12 @@ pub fn build_style_joints(strands: &[&[[f32; 3]]], search_cm: f32) -> StyleJoint
         return Vec::new();
     }
     let mut points: Vec<([f32; 3], usize)> = Vec::new();
+
+    let mut roots: Vec<bool> = Vec::new();
     for (strand, curve) in strands.iter().enumerate() {
-        for point in curve.iter() {
+        for (step, point) in curve.iter().enumerate() {
             points.push((*point, strand));
+            roots.push(step == 0);
         }
     }
 
@@ -43,7 +46,7 @@ pub fn build_style_joints(strands: &[&[[f32; 3]]], search_cm: f32) -> StyleJoint
     let mut ordered: Vec<StyleJoint> = Vec::new();
     let mut neighbours: Vec<(f32, u32)> = Vec::new();
     for (index, (point, strand)) in points.iter().enumerate() {
-        if is_root(strands, index) {
+        if roots[index] {
             continue;
         }
         neighbours.clear();
@@ -58,7 +61,7 @@ pub fn build_style_joints(strands: &[&[[f32; 3]]], search_cm: f32) -> StyleJoint
                         let other_index = *other as usize;
                         if other_index == index
                             || points[other_index].1 == *strand
-                            || is_root(strands, other_index)
+                            || roots[other_index]
                         {
                             continue;
                         }
@@ -91,20 +94,6 @@ pub fn build_style_joints(strands: &[&[[f32; 3]]], search_cm: f32) -> StyleJoint
     group_for_parallel_solve(ordered)
 }
 
-fn is_root(strands: &[&[[f32; 3]]], flat: usize) -> bool {
-    let mut start = 0;
-    for curve in strands {
-        if flat == start {
-            return true;
-        }
-        start += curve.len();
-        if flat < start {
-            return false;
-        }
-    }
-    false
-}
-
 fn distance(left: [f32; 3], right: [f32; 3]) -> f32 {
     let dx = left[0] - right[0];
     let dy = left[1] - right[1];
@@ -114,24 +103,38 @@ fn distance(left: [f32; 3], right: [f32; 3]) -> f32 {
 
 fn group_for_parallel_solve(joints: Vec<StyleJoint>) -> StyleJointGroups {
     let mut groups: Vec<Vec<StyleJoint>> = Vec::new();
-    let mut claimed: Vec<HashSet<u32>> = Vec::new();
+    let mut taken: Vec<Vec<u64>> = Vec::new();
     for joint in joints {
-        let slot = claimed
-            .iter()
-            .position(|taken| !taken.contains(&joint.a) && !taken.contains(&joint.b));
-        let slot = match slot {
-            Some(slot) => slot,
-            None => {
-                groups.push(Vec::new());
-                claimed.push(HashSet::new());
-                groups.len() - 1
+        let widest = usize::try_from(joint.a.max(joint.b)).unwrap_or(usize::MAX);
+        if taken.len() <= widest {
+            taken.resize(widest + 1, Vec::new());
+        }
+        let slot = first_free(&taken[joint.a as usize], &taken[joint.b as usize]);
+        if groups.len() <= slot {
+            groups.resize(slot + 1, Vec::new());
+        }
+        for end in [joint.a, joint.b] {
+            let bits = &mut taken[end as usize];
+            let word = slot / 64;
+            if bits.len() <= word {
+                bits.resize(word + 1, 0);
             }
-        };
-        claimed[slot].insert(joint.a);
-        claimed[slot].insert(joint.b);
+            bits[word] |= 1 << (slot % 64);
+        }
         groups[slot].push(joint);
     }
     groups
+}
+
+fn first_free(left: &[u64], right: &[u64]) -> usize {
+    let words = left.len().max(right.len());
+    for word in 0..words {
+        let claimed = left.get(word).copied().unwrap_or(0) | right.get(word).copied().unwrap_or(0);
+        if claimed != u64::MAX {
+            return word * 64 + (!claimed).trailing_zeros() as usize;
+        }
+    }
+    words * 64
 }
 
 #[cfg(test)]

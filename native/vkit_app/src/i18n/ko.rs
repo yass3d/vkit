@@ -6,6 +6,8 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::SurfaceSmoothTooltip => {
             "VaM \u{d638}\u{d658} \u{b80c}\u{b354}\u{b9c1} \u{c2a4}\u{bb34}\u{b529}\u{c785}\u{b2c8}\u{b2e4}. 0\u{c740} \u{d3b8}\u{c9d1} \u{ae30}\u{bc18} \u{ba54}\u{c2dc}, 3\u{c740} VaM \u{ae30}\u{bcf8}\u{ac12}, 4\u{b294} \u{cd5c}\u{b313}\u{c785}\u{b2c8}\u{b2e4}. \u{baa8}\u{d504}, UV, \u{c2a4}\u{ceec}\u{d551}, \u{d14d}\u{c2a4}\u{cc98} \u{bca0}\u{c774}\u{d0b9}\u{c740} \u{ae30}\u{bc18} \u{d1a0}\u{d3f4}\u{b85c}\u{c9c0}\u{b97c} \u{c720}\u{c9c0}\u{d569}\u{b2c8}\u{b2e4}"
         }
+        TextKey::ShowWornHair => "착용한 헤어 표시",
+        TextKey::ShowWornHairHint => "모든 탭에서 보입니다. 여기서 변형되지는 않습니다",
         TextKey::FaceMatch => "생성",
         TextKey::ResultPreview | TextKey::Save => "저장",
         TextKey::DetailCorrection => "조형",
@@ -16,7 +18,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::AddHairPart => "파트 생성",
         TextKey::HairScalpMeshCrowded => "새 두피 메시에 자리가 없어 일부 가닥을 옮기지 못했습니다",
         TextKey::HairScalpMissing => {
-            "두피 프로바이더 메쉬가 없습니다. VaM 루트를 열고 다시 스캔하세요"
+            "이 파트들이 쓰는 두피 메시를 찾지 못해 내보내지 않았습니다. VaM 폴더를 열고 재탐색하세요"
         }
         TextKey::HairShowPoints => "포인트 보기",
         TextKey::HairShowPointsHint => {
@@ -44,8 +46,14 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairViewportPhysicsHint => {
             "화면에서 물리효과를 미리보기합니다. 내보내기와는 관련없습니다."
         }
+        TextKey::HairKeepSettledShape => "적용",
+        TextKey::HairKeepSettledShapeHint => {
+            "모든 파트에 물리를 돌린 뒤, 가닥이 내려앉은 자리를 그대로 형태로 굳힙니다."
+        }
         TextKey::HairMirrorEdit => "미러 편집",
         TextKey::HairMirrorEditHint => "브러시가 좌우 대칭으로 양쪽을 동시에 편집합니다.",
+        TextKey::HairSingleStrand => "가닥 편집",
+        TextKey::HairSingleStrandHint => "획을 어떻게 긋든, 처음 닿은 한 가닥만 편집합니다.",
         TextKey::HairAutoPart => "파트 자동 편집",
         TextKey::HairAutoPartHint => "활성 레이어 대신, 커서 아래에서 인지된 파트만 편집합니다.",
         TextKey::HairExportSection => "헤어 저장",
@@ -81,6 +89,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::HairToolComb => "빗질",
         TextKey::HairToolPlantHint => "브러시 아래 두피 정점에 머리카락을 심습니다",
         TextKey::HairToolGrowHint => "브러시 아래 가닥을 늘립니다. Alt를 누르면 줄어듭니다",
+        TextKey::HairToolSettle => "내려앉히기",
+        TextKey::HairToolSettleHint => {
+            "브러시 안의 가닥을 물리로 떨어뜨리고, 내려앉은 자리를 그대로 굳힙니다."
+        }
         TextKey::HairToolEraseHint => "브러시 아래 가닥을 지웁니다",
         TextKey::HairToolCombHint => "브러시 아래 가닥을 끌어 다듬습니다. 뿌리는 고정됩니다",
         TextKey::HairToolPinch => "모으기",
@@ -261,6 +273,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::VaMIndexing => "VaM 목록 불러오는 중",
         TextKey::VaMFailed => "VaM 목록 불러오기 실패",
         TextKey::RefreshSkins => "스킨 목록 새로고침",
+        TextKey::RescanVaMFolder => "VaM 폴더 재탐색",
         TextKey::MorphLoading => "모프 불러오는 중",
         TextKey::MorphLoadFailed => "모프 불러오기 실패",
         TextKey::DefaultSkinMissing => "스킨 파일을 찾을 수 없습니다. VaM 경로를 확인하세요",
@@ -316,10 +329,17 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutGroupTexture => "텍스쳐 캔버스",
         TextKey::ReferenceImages => "레퍼런스",
         TextKey::ReferenceImagesEmpty => "레퍼런스 이미지 없음",
+        TextKey::ReferenceImageUnreadable => {
+            "이 이미지를 읽지 못해 목록에는 있지만 화면에 나오지 않습니다"
+        }
         TextKey::ReferenceImageAdd => "이미지 추가",
         TextKey::ReferenceImageRemove => "제거",
+        TextKey::ReferenceImageLock => "위치 잠금",
+        TextKey::ReferenceImageUnlock => "잠금 해제",
         TextKey::ReferenceImageRaise => "앞으로",
         TextKey::ReferenceImageLower => "뒤로",
+        TextKey::ReferenceHeadRow => "머리",
+        TextKey::ReferenceHeadRowHint => "이 줄 위의 이미지는 머리를 덮습니다",
         TextKey::ShortcutTextureCanvasPan => "캔버스 이동 (누른 채)",
         TextKey::ShortcutDiagnosticLogCopy => "로그 복사",
         TextKey::ShortcutLightRotate => "조명 회전 (누른 채)",
@@ -328,6 +348,11 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutLayerIsolate => "다른 레이어 숨김",
         TextKey::ShortcutLayerLocalView => "이것만 보기 (토글)",
         TextKey::ShortcutLayerInvertSelection => "선택 반전",
+        TextKey::ShortcutLayerSelectAll => "레이어 전체 선택",
+        TextKey::ShortcutLayerRemove => "선택 레이어 삭제",
+        TextKey::ShortcutVertexSelectConnected => "가닥 전체 선택",
+        TextKey::ShortcutVertexGrowSelection => "선택 확장",
+        TextKey::ShortcutVertexShrinkSelection => "선택 축소",
         TextKey::ShortcutSculptSmoothHold => "누르는 동안 스무딩",
         TextKey::ShortcutSculptInflateHold => "누르는 동안 부풀리기",
         TextKey::ShortcutSculptAlternateHold => "누르는 동안 반대로",
@@ -383,15 +408,18 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::MorphOneSidedFilterShow => "한쪽만 움직이는 좌우 모프 보기",
         TextKey::MorphOneSidedFilterHide => "한쪽만 움직이는 좌우 모프 숨기기",
         TextKey::AppearanceSearch => "외모 검색",
+        TextKey::SourceFilterAll => "전체",
+        TextKey::SourceFilterLooks => "룩",
+        TextKey::SourceFilterMorphs => "모프",
         TextKey::AppearanceLayers => "외형 레이어",
         TextKey::AddAppearanceLayer => "선택한 외형 추가",
         TextKey::AppearanceLayersEmpty => "레이어 없음",
         TextKey::AppearanceLayerRaise => "위로",
         TextKey::AppearanceLayerLower => "아래로",
         TextKey::LookFind => "외형 불러오기",
-        TextKey::CameraTrackballArmed => "트랙볼 회전 · 드래그로 자유 회전 · 클릭 또는 R로 종료",
-        TextKey::HelpTrackball => "트랙볼 회전",
-        TextKey::ShortcutTrackball => "R",
+        TextKey::VertexRotateArmed => "회전 · 드래그로 선택을 돌림 · 클릭 또는 R로 확정",
+        TextKey::HelpVertexRotate => "선택 회전",
+        TextKey::ShortcutVertexRotate => "R",
         TextKey::SplitModelViewTooltip => "두 각도에서 보기 — 뷰 나누기",
         TextKey::SplitModelViewName => "화면 분할",
         TextKey::HelpLevelRoll => "기울기(롤) 초기화",
@@ -552,6 +580,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::VaMMetadataBoneCorrectionTooltip => "변형된 골격으로 중심축을 재설정합니다",
         TextKey::NativeCorePending => "네이티브 피팅 코어 연결 중입니다",
         TextKey::MorphPreviewUpdated => "모프 미리보기를 갱신했습니다",
+        TextKey::MorphResolving => "모프 불러오는 중",
         TextKey::MorphsReset => "모프를 초기화했습니다",
         TextKey::MorphsResetUndone => "초기화를 되돌렸습니다",
         TextKey::MorphEditUndone => "모프 조정을 되돌렸습니다",
@@ -590,10 +619,6 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::ShortcutRedo => "Ctrl+Y",
         TextKey::HairPresetSection => "헤어 프리셋",
         TextKey::HairPresetLoad => "불러오기",
-        TextKey::HairToolPick => "레이어 고르기",
-        TextKey::HairToolPickHint => {
-            "뷰포트에서 가닥을 클릭하면 그 레이어가 활성으로 바뀝니다. 브러시는 다음 클릭부터 동작합니다."
-        }
         TextKey::HelpHairPick => "커서 아래 레이어 선택",
         TextKey::ShortcutHairPick => "V, 또는 아무 브러시에서 Ctrl + 클릭",
         TextKey::HelpHairSmooth => "빗질 대신 다듬기",
@@ -625,6 +650,7 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         TextKey::Perspective => "원근",
         TextKey::Orthographic => "직교",
         TextKey::Fov => "시야각",
+        TextKey::CameraRoll => "롤",
         TextKey::ResetCamera => "카메라 초기화",
         TextKey::WindowMinimize => "최소화",
         TextKey::WindowMaximize => "최대화",
@@ -650,6 +676,10 @@ pub(super) const fn label(key: TextKey) -> &'static str {
         }
         TextKey::SculptBrushSmoothTooltip => "표면 굴곡을 부드럽게 고릅니다",
         TextKey::SculptBrushRestoreTooltip => "베이스 형상으로 복구합니다",
+        TextKey::SculptBrushVertex => "버텍스",
+        TextKey::SculptBrushVertexTooltip => {
+            "메시의 점을 직접 옮깁니다. 클릭해서 잡고, 드래그해서 옮기고, 축을 고정하고 싶으면 기즈모를 쓰세요."
+        }
         TextKey::SculptBrushMask => "마스크",
         TextKey::SculptBrushMaskTooltip => {
             "선택한 외형 레이어를 깎아 아래 레이어가 드러나게 합니다. Alt로 되돌립니다"

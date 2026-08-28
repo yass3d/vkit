@@ -8,7 +8,7 @@ use crate::session_snapshot::SessionSnapshot;
 
 pub const HEARTBEAT: Duration = Duration::from_secs(10);
 
-pub const STALE_AFTER: Duration = Duration::from_secs(60);
+pub const STALE_AFTER: Duration = Duration::from_secs(300);
 
 pub const AUTOSAVE_DELAY: Duration = Duration::from_secs(15);
 
@@ -194,7 +194,7 @@ impl RecoveryStore {
     pub fn load(&self) -> Option<SessionSnapshot> {
         let bytes = fs::read(self.snapshot_path()).ok()?;
         let snapshot: SessionSnapshot = serde_json::from_slice(&bytes).ok()?;
-        (snapshot.is_readable() && snapshot.has_work()).then_some(snapshot)
+        (snapshot.is_readable() && snapshot.worth_offering()).then_some(snapshot)
     }
 
     pub fn release(&self) {

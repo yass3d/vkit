@@ -437,6 +437,22 @@ pub(super) fn draw_viewport_camera_panel(ui: &mut Ui, state: &mut AppState) {
         state.dispatch(Action::SetFov(fov));
     }
 
+    ui.add_space(SPACE_2);
+    ui.label(
+        RichText::new(text(state.locale, TextKey::CameraRoll))
+            .size(FONT_XS)
+            .color(COLOR_MUTED),
+    );
+    let mut roll = camera.roll_degrees();
+    let roll_response = ui.add(
+        FilledNumericSlider::new(&mut roll, -180.0..=180.0)
+            .decimals(1)
+            .min_width(140.0),
+    );
+    if roll_response.changed() {
+        state.dispatch(Action::SetCameraRoll(roll));
+    }
+
     ui.add_space(SPACE_3);
     let reset = ui.add_sized(
         [ui.available_width().max(0.0), crate::theme::CONTROL_H_DENSE],
@@ -627,7 +643,10 @@ pub(super) fn viewport_tool_panel_measure_revision(
             state.skin_preview.is_some().hash(&mut hasher);
             (state.status.key == TextKey::SkinLoadFailed).hash(&mut hasher);
         }
-        ViewportToolPanel::BaseView => {}
+        ViewportToolPanel::BaseView => {
+            state.reference_board.images().len().hash(&mut hasher);
+            state.reference_board.selected().is_some().hash(&mut hasher);
+        }
         ViewportToolPanel::Lighting
         | ViewportToolPanel::Wireframe
         | ViewportToolPanel::Xray
@@ -765,7 +784,6 @@ pub(super) fn viewport_tools_should_block_pointer(
         || detail_viewport_controls_contains(state, viewport, pointer)
         || eye_gaze_popup_should_block_pointer(ui, pointer, clicked)
         || crate::viewport::viewport_chrome_covers(ui, pointer)
-        || (state.viewport_tool_panel.is_some() && clicked)
         || help_card_spends_pointer(state.help_visible, clicked, primary_down)
 }
 

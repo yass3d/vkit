@@ -68,6 +68,8 @@ impl MorphAuthoring {
 impl MorphTarget {
     pub const MINIMUM_EXTRAPOLATION_MAGNITUDE: f64 = 2.0;
 
+    pub const MAXIMUM_ENTRY_MAGNITUDE: f64 = 100.0;
+
     pub fn from_sparse_deltas(
         key: impl Into<String>,
         vertex_count: usize,
@@ -279,7 +281,7 @@ impl MorphTarget {
                 self.key
             )));
         }
-        let (minimum, maximum) = self.extrapolated_bounds();
+        let (minimum, maximum) = self.entry_limits();
         if !(minimum..=maximum).contains(&value) {
             return Err(morph_error(format!(
                 "morph {:?} extrapolated value {value} is outside [{minimum}, {maximum}]",
@@ -293,6 +295,13 @@ impl MorphTarget {
         (
             self.minimum.min(-Self::MINIMUM_EXTRAPOLATION_MAGNITUDE),
             self.maximum.max(Self::MINIMUM_EXTRAPOLATION_MAGNITUDE),
+        )
+    }
+
+    pub fn entry_limits(&self) -> (f64, f64) {
+        (
+            self.minimum.min(-Self::MAXIMUM_ENTRY_MAGNITUDE),
+            self.maximum.max(Self::MAXIMUM_ENTRY_MAGNITUDE),
         )
     }
 

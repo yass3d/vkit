@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "Làm mượt hiển thị tương thích VaM. 0 là lưới nền có thể chỉnh sửa, 3 là mặc định của VaM, 4 là tối đa. Morph, UV, điêu khắc và bake texture đều giữ nguyên topology nền",
         ),
+        TextKey::ShowWornHair => Some("Hiện tóc đang đội"),
+        TextKey::ShowWornHairHint => Some("Ở mọi tab; không bị chỉnh sửa ở đây"),
         TextKey::FaceMatch => Some("Tạo"),
         TextKey::ResultPreview => Some("Lưu"),
         TextKey::Save => Some("Lưu"),
@@ -46,10 +48,16 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("Xem trước vật lý trên màn hình. Không liên quan đến bản xuất.")
         }
+        TextKey::HairKeepSettledShape => Some("Áp dụng"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("Chạy vật lý trên mọi phần, rồi ghi lại nơi các sợi tóc rơi xuống.")
+        }
         TextKey::HairMirrorEdit => Some("Sửa đối xứng"),
         TextKey::HairMirrorEditHint => {
             Some("Cọ chỉnh sửa cả hai bên đầu cùng lúc, đối xứng trái-phải.")
         }
+        TextKey::HairSingleStrand => Some("Một sợi"),
+        TextKey::HairSingleStrandHint => Some("Nét chỉ sửa sợi mà nó bắt đầu, dù đi xa đến đâu."),
         TextKey::HairAutoPart => Some("Phần tự động"),
         TextKey::HairAutoPartHint => {
             Some("Cọ chỉ sửa phần được nhận ra dưới con trỏ, thay vì các lớp đang bật.")
@@ -85,6 +93,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolComb => Some("Chải"),
         TextKey::HairToolPlantHint => Some("Trong soi toc tren cac dinh da dau duoi co"),
         TextKey::HairToolGrowHint => Some("Keo dai soi toc duoi co; giu Alt de rut ngan"),
+        TextKey::HairToolSettle => Some("Thả rơi"),
+        TextKey::HairToolSettleHint => Some("Thả các sợi dưới cọ và giữ nơi chúng rơi xuống."),
         TextKey::HairToolEraseHint => Some("Xoa soi toc duoi co"),
         TextKey::HairToolCombHint => Some("Chai soi toc duoi co; chan toc giu nguyen"),
         TextKey::HairToolPinch => Some("Gom lai"),
@@ -275,6 +285,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("Đang lập chỉ mục danh mục VaM"),
         TextKey::VaMFailed => Some("Danh mục VaM thất bại"),
         TextKey::RefreshSkins => Some("Làm mới thư viện da"),
+        TextKey::RescanVaMFolder => Some("Quét lại thư mục VaM"),
         TextKey::MorphLoading => Some("Đang nạp morph"),
         TextKey::MorphLoadFailed => Some("Nạp morph thất bại"),
         TextKey::DefaultSkinMissing => Some("Không tìm thấy da đó. Kiểm tra thư mục VaM"),
@@ -330,10 +341,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("Khung vẽ kết cấu"),
         TextKey::ReferenceImages => Some("Tham chiếu"),
         TextKey::ReferenceImagesEmpty => Some("Chưa có ảnh tham chiếu"),
+        TextKey::ReferenceImageUnreadable => {
+            Some("Không đọc được ảnh này, nên nó có trong danh sách nhưng không hiện trên màn hình")
+        }
         TextKey::ReferenceImageAdd => Some("Thêm ảnh"),
         TextKey::ReferenceImageRemove => Some("Xoá"),
+        TextKey::ReferenceImageLock => Some("Khoá"),
+        TextKey::ReferenceImageUnlock => Some("Mở khoá"),
         TextKey::ReferenceImageRaise => Some("Đưa lên trước"),
         TextKey::ReferenceImageLower => Some("Đưa ra sau"),
+        TextKey::ReferenceHeadRow => Some("Đầu"),
+        TextKey::ReferenceHeadRowHint => Some("Ảnh phía trên hàng này che đầu"),
         TextKey::ShortcutTextureCanvasPan => Some("Kéo khung vẽ (giữ)"),
         TextKey::ShortcutDiagnosticLogCopy => Some("Sao chép nhật ký"),
         TextKey::ShortcutLightRotate => Some("Xoay đèn (giữ)"),
@@ -342,6 +360,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("Ẩn các lớp khác"),
         TextKey::ShortcutLayerLocalView => Some("Chỉ hiện cái này (bật/tắt)"),
         TextKey::ShortcutLayerInvertSelection => Some("Đảo vùng chọn"),
+        TextKey::ShortcutLayerSelectAll => Some("Chọn tất cả lớp"),
+        TextKey::ShortcutLayerRemove => Some("Xóa lớp đã chọn"),
+        TextKey::ShortcutVertexSelectConnected => Some("Chọn cả sợi"),
+        TextKey::ShortcutVertexGrowSelection => Some("Mở rộng vùng chọn"),
+        TextKey::ShortcutVertexShrinkSelection => Some("Thu hẹp vùng chọn"),
         TextKey::ShortcutSculptSmoothHold => Some("Giữ để làm mượt"),
         TextKey::ShortcutSculptInflateHold => Some("Giữ để phồng lên"),
         TextKey::ShortcutSculptAlternateHold => Some("Giữ để đảo chiều"),
@@ -397,17 +420,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterShow => Some("Hiện morph chỉ tác động một bên"),
         TextKey::MorphOneSidedFilterHide => Some("Ẩn morph chỉ tác động một bên"),
         TextKey::AppearanceSearch => Some("Tìm look"),
+        TextKey::SourceFilterAll => Some("Tất cả"),
+        TextKey::SourceFilterLooks => Some("Look"),
+        TextKey::SourceFilterMorphs => Some("Morph"),
         TextKey::AppearanceLayers => Some("Lop ngoai hinh"),
         TextKey::AddAppearanceLayer => Some("Them ngoai hinh dang chon"),
         TextKey::AppearanceLayersEmpty => Some("Chua co lop nao"),
         TextKey::AppearanceLayerRaise => Some("Len tren"),
         TextKey::AppearanceLayerLower => Some("Xuong duoi"),
         TextKey::LookFind => Some("Nạp look"),
-        TextKey::CameraTrackballArmed => {
-            Some("Trackball · kéo để xoay tự do · nhấp hoặc R để thoát")
-        }
-        TextKey::HelpTrackball => Some("Xoay trackball"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("Xoay · kéo · nhấp hoặc R để kết thúc"),
+        TextKey::HelpVertexRotate => Some("Xoay vùng chọn"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("Xem từ hai góc — chia đôi khung nhìn"),
         TextKey::SplitModelViewName => Some("Chia doi khung nhin"),
         TextKey::HelpLevelRoll => Some("Cân bằng đường chân trời"),
@@ -570,6 +594,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("Đang tích hợp lõi khớp mặt native"),
         TextKey::MorphPreviewUpdated => Some("Đã cập nhật xem trước morph"),
+        TextKey::MorphResolving => Some("Đang tải morph"),
         TextKey::MorphsReset => Some("Đã đặt lại morph"),
         TextKey::MorphsResetUndone => Some("Đã hoàn tác việc đặt lại morph"),
         TextKey::MorphEditUndone => Some("Đã hoàn tác chỉnh morph"),
@@ -608,10 +633,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("Cai dat toc"),
         TextKey::HairPresetLoad => Some("Tai"),
-        TextKey::HairToolPick => Some("Chon lop"),
-        TextKey::HairToolPickHint => Some(
-            "Nhap vao mot soi trong khung nhin de kich hoat lop cua no. Co ve doi den lan nhap tiep theo.",
-        ),
         TextKey::HelpHairPick => Some("Chon lop duoi con tro"),
         TextKey::ShortcutHairPick => Some("V, hoac Ctrl + nhap voi bat ky co ve nao"),
         TextKey::HelpHairSmooth => Some("Lam muot thay vi chai"),
@@ -643,6 +664,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("Phối cảnh"),
         TextKey::Orthographic => Some("Trực giao"),
         TextKey::Fov => Some("FOV"),
+        TextKey::CameraRoll => Some("Xoay nghiêng"),
         TextKey::ResetCamera => Some("Đặt lại camera"),
         TextKey::WindowMinimize => Some("Thu nhỏ"),
         TextKey::WindowMaximize => Some("Phóng to"),
@@ -668,6 +690,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Làm mượt chi tiết bề mặt"),
         TextKey::SculptBrushRestoreTooltip => Some("Đưa dần về hình dạng nền"),
+        TextKey::SculptBrushVertex => Some("Đỉnh"),
+        TextKey::SculptBrushVertexTooltip => Some(
+            "Di chuyển các điểm của lưới. Nhấp để chọn, kéo để di chuyển, dùng gizmo khi cần khoá trục.",
+        ),
         TextKey::SculptBrushMask => Some("Mat na"),
         TextKey::SculptBrushMaskTooltip => {
             Some("Khoet lop ngoai hinh dang chon de lo lop ben duoi. Alt to lai")

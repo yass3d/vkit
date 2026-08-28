@@ -46,15 +46,38 @@ pub enum Action {
         additive: bool,
     },
     ToggleHairPartVisible(u64),
+    ClearHairSelection,
+
+    GrowHairVertexSelection(i32),
+
+    SelectAllHairStrands,
+
+    KeepSettledHairShape(crate::hair_settle::SettleScope),
+
+    AdoptSettledHair {
+        part_id: u64,
+        shifts: crate::hair_settle::Shifts,
+    },
+    MoveHairPartTo {
+        id: u64,
+        insertion_index: usize,
+    },
     SoloHairPart(u64),
 
     AddReferenceImage(std::path::PathBuf),
     RemoveReferenceImage(u64),
-    SelectReferenceImage(Option<u64>),
+    SelectReferenceRow(Option<crate::reference_board::ReferenceRow>),
+
+    ToggleReferenceImageLocked(u64),
     ToggleReferenceImageVisible(u64),
-    ReorderReferenceImage {
-        id: u64,
+    ShowReferenceImages(bool),
+    ReorderReferenceRow {
+        row: crate::reference_board::ReferenceRow,
         toward_front: bool,
+    },
+    MoveReferenceRow {
+        row: crate::reference_board::ReferenceRow,
+        insertion_index: usize,
     },
     DragReferenceImage {
         id: u64,
@@ -115,6 +138,10 @@ pub enum Action {
         visible: bool,
     },
     RaiseAppearanceLayer(u64),
+    MoveAppearanceLayerTo {
+        id: u64,
+        insertion_index: usize,
+    },
     LowerAppearanceLayer(u64),
     RemoveAppearanceLayer(u64),
     ExportHairPart,
@@ -202,6 +229,8 @@ pub enum Action {
     SetStandardView(StandardView),
     ToggleProjection,
     SetFov(f32),
+
+    SetCameraRoll(f32),
     SetBaseViewMode(BaseViewMode),
     SetSurfaceSmoothPasses(u8),
     SetTooltipsEnabled(bool),
@@ -265,6 +294,15 @@ pub enum Action {
     SculptDabDeferred(SculptDab),
     SyncSculptPreview,
     EndSculptStroke,
+
+    MoveSculptVertices {
+        shift: [f64; 3],
+    },
+    TransformSculptVertices {
+        pivot: [f64; 3],
+        basis: [[f64; 3]; 3],
+    },
+
     SetSculptTarget {
         target: SculptTarget,
         enabled: bool,
@@ -441,6 +479,10 @@ pub enum Action {
         id: String,
         value: f32,
     },
+
+    ResetFaceMorph {
+        id: String,
+    },
     SelectVaMSkin(Option<String>),
 
     SetDefaultSkin(Option<String>),
@@ -486,6 +528,11 @@ impl Action {
             Self::AddHairPart { .. }
                 | Self::RemoveHairPart(_)
                 | Self::ToggleHairPartVisible(_)
+                | Self::MoveHairPartTo { .. }
+                | Self::ClearHairSelection
+                | Self::GrowHairVertexSelection(_)
+                | Self::SelectAllHairStrands
+                | Self::AdoptSettledHair { .. }
                 | Self::SoloHairPart(_)
                 | Self::PlantHairStrands { .. }
                 | Self::UnplantHairStrands { .. }
@@ -546,12 +593,21 @@ impl Action {
             | Self::AddHairPart { .. }
             | Self::RemoveHairPart(_)
             | Self::ToggleHairPartVisible(_)
+            | Self::MoveHairPartTo { .. }
+            | Self::ClearHairSelection
+            | Self::GrowHairVertexSelection(_)
+            | Self::SelectAllHairStrands
+            | Self::KeepSettledHairShape(_)
+            | Self::AdoptSettledHair { .. }
             | Self::SoloHairPart(_)
             | Self::AddReferenceImage(_)
             | Self::RemoveReferenceImage(_)
-            | Self::SelectReferenceImage(_)
+            | Self::SelectReferenceRow(_)
+            | Self::ToggleReferenceImageLocked(_)
             | Self::ToggleReferenceImageVisible(_)
-            | Self::ReorderReferenceImage { .. }
+            | Self::ShowReferenceImages(_)
+            | Self::ReorderReferenceRow { .. }
+            | Self::MoveReferenceRow { .. }
             | Self::DragReferenceImage { .. }
             | Self::ResizeReferenceImage { .. }
             | Self::SetReferenceImageOpacity { .. }
@@ -567,6 +623,7 @@ impl Action {
             | Self::SelectAppearanceLayer(..)
             | Self::SetAppearanceLayerVisible { .. }
             | Self::RaiseAppearanceLayer(..)
+            | Self::MoveAppearanceLayerTo { .. }
             | Self::LowerAppearanceLayer(..)
             | Self::RemoveAppearanceLayer(..)
             | Self::ExportHairPart
@@ -621,6 +678,8 @@ impl Action {
             | Self::SculptDabDeferred(_)
             | Self::SyncSculptPreview
             | Self::EndSculptStroke
+            | Self::MoveSculptVertices { .. }
+            | Self::TransformSculptVertices { .. }
             | Self::SetSculptTarget { .. }
             | Self::ToggleSculptEyeTracking(_)
             | Self::ToggleSculptBackfaceMasking(_)
@@ -666,6 +725,7 @@ impl Action {
             | Self::ConfirmOverwrite
             | Self::SetEyeClosure(_)
             | Self::SetFaceMorph { .. }
+            | Self::ResetFaceMorph { .. }
             | Self::SetDefaultSkin(_)
             | Self::SetLastSkin(_)
             | Self::SelectVaMSkin(_)
@@ -689,6 +749,7 @@ impl Action {
             | Self::SetStandardView(_)
             | Self::ToggleProjection
             | Self::SetFov(_)
+            | Self::SetCameraRoll(_)
             | Self::SetBaseViewMode(_)
             | Self::SetScanFidelity(_)
             | Self::SetSurfaceSmoothPasses(_)

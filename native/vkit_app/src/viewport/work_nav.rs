@@ -23,6 +23,9 @@ pub(super) struct NavButton {
 #[must_use]
 pub(super) fn nav_buttons(state: &AppState) -> Vec<NavButton> {
     use crate::state::Tab;
+    if state.active_tab == Tab::Result {
+        return Vec::new();
+    }
     let busy = state.busy();
     let (back, forward) = state.history_position();
     let mut buttons = vec![NavButton {
@@ -191,6 +194,19 @@ mod tests {
         state.active_tab = crate::state::Tab::Morph;
         state.result_preview_phase = crate::state::ResultPreviewPhase::Sculpt;
         state
+    }
+
+    #[test]
+    fn the_save_tab_has_no_history_bar_to_collide_with_the_compare_island() {
+        let mut state = AppState::default();
+        state.active_tab = crate::state::Tab::Result;
+        assert!(
+            nav_buttons(&state).is_empty(),
+            "the save tab drew a bar over the compare island",
+        );
+
+        state.active_tab = crate::state::Tab::Hair;
+        assert!(!nav_buttons(&state).is_empty(), "every other tab keeps it");
     }
 
     #[test]

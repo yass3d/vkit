@@ -225,6 +225,8 @@ pub struct AppState {
     pub revision: u64,
 
     edit_seq: u64,
+
+    hand_morph_edits: u32,
     pub scan_path: Option<PathBuf>,
     pub template_path: Option<PathBuf>,
 
@@ -276,6 +278,8 @@ pub struct AppState {
     pub hair_export_files: Vec<std::path::PathBuf>,
 
     pub hair_vertex_selection: std::collections::BTreeSet<(u64, u32, usize)>,
+
+    pub sculpt_vertex_selection: std::collections::BTreeSet<u32>,
 
     pub posed_hair_scalps:
         std::collections::HashMap<String, std::sync::Arc<crate::hair_project::ScalpAuthoring>>,
@@ -404,6 +408,8 @@ pub struct AppState {
     pub vam_morph_groups: Vec<String>,
     pub vam_morph_regions: Vec<String>,
     pub vam_edit_query: String,
+
+    pub vam_edit_filter: crate::vam_edit_sources::EditSourceFilter,
     pub selected_vam_edit_source_id: Option<String>,
     pending_direct_edit_source: Option<VaMEditSource>,
 
@@ -497,12 +503,23 @@ pub struct AppState {
     pub hair_hide_strands: bool,
     pub hair_mirror_edit: bool,
     pub hair_auto_part: bool,
+
+    pub hair_single_strand: bool,
+
+    pub hair_strand_mask: std::collections::BTreeMap<u64, std::collections::BTreeSet<u32>>,
+
+    pub(crate) hair_strands_awaiting_clearance:
+        std::collections::BTreeMap<u64, std::collections::BTreeSet<u32>>,
     pub(crate) vam_scan_signature: Option<(std::path::PathBuf, FigureSex, Option<usize>)>,
     pub hair_export_attempted_blank: bool,
     pub hair_param_group: crate::hair_settings::HairParamGroup,
     pub hair_settings_clipboard: Option<crate::hair_settings::HairSettings>,
 
     pub hair_settle_seconds: f32,
+
+    pub hair_settle_sink: crate::hair_settle::SettleSink,
+
+    pub hair_settle_wanted: Option<crate::hair_settle::SettleScope>,
     pub hair_simulation_seconds: f32,
 
     pub scan_fidelity: f32,
@@ -532,6 +549,8 @@ pub struct AppState {
     pub result_preview_phase: ResultPreviewPhase,
 
     morph_preview_dirty: bool,
+
+    morph_resolution_peak: usize,
     vam_appearance_revision: u64,
     vam_catalog_revision: u64,
 
@@ -571,6 +590,7 @@ impl Default for AppState {
             inspector_width: INSPECTOR_DEFAULT_WIDTH,
             revision: 0,
             edit_seq: 0,
+            hand_morph_edits: 0,
             scan_path: None,
             template_path: None,
             detected_template_topology: DetectedTemplateTopology::default(),
@@ -606,6 +626,7 @@ impl Default for AppState {
             brush_sweep_commit: crate::sweep_gesture::SweepCommit::default(),
             hair_export_files: Vec::new(),
             hair_vertex_selection: std::collections::BTreeSet::new(),
+            sculpt_vertex_selection: std::collections::BTreeSet::new(),
             posed_hair_scalps: std::collections::HashMap::new(),
             manual_eye_gaze: [0.0; 2],
             eye_gaze_mode: EyeGazeMode::Manual,
@@ -689,6 +710,7 @@ impl Default for AppState {
             vam_morph_groups: Vec::new(),
             vam_morph_regions: Vec::new(),
             vam_edit_query: String::new(),
+            vam_edit_filter: crate::vam_edit_sources::EditSourceFilter::default(),
             selected_vam_edit_source_id: None,
             pending_direct_edit_source: None,
             vam_geometry_base_path: None,
@@ -751,11 +773,16 @@ impl Default for AppState {
             hair_hide_strands: false,
             hair_mirror_edit: false,
             hair_auto_part: false,
+            hair_single_strand: false,
+            hair_strand_mask: std::collections::BTreeMap::new(),
+            hair_strands_awaiting_clearance: std::collections::BTreeMap::new(),
             vam_scan_signature: None,
             hair_export_attempted_blank: false,
             hair_param_group: crate::hair_settings::HairParamGroup::Performance,
             hair_settings_clipboard: None,
             hair_settle_seconds: 0.0,
+            hair_settle_sink: crate::hair_settle::SettleSink::default(),
+            hair_settle_wanted: None,
             hair_simulation_seconds: 0.0,
             scan_fidelity: 1.0,
             restore_neck_ears: true,
@@ -778,6 +805,7 @@ impl Default for AppState {
             export: ExportLifecycle::Idle,
             result_preview_phase: ResultPreviewPhase::Empty,
             morph_preview_dirty: false,
+            morph_resolution_peak: 0,
             vam_appearance_revision: 0,
             vam_catalog_revision: 0,
 
@@ -839,11 +867,41 @@ mod actions;
 pub use actions::{Action, VarMetadataField};
 
 impl AppState {
+    #[must_use]
+    pub fn editing_the_cage(&self) -> bool {
+        self.is_sculpting() && self.sculpt_brush == crate::sculpt::SculptBrush::Vertex
+    }
+
+    pub fn drawn_smooth_passes(&self) -> u8 {
+        if self.editing_the_cage() {
+            0
+        } else {
+            self.surface_smooth_passes
+        }
+    }
+
+    #[must_use]
+    pub fn wireframe_shown(&self) -> bool {
+        self.wireframe_visible || self.editing_the_cage()
+    }
+
     pub const fn busy(&self) -> bool {
         self.scan_import.is_active()
             || self.workspace_load.is_active()
             || self.result.is_running()
             || self.export.is_active()
+    }
+
+    pub const fn hand_morph_edits(&self) -> u32 {
+        self.hand_morph_edits
+    }
+
+    pub const fn note_hand_morph_edit(&mut self) {
+        self.hand_morph_edits = self.hand_morph_edits.saturating_add(1);
+    }
+
+    pub const fn forget_hand_morph_edits(&mut self) {
+        self.hand_morph_edits = 0;
     }
 
     pub const fn autosave_edit_signal(&self) -> (u64, u64, u64) {
@@ -1279,6 +1337,24 @@ impl AppState {
             Action::ActivateHairPart { id, additive } => {
                 self.hair_project.activate_part(id, additive);
             }
+            Action::ClearHairSelection => {
+                self.hair_project.clear_selection();
+            }
+            Action::GrowHairVertexSelection(by) => self.grow_hair_vertex_selection(by),
+            Action::SelectAllHairStrands => self.select_all_hair_strands(),
+            Action::KeepSettledHairShape(scope) => {
+                self.hair_viewport_physics = true;
+                self.hair_simulation_seconds = crate::state::HAIR_SIMULATION_SECONDS;
+                self.hair_settle_seconds = crate::state::hair::HAIR_SETTLE_SECONDS;
+                self.hair_settle_wanted = Some(scope);
+            }
+            Action::AdoptSettledHair { part_id, shifts } => {
+                self.adopt_settled_hair(part_id, &shifts);
+            }
+            Action::MoveHairPartTo {
+                id,
+                insertion_index,
+            } => self.hair_project.move_part_to(id, insertion_index),
             Action::ToggleHairPartVisible(id) => {
                 self.hair_project.toggle_part_visible(id);
             }
@@ -1288,11 +1364,17 @@ impl AppState {
                 self.reference_board.add(path);
             }
             Action::RemoveReferenceImage(id) => self.reference_board.remove(id),
-            Action::SelectReferenceImage(id) => self.reference_board.select(id),
+            Action::SelectReferenceRow(row) => self.reference_board.select(row),
+            Action::ToggleReferenceImageLocked(id) => self.reference_board.toggle_locked(id),
             Action::ToggleReferenceImageVisible(id) => self.reference_board.toggle_visible(id),
-            Action::ReorderReferenceImage { id, toward_front } => {
-                self.reference_board.reorder(id, toward_front);
+            Action::ShowReferenceImages(shown) => self.reference_board.show(shown),
+            Action::ReorderReferenceRow { row, toward_front } => {
+                self.reference_board.step_row(row, toward_front);
             }
+            Action::MoveReferenceRow {
+                row,
+                insertion_index,
+            } => self.reference_board.move_row(row, insertion_index),
             Action::DragReferenceImage {
                 id,
                 viewport,
@@ -1371,6 +1453,13 @@ impl AppState {
                 }
                 self.recompose_appearance_blend();
             }
+            Action::MoveAppearanceLayerTo {
+                id,
+                insertion_index,
+            } => {
+                self.appearance_stack.move_to(id, insertion_index);
+                self.recompose_appearance_blend();
+            }
             Action::RaiseAppearanceLayer(id) => {
                 self.appearance_stack.raise(id);
                 self.recompose_appearance_blend();
@@ -1393,6 +1482,7 @@ impl AppState {
             Action::EndHairStroke => {
                 self.hair_project.end_stroke();
                 self.hair_project.end_control();
+                self.settle_hair_against_the_head();
             }
             Action::SetHairParam { id, key, value } => self.set_hair_param(id, key, value),
             Action::SetHairColorChannel {
@@ -1504,6 +1594,7 @@ impl AppState {
             Action::SetStandardView(view) => self.set_relevant_standard_view(view),
             Action::ToggleProjection => self.toggle_relevant_projection(),
             Action::SetFov(value) => self.set_relevant_fov(value),
+            Action::SetCameraRoll(degrees) => self.set_relevant_roll(degrees),
             Action::SetBaseViewMode(mode) => self.base_view_mode = mode,
             Action::SetSurfaceSmoothPasses(passes) => {
                 self.surface_smooth_passes = passes.min(VAM_SMOOTH_PASSES_MAX);
@@ -1630,6 +1721,10 @@ impl AppState {
                 }
             }
             Action::EndSculptStroke => self.end_sculpt_stroke(),
+            Action::MoveSculptVertices { shift } => self.move_sculpt_vertices(shift),
+            Action::TransformSculptVertices { pivot, basis } => {
+                self.transform_sculpt_vertices(pivot, basis);
+            }
             Action::SetSculptTarget { target, enabled } => {
                 if self.is_sculpting() && self.tab_available(Tab::Morph) {
                     self.sculpt.set_target_enabled(target, enabled);
@@ -1986,6 +2081,7 @@ impl AppState {
             }
             Action::SetEyeClosure(value) => self.set_eye_closure(value),
             Action::SetFaceMorph { id, value } => self.set_face_morph(&id, value),
+            Action::ResetFaceMorph { id } => self.reset_face_morph(&id),
             Action::SetDefaultSkin(id) => {
                 self.default_skin_id = if self.default_skin_id == id { None } else { id };
             }

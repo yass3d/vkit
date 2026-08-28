@@ -42,6 +42,80 @@ pub enum RenderStyle {
     Solid,
     Wire,
     Xray,
+
+    Overlay,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MarkerInstance {
+    pub position: [f32; 3],
+    pub radius: f32,
+    pub fill: [f32; 4],
+    pub ring: [f32; 4],
+
+    pub shape: f32,
+}
+
+const MARKER_BUFFERS: [wgpu::VertexBufferLayout<'static>; 1] = [MarkerInstance::layout()];
+const LINE_BUFFERS: [wgpu::VertexBufferLayout<'static>; 1] = [LineInstance::layout()];
+
+impl MarkerInstance {
+    pub const ROUND: f32 = 0.0;
+
+    pub const SQUARE: f32 = 1.0;
+
+    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+        0 => Float32x3,
+        1 => Float32,
+        2 => Float32x4,
+        3 => Float32x4,
+        4 => Float32,
+    ];
+
+    const fn layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBUTES,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LineInstance {
+    pub from_position: [f32; 3],
+    pub from_width: f32,
+    pub to_position: [f32; 3],
+    pub to_width: f32,
+    pub from_colour: [f32; 4],
+    pub to_colour: [f32; 4],
+}
+
+impl LineInstance {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
+        0 => Float32x3,
+        1 => Float32,
+        2 => Float32x3,
+        3 => Float32,
+        4 => Float32x4,
+        5 => Float32x4,
+    ];
+
+    const fn layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBUTES,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MarkerLayer {
+    Bed = 0,
+    Over = 1,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,7 +139,24 @@ pub(super) const fn mesh_pass_sequence(
         ],
         (RenderStyle::Wire, _) => &[MeshPassKind::Wire],
         (RenderStyle::Xray, _) => &[MeshPassKind::Xray],
+        (RenderStyle::Overlay, _) => &[MeshPassKind::TranslucentDepthPrepass],
     }
+}
+
+impl MeshPassKind {
+    #[cfg(test)]
+    pub(crate) const fn writes_depth_without_colour(self) -> bool {
+        let config = mesh_pipeline_config(self);
+        config.depth_write_enabled && config.write_mask.is_empty()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn mesh_pass_shape_for_test(style: RenderStyle) -> Vec<bool> {
+    mesh_pass_sequence(style, false)
+        .iter()
+        .map(|kind| kind.writes_depth_without_colour())
+        .collect()
 }
 
 pub(super) fn mesh_color_is_translucent(color: [f32; 4]) -> bool {
@@ -93,6 +184,14 @@ pub struct MeshPaintCallback {
     pub tone_mapping: crate::shader_color::ToneMapping,
 
     pub smooth_passes: u8,
+
+    pub viewport_pixels: [f32; 2],
+
+    pub lines: Option<Arc<Vec<LineInstance>>>,
+
+    pub bed_markers: Option<Arc<Vec<MarkerInstance>>>,
+
+    pub markers: Option<Arc<Vec<MarkerInstance>>>,
 }
 
 impl MeshPaintCallback {
@@ -115,6 +214,21 @@ impl CallbackTrait for MeshPaintCallback {
             return Vec::new();
         };
         resources.prepare_scene(device, queue, self);
+        resources.upload_markers(
+            device,
+            queue,
+            self.scene_key,
+            MarkerLayer::Bed,
+            self.bed_markers.as_ref(),
+        );
+        resources.upload_markers(
+            device,
+            queue,
+            self.scene_key,
+            MarkerLayer::Over,
+            self.markers.as_ref(),
+        );
+        resources.upload_lines(device, queue, self.scene_key, self.lines.as_ref());
 
         let Some(mut pass) = crate::renderer::begin_scene_layer(
             device,
@@ -135,6 +249,9 @@ impl CallbackTrait for MeshPaintCallback {
                 self.style,
                 mesh_color_is_translucent(self.color),
             );
+            resources.paint_markers(&mut pass, self.scene_key, MarkerLayer::Bed);
+            resources.paint_lines(&mut pass, self.scene_key);
+            resources.paint_markers(&mut pass, self.scene_key, MarkerLayer::Over);
         }
         Vec::new()
     }
@@ -226,6 +343,14 @@ struct GpuScene {
     wire_index_count: u32,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+
+    marker_buffers: [Option<wgpu::Buffer>; 2],
+    marker_capacities: [usize; 2],
+    marker_counts: [u32; 2],
+
+    line_buffer: Option<wgpu::Buffer>,
+    line_capacity: usize,
+    line_count: u32,
 }
 
 pub(super) struct MeshRenderResources {
@@ -235,6 +360,8 @@ pub(super) struct MeshRenderResources {
     translucent_prepass_pipeline: wgpu::RenderPipeline,
     translucent_color_pipeline: wgpu::RenderPipeline,
     depth_reset_pipeline: wgpu::RenderPipeline,
+    marker_pipeline: wgpu::RenderPipeline,
+    line_pipeline: wgpu::RenderPipeline,
     target_is_srgb: bool,
     bind_group_layout: wgpu::BindGroupLayout,
     scenes: BTreeMap<u64, GpuScene>,
@@ -304,6 +431,38 @@ impl MeshRenderResources {
             sample_count,
             depth_format,
         );
+        let marker_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("vkit.mesh.marker_shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(
+                crate::renderer::shaders::MARKER_SHADER,
+            )),
+        });
+        let marker_pipeline = create_marker_pipeline(
+            device,
+            &marker_shader,
+            &layout,
+            target_format,
+            sample_count,
+            depth_format,
+        );
+        let line_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("vkit.mesh.line_shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(crate::renderer::shaders::LINE_SHADER)),
+        });
+        let line_pipeline = create_overlay_pipeline(
+            device,
+            &line_shader,
+            &layout,
+            target_format,
+            sample_count,
+            depth_format,
+            OverlayPipeline {
+                label: "vkit.mesh.lines",
+                vertex_entry: "vs_line",
+                fragment_entry: "fs_line",
+                buffers: &LINE_BUFFERS,
+            },
+        );
 
         Self {
             solid_pipeline,
@@ -312,6 +471,8 @@ impl MeshRenderResources {
             translucent_prepass_pipeline,
             translucent_color_pipeline,
             depth_reset_pipeline,
+            marker_pipeline,
+            line_pipeline,
             target_is_srgb: target_format.is_srgb(),
             bind_group_layout,
             scenes: BTreeMap::new(),
@@ -387,11 +548,78 @@ impl MeshRenderResources {
             fill_light: light.fill_light,
             environment_top: light.environment_top,
             environment_bottom: light.environment_bottom,
-            grading: [callback.tone_mapping.shader_flag(), 0.0, 0.0, 0.0],
+            grading: [
+                callback.tone_mapping.shader_flag(),
+                callback.viewport_pixels[0],
+                callback.viewport_pixels[1],
+                0.0,
+            ],
             punctual_meta: light.punctual_meta,
             punctual: light.punctual,
         };
         queue.write_buffer(&scene.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
+    }
+
+    fn upload_markers(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene_key: u64,
+        layer: MarkerLayer,
+        markers: Option<&Arc<Vec<MarkerInstance>>>,
+    ) {
+        let Some(scene) = self.scenes.get_mut(&scene_key) else {
+            return;
+        };
+        let slot = layer as usize;
+        let markers = markers.map(|held| held.as_slice()).unwrap_or(&[]);
+        scene.marker_counts[slot] = markers.len().min(u32::MAX as usize) as u32;
+        if markers.is_empty() {
+            return;
+        }
+        if scene.marker_capacities[slot] < markers.len() {
+            let wanted = markers.len().next_power_of_two();
+            scene.marker_buffers[slot] = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("vkit.mesh.markers"),
+                size: (wanted * std::mem::size_of::<MarkerInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            scene.marker_capacities[slot] = wanted;
+        }
+        if let Some(buffer) = scene.marker_buffers[slot].as_ref() {
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(markers));
+        }
+    }
+
+    fn upload_lines(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene_key: u64,
+        lines: Option<&Arc<Vec<LineInstance>>>,
+    ) {
+        let Some(scene) = self.scenes.get_mut(&scene_key) else {
+            return;
+        };
+        let lines = lines.map(|held| held.as_slice()).unwrap_or(&[]);
+        scene.line_count = lines.len().min(u32::MAX as usize) as u32;
+        if lines.is_empty() {
+            return;
+        }
+        if scene.line_capacity < lines.len() {
+            let wanted = lines.len().next_power_of_two();
+            scene.line_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("vkit.mesh.lines"),
+                size: (wanted * std::mem::size_of::<LineInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            scene.line_capacity = wanted;
+        }
+        if let Some(buffer) = scene.line_buffer.as_ref() {
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(lines));
+        }
     }
 
     fn upload_mesh(
@@ -450,6 +678,12 @@ impl MeshRenderResources {
             wire_index_count: mesh.wire_indices.len().min(u32::MAX as usize) as u32,
             uniform_buffer,
             bind_group,
+            marker_buffers: [None, None],
+            marker_capacities: [0, 0],
+            marker_counts: [0, 0],
+            line_buffer: None,
+            line_capacity: 0,
+            line_count: 0,
         }
     }
 
@@ -507,6 +741,39 @@ impl MeshRenderResources {
                 }
             }
         }
+    }
+
+    fn paint_lines(&self, render_pass: &mut wgpu::RenderPass<'static>, scene_key: u64) {
+        let Some(scene) = self.scenes.get(&scene_key) else {
+            return;
+        };
+        let (Some(buffer), 1..) = (scene.line_buffer.as_ref(), scene.line_count) else {
+            return;
+        };
+        render_pass.set_pipeline(&self.line_pipeline);
+        render_pass.set_bind_group(0, &scene.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, buffer.slice(..));
+        render_pass.draw(0..6, 0..scene.line_count);
+    }
+
+    fn paint_markers(
+        &self,
+        render_pass: &mut wgpu::RenderPass<'static>,
+        scene_key: u64,
+        layer: MarkerLayer,
+    ) {
+        let Some(scene) = self.scenes.get(&scene_key) else {
+            return;
+        };
+        let slot = layer as usize;
+        let count = scene.marker_counts[slot];
+        let (Some(buffer), 1..) = (scene.marker_buffers[slot].as_ref(), count) else {
+            return;
+        };
+        render_pass.set_pipeline(&self.marker_pipeline);
+        render_pass.set_bind_group(0, &scene.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, buffer.slice(..));
+        render_pass.draw(0..6, 0..count);
     }
 
     pub(super) fn reset_depth(&self, render_pass: &mut wgpu::RenderPass<'static>) {
@@ -624,6 +891,91 @@ fn create_mesh_pipeline(
     })
 }
 
+struct OverlayPipeline {
+    label: &'static str,
+    vertex_entry: &'static str,
+    fragment_entry: &'static str,
+    buffers: &'static [wgpu::VertexBufferLayout<'static>],
+}
+
+fn create_marker_pipeline(
+    device: &wgpu::Device,
+    shader: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    target_format: wgpu::TextureFormat,
+    sample_count: u32,
+    depth_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    create_overlay_pipeline(
+        device,
+        shader,
+        layout,
+        target_format,
+        sample_count,
+        depth_format,
+        OverlayPipeline {
+            label: "vkit.mesh.markers",
+            vertex_entry: "vs_marker",
+            fragment_entry: "fs_marker",
+            buffers: &MARKER_BUFFERS,
+        },
+    )
+}
+
+fn create_overlay_pipeline(
+    device: &wgpu::Device,
+    shader: &wgpu::ShaderModule,
+    layout: &wgpu::PipelineLayout,
+    target_format: wgpu::TextureFormat,
+    sample_count: u32,
+    depth_format: wgpu::TextureFormat,
+    config: OverlayPipeline,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(config.label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some(config.vertex_entry),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: config.buffers,
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: depth_format,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some(config.fragment_entry),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target_format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 fn create_depth_reset_pipeline(
     device: &wgpu::Device,
     shader: &wgpu::ShaderModule,
@@ -679,4 +1031,44 @@ fn create_depth_reset_pipeline(
         multiview_mask: None,
         cache: None,
     })
+}
+
+#[cfg(test)]
+mod marker_tests {
+    use super::MarkerInstance;
+
+    #[test]
+    fn the_instance_matches_what_the_shader_declares() {
+        assert_eq!(
+            std::mem::size_of::<MarkerInstance>(),
+            (3 + 1 + 4 + 4 + 1) * std::mem::size_of::<f32>(),
+            "the instance has padding the shader does not expect",
+        );
+        let layout = MarkerInstance::layout();
+        assert_eq!(
+            layout.step_mode,
+            wgpu::VertexStepMode::Instance,
+            "per-vertex stepping would give every marker the first one's colour",
+        );
+        assert_eq!(
+            layout.array_stride,
+            std::mem::size_of::<MarkerInstance>() as wgpu::BufferAddress,
+        );
+
+        let offsets: Vec<u64> = layout.attributes.iter().map(|a| a.offset).collect();
+        assert_eq!(offsets, vec![0, 12, 16, 32, 48], "{offsets:?}");
+        let locations: Vec<u32> = layout
+            .attributes
+            .iter()
+            .map(|a| a.shader_location)
+            .collect();
+        assert_eq!(locations, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn a_default_instance_draws_nothing() {
+        let blank = MarkerInstance::default();
+        assert_eq!(blank.radius, 0.0);
+        assert_eq!(blank.fill[3], 0.0, "a transparent marker is no marker");
+    }
 }

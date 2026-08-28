@@ -403,7 +403,8 @@ fn draw_hair_preset_picker(ui: &mut Ui, state: &mut AppState) {
     let mut refresh = false;
     ui.horizontal(|ui| {
         let button = crate::ui_components::icon_button_size(ui);
-        let field = (ui.available_width() - button - SPACE_2).max(0.0);
+        let gap = ui.spacing().item_spacing.x;
+        let field = (ui.available_width() - button - gap).max(0.0);
         ui.allocate_ui_with_layout(
             vec2(field, crate::theme::CONTROL_HEIGHT),
             egui::Layout::left_to_right(egui::Align::Center),
@@ -426,7 +427,7 @@ fn draw_hair_preset_picker(ui: &mut Ui, state: &mut AppState) {
                 crate::ui_components::icon_button(
                     ui,
                     Icon::Refresh,
-                    text(state.locale, TextKey::RefreshSkins),
+                    text(state.locale, TextKey::RescanVaMFolder),
                 )
             })
             .inner
@@ -537,12 +538,17 @@ fn draw_hair_parts_page(ui: &mut Ui, state: &mut AppState) {
                         .iter()
                         .map(|part| (part.id, part.name.clone(), part.visible))
                         .collect();
-                    for (part_id, name, visible) in parts {
-                        draw_sidebar_part_row(ui, state, part_id, &name, visible);
+                    for (place, (part_id, name, visible)) in parts.into_iter().enumerate() {
+                        draw_sidebar_part_row(ui, state, part_id, &name, visible, place);
                     }
+                    part_reorder().settle(ui);
                     draw_add_part_slot(ui, state);
                 });
         });
+}
+
+fn part_reorder() -> crate::list_reorder::Reorder<u64> {
+    crate::list_reorder::Reorder::new("vkit.hair.part-reorder")
 }
 
 fn draw_sidebar_part_row(
@@ -551,11 +557,12 @@ fn draw_sidebar_part_row(
     part_id: u64,
     name: &str,
     visible: bool,
+    place: usize,
 ) {
     let active = state.hair_project.is_part_active(part_id);
     let (row, row_response) = ui.allocate_exact_size(
         vec2(ui.available_width().max(0.0), PART_ROW_H),
-        Sense::click(),
+        Sense::click_and_drag(),
     );
     if active {
         ui.painter().rect_filled(
@@ -725,6 +732,25 @@ fn draw_sidebar_part_row(
             id: part_id,
             additive: crate::shortcuts::Shortcut::ListAddToSelectionHold.held(&row_ui),
         });
+    }
+
+    let taken = on_control || hovered_controls;
+    let reorder = part_reorder();
+    if reorder.picked_up(&row_response) && !taken {
+        state.dispatch(Action::ActivateHairPart {
+            id: part_id,
+            additive: false,
+        });
+        reorder.begin(ui, part_id);
+    }
+    if let Some(landing) = reorder.offer(ui, row, place) {
+        state.dispatch(Action::MoveHairPartTo {
+            id: landing.row,
+            insertion_index: landing.insertion_index,
+        });
+    }
+    if !taken {
+        reorder.cursor(ui, &part_id, row_response.hovered());
     }
 }
 

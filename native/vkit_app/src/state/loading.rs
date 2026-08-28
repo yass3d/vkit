@@ -1081,6 +1081,7 @@ impl AppState {
         if let Some(carry) = self.capture_edit_carry() {
             self.pending_edit_carry = Some(carry);
         }
+        self.forget_hand_morph_edits();
         self.set_edit_source_mode(EditSourceMode::CustomMorph);
         self.selected_vam_edit_source_id = Some(source.stable_id.clone());
         self.pending_direct_edit_source = Some(source.clone());

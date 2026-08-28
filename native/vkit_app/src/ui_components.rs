@@ -2474,7 +2474,7 @@ mod brush_pointer_tests {
         let source = include_str!("viewport/hair_input.rs");
         assert!(
             source.contains(
-                "if state.hair_project.active_tool == crate::hair_project::HairTool::Pick {
+                "if state.hair_project.active_tool == crate::hair_project::HairTool::Vertex {
         return;
     }"
             ),

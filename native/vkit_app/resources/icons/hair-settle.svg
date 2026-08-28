@@ -1,0 +1,19 @@
+<!-- Vkit original, drawn in the lucide grid: a chevron falling onto a floor.
+     It is the shape of the thing it does, hair let go of and allowed to land,
+     and it reads at toolbox size where an arrow shaft would not. -->
+<svg
+  class="lucide lucide-hair-settle"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M4.5 5.2 C6.8 5.2 10.2 11.4 12 11.4 C13.8 11.4 17.2 5.2 19.5 5.2" />
+  <path d="M4.5 15.4 C6.8 15.4 10.2 17.2 12 17.2 C13.8 17.2 17.2 15.4 19.5 15.4" />
+  <path d="M4.5 21 h15" />
+</svg>

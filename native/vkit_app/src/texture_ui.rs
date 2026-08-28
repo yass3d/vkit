@@ -375,9 +375,11 @@ fn draw_layer_toolbar(ui: &mut Ui, state: &mut AppState) {
     }
 }
 
-fn draw_layer_list(ui: &mut Ui, state: &mut AppState) {
-    let drag_id = Id::new("vkit.texture.layer-drag");
+fn layer_reorder() -> crate::list_reorder::Reorder<u64> {
+    crate::list_reorder::Reorder::new("vkit.texture.layer-drag")
+}
 
+fn draw_layer_list(ui: &mut Ui, state: &mut AppState) {
     let rows = ((state.texture_project.layers.len() + 1) as f32).min(TEXTURE_LAYER_LIST_ROWS);
     let height = TEXTURE_LAYER_ROW_HEIGHT * rows + TEXTURE_LAYER_ROW_GAP * rows.max(1.0);
     Frame::new()
@@ -396,28 +398,22 @@ fn draw_layer_list(ui: &mut Ui, state: &mut AppState) {
                     ui.spacing_mut().item_spacing.y = TEXTURE_LAYER_ROW_GAP;
                     let rows = state.texture_project.layers.clone();
                     for (index, layer) in rows.iter().enumerate() {
-                        draw_layer_row(ui, state, layer, index, drag_id);
+                        draw_layer_row(ui, state, layer, index);
                     }
 
                     ui.add_space(ADD_LAYER_EXTRA_GAP);
                     draw_add_layer_slot(ui, state);
                 });
         });
+    layer_reorder().settle(ui);
     if ui.input(|input| input.pointer.any_released()) {
-        ui.data_mut(|data| data.remove::<u64>(drag_id));
         ui.data_mut(|data| {
             data.remove::<bool>(Id::new("vkit.texture.visibility-sweep"));
         });
     }
 }
 
-fn draw_layer_row(
-    ui: &mut Ui,
-    state: &mut AppState,
-    layer: &TextureLayer,
-    index: usize,
-    drag_id: Id,
-) {
+fn draw_layer_row(ui: &mut Ui, state: &mut AppState, layer: &TextureLayer, index: usize) {
     let selected = state.texture_project.selected_layer_id == Some(layer.id);
     let (rect, row) = ui.allocate_exact_size(
         vec2(ui.available_width().max(0.0), TEXTURE_LAYER_ROW_HEIGHT),
@@ -568,41 +564,19 @@ fn draw_layer_row(
     if row.clicked() && !pointer_over_controls {
         state.dispatch(Action::SelectTextureLayer(layer.id));
     }
-    if row.drag_started() && !pointer_over_controls {
+    let reorder = layer_reorder();
+    if reorder.picked_up(&row) && !pointer_over_controls {
         state.dispatch(Action::SelectTextureLayer(layer.id));
-        ui.data_mut(|data| data.insert_temp(drag_id, layer.id));
+        reorder.begin(ui, layer.id);
     }
-    let dragged = ui.data(|data| data.get_temp::<u64>(drag_id));
-    let pointer = ui.input(|input| input.pointer.interact_pos());
-    let pointer_in_row = pointer.is_some_and(|pointer| rect.contains(pointer));
-    if dragged.is_some() && pointer_in_row {
-        let pointer_y = pointer.map_or(rect.center().y, |pointer| pointer.y);
-        let after = pointer_y >= rect.center().y;
-        let insertion_index = index + usize::from(after);
-        let line_y = if after { rect.bottom() } else { rect.top() };
-        ui.painter().line_segment(
-            [
-                pos2(rect.left() + SPACE_2, line_y),
-                pos2(rect.right() - SPACE_2, line_y),
-            ],
-            Stroke::new(2.0, COLOR_PRIMARY),
-        );
-        if ui.input(|input| input.pointer.any_released())
-            && let Some(id) = dragged
-        {
-            state.dispatch(Action::MoveTextureLayerTo {
-                id,
-                insertion_index,
-            });
-            ui.data_mut(|data| data.remove::<u64>(drag_id));
-        }
+    if let Some(landing) = reorder.offer(ui, rect, index) {
+        state.dispatch(Action::MoveTextureLayerTo {
+            id: landing.row,
+            insertion_index: landing.insertion_index,
+        });
     }
     if !pointer_over_controls {
-        if dragged == Some(layer.id) {
-            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-        } else if row.hovered() {
-            ui.ctx().set_cursor_icon(CursorIcon::Grab);
-        }
+        reorder.cursor(ui, &layer.id, row.hovered());
     }
 }
 

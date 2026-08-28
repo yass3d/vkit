@@ -1055,14 +1055,20 @@ fn release_size_morph_regions_and_sticky_actions_are_disjoint() {
         pos2(PANEL_INSET, TOP_BAR_HEIGHT),
         vec2(inspector_content_width, inspector_content_height),
     );
-    let regions = inspector_shell_regions(full, MORPH_ACTION_FOOTER_HEIGHT);
-    let buttons = morph_footer_buttons(regions.footer);
+    let regions = inspector_shell_regions(full, SINGLE_ACTION_FOOTER_HEIGHT);
+    let apply = primary_action_rect(regions.footer);
 
     assert_eq!(regions.body.bottom(), regions.footer.top());
     assert_eq!(regions.body.x_range(), regions.footer.x_range());
-    assert!(buttons.apply.top() >= regions.footer.top());
-    assert!(buttons.apply.bottom() <= regions.footer.bottom());
-    assert_eq!(buttons.apply.x_range(), regions.footer.x_range());
+    assert!(apply.top() >= regions.footer.top());
+    assert!(apply.bottom() <= regions.footer.bottom());
+    assert_eq!(apply.x_range(), regions.footer.x_range());
+
+    let slack = regions.footer.height() - apply.height();
+    assert!(
+        (0.0..=24.0).contains(&slack),
+        "the footer reserves {slack} points more than the button it draws",
+    );
 }
 
 #[test]
@@ -1071,7 +1077,8 @@ fn every_inspector_footer_contract_partitions_without_overlap() {
     for footer_height in [
         ALIGNMENT_FOOTER_HEIGHT,
         PRIMARY_FOOTER_HEIGHT,
-        MORPH_ACTION_FOOTER_HEIGHT,
+        SINGLE_ACTION_FOOTER_HEIGHT,
+        0.0,
     ] {
         let regions = inspector_shell_regions(full, footer_height);
 

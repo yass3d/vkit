@@ -416,6 +416,219 @@ fn the_click_that_dismisses_the_help_card_reaches_no_scene_handler() {
 }
 
 #[test]
+fn nothing_over_the_scene_means_the_pointer_gets_through() {
+    let context = egui::Context::default();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+
+    let panels = [
+        crate::state::ViewportToolPanel::BaseView,
+        crate::state::ViewportToolPanel::Wireframe,
+        crate::state::ViewportToolPanel::Xray,
+        crate::state::ViewportToolPanel::Skin,
+        crate::state::ViewportToolPanel::Camera,
+        crate::state::ViewportToolPanel::Lighting,
+    ];
+    let _ = context.run_ui(
+        egui::RawInput {
+            screen_rect: Some(viewport),
+            ..Default::default()
+        },
+        |root| {
+            let mut state = AppState::default();
+            let bare = pos2(viewport.right() - 40.0, viewport.bottom() - 40.0);
+            assert!(
+                !super::panels::viewport_tools_should_block_pointer(
+                    root, &state, viewport, bare, true, true
+                ),
+                "a bare viewport swallowed a click",
+            );
+            for panel in panels {
+                state.viewport_tool_panel = Some(panel);
+                let over_scene = super::panels::cached_viewport_tool_panel_rect(
+                    root, &state, viewport,
+                )
+                .map_or(bare, |rect| {
+                    pos2(
+                        (rect.right() + 40.0).min(viewport.right() - 4.0),
+                        (rect.bottom() + 40.0).min(viewport.bottom() - 4.0),
+                    )
+                });
+                assert!(
+                    !super::panels::viewport_tools_should_block_pointer(
+                        root, &state, viewport, over_scene, true, true
+                    ),
+                    "{panel:?} being open made the whole viewport deaf",
+                );
+            }
+        },
+    );
+}
+
+fn every_scene_mode() -> Vec<(&'static str, AppState)> {
+    let sculpting = |brush| {
+        let mut state = AppState::default();
+        state.active_tab = crate::state::Tab::Morph;
+        state.result_preview_phase = crate::state::ResultPreviewPhase::Sculpt;
+        state.sculpt_brush = brush;
+        state
+    };
+    let hair = |tool| {
+        let mut state = AppState::default();
+        state.active_tab = crate::state::Tab::Hair;
+        state.hair_project.active_tool = tool;
+        state
+    };
+    let texture = |tool| {
+        let mut state = AppState::default();
+        state.active_tab = crate::state::Tab::Texture;
+        state.texture_project.set_active_tool(tool);
+        state
+    };
+    use crate::hair_project::HairTool;
+    use crate::texture_project::TextureTool;
+    vec![
+        ("sculpt grab", sculpting(SculptBrush::Move)),
+        ("sculpt vertex", sculpting(SculptBrush::Vertex)),
+        ("sculpt smooth", sculpting(SculptBrush::Smooth)),
+        ("sculpt restore", sculpting(SculptBrush::Restore)),
+        ("sculpt mask", sculpting(SculptBrush::Mask)),
+        ("hair plant", hair(HairTool::Plant)),
+        ("hair comb", hair(HairTool::Comb)),
+        ("hair vertex", hair(HairTool::Vertex)),
+        ("hair settle", hair(HairTool::Settle)),
+        ("hair rigidity", hair(HairTool::Rigidity)),
+        ("texture pins", texture(TextureTool::PinPair)),
+        ("texture projection", texture(TextureTool::Projection)),
+        ("texture mask", texture(TextureTool::MaskBrush)),
+        ("texture clone", texture(TextureTool::CloneStamp)),
+        ("texture dodge", texture(TextureTool::DodgeBurn)),
+        ("texture sponge", texture(TextureTool::Sponge)),
+        ("alignment", AppState::default()),
+    ]
+}
+
+#[test]
+fn every_scene_mode_still_gets_the_pointer_with_a_panel_open() {
+    let context = egui::Context::default();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+    let panels = [
+        None,
+        Some(crate::state::ViewportToolPanel::BaseView),
+        Some(crate::state::ViewportToolPanel::Wireframe),
+        Some(crate::state::ViewportToolPanel::Xray),
+        Some(crate::state::ViewportToolPanel::Skin),
+        Some(crate::state::ViewportToolPanel::Camera),
+        Some(crate::state::ViewportToolPanel::Lighting),
+    ];
+    let _ = context.run_ui(
+        egui::RawInput {
+            screen_rect: Some(viewport),
+            ..Default::default()
+        },
+        |root| {
+            for (name, mut state) in every_scene_mode() {
+                for panel in panels {
+                    state.viewport_tool_panel = panel;
+                    let over_scene =
+                        super::panels::cached_viewport_tool_panel_rect(root, &state, viewport)
+                            .map_or(
+                                pos2(viewport.right() - 40.0, viewport.bottom() - 40.0),
+                                |r| {
+                                    pos2(
+                                        (r.right() + 40.0).min(viewport.right() - 4.0),
+                                        (r.bottom() + 40.0).min(viewport.bottom() - 4.0),
+                                    )
+                                },
+                            );
+                    assert!(
+                        !super::scene_pointer_taken(root, &state, viewport, false),
+                        "{name} lost the pointer with {panel:?} open",
+                    );
+                    assert!(
+                        !super::panels::viewport_tools_should_block_pointer(
+                            root, &state, viewport, over_scene, true, true
+                        ),
+                        "{name} had its click swallowed with {panel:?} open",
+                    );
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn the_things_that_do_own_the_pointer_can_still_take_it() {
+    let context = egui::Context::default();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+    let _ = context.run_ui(
+        egui::RawInput {
+            screen_rect: Some(viewport),
+            ..Default::default()
+        },
+        |root| {
+            let mut importing = AppState::default();
+            importing.import_progress = Some(crate::state::ImportProgress::new(
+                crate::state::ImportPhase::MeshLoading,
+                0.5,
+            ));
+            assert!(
+                super::scene_pointer_taken(root, &importing, viewport, false),
+                "an import in flight has to hold the pointer",
+            );
+
+            let mut panning = AppState::default();
+            panning.camera_control = crate::viewport::ControlMode::VertexRotate;
+            assert!(
+                super::scene_pointer_taken(root, &panning, viewport, false),
+                "a camera mode has to hold the pointer",
+            );
+
+            assert!(
+                super::scene_pointer_taken(root, &AppState::default(), viewport, true),
+                "a roll in progress has to hold the pointer",
+            );
+        },
+    );
+}
+
+#[test]
+fn holding_shift_alone_does_not_light_up_the_smooth_brush() {
+    let context = egui::Context::default();
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0));
+    let _ = context.run_ui(
+        egui::RawInput {
+            screen_rect: Some(viewport),
+            modifiers: egui::Modifiers::SHIFT,
+            ..Default::default()
+        },
+        |root| {
+            let mut state = AppState::default();
+            for brush in [
+                SculptBrush::Move,
+                SculptBrush::Restore,
+                SculptBrush::Smooth,
+                SculptBrush::Mask,
+            ] {
+                state.sculpt_brush = brush;
+                assert_eq!(
+                    super::sculpt_input::displayed_sculpt_brush(root, &state),
+                    brush,
+                    "{brush:?} changed while nothing was being painted",
+                );
+            }
+
+            state.sculpt_brush = SculptBrush::Move;
+            super::open_a_sculpt_stroke_for_test(root, SculptInputMode::Smooth);
+            assert_eq!(
+                super::sculpt_input::displayed_sculpt_brush(root, &state),
+                SculptBrush::Smooth,
+                "a smooth stroke did not show as one",
+            );
+        },
+    );
+}
+
+#[test]
 fn wheel_zoom_anchor_pick_returns_the_nearest_layer_point() {
     let near = plane_mesh();
     let far = plane_mesh();
@@ -579,6 +792,7 @@ fn unified_gizmo_hit_math_keeps_move_rotate_and_center_scale_live_together() {
         ],
         scale_handle: origin,
         world_center: glam::Vec3::ZERO,
+        plane_quads: [Vec::new(), Vec::new(), Vec::new()],
     };
     assert_eq!(
         alignment_gizmo_hit(origin, &geometry),
@@ -666,9 +880,21 @@ fn the_island_names_whatever_a_stroke_would_actually_do() {
 #[test]
 fn sculpt_modifier_shortcuts_override_the_selected_brush() {
     egui::__run_test_ui(|ui| {
+        assert_eq!(
+            sculpt_input_mode(
+                ui,
+                egui::Modifiers {
+                    shift: true,
+                    ..Default::default()
+                },
+                SculptBrush::Vertex,
+            ),
+            SculptInputMode::Vertex,
+            "a hold turned the vertex tool into something else",
+        );
         for brush in SculptBrush::ALL
             .into_iter()
-            .filter(|brush| brush.edits_geometry())
+            .filter(|brush| brush.edits_geometry() && brush.is_a_brush())
         {
             assert_eq!(
                 sculpt_input_mode(
@@ -937,7 +1163,7 @@ fn what_the_chrome_paints_is_what_the_pointer_test_respects() {
     let context = egui::Context::default();
     let mut state = AppState::default();
 
-    state.camera_control = crate::camera_control::ControlMode::Trackball;
+    state.camera_control = crate::camera_control::ControlMode::VertexRotate;
 
     let gizmo = crate::viewport_chrome::slot(
         viewport,
@@ -2376,6 +2602,16 @@ fn the_stream_switch_draws_the_active_strands_and_nothing_when_off() {
         });
         output.shapes.len()
     };
+    let _ = &painted;
+
+    let segments = |state: &AppState| -> usize {
+        let mut lines = Vec::new();
+        let mut points = Vec::new();
+        if state.hair_show_streams {
+            crate::viewport::hair_overlays::hair_streams(state, &mut lines, &mut points, 1.0, None);
+        }
+        lines.len()
+    };
 
     let mut state = probe_hair_state();
     let part = state.hair_project.parts[0].id;
@@ -2385,9 +2621,10 @@ fn the_stream_switch_draws_the_active_strands_and_nothing_when_off() {
     });
 
     state.hair_show_streams = false;
-    let quiet = painted(&mut state);
+    let quiet = segments(&state);
     state.hair_show_streams = true;
-    let shown = painted(&mut state);
+    let shown = segments(&state);
+    assert_eq!(quiet, 0, "the switch was off and something was still drawn");
     assert!(
         shown > quiet,
         "turning the switch on added nothing: {quiet} -> {shown}"
@@ -2409,19 +2646,19 @@ fn the_stream_switch_draws_the_active_strands_and_nothing_when_off() {
         id: second,
         additive: false,
     });
-    let one_active = painted(&mut state);
+    let one_active = segments(&state);
     state.dispatch(crate::state::Action::ActivateHairPart {
         id: part,
         additive: true,
     });
-    let both_active = painted(&mut state);
+    let both_active = segments(&state);
     assert!(
         both_active > one_active,
         "gathering a second layer drew no more streams: {one_active} -> {both_active}"
     );
 
     state.hair_show_streams = false;
-    let quiet_again = painted(&mut state);
+    let quiet_again = segments(&state);
     assert!(
         quiet_again < one_active,
         "the switch stopped switching: {quiet_again} vs {one_active}"
@@ -2743,10 +2980,18 @@ fn the_hair_tab_draws_its_scalp_without_a_result_mesh() {
         "this test is about the no-result case",
     );
 
-    let painted = hair_overlay_dot_count(&mut state, viewport);
+    let _ = (chrome, hair_overlay_dot_count(&mut state, viewport));
     assert!(
-        painted > chrome,
-        "the Hair tab painted no scalp of its own without a result mesh          ({painted} dots vs {chrome} of bare viewport chrome): the scalp, its          vertex dots and every planted strand are invisible, so the tab reads          as completely broken",
+        crate::viewport::hair_overlays::overlay_mesh(&state).is_some(),
+        "nothing to hang the overlay scene on without a result mesh, so the          scalp, its vertex dots and every planted strand are invisible and the          tab reads as completely broken",
+    );
+
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    crate::viewport::hair_overlays::hair_streams(&state, &mut lines, &mut points, 1.0, None);
+    assert!(
+        !lines.is_empty() && !points.is_empty(),
+        "the planted strands produced no overlay geometry at all",
     );
 }
 
@@ -3638,30 +3883,398 @@ fn the_hair_island_is_wide_enough_for_every_toggle_it_draws() {
 }
 
 #[test]
-fn a_strand_is_drawn_whole_or_not_at_all() {
-    use crate::viewport::hair_overlays::strand_is_shown;
+fn the_overlay_pass_rebuilds_its_own_depth_rather_than_inheriting_one() {
+    use crate::renderer::RenderStyle;
 
-    let field = crate::viewport::hair_overlays::HairDepthField::new(egui::Rect::from_min_size(
-        egui::pos2(0.0, 0.0),
-        egui::vec2(800.0, 600.0),
-    ));
-    let strand =
-        crate::hair_project::HairStrand::new((0..8).map(|i| [0.0, 10.0 + i as f32, 0.0]).collect());
-    let camera = crate::camera::TurntableCamera::default();
-    let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+    let passes = crate::renderer::mesh_pass_shape_for_test(RenderStyle::Overlay);
     assert!(
-        strand_is_shown(&strand, &field, rect, camera, camera.eye()),
-        "an empty field hides nothing, so the strand is drawn",
+        !passes.is_empty(),
+        "an overlay that draws no depth is tested against whatever came before          it, which by then includes the hair it is meant to lie over",
     );
     assert!(
-        !strand_is_shown(
-            &crate::hair_project::HairStrand::new(Vec::new()),
-            &field,
-            rect,
-            camera,
-            camera.eye(),
-        ),
-        "a strand with no root has nothing to decide from",
+        passes.iter().all(|depth_only| *depth_only),
+        "the overlay pass drew colour: it is there to re-establish depth, and          redrawing the surface would cover the very hair it lies over",
+    );
+
+    let source = include_str!("hair_overlays.rs");
+    let place = source
+        .find(
+            "
+    place_hair_overlays(",
+        )
+        .expect("the overlays are placed");
+    let previews = source
+        .rfind(
+            "
+    draw_hair_part_previews(",
+        )
+        .expect("the hair previews are drawn");
+    assert!(
+        previews < place,
+        "the hair is queued after the overlays and paints over them",
+    );
+}
+
+#[test]
+fn the_scalp_bed_is_drawn_under_the_strands_it_grows() {
+    use crate::renderer::MarkerLayer;
+
+    assert_ne!(
+        MarkerLayer::Bed as usize,
+        MarkerLayer::Over as usize,
+        "one slot cannot hold two layers",
+    );
+
+    let source = include_str!("../renderer/mesh.rs");
+    let bed = source
+        .find("paint_markers(&mut pass, self.scene_key, MarkerLayer::Bed)")
+        .expect("the bed is painted");
+    let lines = source
+        .find("paint_lines(&mut pass, self.scene_key)")
+        .expect("the lines are painted");
+    let over = source
+        .find("paint_markers(&mut pass, self.scene_key, MarkerLayer::Over)")
+        .expect("the handles are painted");
+    assert!(
+        bed < lines && lines < over,
+        "the overlay layers are painted out of order",
+    );
+}
+
+#[test]
+fn hair_shows_on_every_head_tab_but_is_authored_only_on_its_own() {
+    let mut state = AppState::default();
+    for tab in [
+        crate::state::Tab::Hair,
+        crate::state::Tab::Result,
+        crate::state::Tab::Morph,
+        crate::state::Tab::Texture,
+    ] {
+        state.active_tab = tab;
+        assert!(
+            state.shows_authored_hair(),
+            "{tab:?} has a head and should show what it is wearing",
+        );
+    }
+
+    state.active_tab = crate::state::Tab::Alignment;
+    assert!(
+        !state.shows_authored_hair(),
+        "there is no finished head to wear it on yet",
+    );
+
+    for tab in [crate::state::Tab::Morph, crate::state::Tab::Texture] {
+        state.active_tab = tab;
+        assert!(
+            !state.is_hair_editing(),
+            "{tab:?} must not draw the scalp guide, the points or the gizmo",
+        );
+    }
+}
+
+#[test]
+fn the_whole_of_a_picture_answers_a_grab_until_it_is_locked() {
+    use egui::{Rect, pos2, vec2};
+
+    let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0));
+    let mut board = crate::reference_board::ReferenceBoard::default();
+    let id = board.add(std::path::PathBuf::from("face.png"));
+    let rect = board.get(id).unwrap().rect_in(viewport);
+
+    for spot in [
+        rect.center(),
+        pos2(rect.center().x, rect.top() + 4.0),
+        pos2(rect.left() + 4.0, rect.bottom() - 4.0),
+    ] {
+        assert_eq!(board.grabbed(viewport, spot), Some(id), "{spot:?}");
+    }
+    assert_eq!(
+        board.grabbed(viewport, pos2(rect.right() + 20.0, rect.center().y)),
+        None,
+    );
+
+    board.toggle_locked(id);
+    assert_eq!(
+        board.grabbed(viewport, rect.center()),
+        None,
+        "locking is what takes a picture out of the pointer's way",
+    );
+}
+
+#[test]
+fn a_rounded_picture_is_a_closed_fan_over_its_own_rect() {
+    use egui::{Rect, pos2};
+
+    let rect = Rect::from_min_max(pos2(100.0, 50.0), pos2(340.0, 290.0));
+    let mesh = crate::viewport::reference_overlay::rounded_image_mesh(
+        egui::TextureId::Managed(0),
+        rect,
+        egui::Color32::WHITE,
+    );
+
+    assert!(!mesh.indices.is_empty(), "nothing was drawn");
+    assert_eq!(
+        mesh.indices.len() % 3,
+        0,
+        "a stray index is half a triangle"
+    );
+    let highest = mesh.indices.iter().copied().max().unwrap_or(0) as usize;
+    assert!(
+        highest < mesh.vertices.len(),
+        "a triangle points at vertex {highest} of {}",
+        mesh.vertices.len(),
+    );
+
+    for vertex in &mesh.vertices {
+        assert!(
+            rect.expand(0.01).contains(vertex.pos),
+            "{:?} escaped the picture",
+            vertex.pos,
+        );
+        let wanted = pos2(
+            (vertex.pos.x - rect.left()) / rect.width(),
+            (vertex.pos.y - rect.top()) / rect.height(),
+        );
+        assert!(
+            (vertex.uv.x - wanted.x).abs() < 1.0e-4 && (vertex.uv.y - wanted.y).abs() < 1.0e-4,
+            "a vertex samples the texture from somewhere it is not",
+        );
+    }
+
+    let fan_covers = |point: egui::Pos2| {
+        mesh.indices.chunks_exact(3).any(|tri| {
+            let [a, b, c] = [
+                mesh.vertices[tri[0] as usize].pos,
+                mesh.vertices[tri[1] as usize].pos,
+                mesh.vertices[tri[2] as usize].pos,
+            ];
+            let side = |p: egui::Pos2, q: egui::Pos2| {
+                (q.x - p.x) * (point.y - p.y) - (q.y - p.y) * (point.x - p.x)
+            };
+            let (u, v, w) = (side(a, b), side(b, c), side(c, a));
+            (u >= -1.0e-3 && v >= -1.0e-3 && w >= -1.0e-3)
+                || (u <= 1.0e-3 && v <= 1.0e-3 && w <= 1.0e-3)
+        })
+    };
+    for edge in [
+        pos2(rect.center().x, rect.top() + 0.5),
+        pos2(rect.center().x, rect.bottom() - 0.5),
+        pos2(rect.left() + 0.5, rect.center().y),
+        pos2(rect.right() - 0.5, rect.center().y),
+        rect.center(),
+    ] {
+        assert!(fan_covers(edge), "{edge:?} was left uncovered");
+    }
+}
+
+#[test]
+fn a_segment_lights_up_only_when_both_of_its_ends_are_picked() {
+    use crate::hair_project::HairStrand;
+    use crate::renderer::LineInstance;
+
+    let mut state = AppState::default();
+    state.active_tab = crate::state::Tab::Hair;
+    let part = state.hair_project.add_part("Cap");
+    if let Some(held) = state.hair_project.parts.iter_mut().find(|p| p.id == part) {
+        held.strands.insert(
+            7,
+            HairStrand::new((0..5).map(|s| [0.0, s as f32, 0.0]).collect()),
+        );
+    }
+    for index in [0, 1, 3] {
+        state.hair_vertex_selection.insert((part, 7, index));
+    }
+
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    crate::viewport::hair_overlays::hair_streams(&state, &mut lines, &mut points, 1.0, None);
+
+    let lit = |line: &LineInstance| {
+        let [r, g, b, _] = line.from_colour;
+        let [pr, pg, pb, _] = {
+            let [r, g, b, a] = crate::theme::COLOR_HAIR_POINT_ACTIVE.to_array();
+            [
+                f32::from(r) / 255.0,
+                f32::from(g) / 255.0,
+                f32::from(b) / 255.0,
+                f32::from(a) / 255.0,
+            ]
+        };
+        (r - pr).abs() < 1.0e-6 && (g - pg).abs() < 1.0e-6 && (b - pb).abs() < 1.0e-6
+    };
+    assert_eq!(lines.len(), 4, "four segments between five points");
+    assert!(lit(&lines[0]), "0-1 is a run and must be lit");
+    assert!(!lit(&lines[1]), "1-2 has an unpicked end");
+    assert!(!lit(&lines[2]), "2-3 has an unpicked end");
+    assert!(
+        !lit(&lines[3]),
+        "3-4 has an unpicked end; a lone point lights nothing",
+    );
+
+    let deep = {
+        let [r, g, b, _] = crate::theme::COLOR_HAIR_POINT_SELECTED.to_array();
+        [f32::from(r), f32::from(g), f32::from(b)]
+    };
+    let light = {
+        let [r, g, b, _] = crate::theme::COLOR_HAIR_POINT_ACTIVE.to_array();
+        [f32::from(r), f32::from(g), f32::from(b)]
+    };
+    let luminance = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    assert!(
+        luminance(light) - luminance(deep) > 40.0,
+        "the selected point and its run are too close in value to tell apart",
+    );
+}
+
+#[test]
+fn the_cage_is_drawn_from_the_vertices_it_edits() {
+    let mut state = AppState::default();
+    state.surface_smooth_passes = 3;
+    assert_eq!(
+        state.drawn_smooth_passes(),
+        3,
+        "an ordinary view keeps the reader's smoothing preference",
+    );
+
+    state.active_tab = crate::state::Tab::Morph;
+    state.sculpt_brush = crate::sculpt::SculptBrush::Vertex;
+    assert!(state.editing_the_cage(), "the vertex tool is up");
+    assert_eq!(
+        state.drawn_smooth_passes(),
+        0,
+        "the vertex tool was shown a smoothed stand-in of the mesh it edits",
+    );
+}
+
+#[test]
+fn only_the_scalp_planting_points_are_drawn_as_boxes() {
+    use crate::renderer::MarkerInstance;
+
+    assert_ne!(
+        MarkerInstance::ROUND,
+        MarkerInstance::SQUARE,
+        "one norm cannot draw two shapes",
+    );
+
+    let mut state = AppState::default();
+    state.active_tab = crate::state::Tab::Hair;
+    let part = state.hair_project.add_part("Cap");
+    if let Some(held) = state.hair_project.parts.iter_mut().find(|p| p.id == part) {
+        held.strands.insert(
+            1,
+            crate::hair_project::HairStrand::new((0..4).map(|s| [0.0, s as f32, 0.0]).collect()),
+        );
+    }
+
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    crate::viewport::hair_overlays::hair_streams(&state, &mut lines, &mut points, 1.0, None);
+    for dot in &points {
+        assert_eq!(
+            dot.shape,
+            MarkerInstance::ROUND,
+            "a strand point is a handle and must not read as a planting socket",
+        );
+    }
+}
+
+#[test]
+fn an_overlay_dot_reads_on_black_hair_and_on_lit_skin() {
+    use crate::hair_project::HairStrand;
+
+    let mut state = AppState::default();
+    state.active_tab = crate::state::Tab::Hair;
+    let part = state.hair_project.add_part("Cap");
+    if let Some(held) = state.hair_project.parts.iter_mut().find(|p| p.id == part) {
+        held.strands.insert(
+            1,
+            HairStrand::new((0..4).map(|s| [0.0, s as f32, 0.0]).collect()),
+        );
+    }
+
+    let viewport = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1200.0, 800.0));
+    let camera = crate::camera::TurntableCamera {
+        distance: 30.0,
+        ..crate::camera::TurntableCamera::default()
+    };
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    crate::viewport::hair_overlays::hair_streams(
+        &state,
+        &mut lines,
+        &mut points,
+        1.0,
+        Some((camera, viewport)),
+    );
+
+    let luminance = |colour: [f32; 4]| 0.2126 * colour[0] + 0.7152 * colour[1] + 0.0722 * colour[2];
+    let stream = lines.first().map(|line| luminance(line.from_colour));
+    for dot in &points {
+        assert_eq!(
+            dot.ring, dot.fill,
+            "a node is one solid dot; a ring on every one of these is haze",
+        );
+        if let Some(stream) = stream {
+            let apart = (luminance(dot.fill) - stream).abs();
+            assert!(
+                apart > 0.15,
+                "a node is the same value as the stream under it ({apart:.2} apart),                  so it vanishes into its own line",
+            );
+        }
+        assert!(
+            dot.radius > 0.5,
+            "at a working distance a node under half a point across is not a target",
+        );
+    }
+    for line in &lines {
+        assert!(
+            line.from_width >= 1.0,
+            "a stream thinner than a pixel is not something you can follow              through black hair",
+        );
+        assert!(line.from_colour[3] > 0.9, "the streams were drawn faint");
+    }
+}
+
+#[test]
+fn the_overlay_builders_emit_every_segment_and_cull_nothing() {
+    use crate::hair_project::HairStrand;
+
+    let mut state = AppState::default();
+    state.active_tab = crate::state::Tab::Hair;
+    let part = state.hair_project.add_part("Cap");
+    if let Some(held) = state.hair_project.parts.iter_mut().find(|p| p.id == part) {
+        for root in [1_u32, 2] {
+            held.strands.insert(
+                root,
+                HairStrand::new((0..5).map(|s| [0.0, s as f32, 0.0]).collect()),
+            );
+        }
+    }
+    assert!(
+        state.hair_project.is_part_editable(part),
+        "the part has to be active for the builders to see it",
+    );
+
+    let mut lines = Vec::new();
+    let mut points = Vec::new();
+    crate::viewport::hair_overlays::hair_streams(&state, &mut lines, &mut points, 1.0, None);
+
+    assert_eq!(
+        lines.len(),
+        2 * 4,
+        "two strands of five points is four segments each, whatever is in front",
+    );
+    assert_eq!(points.len(), 2 * 5, "a marker for every point");
+
+    let mut ribbons = Vec::new();
+    crate::viewport::hair_overlays::stiffness_ribbons(&state, &mut ribbons);
+    assert_eq!(ribbons.len(), 2 * 4, "and the ribbons likewise");
+
+    assert!(
+        lines
+            .iter()
+            .all(|line| line.from_position != line.to_position),
+        "a segment collapsed to a point",
     );
 }
 
@@ -3707,7 +4320,7 @@ fn the_hair_strength_slot_follows_the_tool() {
         );
     }
     assert_eq!(brush_slot(HairTool::Plant), BrushSlot::Segments);
-    for tool in [HairTool::Erase, HairTool::Pick, HairTool::Vertex] {
+    for tool in [HairTool::Erase, HairTool::Vertex] {
         assert_eq!(
             brush_slot(tool),
             BrushSlot::Empty,
@@ -3920,8 +4533,127 @@ fn a_lit_layer_gains_saturation_without_inventing_a_hue_on_plain_hair() {
 }
 
 #[test]
+fn select_connected_takes_the_strand_and_masks_the_rest_of_the_part() {
+    use crate::hair_project::HairStrand;
+
+    let mut state = AppState::default();
+    let part_id = state.hair_project.add_part("Cap");
+    if let Some(part) = state
+        .hair_project
+        .parts
+        .iter_mut()
+        .find(|p| p.id == part_id)
+    {
+        for root in [3_u32, 7] {
+            part.strands.insert(
+                root,
+                HairStrand::new((0..5).map(|step| [0.0, step as f32, 0.0]).collect()),
+            );
+        }
+    }
+    state.hair_vertex_selection.insert((part_id, 3, 2));
+
+    super::hair_vertex::select_connected(&mut state);
+
+    let taken: Vec<usize> = state
+        .hair_vertex_selection
+        .iter()
+        .filter(|(part, strand, _)| *part == part_id && *strand == 3)
+        .map(|(_, _, point)| *point)
+        .collect();
+    assert_eq!(
+        taken,
+        vec![1, 2, 3, 4],
+        "the whole strand bar the root, which nothing downstream excludes",
+    );
+    assert!(
+        !state.hair_vertex_selection.contains(&(part_id, 7, 1)),
+        "a strand nobody touched was taken",
+    );
+    assert_eq!(
+        state
+            .hair_strand_mask
+            .get(&part_id)
+            .map(|held| held.iter().copied().collect::<Vec<u32>>()),
+        Some(vec![3]),
+        "the selection did not become a mask, which is the half that matters",
+    );
+
+    super::hair_vertex::clear_strand_mask(&mut state);
+    assert!(
+        state.hair_strand_mask.is_empty(),
+        "the mask would not let go"
+    );
+}
+
+#[test]
+fn auto_part_can_target_a_part_that_is_not_selected() {
+    use crate::hair_project::HairPartKind;
+
+    let mut state = AppState::default();
+    let selected = state.hair_project.add_part("Cap");
+    let other = state.hair_project.add_part("Cap");
+    let cap = state.hair_project.add_part("Cap");
+    if let Some(part) = state.hair_project.parts.iter_mut().find(|p| p.id == cap) {
+        part.kind = HairPartKind::Scalp;
+    }
+    state.hair_project.activate_part(selected, false);
+
+    assert!(
+        !state.hair_project.is_part_editable(other),
+        "the part is deliberately not selected -- that is the whole test",
+    );
+    assert!(
+        super::hair_input::targetable(&state, other),
+        "auto-part refused a visible part because it was not already chosen",
+    );
+    assert!(
+        super::hair_input::targetable(&state, selected),
+        "the selected part is targetable too",
+    );
+    assert!(
+        !super::hair_input::targetable(&state, cap),
+        "a cap is not something a strand brush edits",
+    );
+
+    if let Some(part) = state.hair_project.parts.iter_mut().find(|p| p.id == other) {
+        part.visible = false;
+    }
+    assert!(
+        !super::hair_input::targetable(&state, other),
+        "you cannot point at what is not drawn",
+    );
+}
+
+#[test]
+fn the_depth_tolerance_follows_the_viewing_distance() {
+    use super::surface_depth::SurfaceDepth;
+
+    let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
+    let at = pos2(120.0, 90.0);
+    let survives_behind_by = |world_per_point: f32, behind: f32| {
+        let mut field = SurfaceDepth::probe(rect, world_per_point);
+        field.probe_mark(at, 30.0);
+        !field.hides(at, 30.0 + behind)
+    };
+
+    assert!(survives_behind_by(0.01, 0.1));
+    assert!(
+        !survives_behind_by(0.01, 5.0),
+        "up close, the far side of the head still has to be hidden",
+    );
+
+    assert!(
+        survives_behind_by(0.5, 5.0),
+        "pulling back made a point on the near surface vanish",
+    );
+}
+
+const PROBE_WORLD_PER_POINT: f32 = 0.111;
+
+#[test]
 fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
-    use super::hair_overlays::HairDepthField;
+    use super::surface_depth::SurfaceDepth;
 
     let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
 
@@ -3929,7 +4661,7 @@ fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
     let b = (pos2(240.0, 60.0), 30.0);
     let c = (pos2(120.0, 240.0), 30.0);
 
-    let mut splatted = HairDepthField::probe(rect);
+    let mut splatted = SurfaceDepth::probe(rect, PROBE_WORLD_PER_POINT);
     for corner in [a, b, c] {
         splatted.probe_mark(corner.0, corner.1);
     }
@@ -3939,7 +4671,7 @@ fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
         "the fixture must reproduce the hole, or this test proves nothing"
     );
 
-    let mut filled = HairDepthField::probe(rect);
+    let mut filled = SurfaceDepth::probe(rect, PROBE_WORLD_PER_POINT);
     filled.probe_fill(a, b, c);
     assert!(
         filled.hides(middle, 60.0),
@@ -3957,10 +4689,10 @@ fn a_filled_triangle_leaves_no_hole_for_the_far_side_to_show_through() {
 
 #[test]
 fn one_depth_field_answers_for_the_points_and_the_streams_alike() {
-    use super::hair_overlays::HairDepthField;
+    use super::surface_depth::SurfaceDepth;
 
     let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 300.0));
-    let mut field = HairDepthField::probe(rect);
+    let mut field = SurfaceDepth::probe(rect, PROBE_WORLD_PER_POINT);
     let at = pos2(120.0, 90.0);
     field.probe_mark(at, 30.0);
 

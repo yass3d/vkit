@@ -86,7 +86,8 @@ pub(crate) fn draw_appearance_layers(ui: &mut Ui, state: &mut AppState, height: 
                         .collect::<Vec<_>>();
                     let top = rows.first().map(|row| row.0);
                     let bottom = rows.last().map(|row| row.0);
-                    for (id, name, visible) in rows {
+                    let depth = rows.len();
+                    for (place, (id, name, visible)) in rows.into_iter().enumerate() {
                         if let Some(action) = layer_row(
                             ui,
                             state,
@@ -95,10 +96,13 @@ pub(crate) fn draw_appearance_layers(ui: &mut Ui, state: &mut AppState, height: 
                             visible,
                             Some(id) != top,
                             Some(id) != bottom,
+                            place,
+                            depth,
                         ) {
                             command = Some(action);
                         }
                     }
+                    layer_reorder().settle(ui);
                 });
         });
     if let Some(action) = command {
@@ -106,6 +110,11 @@ pub(crate) fn draw_appearance_layers(ui: &mut Ui, state: &mut AppState, height: 
     }
 }
 
+fn layer_reorder() -> crate::list_reorder::Reorder<u64> {
+    crate::list_reorder::Reorder::new("vkit.appearance.layer-reorder")
+}
+
+#[allow(clippy::too_many_arguments)]
 fn layer_row(
     ui: &mut Ui,
     state: &AppState,
@@ -114,10 +123,12 @@ fn layer_row(
     visible: bool,
     can_raise: bool,
     can_lower: bool,
+    place: usize,
+    depth: usize,
 ) -> Option<Action> {
     let (rect, response) = ui.allocate_exact_size(
         vec2(ui.available_width().max(0.0), LAYER_ROW_HEIGHT),
-        Sense::click(),
+        Sense::click_and_drag(),
     );
     let selected = state.appearance_stack.selected_id == Some(id);
     paint_list_row_highlight(ui, rect, selected, response.hovered());
@@ -217,6 +228,24 @@ fn layer_row(
             FontId::proportional(FONT_SM),
             if visible { COLOR_TEXT } else { COLOR_MUTED },
         );
+
+    let on_control = ui
+        .input(|input| input.pointer.interact_pos())
+        .is_some_and(|pointer| eye.contains(pointer) || pointer.x > cursor);
+    let reorder = layer_reorder();
+    if reorder.picked_up(&response) && !on_control {
+        command = Some(Action::SelectAppearanceLayer(id));
+        reorder.begin(ui, id);
+    }
+    if let Some(landing) = reorder.offer(ui, rect, place) {
+        command = Some(Action::MoveAppearanceLayerTo {
+            id: landing.row,
+            insertion_index: crate::list_reorder::flip(landing.insertion_index, depth),
+        });
+    }
+    if !on_control {
+        reorder.cursor(ui, &id, response.hovered());
+    }
     command
 }
 

@@ -107,6 +107,8 @@ pub struct MorphControl {
     pub availability: MorphAvailability,
 
     pub unsupported_formula_count: usize,
+
+    opened_track: Option<(f64, f64)>,
 }
 
 #[derive(Clone, Debug)]
@@ -245,19 +247,15 @@ impl MorphTargetBinding {
     pub fn entry_bounds(&self) -> (f64, f64) {
         self.resolved().map_or(
             (
-                self.minimum
-                    .min(-MorphTarget::MINIMUM_EXTRAPOLATION_MAGNITUDE),
-                self.maximum
-                    .max(MorphTarget::MINIMUM_EXTRAPOLATION_MAGNITUDE),
+                self.minimum.min(-MorphTarget::MAXIMUM_ENTRY_MAGNITUDE),
+                self.maximum.max(MorphTarget::MAXIMUM_ENTRY_MAGNITUDE),
             ),
-            MorphTarget::extrapolated_bounds,
+            MorphTarget::entry_limits,
         )
     }
 
-    pub fn slider_bounds(&self, value: f64) -> (f64, f64) {
-        let (entry_minimum, entry_maximum) = self.entry_bounds();
-        let value = value.clamp(entry_minimum, entry_maximum);
-        (self.minimum.min(value), self.maximum.max(value))
+    pub fn default_track_bounds(&self) -> (f64, f64) {
+        (self.minimum, self.maximum)
     }
 
     fn extrapolated_bounds(&self) -> (f64, f64) {
@@ -271,6 +269,31 @@ impl MorphTargetBinding {
 }
 
 impl MorphControl {
+    fn write_value(&mut self, value: f32) -> bool {
+        let (low, high) = self.track_bounds();
+        let value = f64::from(value);
+        if value < low || value > high {
+            self.opened_track = Some((low.min(value), high.max(value)));
+        }
+        let value = value as f32;
+        let changed = self.value.to_bits() != value.to_bits();
+        self.value = value;
+        changed
+    }
+
+    fn reset_value(&mut self) -> bool {
+        self.opened_track = None;
+        let default = self.target.default as f32;
+        let changed = self.value.to_bits() != default.to_bits();
+        self.value = default;
+        changed
+    }
+
+    pub fn track_bounds(&self) -> (f64, f64) {
+        self.opened_track
+            .unwrap_or_else(|| self.target.default_track_bounds())
+    }
+
     pub fn new(
         id: impl Into<String>,
         label: impl Into<String>,
@@ -290,6 +313,7 @@ impl MorphControl {
             genital_target: None,
             availability: MorphAvailability::Resolved,
             unsupported_formula_count: 0,
+            opened_track: None,
         }
     }
 
@@ -312,6 +336,7 @@ impl MorphControl {
             genital_target: None,
             availability: MorphAvailability::Unresolved,
             unsupported_formula_count: 0,
+            opened_track: None,
         }
     }
 
@@ -337,6 +362,7 @@ impl MorphControl {
             genital_target: Some(target),
             availability: MorphAvailability::Resolved,
             unsupported_formula_count: 0,
+            opened_track: None,
         })
     }
 
@@ -483,7 +509,7 @@ impl MorphLibrary {
                 control.source = source;
                 if let Some(value) = previous_values.get(&canonical_identity(&control.id)) {
                     let (minimum, maximum) = control.target.entry_bounds();
-                    control.value = f64::from(*value).clamp(minimum, maximum) as f32;
+                    control.write_value(f64::from(*value).clamp(minimum, maximum) as f32);
                 }
                 control
             }));
@@ -527,7 +553,7 @@ impl MorphLibrary {
         });
         if let Some(value) = previous_value {
             let (minimum, maximum) = incoming.target.extrapolated_bounds();
-            incoming.value = f64::from(value).clamp(minimum, maximum) as f32;
+            incoming.write_value(f64::from(value).clamp(minimum, maximum) as f32);
         }
         self.controls.push(incoming);
         self.sort_and_deduplicate();
@@ -575,8 +601,19 @@ impl MorphLibrary {
         if (control.value - value).abs() <= f32::EPSILON {
             return false;
         }
-        control.value = value;
-        true
+        control.write_value(value)
+    }
+
+    pub fn close_track(&mut self, id: &str) -> bool {
+        let identity = canonical_identity(id);
+        let Some(control) = self
+            .controls
+            .iter_mut()
+            .find(|control| canonical_identity(&control.id) == identity)
+        else {
+            return false;
+        };
+        control.opened_track.take().is_some()
     }
 
     pub fn begin_resolution(&mut self, id: &str, value: f32) -> bool {
@@ -594,7 +631,7 @@ impl MorphLibrary {
             return false;
         }
         let (minimum, maximum) = control.target.extrapolated_bounds();
-        control.value = value.clamp(minimum, maximum) as f32;
+        control.write_value(value.clamp(minimum, maximum) as f32);
         if control.availability == MorphAvailability::Loading {
             return false;
         }
@@ -609,6 +646,23 @@ impl MorphLibrary {
                 && control.availability != MorphAvailability::Resolved
                 && canonical_identity(&control.id) == identity
         })
+    }
+
+    #[must_use]
+    pub fn loading_count(&self) -> usize {
+        self.controls
+            .iter()
+            .filter(|control| control.availability == MorphAvailability::Loading)
+            .count()
+    }
+
+    #[must_use]
+    pub fn label_of(&self, id: &str) -> Option<&str> {
+        let identity = canonical_identity(id);
+        self.controls
+            .iter()
+            .find(|control| canonical_identity(&control.id) == identity)
+            .map(|control| control.label.as_str())
     }
 
     pub fn has_loading_controls(&self) -> bool {
@@ -629,9 +683,11 @@ impl MorphLibrary {
         }) else {
             return Ok(false);
         };
-        let (minimum, maximum) = target.extrapolated_bounds();
-        control.value = f64::from(control.value).clamp(minimum, maximum) as f32;
+        let (minimum, maximum) = target.entry_limits();
+        let carried = f64::from(control.value).clamp(minimum, maximum) as f32;
         control.target = MorphTargetBinding::from_resolved(target);
+        control.opened_track = None;
+        control.write_value(carried);
         control.availability = MorphAvailability::Resolved;
 
         Ok(true)
@@ -655,7 +711,7 @@ impl MorphLibrary {
         }) else {
             return false;
         };
-        control.value = control.target.default as f32;
+        control.reset_value();
         control.availability = MorphAvailability::Failed;
         true
     }
@@ -667,7 +723,7 @@ impl MorphLibrary {
         }) else {
             return false;
         };
-        control.value = control.target.default as f32;
+        control.reset_value();
         control.availability = MorphAvailability::Unresolved;
         true
     }
@@ -688,8 +744,7 @@ impl MorphLibrary {
             let Some(&value) = snapshot.values.get(&control.id) else {
                 continue;
             };
-            changed |= control.value.to_bits() != value.to_bits();
-            control.value = value;
+            changed |= control.write_value(value);
         }
         changed
     }
@@ -697,9 +752,7 @@ impl MorphLibrary {
     pub fn reset(&mut self) -> bool {
         let mut changed = false;
         for control in &mut self.controls {
-            let default = control.target.default as f32;
-            changed |= control.value.to_bits() != default.to_bits();
-            control.value = default;
+            changed |= control.reset_value();
         }
         changed
     }
@@ -1260,6 +1313,131 @@ mod tests {
         );
     }
 
+    fn one_control(key: &str) -> MorphLibrary {
+        let mut library = MorphLibrary::default();
+        library.replace_source(
+            MorphSource::Curated,
+            vec![MorphControl::new(
+                key,
+                key,
+                MorphCategory::Expression,
+                MorphSource::Curated,
+                target(key, 2.0),
+            )],
+        );
+        library
+    }
+
+    fn track_of(library: &MorphLibrary, key: &str) -> (f64, f64) {
+        library
+            .controls()
+            .iter()
+            .find(|control| control.id == key)
+            .expect("the control was just added")
+            .track_bounds()
+    }
+
+    #[test]
+    fn a_track_opened_past_its_default_stays_open_until_reset() {
+        let mut library = one_control("smile");
+        let authored = track_of(&library, "smile");
+        assert_eq!(
+            authored,
+            (0.0, 1.0),
+            "the default track is what was authored"
+        );
+
+        assert!(library.set_value("smile", 3.0), "3.0 must be accepted");
+        assert_eq!(library.controls()[0].value, 3.0, "and not clamped to 2");
+        assert_eq!(track_of(&library, "smile"), (0.0, 3.0));
+
+        assert!(library.set_value("smile", 0.5));
+        assert_eq!(
+            track_of(&library, "smile"),
+            (0.0, 3.0),
+            "the track narrowed while the value was inside it",
+        );
+
+        assert!(library.set_value("smile", -2.5));
+        assert_eq!(track_of(&library, "smile"), (-2.5, 3.0));
+
+        assert!(library.close_track("smile"));
+        assert_eq!(track_of(&library, "smile"), authored);
+    }
+
+    #[test]
+    fn every_writer_reopens_the_track_its_value_needs() {
+        let mut library = one_control("smile");
+        assert!(library.set_value("smile", 4.0));
+        let snapshot = library.snapshot_values();
+
+        assert!(library.reset());
+        assert_eq!(track_of(&library, "smile"), (0.0, 1.0));
+
+        assert!(library.restore_values(&snapshot), "undo restores the value");
+        assert_eq!(library.controls()[0].value, 4.0);
+        assert_eq!(
+            track_of(&library, "smile"),
+            (0.0, 4.0),
+            "an undo put the value back outside a track that stayed closed",
+        );
+
+        library.replace_source(
+            MorphSource::Curated,
+            vec![MorphControl::new(
+                "smile",
+                "smile",
+                MorphCategory::Expression,
+                MorphSource::Curated,
+                target("smile", 2.0),
+            )],
+        );
+        assert_eq!(library.controls()[0].value, 4.0);
+        assert_eq!(track_of(&library, "smile"), (0.0, 4.0));
+    }
+
+    #[test]
+    fn the_entry_field_and_the_apply_gate_accept_the_same_range() {
+        let library = one_control("smile");
+        let binding = &library.controls()[0].target;
+        let (low, high) = binding.entry_bounds();
+        assert_eq!((low, high), (-100.0, 100.0));
+        assert_eq!(binding.default_track_bounds(), (0.0, 1.0));
+
+        let resolved = target("smile", 2.0);
+        assert_eq!(resolved.entry_limits(), (low, high));
+        assert!(resolved.checked_extrapolated_value(3.0).is_ok());
+        assert!(resolved.checked_extrapolated_value(-2.5).is_ok());
+        assert!(
+            resolved.checked_extrapolated_value(high + 1.0).is_err(),
+            "the sanity rail is not a rail",
+        );
+    }
+
+    #[test]
+    fn three_is_exactly_one_and_a_half_times_two() {
+        let base = load_ordered_obj_from_text(
+            "v 0 0 0
+v 1 0 0
+v 0 1 0
+g Face
+usemtl Face
+f 1 2 3
+",
+        );
+        let mut library = one_control("smile");
+
+        assert!(library.set_value("smile", 2.0));
+        let at_two = library.compose_onto(&base).unwrap().vertices[0][0];
+        assert!(library.set_value("smile", 3.0));
+        let at_three = library.compose_onto(&base).unwrap().vertices[0][0];
+
+        assert!(
+            (at_three - at_two * 1.5).abs() < 1.0e-9,
+            "2 moved it to {at_two} and 3 to {at_three}, which is not linear",
+        );
+    }
+
     #[test]
     fn in_place_composition_is_bit_identical_and_preflight_is_transactional() {
         let base =
@@ -1347,27 +1525,22 @@ mod tests {
 
         let control = &library.controls()[0];
         assert_eq!(control.target.authored_bounds(), (0.0, 1.0));
-        assert_eq!(control.target.entry_bounds(), (-2.0, 2.0));
+        assert_eq!(control.target.entry_bounds(), (-100.0, 100.0));
         assert_eq!(
-            control.target.slider_bounds(f64::from(control.value)),
-            (0.0, 1.0)
+            control.track_bounds(),
+            (0.0, 1.0),
+            "the default rail is the authored range, not the entry range",
         );
 
         assert!(library.set_value("smile", 1.5));
         let control = &library.controls()[0];
         assert_eq!(control.target.authored_bounds(), (0.0, 1.0));
-        assert_eq!(
-            control.target.slider_bounds(f64::from(control.value)),
-            (0.0, 1.5)
-        );
+        assert_eq!(control.track_bounds(), (0.0, 1.5));
 
         assert!(library.set_value("smile", 8.0));
         let control = &library.controls()[0];
-        assert_eq!(control.value, 2.0);
-        assert_eq!(
-            control.target.slider_bounds(f64::from(control.value)),
-            (0.0, 2.0)
-        );
+        assert_eq!(control.value, 8.0);
+        assert_eq!(control.track_bounds(), (0.0, 8.0));
     }
 
     #[test]
@@ -1752,6 +1925,7 @@ mod tests {
             genital_target: None,
             availability: MorphAvailability::Resolved,
             unsupported_formula_count: 0,
+            opened_track: None,
         }
     }
 }

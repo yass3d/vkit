@@ -20,6 +20,8 @@ pub struct ReferenceImage {
 
     pub opacity: f32,
     pub visible: bool,
+
+    pub locked: bool,
 }
 
 impl ReferenceImage {
@@ -37,11 +39,22 @@ impl ReferenceImage {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReferenceRow {
+    Head,
+    Image(u64),
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ReferenceBoard {
     images: Vec<ReferenceImage>,
+
+    head_index: usize,
+
+    hidden: bool,
     next_id: u64,
-    selected: Option<u64>,
+
+    selected: Option<ReferenceRow>,
 }
 
 impl ReferenceBoard {
@@ -56,12 +69,76 @@ impl ReferenceBoard {
     }
 
     #[must_use]
-    pub fn selected(&self) -> Option<u64> {
+    pub const fn shown(&self) -> bool {
+        !self.hidden
+    }
+
+    pub const fn show(&mut self, shown: bool) {
+        self.hidden = !shown;
+    }
+
+    #[must_use]
+    pub fn selected_row(&self) -> Option<ReferenceRow> {
         self.selected
     }
 
-    pub fn select(&mut self, id: Option<u64>) {
-        self.selected = id.filter(|id| self.images.iter().any(|image| image.id == *id));
+    #[must_use]
+    pub fn selected(&self) -> Option<u64> {
+        match self.selected {
+            Some(ReferenceRow::Image(id)) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn select(&mut self, row: Option<ReferenceRow>) {
+        self.selected = row.filter(|row| match row {
+            ReferenceRow::Head => true,
+            ReferenceRow::Image(id) => self.images.iter().any(|image| image.id == *id),
+        });
+    }
+
+    #[must_use]
+    pub fn is_locked(&self, id: u64) -> bool {
+        self.get(id).is_some_and(|image| image.locked)
+    }
+
+    pub fn toggle_locked(&mut self, id: u64) {
+        if let Some(image) = self.get_mut(id) {
+            image.locked = !image.locked;
+        }
+    }
+
+    #[must_use]
+    pub fn rows(&self) -> Vec<ReferenceRow> {
+        let head = self.head_index.min(self.images.len());
+        let mut rows: Vec<ReferenceRow> = Vec::with_capacity(self.images.len() + 1);
+        rows.extend(
+            self.images[..head]
+                .iter()
+                .map(|image| ReferenceRow::Image(image.id)),
+        );
+        rows.push(ReferenceRow::Head);
+        rows.extend(
+            self.images[head..]
+                .iter()
+                .map(|image| ReferenceRow::Image(image.id)),
+        );
+        rows
+    }
+
+    #[must_use]
+    pub fn behind(&self) -> &[ReferenceImage] {
+        &self.images[..self.head_index.min(self.images.len())]
+    }
+
+    #[must_use]
+    pub fn in_front(&self) -> &[ReferenceImage] {
+        &self.images[self.head_index.min(self.images.len())..]
+    }
+
+    #[must_use]
+    pub fn is_in_front(&self, id: u64) -> bool {
+        self.in_front().iter().any(|image| image.id == id)
     }
 
     pub fn add(&mut self, path: PathBuf) -> u64 {
@@ -71,24 +148,38 @@ impl ReferenceBoard {
             .unwrap_or_else(|| "reference".to_owned());
         self.next_id += 1;
         let id = self.next_id;
-        self.images.push(ReferenceImage {
-            id,
-            path,
-            name,
-            center: vec2(0.5, 0.5),
-            height_share: 0.5,
-            aspect: 1.0,
-            opacity: 1.0,
-            visible: true,
-        });
-        self.selected = Some(id);
+        let at = self.head_index.min(self.images.len());
+        self.images.insert(
+            at,
+            ReferenceImage {
+                id,
+                path,
+                name,
+                center: vec2(0.5, 0.5),
+                height_share: 0.5,
+                aspect: 1.0,
+                opacity: 1.0,
+                visible: true,
+                locked: false,
+            },
+        );
+        self.head_index = at + 1;
+        self.selected = Some(ReferenceRow::Image(id));
         id
     }
 
     pub fn remove(&mut self, id: u64) {
-        self.images.retain(|image| image.id != id);
-        if self.selected == Some(id) {
-            self.selected = self.images.last().map(|image| image.id);
+        if let Some(index) = self.images.iter().position(|image| image.id == id) {
+            self.images.remove(index);
+            if index < self.head_index {
+                self.head_index -= 1;
+            }
+        }
+        if self.selected == Some(ReferenceRow::Image(id)) {
+            self.selected = self
+                .images
+                .last()
+                .map(|image| ReferenceRow::Image(image.id));
         }
     }
 
@@ -107,17 +198,46 @@ impl ReferenceBoard {
         }
     }
 
-    pub fn reorder(&mut self, id: u64, toward_front: bool) {
-        let Some(index) = self.images.iter().position(|image| image.id == id) else {
+    pub fn step_row(&mut self, row: ReferenceRow, toward_front: bool) {
+        let rows = self.rows();
+        let Some(from) = rows.iter().position(|candidate| *candidate == row) else {
             return;
         };
         if toward_front {
-            if index + 1 < self.images.len() {
-                self.images.swap(index, index + 1);
-            }
-        } else if index > 0 {
-            self.images.swap(index - 1, index);
+            self.move_row(row, from + 2);
+        } else if from > 0 {
+            self.move_row(row, from - 1);
         }
+    }
+
+    pub fn move_row(&mut self, row: ReferenceRow, insertion_index: usize) {
+        let mut rows = self.rows();
+        let Some(from) = rows.iter().position(|candidate| *candidate == row) else {
+            return;
+        };
+        let taken = rows.remove(from);
+        let to = insertion_index
+            .saturating_sub(usize::from(from < insertion_index))
+            .min(rows.len());
+        rows.insert(to, taken);
+        self.adopt(&rows);
+    }
+
+    fn adopt(&mut self, rows: &[ReferenceRow]) {
+        let mut images = Vec::with_capacity(self.images.len());
+        let mut head_index = 0;
+        for row in rows {
+            match row {
+                ReferenceRow::Head => head_index = images.len(),
+                ReferenceRow::Image(id) => {
+                    if let Some(image) = self.images.iter().find(|image| image.id == *id) {
+                        images.push(image.clone());
+                    }
+                }
+            }
+        }
+        self.images = images;
+        self.head_index = head_index;
     }
 
     pub fn note_aspect(&mut self, id: u64, aspect: f32) {
@@ -130,11 +250,11 @@ impl ReferenceBoard {
     }
 
     #[must_use]
-    pub fn hit(&self, viewport: Rect, point: egui::Pos2) -> Option<u64> {
+    pub fn grabbed(&self, viewport: Rect, point: egui::Pos2) -> Option<u64> {
         self.images
             .iter()
             .rev()
-            .find(|image| image.visible && image.rect_in(viewport).contains(point))
+            .find(|image| image.visible && !image.locked && image.rect_in(viewport).contains(point))
             .map(|image| image.id)
     }
 
@@ -146,6 +266,9 @@ impl ReferenceBoard {
         let Some(image) = self.get_mut(id) else {
             return;
         };
+        if image.locked {
+            return;
+        }
         image.center += shift;
         clamp_into_view(image);
     }
@@ -203,26 +326,26 @@ mod tests {
     }
 
     #[test]
-    fn a_click_lands_on_the_front_picture_and_passes_through_a_hidden_one() {
+    fn a_grab_lands_on_the_front_picture_and_passes_through_a_hidden_one() {
         let mut board = ReferenceBoard::default();
         let back = board.add(PathBuf::from("back.png"));
         let front = board.add(PathBuf::from("front.png"));
 
         let middle = viewport().center();
-        assert_eq!(board.hit(viewport(), middle), Some(front));
+        assert_eq!(board.grabbed(viewport(), middle), Some(front));
 
         board.toggle_visible(front);
-        assert_eq!(board.hit(viewport(), middle), Some(back));
+        assert_eq!(board.grabbed(viewport(), middle), Some(back));
 
         board.toggle_visible(back);
-        assert_eq!(board.hit(viewport(), middle), None);
+        assert_eq!(board.grabbed(viewport(), middle), None);
     }
 
     #[test]
-    fn a_click_outside_every_picture_lands_on_none() {
+    fn a_grab_outside_every_picture_lands_on_none() {
         let mut board = ReferenceBoard::default();
         board.add(PathBuf::from("face.png"));
-        assert_eq!(board.hit(viewport(), pos2(105.0, 55.0)), None);
+        assert_eq!(board.grabbed(viewport(), pos2(105.0, 55.0)), None);
     }
 
     #[test]
@@ -231,15 +354,146 @@ mod tests {
         let first = board.add(PathBuf::from("a.png"));
         let second = board.add(PathBuf::from("b.png"));
 
-        board.reorder(first, false);
+        board.step_row(ReferenceRow::Image(first), false);
         assert_eq!(board.images()[0].id, first, "already at the back");
 
-        board.reorder(first, true);
+        board.step_row(ReferenceRow::Image(first), true);
         assert_eq!(board.images()[1].id, first);
         assert_eq!(board.images()[0].id, second);
 
-        board.reorder(first, true);
-        assert_eq!(board.images()[1].id, first, "already at the front");
+        board.step_row(ReferenceRow::Head, true);
+        assert_eq!(
+            board.rows().last(),
+            Some(&ReferenceRow::Head),
+            "the head was already in front of everything",
+        );
+    }
+
+    #[test]
+    fn the_master_switch_puts_back_exactly_what_it_took_away() {
+        let mut board = ReferenceBoard::default();
+        let front = board.add(PathBuf::from("a.png"));
+        let back = board.add(PathBuf::from("b.png"));
+        board.toggle_visible(back);
+        assert!(board.shown(), "a board starts on");
+
+        board.show(false);
+        assert!(!board.shown());
+        assert!(
+            board.get(front).is_some_and(|image| image.visible),
+            "the master switch reached into a picture's own eye",
+        );
+        assert!(board.get(back).is_some_and(|image| !image.visible));
+
+        board.show(true);
+        assert!(board.shown());
+        assert!(board.get(front).is_some_and(|image| image.visible));
+        assert!(
+            board.get(back).is_some_and(|image| !image.visible),
+            "the one that was hidden came back on",
+        );
+    }
+
+    #[test]
+    fn a_new_picture_is_a_backdrop_until_somebody_moves_it() {
+        let mut board = ReferenceBoard::default();
+        let first = board.add(PathBuf::from("a.png"));
+        let second = board.add(PathBuf::from("b.png"));
+
+        assert_eq!(
+            board.rows(),
+            vec![
+                ReferenceRow::Image(first),
+                ReferenceRow::Image(second),
+                ReferenceRow::Head,
+            ],
+            "the newest picture sits in front of the older ones, behind the head",
+        );
+        assert_eq!(board.behind().len(), 2);
+        assert!(board.in_front().is_empty());
+        assert!(!board.is_in_front(second));
+    }
+
+    #[test]
+    fn a_picture_carried_above_the_head_becomes_an_overlay() {
+        let mut board = ReferenceBoard::default();
+        let back = board.add(PathBuf::from("a.png"));
+        let front = board.add(PathBuf::from("b.png"));
+
+        board.move_row(ReferenceRow::Image(front), 3);
+        assert_eq!(
+            board.rows(),
+            vec![
+                ReferenceRow::Image(back),
+                ReferenceRow::Head,
+                ReferenceRow::Image(front),
+            ],
+        );
+        assert!(board.is_in_front(front));
+        assert!(!board.is_in_front(back));
+        assert_eq!(board.behind().len(), 1);
+        assert_eq!(board.in_front().len(), 1);
+    }
+
+    #[test]
+    fn moving_the_head_down_says_the_same_thing_as_moving_the_pictures_up() {
+        let mut by_head = ReferenceBoard::default();
+        let back = by_head.add(PathBuf::from("a.png"));
+        let front = by_head.add(PathBuf::from("b.png"));
+        by_head.move_row(ReferenceRow::Head, 1);
+
+        assert_eq!(
+            by_head.rows(),
+            vec![
+                ReferenceRow::Image(back),
+                ReferenceRow::Head,
+                ReferenceRow::Image(front),
+            ],
+            "the head landed between the two pictures",
+        );
+        assert!(by_head.is_in_front(front));
+    }
+
+    #[test]
+    fn taking_a_backdrop_away_leaves_the_head_where_it_was() {
+        let mut board = ReferenceBoard::default();
+        let back = board.add(PathBuf::from("a.png"));
+        let front = board.add(PathBuf::from("b.png"));
+        board.move_row(ReferenceRow::Image(front), 3);
+        assert!(board.is_in_front(front));
+
+        board.remove(back);
+        assert!(
+            board.is_in_front(front),
+            "the overlay became a backdrop when its neighbour left",
+        );
+        assert_eq!(
+            board.rows(),
+            vec![ReferenceRow::Head, ReferenceRow::Image(front)],
+        );
+    }
+
+    #[test]
+    fn every_picture_is_on_exactly_one_side_of_the_head() {
+        let mut board = ReferenceBoard::default();
+        let ids: Vec<u64> = (0..4)
+            .map(|index| board.add(PathBuf::from(format!("{index}.png"))))
+            .collect();
+        for gap in 0..=5 {
+            board.move_row(ReferenceRow::Head, gap);
+            let split = board.behind().len() + board.in_front().len();
+            assert_eq!(split, ids.len(), "a picture went missing at gap {gap}");
+            assert_eq!(board.rows().len(), ids.len() + 1);
+            assert_eq!(
+                board
+                    .rows()
+                    .iter()
+                    .filter(|row| **row == ReferenceRow::Head)
+                    .count(),
+                1,
+                "the head appeared twice at gap {gap}",
+            );
+        }
     }
 
     #[test]
@@ -324,7 +578,48 @@ mod tests {
     fn selecting_something_that_is_not_there_selects_nothing() {
         let mut board = ReferenceBoard::default();
         let id = board.add(PathBuf::from("face.png"));
-        board.select(Some(id + 99));
+        board.select(Some(ReferenceRow::Image(id + 99)));
         assert_eq!(board.selected(), None);
+
+        board.select(Some(ReferenceRow::Head));
+        assert_eq!(board.selected_row(), Some(ReferenceRow::Head));
+        assert_eq!(
+            board.selected(),
+            None,
+            "the divider is not a picture, so no picture-only command may aim at it",
+        );
+    }
+
+    #[test]
+    fn a_locked_picture_is_deaf_to_the_pointer() {
+        let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let mut board = ReferenceBoard::default();
+        let id = board.add(PathBuf::from("face.png"));
+        let middle = board.get(id).unwrap().rect_in(viewport).center();
+        assert_eq!(board.grabbed(viewport, middle), Some(id));
+
+        board.toggle_locked(id);
+        assert!(board.is_locked(id));
+        assert_eq!(
+            board.grabbed(viewport, middle),
+            None,
+            "a locked picture still answered the pointer",
+        );
+
+        let before = board.get(id).unwrap().center;
+        board.drag(id, viewport, vec2(40.0, 40.0));
+        assert_eq!(
+            board.get(id).unwrap().center,
+            before,
+            "a locked picture moved anyway",
+        );
+
+        board.toggle_locked(id);
+        board.drag(id, viewport, vec2(40.0, 40.0));
+        assert_ne!(
+            board.get(id).unwrap().center,
+            before,
+            "unlocking did not give it back",
+        );
     }
 }

@@ -163,7 +163,7 @@ to learn twice.
 | Perspective ↔ orthographic | Numpad 5 |
 | Reset the camera | Home, Numpad 0, or Numpad `.` |
 | Frame the head | `F` |
-| Free rotate and roll | `R`, then drag; `R` or a click to leave |
+| Roll the camera | The slider in the viewport's camera panel; Alt + `R` levels it |
 | Rotate the light | Shift + right-drag |
 
 The left mouse button never moves the camera — it places pins and paints — which

@@ -7,6 +7,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::SurfaceSmoothTooltip => Some(
             "Сглаживание при отрисовке, совместимое с VaM. 0 — редактируемый базовый меш, 3 — значение VaM по умолчанию, 4 — максимум. Морфы, UV, скульптинг и запекание текстур сохраняют базовую топологию",
         ),
+        TextKey::ShowWornHair => Some("Показывать надетые волосы"),
+        TextKey::ShowWornHairHint => Some("На всех вкладках; здесь не изменяются"),
         TextKey::FaceMatch => Some("Создать"),
         TextKey::ResultPreview => Some("Сохранить"),
         TextKey::Save => Some("Сохранить"),
@@ -50,8 +52,14 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairViewportPhysicsHint => {
             Some("Показывает физику на экране. К экспорту отношения не имеет.")
         }
+        TextKey::HairKeepSettledShape => Some("Применить"),
+        TextKey::HairKeepSettledShapeHint => {
+            Some("Прогоняет физику по всем частям и записывает, где легли пряди.")
+        }
         TextKey::HairMirrorEdit => Some("Зеркальное редактирование"),
         TextKey::HairMirrorEditHint => Some("Кисти правят обе стороны сразу, симметрично."),
+        TextKey::HairSingleStrand => Some("Одна прядь"),
+        TextKey::HairSingleStrandHint => Some("Штрих правит только ту прядь, на которой начался."),
         TextKey::HairAutoPart => Some("Автовыбор части"),
         TextKey::HairAutoPartHint => {
             Some("Кисть правит только часть, распознанную под курсором, вместо активных слоёв.")
@@ -87,6 +95,8 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::HairToolComb => Some("Расчесать"),
         TextKey::HairToolPlantHint => Some("Высаживает пряди на вершинах скальпа под кистью"),
         TextKey::HairToolGrowHint => Some("Удлиняет пряди под кистью; с Alt — укорачивает"),
+        TextKey::HairToolSettle => Some("Уронить"),
+        TextKey::HairToolSettleHint => Some("Роняет пряди под кистью и сохраняет, где они легли."),
         TextKey::HairToolEraseHint => Some("Удаляет пряди под кистью"),
         TextKey::HairToolCombHint => Some("Расчёсывает пряди под кистью; корни остаются на месте"),
         TextKey::HairToolPinch => Some("Собрать"),
@@ -283,6 +293,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::VaMIndexing => Some("Индексация каталога VaM"),
         TextKey::VaMFailed => Some("Сбой каталога VaM"),
         TextKey::RefreshSkins => Some("Обновить каталог кожи"),
+        TextKey::RescanVaMFolder => Some("Пересканировать папку VaM"),
         TextKey::MorphLoading => Some("Загрузка морфа"),
         TextKey::MorphLoadFailed => Some("Не удалось загрузить морф"),
         TextKey::DefaultSkinMissing => Some("Эта кожа не найдена. Проверьте папку VaM"),
@@ -338,10 +349,17 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutGroupTexture => Some("Холст текстуры"),
         TextKey::ReferenceImages => Some("Референс"),
         TextKey::ReferenceImagesEmpty => Some("Нет референсных изображений"),
+        TextKey::ReferenceImageUnreadable => {
+            Some("Это изображение не удалось прочитать: оно есть в списке, но не на экране")
+        }
         TextKey::ReferenceImageAdd => Some("Добавить изображение"),
         TextKey::ReferenceImageRemove => Some("Удалить"),
+        TextKey::ReferenceImageLock => Some("Закрепить"),
+        TextKey::ReferenceImageUnlock => Some("Открепить"),
         TextKey::ReferenceImageRaise => Some("На передний план"),
         TextKey::ReferenceImageLower => Some("На задний план"),
+        TextKey::ReferenceHeadRow => Some("Голова"),
+        TextKey::ReferenceHeadRowHint => Some("Изображения выше этой строки перекрывают голову"),
         TextKey::ShortcutTextureCanvasPan => Some("Панорама холста (удерживать)"),
         TextKey::ShortcutDiagnosticLogCopy => Some("Копировать журнал"),
         TextKey::ShortcutLightRotate => Some("Поворот света (удерживать)"),
@@ -350,6 +368,11 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutLayerIsolate => Some("Скрыть остальные слои"),
         TextKey::ShortcutLayerLocalView => Some("Показать только этот (переключатель)"),
         TextKey::ShortcutLayerInvertSelection => Some("Инвертировать выделение"),
+        TextKey::ShortcutLayerSelectAll => Some("Выбрать все слои"),
+        TextKey::ShortcutLayerRemove => Some("Удалить выбранные слои"),
+        TextKey::ShortcutVertexSelectConnected => Some("Выбрать всю прядь"),
+        TextKey::ShortcutVertexGrowSelection => Some("Расширить выделение"),
+        TextKey::ShortcutVertexShrinkSelection => Some("Сузить выделение"),
         TextKey::ShortcutSculptSmoothHold => Some("Удерживать для сглаживания"),
         TextKey::ShortcutSculptInflateHold => Some("Удерживать для раздувания"),
         TextKey::ShortcutSculptAlternateHold => Some("Удерживать для обратного действия"),
@@ -409,17 +432,18 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::MorphOneSidedFilterShow => Some("Показать морфы, двигающие одну сторону"),
         TextKey::MorphOneSidedFilterHide => Some("Скрыть морфы, двигающие одну сторону"),
         TextKey::AppearanceSearch => Some("Поиск образов"),
+        TextKey::SourceFilterAll => Some("Все"),
+        TextKey::SourceFilterLooks => Some("Образы"),
+        TextKey::SourceFilterMorphs => Some("Морфы"),
         TextKey::AppearanceLayers => Some("Слои внешности"),
         TextKey::AddAppearanceLayer => Some("Добавить выбранную внешность"),
         TextKey::AppearanceLayersEmpty => Some("Слоёв пока нет"),
         TextKey::AppearanceLayerRaise => Some("Вверх"),
         TextKey::AppearanceLayerLower => Some("Вниз"),
         TextKey::LookFind => Some("Загрузить образ"),
-        TextKey::CameraTrackballArmed => {
-            Some("Трекбол · перетаскивайте для свободного вращения · клик или R для выхода")
-        }
-        TextKey::HelpTrackball => Some("Вращение трекболом"),
-        TextKey::ShortcutTrackball => Some("R"),
+        TextKey::VertexRotateArmed => Some("Поворот · тяните · клик или R для завершения"),
+        TextKey::HelpVertexRotate => Some("Повернуть выделение"),
+        TextKey::ShortcutVertexRotate => Some("R"),
         TextKey::SplitModelViewTooltip => Some("Смотреть с двух сторон — разделить вид"),
         TextKey::SplitModelViewName => Some("Разделённый вид"),
         TextKey::HelpLevelRoll => Some("Выровнять горизонт"),
@@ -588,6 +612,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::NativeCorePending => Some("Идёт интеграция нативного ядра подгонки"),
         TextKey::MorphPreviewUpdated => Some("Предпросмотр морфа обновлён"),
+        TextKey::MorphResolving => Some("Загрузка морфов"),
         TextKey::MorphsReset => Some("Морфы сброшены"),
         TextKey::MorphsResetUndone => Some("Сброс морфов отменён"),
         TextKey::MorphEditUndone => Some("Правка морфа отменена"),
@@ -626,10 +651,6 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::ShortcutRedo => Some("Ctrl+Y"),
         TextKey::HairPresetSection => Some("Пресеты волос"),
         TextKey::HairPresetLoad => Some("Загрузить"),
-        TextKey::HairToolPick => Some("Выбрать слой"),
-        TextKey::HairToolPickHint => Some(
-            "Щёлкните по пряди во вьюпорте, чтобы сделать её слой активным. Кисть сработает со следующего щелчка.",
-        ),
         TextKey::HelpHairPick => Some("Выбрать слой под курсором"),
         TextKey::ShortcutHairPick => Some("V или Ctrl + щелчок любой кистью"),
         TextKey::HelpHairSmooth => Some("Сглаживать вместо расчёсывания"),
@@ -665,6 +686,7 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         TextKey::Perspective => Some("Перспективная"),
         TextKey::Orthographic => Some("Ортогональная"),
         TextKey::Fov => Some("FOV"),
+        TextKey::CameraRoll => Some("Крен"),
         TextKey::ResetCamera => Some("Сбросить камеру"),
         TextKey::WindowMinimize => Some("Свернуть"),
         TextKey::WindowMaximize => Some("Развернуть"),
@@ -690,6 +712,10 @@ pub(super) const fn label(key: TextKey) -> Option<&'static str> {
         }
         TextKey::SculptBrushSmoothTooltip => Some("Сглаживает детали поверхности"),
         TextKey::SculptBrushRestoreTooltip => Some("Возвращает поверхность к базовой форме"),
+        TextKey::SculptBrushVertex => Some("Вершины"),
+        TextKey::SculptBrushVertexTooltip => Some(
+            "Двигает точки самой сетки. Щелчок — взять, перетаскивание — переместить, гизмо — закрепить ось.",
+        ),
         TextKey::SculptBrushMask => Some("Маска"),
         TextKey::SculptBrushMaskTooltip => {
             Some("Срезает выбранный слой внешности, открывая нижний. Alt возвращает")

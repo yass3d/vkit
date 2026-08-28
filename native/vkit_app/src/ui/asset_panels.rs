@@ -142,6 +142,22 @@ pub(crate) fn draw_viewport_skin_panel_contents(ui: &mut Ui, state: &mut AppStat
             }
         },
     );
+    if !state.hair_project.parts.is_empty() {
+        ui.add_space(SPACE_3);
+        set_capsule_widget_radius(ui);
+        let mut worn = !state.hair_hide_strands;
+        if crate::ui_components::switch_row(
+            ui,
+            &mut worn,
+            text(state.locale, TextKey::ShowWornHair),
+        )
+        .on_hover_text(text(state.locale, TextKey::ShowWornHairHint))
+        .changed()
+        {
+            state.hair_hide_strands = !worn;
+        }
+    }
+
     ui.add_space(crate::theme::SPACE_1);
     draw_vam_source(ui, state);
 

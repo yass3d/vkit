@@ -1615,6 +1615,8 @@ pub struct HairPaintCallback {
 
     pub viewport_pixels: [f32; 2],
 
+    pub capture: Option<crate::hair_settle::Capture>,
+
     pub frame: u64,
 }
 
@@ -1845,6 +1847,15 @@ impl HairRenderResources {
         }) {
             return;
         }
+        let why = self
+            .scenes
+            .get(&callback.scene_key)
+            .map_or("no-scene", |scene| {
+                scene
+                    .physics
+                    .why_not(&callback.preview, &callback.mesh, callback.simulate_hair)
+                    .unwrap_or("kept")
+            });
         if let Some(scene) = self.scenes.get_mut(&callback.scene_key)
             && scene
                 .physics
@@ -1864,6 +1875,9 @@ impl HairRenderResources {
                 callback.settle_gravity,
                 callback.solve,
             );
+            if let Some(capture) = callback.capture.as_ref() {
+                scene.physics.capture_into(device, encoder, capture);
+            }
             return;
         }
         let Some(physics) = HairPhysicsScene::new(
@@ -1885,6 +1899,16 @@ impl HairRenderResources {
             return;
         };
         self.empty.remove(&callback.scene_key);
+        let _ = crate::diagnostics::record(
+            crate::diagnostics::Severity::Info,
+            "hair",
+            "scene_rebuilt",
+            &format!(
+                "key={:#x}; why={why}; scenes_held={}",
+                callback.scene_key,
+                self.scenes.len(),
+            ),
+        );
         uniform.grading[3] = physics.render_subdivisions() as f32;
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("vkit.hair.uniform"),
@@ -2125,6 +2149,7 @@ mod tests {
             body_capsules: Vec::new(),
         });
         let mut callback = HairPaintCallback {
+            capture: None,
             spot: crate::renderer::SceneSpot::default(),
             scene_key: 1,
             frame: 0,

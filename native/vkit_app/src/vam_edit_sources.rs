@@ -17,6 +17,27 @@ pub enum VaMEditSourceKind {
     AppearancePreset,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum EditSourceFilter {
+    #[default]
+    All,
+    Looks,
+    Morphs,
+}
+
+impl EditSourceFilter {
+    pub const ALL: [Self; 3] = [Self::All, Self::Looks, Self::Morphs];
+
+    #[must_use]
+    pub const fn admits(self, kind: VaMEditSourceKind) -> bool {
+        match self {
+            Self::All => true,
+            Self::Looks => matches!(kind, VaMEditSourceKind::AppearancePreset),
+            Self::Morphs => matches!(kind, VaMEditSourceKind::MorphPair),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VaMEditSource {
     pub stable_id: String,
@@ -589,6 +610,65 @@ mod tests {
             std::process::id(),
             TEST_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ))
+    }
+
+    #[test]
+    fn a_morph_exported_here_comes_back_as_a_source_you_can_load() {
+        use vkit_core::vam::{GeometrySex, VaMRoot};
+
+        let root = test_root("export-round-trip");
+        let folder = root
+            .join("Custom")
+            .join("Atom")
+            .join("Person")
+            .join("Morphs")
+            .join("female")
+            .join("Vkit");
+        fs::create_dir_all(&folder).unwrap();
+        fs::write(folder.join("Aria.vmi"), b"{}").unwrap();
+        fs::write(folder.join("Aria.vmb"), [0_u8]).unwrap();
+
+        fs::write(folder.join("Halfway.vmi"), b"{}").unwrap();
+
+        if let Ok(opened) = VaMRoot::open(&root) {
+            let written = opened.morph_output_directory(GeometrySex::Female);
+            let tail: Vec<_> = written
+                .components()
+                .rev()
+                .take(5)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            let wanted: Vec<_> = Path::new("Custom/Atom/Person/Morphs/female")
+                .components()
+                .collect();
+            assert_eq!(
+                tail, wanted,
+                "the exporter writes somewhere the scan does not look",
+            );
+        }
+
+        let catalog = scan_edit_sources(&root).expect("scan");
+        let found: Vec<&VaMEditSource> = catalog
+            .sources
+            .iter()
+            .filter(|source| source.kind == VaMEditSourceKind::MorphPair)
+            .collect();
+        assert_eq!(found.len(), 1, "{:?}", catalog.sources);
+        assert_eq!(found[0].sex, Some(SkinSex::Female), "read from the folder");
+        assert!(
+            !found[0].resolves_nothing(),
+            "a morph pair references no morphs, so it can never resolve to nothing",
+        );
+        assert!(
+            EditSourceFilter::All.admits(found[0].kind)
+                && EditSourceFilter::Morphs.admits(found[0].kind)
+                && !EditSourceFilter::Looks.admits(found[0].kind),
+            "the list filter has to be able to show it",
+        );
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

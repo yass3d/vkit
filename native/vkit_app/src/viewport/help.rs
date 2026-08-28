@@ -6,7 +6,7 @@ pub(super) const PIN_HELP_ROWS: [(TextKey, TextKey); 17] = [
     (TextKey::HelpDelete, TextKey::ShortcutDelete),
     (TextKey::HelpXSymmetry, TextKey::ShortcutXSymmetry),
     (TextKey::HelpOrbit, TextKey::ShortcutOrbit),
-    (TextKey::HelpTrackball, TextKey::ShortcutTrackball),
+    (TextKey::HelpVertexRotate, TextKey::ShortcutVertexRotate),
     (TextKey::HelpLevelRoll, TextKey::ShortcutLevelRoll),
     (TextKey::HelpPan, TextKey::ShortcutPan),
     (TextKey::HelpZoom, TextKey::ShortcutZoom),

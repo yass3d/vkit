@@ -60,6 +60,17 @@ impl AppearanceStack {
         }
     }
 
+    pub fn move_to(&mut self, id: u64, insertion_index: usize) {
+        let Some(index) = self.layers.iter().position(|layer| layer.id == id) else {
+            return;
+        };
+        let layer = self.layers.remove(index);
+        let adjusted = insertion_index
+            .saturating_sub(usize::from(index < insertion_index))
+            .min(self.layers.len());
+        self.layers.insert(adjusted, layer);
+    }
+
     pub fn lower(&mut self, id: u64) {
         if let Some(index) = self.layers.iter().position(|layer| layer.id == id)
             && index > 0
@@ -112,6 +123,47 @@ pub fn blend_vertex_deltas(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn stack_of(count: usize) -> (AppearanceStack, Vec<u64>) {
+        let mut stack = AppearanceStack::default();
+        let ids = (0..count)
+            .map(|index| stack.add(format!("layer {index}"), vec![[0.0, 0.0, 0.0]; 3]))
+            .collect();
+        (stack, ids)
+    }
+
+    #[test]
+    fn a_layer_dropped_on_a_gap_lands_in_it() {
+        let (mut stack, ids) = stack_of(3);
+        let order = |stack: &AppearanceStack| -> Vec<u64> {
+            stack.layers.iter().map(|layer| layer.id).collect()
+        };
+        assert_eq!(order(&stack), ids);
+
+        stack.move_to(ids[2], 1);
+        assert_eq!(order(&stack), vec![ids[0], ids[2], ids[1]]);
+
+        stack.move_to(ids[0], 3);
+        assert_eq!(order(&stack), vec![ids[2], ids[1], ids[0]]);
+    }
+
+    #[test]
+    fn dragging_a_layer_says_the_same_thing_as_the_chevrons() {
+        let (mut by_drag, ids) = stack_of(3);
+        let (mut by_button, _) = stack_of(3);
+
+        by_button.raise(ids[0]);
+        by_drag.move_to(ids[0], 2);
+
+        let order = |stack: &AppearanceStack| -> Vec<u64> {
+            stack.layers.iter().map(|layer| layer.id).collect()
+        };
+        assert_eq!(
+            order(&by_drag),
+            order(&by_button),
+            "one step by drag has to be one step by button",
+        );
+    }
 
     #[test]
     fn one_layer_is_used_whole() {
