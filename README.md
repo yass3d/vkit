@@ -55,9 +55,9 @@ Five stages, left to right along the top of the window.
 | | Stage | |
 |---|---|---|
 | **1** | **Create** | Start from a 3D scan (OBJ / glTF / GLB / FBX, all read in-process), from a photograph projected onto the surface, or from a look already installed in VaM. Place numbered pin pairs — or let the bundled MediaPipe Face Landmarker place them — then fit: weighted similarity alignment, a Laplacian pin warp, and three-stage dense registration. Eyes, mouth and nostrils are held rigid, and Genesis 2 vertex order survives untouched. |
-| **2** | **Sculpt** | Grab, smooth and restore brushes, plus the whole morph library from your install with search, categories and translated names. Sculpt strokes and morph values are kept apart and recomposed, so moving between them never costs you either. |
+| **2** | **Sculpt** | Grab, smooth and restore brushes, a vertex tool for the times you know exactly which point is wrong, and the whole morph library from your install with search, categories and translated names. Morph sliders open past their authored range when you type a value into them. Sculpt strokes and morph values are kept apart and recomposed, so moving between them never costs you either. |
 | **3** | **Texture** | Layers on the face UV: paint, clone, heal, dodge and burn, stamps, a positionable stencil, projection as its own brush, mirroring, and a bake to a finished texture set. |
-| **4** | **Hair** | Grow hair on the head you just made, or take a style already installed in VaM apart into layers you can edit. Plant guide strands on the scalp with a brush, and the strands between them are interpolated the way VaM interpolates them. Parts stack as layers with their own length, curl, spread, stiffness, physics and colour — 60 parameters, each one a VaM storable written straight through. The scalp is a layer of its own with its own page: pick the built-in cap mesh, give it a sheet and a cutout of your own, and tune a material that starts from the values VaM ships that mesh with. The viewport runs VaM's own solver, so what drapes here drapes there. It saves as a `Custom/Hair` item: `.vam`, `.vaj`, `.vab` and a default `.vap` preset, with a thumbnail per part. |
+| **4** | **Hair** | Grow hair on the head you just made, or take a style already installed in VaM apart into layers you can edit. Plant guide strands on the scalp with a brush, and the strands between them are interpolated the way VaM interpolates them. Parts stack as layers with their own length, curl, spread, stiffness, physics and colour — 60 parameters, each one a VaM storable written straight through. Select strands the way Blender selects geometry, drop the length a brush covers under gravity, and keep whatever the physics preview drapes. The scalp is a layer of its own with its own page: pick the built-in cap mesh, give it a sheet and a cutout of your own, and tune a material that starts from the values VaM ships that mesh with. The viewport runs VaM's own solver, so what drapes here drapes there. It saves as a `Custom/Hair` item: `.vam`, `.vaj`, `.vab` and a default `.vap` preset, with a thumbnail per part. |
 | **5** | **Save** | A VaM morph pair (`.vmi` + `.vmb`) into `Custom/Atom/Person/Morphs/`, the baked texture set, or a self-contained `.var` written by the same code that reads one. A saved morph pair reaches VaM through **Reload Custom Morphs**; a saved `.var` needs VaM restarted, because `AddonPackages` is enumerated once at startup and that button rescans the loose morph folders rather than the mounted packages. Vkit says which of the two you just did, under the button. |
 
 A style already installed in VaM can be taken apart in the Hair stage and
@@ -72,8 +72,11 @@ places VaM picks up anybody else's content from.
 ## The other stages
 
 **Sculpt.** Your install's own morph library — searchable, categorised, names
-translated — beside brushes that move the mesh directly. Parts can be soloed or
-hidden while you work.
+translated — beside brushes that move the mesh directly. Or take hold of single
+vertices: pick them, add with `Shift`, remove with `Alt`, and move, turn or
+scale the selection on a gizmo. Parts can be soloed or hidden while you work,
+and the hair you have grown stays on the head so the face you are shaping is
+the face you will see.
 
 <p align="center">
   <img alt="The Sculpt tab: morph library on the right, a face with simulated hair in the viewport"
@@ -92,11 +95,22 @@ that ends as a finished texture set at 2K or 4K.
 **Hair.** Plant guide strands with a brush and Vkit fills in between them the way
 VaM does. Or open a style you already own: its parts arrive as layers you can
 comb, cut and recolour, with the scalp lifted out into a layer of its own.
+Strands select like geometry in Blender — `L` isolates what you picked, the
+numpad keys grow and shrink it — and a gravity brush drops only the length it
+covers.
 
 <p align="center">
   <img alt="The Hair tab: a loaded style broken into tinted layers, the preset list and layer list on the right"
        src=".github/assets/hair_create.png">
 </p>
+
+**Reference images.** Pin photographs into the viewport from the Background
+panel and work against them at any stage. Drag one anywhere, resize it from its
+corner, set its opacity, and put it either behind the head or over it — the
+list carries a head row, and which side of that row a picture sits on is the
+whole of the answer. Lock one and it stops answering the pointer, so a brush
+stroke that starts on top of it reaches the head instead. None of them ever
+appear in a thumbnail.
 
 **Save.** The morph pair, the texture set, or a `.var` — and a compare slider to
 put the result back against the scan you started from before you commit to it.
