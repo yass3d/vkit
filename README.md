@@ -189,6 +189,11 @@ dense on purpose, and the tooltips are the manual — they cover every brush, ev
 slider and every toggle. If you find them distracting they can be turned off in
 Settings → Interface.
 
+**Settings → Shortcuts is the whole key list**, grouped by where each one
+applies and showing the binding you are actually using rather than the one it
+shipped with. Every key is rebindable, combinations included, and a binding
+already spoken for says so instead of quietly taking the key.
+
 The interface is Korean-first with complete English and Japanese, plus complete
 packs for Chinese (Simplified and Traditional), Spanish, Portuguese, French,
 German, Russian, Hindi, Indonesian, Vietnamese, Thai and Bengali. Change it in
